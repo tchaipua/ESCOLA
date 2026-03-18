@@ -447,7 +447,7 @@ export default function DashboardPage() {
                                             </p>
                                         </div>
                                         <Link
-                                            href="/dashboard/calendario-aulas"
+                                            href="/principal/calendario-aulas"
                                             className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
                                         >
                                             Abrir calendário expandido
@@ -563,28 +563,28 @@ export default function DashboardPage() {
 
                 <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
                 <div className="grid grid-cols-1 gap-4 px-8 py-8 md:grid-cols-4">
-                    <Link href="/dashboard/pessoas" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
+                    <Link href="/principal/pessoas" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
                         <h3 className="flex items-center justify-between font-bold text-slate-800">
                             Pessoas e Perfis
                             <span className="font-bold text-blue-500">→</span>
                         </h3>
                         <p className="mt-2 text-sm text-slate-500">Consulta somente leitura do cadastro-base compartilhado entre professores, alunos e responsáveis.</p>
                     </Link>
-                    <Link href="/dashboard/dashboard" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
+                    <Link href="/principal/dashboard" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
                         <h3 className="flex items-center justify-between font-bold text-slate-800">
                             Dashboard
                             <span className="font-bold text-blue-500">→</span>
                         </h3>
                         <p className="mt-2 text-sm text-slate-500">Abra a nova tela de métricas e atalhos rápidos para tomar decisões.</p>
                     </Link>
-                    <Link href="/dashboard/grade" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
+                    <Link href="/principal/grade" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
                         <h3 className="flex items-center justify-between font-bold text-slate-800">
                             Grade Escolar
                             <span className="font-bold text-blue-500">→</span>
                         </h3>
                         <p className="mt-2 text-sm text-slate-500">Monte a grade semanal e organize os horários da escola.</p>
                     </Link>
-                    <Link href="/dashboard/relatorios" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
+                    <Link href="/principal/relatorios" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
                         <h3 className="flex items-center justify-between font-bold text-slate-800">
                             Relatórios
                             <span className="font-bold text-blue-500">→</span>

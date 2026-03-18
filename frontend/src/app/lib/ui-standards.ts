@@ -33,9 +33,9 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/lib/grid-export-utils.ts',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/professores/page.tsx',
-            'frontend/src/app/dashboard/alunos/page.tsx',
-            'frontend/src/app/dashboard/responsaveis/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/alunos/page.tsx',
+            'frontend/src/app/principal/responsaveis/page.tsx',
         ],
         status: 'approved',
     },
@@ -48,8 +48,8 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/components/grid-column-config-modal.tsx',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/professores/page.tsx',
-            'frontend/src/app/dashboard/alunos/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/alunos/page.tsx',
         ],
         status: 'approved',
     },
@@ -63,8 +63,8 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/lib/grid-export-utils.ts',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/professores/page.tsx',
-            'frontend/src/app/dashboard/alunos/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/alunos/page.tsx',
         ],
         status: 'approved',
     },
@@ -78,8 +78,8 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/components/grid-export-modal.tsx',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/professores/page.tsx',
-            'frontend/src/app/dashboard/grade-horaria/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/grade-horaria/page.tsx',
         ],
         status: 'approved',
     },
@@ -92,8 +92,8 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/lib/grid-export-utils.ts',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/professores/page.tsx',
-            'frontend/src/app/dashboard/alunos/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/alunos/page.tsx',
             'frontend/src/app/msinfor-admin/page.tsx',
         ],
         status: 'approved',
@@ -107,7 +107,7 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/components/grid-record-popover.tsx',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/alunos/page.tsx',
+            'frontend/src/app/principal/alunos/page.tsx',
             'frontend/src/app/msinfor-admin/page.tsx',
         ],
         status: 'approved',
@@ -118,10 +118,10 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
         summary: 'FORMULARIO COM ABAS, CONTEUDO ROLAVEL E ACOES FIXAS.',
         documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-007---cadastro-em-abas-com-rodape-fixo',
         componentPaths: [
-            'frontend/src/app/dashboard/professores/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
         ],
         referenceScreens: [
-            'frontend/src/app/dashboard/professores/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
         ],
         status: 'approved',
     },

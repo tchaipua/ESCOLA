@@ -56,7 +56,7 @@ export default function LoginPage() {
     setRememberMe(getRememberPreference());
     const storedToken = getStoredToken();
     if (storedToken) {
-      router.replace('/dashboard');
+      router.replace('/principal');
     }
   }, [router]);
 
@@ -103,7 +103,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push('/dashboard');
+      router.push('/principal');
 
     } catch (err: any) {
       const errorMsg = err.message || 'Erro de conexão com o servidor.';
@@ -144,7 +144,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push('/dashboard');
+      router.push('/principal');
     } catch (err: any) {
       setErrorStatus({ message: err.message || 'Erro ao selecionar escola' });
       setLoading(false);
@@ -180,7 +180,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push('/dashboard');
+      router.push('/principal');
     } catch (err: any) {
       setErrorStatus({ message: err.message || 'Erro ao selecionar o tipo de acesso.' });
       setLoading(false);

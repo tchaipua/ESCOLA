@@ -13,6 +13,17 @@ type SeriesSummary = {
   sortOrder?: number | null;
 };
 
+type SeriesClassApiItem = {
+  id: string;
+  series?: {
+    id?: string;
+    name?: string | null;
+    sortOrder?: number | null;
+  };
+  enrollments?: Array<{ id: string }>;
+  studentsCount?: number;
+};
+
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 
 export default function DashboardResumoSeriePage() {
@@ -49,32 +60,30 @@ export default function DashboardResumoSeriePage() {
         }
 
         const grouped = new Map<string, SeriesSummary>();
-        if (Array.isArray(data)) {
-          data.forEach((item: any) => {
-            const seriesId = item.series?.id ?? `__UNKNOWN__${item.id}`;
-            const seriesName = (item.series?.name || 'SEM SÉRIE').toUpperCase();
-            const current = grouped.get(seriesId);
-            const studentCount =
-              Array.isArray(item.enrollments) ? item.enrollments.length : item.studentsCount ?? 0;
-            const sortOrder = item.series?.sortOrder ?? null;
+        const items = Array.isArray(data) ? (data as SeriesClassApiItem[]) : [];
+        items.forEach((item) => {
+          const seriesId = item.series?.id ?? `__UNKNOWN__${item.id}`;
+          const seriesName = (item.series?.name || 'SEM SÉRIE').toUpperCase();
+          const current = grouped.get(seriesId);
+          const studentCount =
+            Array.isArray(item.enrollments) ? item.enrollments.length : item.studentsCount ?? 0;
+          const sortOrder = item.series?.sortOrder ?? null;
 
-            if (current) {
-              grouped.set(seriesId, {
-                ...current,
-                studentsCount: current.studentsCount + studentCount,
-                sortOrder: current.sortOrder ?? sortOrder,
-              });
-            } else {
-              grouped.set(seriesId, {
-                id: seriesId,
-                name: seriesName,
-                studentsCount: studentCount,
-                sortOrder,
-              });
-            }
-
-          });
-        }
+          if (current) {
+            grouped.set(seriesId, {
+              ...current,
+              studentsCount: current.studentsCount + studentCount,
+              sortOrder: current.sortOrder ?? sortOrder,
+            });
+          } else {
+            grouped.set(seriesId, {
+              id: seriesId,
+              name: seriesName,
+              studentsCount: studentCount,
+              sortOrder,
+            });
+          }
+        });
 
         const sorted = Array.from(grouped.values()).sort((a, b) => {
           const orderA = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
@@ -84,8 +93,9 @@ export default function DashboardResumoSeriePage() {
         });
 
         setSeriesSummary(sorted);
-      } catch (err: any) {
-        setError(err.message ?? 'Falha ao carregar o resumo por série.');
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Falha ao carregar o resumo por série.';
+        setError(message);
       } finally {
         setLoading(false);
       }
@@ -98,6 +108,7 @@ export default function DashboardResumoSeriePage() {
     () => seriesSummary.reduce((acc, item) => acc + item.studentsCount, 0),
     [seriesSummary],
   );
+  const visibleStudents = totalStudents;
 
   if (!canView) {
     return (
@@ -109,33 +120,44 @@ export default function DashboardResumoSeriePage() {
   }
 
   return (
-    <div className="space-y-8">
-      <section className="mx-auto max-w-5xl rounded-[32px] border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+    <div className="space-y-6">
+      <div className="w-full space-y-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {branding?.logoUrl ? (
-              <img src={branding.logoUrl} alt={`Logo de ${branding.schoolName}`} className="h-full w-full object-contain p-2" />
+              <img
+                src={branding.logoUrl}
+                alt={`Logo de ${branding.schoolName}`}
+                className="h-full w-full object-contain p-1.5"
+              />
             ) : (
-              <span className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">
+              <span className="text-xs font-black uppercase tracking-[0.35em] text-[#153a6a]">
                 {branding?.schoolName ? branding.schoolName.slice(0, 3).toUpperCase() : 'ESC'}
               </span>
             )}
           </div>
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Resumo por série</p>
-          <h1 className="text-3xl font-extrabold text-[#153a6a]">Total de alunos por série</h1>
-          <p className="text-sm font-medium text-slate-500">
-            Uma visão consolidada para identificar séries com maior volume de alunos e apoiar decisões de alocação.
-          </p>
-          <div className="mt-6 flex flex-col items-center gap-2">
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Total de alunos ativos</p>
-            <div className="flex items-center justify-center rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 shadow-sm">
-              <span className="text-4xl font-extrabold text-[#153a6a]">{totalStudents}</span>
-            </div>
+          <div className="min-w-0 space-y-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-blue-600">Resumo geral</p>
+            <h1 className="text-3xl font-black text-[#153a6a]">Total de alunos por série</h1>
+            <p className="text-sm font-medium text-slate-500">
+              Uma visão consolidada para identificar séries com maior volume de alunos e apoiar decisões de alocação.
+            </p>
           </div>
         </div>
-      </section>
+        <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-black uppercase tracking-[0.35em] text-slate-500">
+              Total de alunos ativos
+            </span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 text-2xl font-extrabold text-[#153a6a]">
+              {totalStudents}
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-400">exibido(s)</span>
+          </div>
+        </div>
+      </div>
 
-      <section className="space-y-5 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="space-y-5">
         {error && (
           <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">{error}</div>
         )}
@@ -155,7 +177,7 @@ export default function DashboardResumoSeriePage() {
             {seriesSummary.map((series) => (
               <Link
                 key={series.id}
-                href={`/dashboard/resumo-por-serie/${series.id}`}
+                href={`/principal/dashboard/resumo-por-serie/${series.id}`}
                 className="flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-6 text-left transition hover:border-blue-400 hover:bg-white hover:text-slate-900"
               >
                 <div className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Série</div>
@@ -169,7 +191,7 @@ export default function DashboardResumoSeriePage() {
             ))}
           </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }

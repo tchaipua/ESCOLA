@@ -9,6 +9,7 @@ export type DashboardTokenPayload = {
     permissions?: string[];
     tenantId?: string;
     isMaster?: boolean;
+    name?: string;
 };
 
 export type DashboardAuthContext = {
@@ -17,6 +18,7 @@ export type DashboardAuthContext = {
     role: string | null;
     permissions: string[];
     tenantId: string | null;
+    name: string | null;
 };
 
 export type ViaCepAddress = {
@@ -105,7 +107,7 @@ export function decodeDashboardToken(token: string): DashboardTokenPayload | nul
 export function getDashboardAuthContext(): DashboardAuthContext {
     const token = getStoredToken();
     if (!token) {
-        return { token: null, userId: null, role: null, permissions: [], tenantId: null };
+        return { token: null, userId: null, role: null, permissions: [], tenantId: null, name: null };
     }
 
     const payload = decodeDashboardToken(token);
@@ -117,6 +119,7 @@ export function getDashboardAuthContext(): DashboardAuthContext {
             ? payload!.permissions.filter((permission): permission is string => typeof permission === 'string')
             : [],
         tenantId: typeof payload?.tenantId === 'string' ? payload.tenantId : null,
+        name: typeof payload?.name === 'string' ? payload.name : null,
     };
 }
 

@@ -15,9 +15,7 @@ import { ResetPasswordDto } from "../dto/reset-password.dto";
 import * as crypto from "crypto";
 import * as nodemailer from "nodemailer";
 import { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
-import {
-  serializePermissions,
-} from "../../../../common/auth/user-permissions";
+import { serializePermissions } from "../../../../common/auth/user-permissions";
 import {
   getDefaultAccessProfileForRole,
   normalizeComplementaryAccessProfiles,
@@ -204,7 +202,11 @@ export class AuthService {
   }
 
   private getRoleLabel(role: string) {
-    switch (String(role || "").trim().toUpperCase()) {
+    switch (
+      String(role || "")
+        .trim()
+        .toUpperCase()
+    ) {
       case "ADMIN":
         return "ADMINISTRADOR";
       case "SECRETARIA":
@@ -313,7 +315,9 @@ export class AuthService {
         null;
 
       if (!selectedTenant) {
-        throw new UnauthorizedException("Escola inválida para o acesso master.");
+        throw new UnauthorizedException(
+          "Escola inválida para o acesso master.",
+        );
       }
 
       const payload = {
@@ -322,6 +326,7 @@ export class AuthService {
         role: MASTER_ROLE,
         permissions: MASTER_PERMISSIONS,
         isMaster: true,
+        name: MASTER_LOGIN_USERNAME,
       };
 
       return {
@@ -383,7 +388,8 @@ export class AuthService {
     }
 
     const selectedTenantId =
-      loginDto.tenantId || (validTenantIds.length === 1 ? validTenantIds[0] : null);
+      loginDto.tenantId ||
+      (validTenantIds.length === 1 ? validTenantIds[0] : null);
 
     if (!selectedTenantId) {
       throw new UnauthorizedException("Selecione a escola para continuar.");
@@ -405,8 +411,8 @@ export class AuthService {
       if (selectableAccounts.length > 1) {
         return {
           status: "MULTIPLE_ACCOUNTS",
-          accounts: this.sortLoginSelections(selectableAccounts).map((account) =>
-            this.toLoginSelection(account),
+          accounts: this.sortLoginSelections(selectableAccounts).map(
+            (account) => this.toLoginSelection(account),
           ),
         };
       }
@@ -457,6 +463,7 @@ export class AuthService {
       tenantId: userToLogin.tenantId,
       role: userToLogin.role,
       permissions: userToLogin.permissions,
+      name: userToLogin.name,
     };
 
     return {
@@ -479,7 +486,9 @@ export class AuthService {
     const complementaryProfiles =
       normalizedRole === "ADMIN"
         ? []
-        : normalizeComplementaryAccessProfiles(registerDto.complementaryProfiles);
+        : normalizeComplementaryAccessProfiles(
+            registerDto.complementaryProfiles,
+          );
     const effectivePermissions =
       normalizedRole === "ADMIN"
         ? []
@@ -519,7 +528,8 @@ export class AuthService {
           normalizedRole === "ADMIN"
             ? null
             : serializeComplementaryAccessProfiles(complementaryProfiles),
-        accessProfile: accessProfile || getDefaultAccessProfileForRole(normalizedRole),
+        accessProfile:
+          accessProfile || getDefaultAccessProfileForRole(normalizedRole),
         permissions:
           normalizedRole === "ADMIN"
             ? null

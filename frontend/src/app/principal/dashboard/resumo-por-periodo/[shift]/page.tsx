@@ -1,23 +1,26 @@
-'use client';
+ 'use client';
 
 import Link from 'next/link';
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const ALLOWED_ROLES = new Set(['SOFTHOUSE_ADMIN', 'ADMIN', 'SECRETARIA', 'COORDENACAO']);
+const SHIFT_LABELS: Record<string, string> = {
+  MANHA: 'Manhã',
+  TARDE: 'Tarde',
+  NOITE: 'Noite',
+};
 
-type SeriesStudentResponse = {
+type StudentRecord = {
   id: string;
-  name?: string | null;
+  name: string;
   cpf?: string | null;
   email?: string | null;
   phone?: string | null;
-  whatsapp?: string | null;
-  cellphone1?: string | null;
-  cellphone2?: string | null;
   street?: string | null;
   number?: string | null;
   city?: string | null;
@@ -27,39 +30,18 @@ type SeriesStudentResponse = {
   updatedAt?: string | null;
 };
 
-type SeriesStudentsResponse = {
-  seriesId: string;
-  seriesName?: string | null;
-  students?: SeriesStudentResponse[] | null;
-};
-
-type StudentCard = {
-  id: string;
-  name: string;
-  cpf: string | null;
-  email: string | null;
-  phone: string | null;
-  street: string | null;
-  number: string | null;
-  city: string | null;
-  state: string | null;
-  neighborhood: string | null;
-  zipCode: string | null;
-  updatedAt: string | null;
-};
-
-const formatAddress = (student: StudentCard) => {
+const formatAddress = (student: StudentRecord) => {
   const lineOne = [student.street, student.number].filter(Boolean).join(', ');
   const cityLine = [student.city, student.state].filter(Boolean).join(' - ');
   const extras = [student.neighborhood, student.zipCode].filter(Boolean).join(' • ');
   return [lineOne, cityLine, extras].filter(Boolean).join(' • ') || 'Não informado';
 };
 
-const formatPhone = (student: StudentCard) => {
-  return student.phone || 'Não informado';
+const formatPhone = (student: StudentRecord) => {
+  return student.phone || student.email || 'Não informado';
 };
 
-const formatUpdatedAt = (value: string | null) => {
+const formatUpdatedAt = (value?: string | null) => {
   if (!value) return 'Não informado';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Não informado';
@@ -72,42 +54,72 @@ const formatUpdatedAt = (value: string | null) => {
   }).format(date);
 };
 
-export default function DashboardSeriesStudentsPage({ params }: { params: { seriesId: string } }) {
-  const [students, setStudents] = useState<StudentCard[]>([]);
+export default function DashboardPeriodStudentsPage() {
+  const params = useParams();
+  const shiftParam = params?.shift;
+  const normalizedShift = (shiftParam || 'manha').toUpperCase();
+  const shiftLabel = SHIFT_LABELS[normalizedShift] || 'Período';
+
+  const [students, setStudents] = useState<StudentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [seriesName, setSeriesName] = useState('');
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const branding = tenantId ? readCachedTenantBranding(tenantId) : null;
+
   const canView = ALLOWED_ROLES.has(role || '');
 
   useEffect(() => {
-    const { tenantId: currentTenant, role: currentRole } = getDashboardAuthContext();
-    setTenantId(currentTenant);
+    const { tenantId: currentTenantId, role: currentRole } = getDashboardAuthContext();
+    setTenantId(currentTenantId);
     setRole(currentRole);
   }, []);
 
   useEffect(() => {
-    const fetchStudents = async () => {
-      if (!params.seriesId) return;
-      setLoading(true);
-      setError(null);
+    if (!tenantId) return;
+    const load = async () => {
       try {
+        setLoading(true);
+        setError(null);
         const { token } = getDashboardAuthContext();
         if (!token) throw new Error('Token ausente.');
-        const response = await fetch(`${API_BASE_URL}/series-classes/series/${params.seriesId}/students`, {
+
+        const summaryResponse = await fetch(`${API_BASE_URL}/series-classes`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(data?.message || 'Não foi possível carregar os alunos da série.');
-        }
-        setSeriesName(data?.seriesName ?? '');
-        const payload = data as SeriesStudentsResponse | null;
-        const normalized = Array.isArray(payload?.students)
-          ? payload.students.map((student) => ({
+        const summaryData = await summaryResponse.json().catch(() => null);
+        if (!summaryResponse.ok) throw new Error(summaryData?.message || 'Não foi possível carregar as turmas.');
+
+        const items = Array.isArray(summaryData) ? (summaryData as any[]) : [];
+        const matchingClasses = items.filter((item) => {
+          const shift = ((item.class?.shift as string) || 'MANHA').toUpperCase();
+          return shift === normalizedShift;
+        });
+
+        const seriesIds = Array.from(new Set(matchingClasses.map((item) => item.series?.id).filter(Boolean)));
+
+        const studentResponses = await Promise.all(
+          seriesIds.map((seriesId) =>
+            fetch(`${API_BASE_URL}/series-classes/series/${seriesId}/students`, {
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          ),
+        );
+
+        const studentDataArrays = await Promise.all(
+          studentResponses.map((response) => response.json().catch(() => null)),
+        );
+
+        const normalized: StudentRecord[] = [];
+        const seen = new Set<string>();
+
+        studentDataArrays.forEach((data) => {
+          const payload = Array.isArray(data?.students) ? data.students : [];
+          payload.forEach((student: any) => {
+            if (seen.has(student.id)) return;
+            seen.add(student.id);
+            normalized.push({
               id: student.id,
               name: student.name ?? 'NOME NÃO INFORMADO',
               cpf: student.cpf ?? null,
@@ -120,19 +132,19 @@ export default function DashboardSeriesStudentsPage({ params }: { params: { seri
               neighborhood: student.neighborhood ?? null,
               zipCode: student.zipCode ?? null,
               updatedAt: student.updatedAt ?? null,
-            }))
-          : [];
+            });
+          });
+        });
+
         setStudents(normalized);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Falha ao buscar os alunos desta série.';
-        setError(message);
+      } catch (err: any) {
+        setError(err.message ?? 'Falha ao carregar os alunos do período.');
       } finally {
         setLoading(false);
       }
     };
-
-    void fetchStudents();
-  }, [params.seriesId]);
+    void load();
+  }, [tenantId, normalizedShift]);
 
   const filteredStudents = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -140,65 +152,54 @@ export default function DashboardSeriesStudentsPage({ params }: { params: { seri
     return students.filter((student) => student.name.toLowerCase().includes(term));
   }, [students, searchTerm]);
 
-  const totalStudents = students.length;
-  const visibleStudents = filteredStudents.length;
-
   if (!canView) {
     return (
       <DashboardAccessDenied
         title="Acesso restrito"
-        message="Você não possui autorização para visualizar os alunos desta série."
+        message="Você não possui autorização para visualizar os alunos deste período."
       />
     );
   }
 
+  const visibleStudents = filteredStudents.length;
+
   return (
-    <div className="space-y-8">
-      <section className="mx-auto max-w-5xl rounded-[32px] border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+    <div className="space-y-6">
+      <section className="max-w-5xl space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {branding?.logoUrl ? (
-              <img
-                src={branding.logoUrl}
-                alt={`Logo de ${branding.schoolName}`}
-                className="h-full w-full object-contain p-2"
-              />
+              <img src={branding.logoUrl} alt={`Logo de ${branding.schoolName}`} className="h-full w-full object-contain p-2" />
             ) : (
               <span className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">
                 {branding?.schoolName ? branding.schoolName.slice(0, 3).toUpperCase() : 'ESC'}
               </span>
             )}
           </div>
-          <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Resumo por série</p>
-          <h1 className="text-3xl font-extrabold text-[#153a6a]">Alunos da série</h1>
-          <p className="text-sm font-medium text-slate-500">
-            Lista completa dos alunos vinculados a {seriesName || 'esta série'}. Utilize a pesquisa para encontrar rapidamente um aluno pelo nome.
-          </p>
-          <div className="mt-6 flex flex-col items-center gap-2">
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Total de alunos ativos</p>
-            <div className="flex items-center justify-center rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 shadow-sm">
-              <span className="text-4xl font-extrabold text-[#153a6a]">{totalStudents}</span>
-            </div>
-            <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">{visibleStudents} exibido(s)</div>
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-blue-600">Resumo por período</p>
+            <h1 className="text-3xl font-black text-[#153a6a]">Alunos do período</h1>
+            <p className="text-sm font-medium text-slate-500">
+              Visualize os alunos do turno de <span className="font-bold">{shiftLabel}</span>. Use a pesquisa para localizar nomes rapidamente.
+            </p>
           </div>
-          <div className="mt-4 flex flex-wrap justify-center gap-3 text-sm font-bold">
-            <Link
-              href="/dashboard/resumo-por-serie"
-              className="rounded-full border border-blue-500/60 px-4 py-2 text-blue-600 transition hover:bg-blue-500/10"
-            >
-              Voltar ao resumo por série
-            </Link>
-            <Link
-              href="/dashboard/dashboard"
-              className="rounded-full border border-slate-300 px-4 py-2 text-slate-700 transition hover:bg-slate-100"
-            >
-              Ir para central de gráficos
-            </Link>
+        </div>
+        <div className="space-y-4 border-t border-slate-100 pt-4">
+          <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-600 to-blue-500 px-6 py-4 text-left shadow-lg shadow-blue-600/30">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-100">Período selecionado</p>
+            <div className="text-4xl font-black tracking-wide text-white">{shiftLabel}</div>
+          </div>
+          <div className="flex flex-col gap-2 text-left sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Total de alunos ativos</div>
+            <div className="rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-5 py-3 text-3xl font-extrabold text-[#153a6a]">
+              {students.length}
+            </div>
+            <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">{visibleStudents} exibido(s)</div>
           </div>
         </div>
       </section>
 
-      <section className="space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="max-w-5xl space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Pesquisa</p>
@@ -229,7 +230,7 @@ export default function DashboardSeriesStudentsPage({ params }: { params: { seri
           </div>
         ) : visibleStudents === 0 ? (
           <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 px-6 py-16 text-center text-sm font-medium text-slate-500">
-            Nenhum aluno encontrado para o filtro atual.
+            Nenhum aluno encontrado para o período selecionado.
           </div>
         ) : (
           <div className="grid gap-5 md:grid-cols-2">

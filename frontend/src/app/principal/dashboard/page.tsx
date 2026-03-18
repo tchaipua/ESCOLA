@@ -24,19 +24,24 @@ export default function DashboardOverviewPage() {
 
   const dashboardPrograms = [
     {
-      href: '/dashboard/resumo',
+      href: '/principal/dashboard/resumo',
       title: 'Resumo geral',
       description: 'Visão combinada de pessoas e usuários para monitoramento rápido.',
     },
     {
-      href: '/dashboard/resumo-por-serie',
+      href: '/principal/dashboard/resumo-por-serie',
       title: 'Resumo por série',
       description: 'Agrupa os alunos por série com total por ciclo e alertas.',
     },
     {
-      href: '/dashboard/resumo-por-turma',
+      href: '/principal/dashboard/resumo-por-turma',
       title: 'Resumo por turma',
       description: 'Detalha cada turma com quantidade de alunos ativos.',
+    },
+    {
+      href: '/principal/dashboard/resumo-por-periodo',
+      title: 'Resumo por período',
+      description: 'Apresenta os totais de alunos por turno (manhã, tarde e noite).',
     },
   ];
 

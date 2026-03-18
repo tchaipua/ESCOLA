@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
@@ -27,6 +27,8 @@ type NavItem = {
     label: string;
     allowWhen: boolean;
     icon: React.ReactNode;
+    requiresDashboardBase?: boolean;
+    showAfterDashboardBase?: boolean;
 };
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -35,9 +37,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [currentUserName, setCurrentUserName] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
     const [unreadSummary, setUnreadSummary] = useState<UnreadNotificationSummary | null>(null);
     const [showUnreadPopup, setShowUnreadPopup] = useState(false);
+    const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+    const userMenuRef = useRef<HTMLDivElement>(null);
 
     const isPersonalRole = currentRole === 'PROFESSOR' || currentRole === 'ALUNO' || currentRole === 'RESPONSAVEL';
 
@@ -90,9 +95,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             return;
         }
 
-        const { role, permissions } = getDashboardAuthContext();
+        const { role, permissions, name } = getDashboardAuthContext();
         setCurrentRole(role);
         setCurrentPermissions(permissions);
+        setCurrentUserName(name);
     }, [router]);
 
     useEffect(() => {
@@ -149,7 +155,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 setUnreadSummary(data);
 
-                if (pathname === '/dashboard/notificacoes' || !data?.count) {
+                if (pathname === '/principal/notificacoes' || !data?.count) {
                     setShowUnreadPopup(false);
                     return;
                 }
@@ -170,14 +176,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return () => window.removeEventListener('notifications-updated', handleNotificationsUpdated);
     }, [pathname]);
 
+    useEffect(() => {
+        if (!isUserMenuOpen) return;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+                setUserMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isUserMenuOpen]);
+
     const handleLogout = () => {
         clearStoredSession();
         router.push('/');
     };
 
+    const handleUserMenuLogout = () => {
+        setUserMenuOpen(false);
+        handleLogout();
+    };
+
+    const userDisplayName = currentUserName || 'USUÁRIO DO SISTEMA';
+    const userInitials = useMemo(() => {
+        if (currentUserName) {
+            const initials = currentUserName
+                .split(' ')
+                .filter((token) => token)
+                .slice(0, 2)
+                .map((token) => token.charAt(0).toUpperCase())
+                .join('');
+
+            return initials || getRoleInitials(currentRole);
+        }
+
+        return getRoleInitials(currentRole);
+    }, [currentUserName, currentRole]);
+
     const navItems: NavItem[] = [
         {
-            href: '/dashboard',
+            href: '/principal',
             label: 'Menu Principal',
             allowWhen: true,
             icon: (
@@ -187,9 +227,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/resumo',
+            href: '/principal/dashboard',
+            label: 'Menu DashBoard',
+            allowWhen: true,
+            showAfterDashboardBase: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h16v16H4z" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/dashboard/resumo',
             label: 'Resumo geral',
             allowWhen: true,
+            requiresDashboardBase: true,
             icon: (
                 <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6h6v6m2 0h2a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h2m10 0v-2a2 2 0 00-2-2H7a2 2 0 00-2 2v2" />
@@ -197,9 +249,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/resumo-por-serie',
+            href: '/principal/dashboard/resumo-por-serie',
             label: 'Resumo por série',
             allowWhen: true,
+            requiresDashboardBase: true,
             icon: (
                 <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5h12M6 12h9M6 19h12M4 5h.01M4 12h.01M4 19h.01" />
@@ -207,9 +260,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/resumo-por-turma',
+            href: '/principal/dashboard/resumo-por-turma',
             label: 'Resumo por turma',
             allowWhen: true,
+            requiresDashboardBase: true,
             icon: (
                 <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M10 12h6m-9 6h12M4 18h1m2-12h1m2 0h1M4 12h1M18 12h1" />
@@ -217,7 +271,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/notificacoes',
+            href: '/principal/dashboard/resumo-por-periodo',
+            label: 'Resumo por período',
+            allowWhen: true,
+            requiresDashboardBase: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8V4m-4 4v-2m8 2V4m-4 12v4m-4-4v2m8-2v2M8 12H4m4 0H4m16 0h-4m4 0h-4" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/notificacoes',
             label: 'Notificações',
             allowWhen: true,
             icon: (
@@ -227,7 +292,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/pessoas',
+            href: '/principal/pessoas',
             label: 'Pessoas',
             allowWhen:
                 currentRole === 'SOFTHOUSE_ADMIN' ||
@@ -241,7 +306,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/comunicacoes',
+            href: '/principal/comunicacoes',
             label: 'Comunicações',
             allowWhen:
                 currentRole === 'ADMIN' ||
@@ -257,7 +322,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/calendario-aulas',
+            href: '/principal/calendario-aulas',
             label: 'Calendário de aulas',
             allowWhen: currentRole === 'PROFESSOR',
             icon: (
@@ -267,7 +332,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/lancar-notas',
+            href: '/principal/lancar-notas',
             label: 'Lançar notas',
             allowWhen: currentRole === 'PROFESSOR',
             icon: (
@@ -277,7 +342,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/professores',
+            href: '/principal/professores',
             label: 'Professores',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']),
             icon: (
@@ -287,7 +352,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/alunos',
+            href: '/principal/alunos',
             label: 'Alunos',
             allowWhen: hasDashboardPermission(currentRole, currentPermissions, 'VIEW_STUDENTS'),
             icon: (
@@ -297,7 +362,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/responsaveis',
+            href: '/principal/responsaveis',
             label: 'Responsáveis',
             allowWhen: hasDashboardPermission(currentRole, currentPermissions, 'VIEW_GUARDIANS'),
             icon: (
@@ -307,7 +372,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/disciplinas',
+            href: '/principal/disciplinas',
             label: 'Disciplinas',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_SUBJECTS', 'VIEW_TEACHERS']),
             icon: (
@@ -317,7 +382,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/series',
+            href: '/principal/series',
             label: 'Séries',
             allowWhen: hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SERIES'),
             icon: (
@@ -327,7 +392,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/turmas',
+            href: '/principal/turmas',
             label: 'Turmas',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_SERIES', 'VIEW_SERIES_CLASSES']),
             icon: (
@@ -337,7 +402,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/grade',
+            href: '/principal/grade',
             label: 'Horário das aulas',
             allowWhen: hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SCHEDULES'),
             icon: (
@@ -347,7 +412,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/grade-horaria',
+            href: '/principal/grade-horaria',
             label: 'Grade horária',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_CLASS_SCHEDULES', 'VIEW_SCHOOL_YEARS', 'VIEW_SERIES_CLASSES', 'VIEW_SUBJECTS', 'VIEW_SCHEDULES']),
             icon: (
@@ -357,7 +422,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/dashboard/grade-anual',
+            href: '/principal/grade-anual',
             label: 'Grade anual',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_LESSON_CALENDARS', 'VIEW_SCHOOL_YEARS', 'VIEW_SERIES_CLASSES', 'VIEW_CLASS_SCHEDULES']),
             icon: (
@@ -367,28 +432,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
     ].filter((item) => item.allowWhen);
-    const summaryNavPaths = ['/dashboard/resumo', '/dashboard/resumo-por-serie', '/dashboard/resumo-por-turma'];
-    const isSeriesDetail = pathname.startsWith('/dashboard/resumo-por-serie/');
-    const shouldShowSummaryNav = summaryNavPaths.includes(pathname) || isSeriesDetail;
-    let filteredNavItems = shouldShowSummaryNav
-        ? navItems.filter((item) => ['/dashboard', ...summaryNavPaths].includes(item.href))
-        : navItems;
-
-    const isMainDashboard = pathname === '/dashboard';
-    if (isMainDashboard) {
-        filteredNavItems = filteredNavItems.filter((item) => !summaryNavPaths.includes(item.href));
-    }
-
-    if (pathname === '/dashboard/dashboard') {
-        filteredNavItems = navItems.filter((item) => item.href === '/dashboard');
-    }
+    const summaryNavPaths = [
+        '/principal/dashboard/resumo',
+        '/principal/dashboard/resumo-por-serie',
+        '/principal/dashboard/resumo-por-turma',
+        '/principal/dashboard/resumo-por-periodo',
+    ];
+    const showDashboardBase = pathname.startsWith('/principal/dashboard');
+    const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';
+    const showSummaryNav = showDashboardProgram;
+    const summaryHrefSet = new Set(['/principal', '/principal/dashboard', ...summaryNavPaths]);
+    const menuPrincipalItem = navItems.find((item) => item.href === '/principal');
+    const menuDashboardItem = navItems.find((item) => item.href === '/principal/dashboard');
+    const summaryLinks = navItems.filter((item) => summaryNavPaths.includes(item.href));
+    const showGeneralNav = !showSummaryNav && pathname !== '/principal/dashboard';
+    const generalLinks = showGeneralNav
+        ? navItems.filter(
+              (item) =>
+                  !summaryHrefSet.has(item.href) &&
+                  (!item.requiresDashboardBase || showDashboardBase) &&
+                  (!item.showAfterDashboardBase || showDashboardProgram),
+          )
+        : [];
+    const topLinks: NavItem[] = [];
+    if (menuPrincipalItem) topLinks.push(menuPrincipalItem);
+    if (showSummaryNav && menuDashboardItem) topLinks.push(menuDashboardItem);
+    const filteredNavItems = showSummaryNav ? [...topLinks, ...summaryLinks] : [...topLinks, ...generalLinks];
 
     return (
         <div className="min-h-screen bg-[#f3f4f6] flex font-sans text-slate-800">
             <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-[#153a6a] text-white flex flex-col transition-all duration-300 shadow-xl relative z-20`}>
                 <div className={`border-b border-white/10 px-4 py-4 ${isSidebarOpen ? 'min-h-[108px]' : 'h-16'} flex items-center justify-center`}>
                     <Link
-                        href="/dashboard"
+                        href="/principal"
                         className={`flex ${isSidebarOpen ? 'flex-col' : 'flex-row'} items-center justify-center gap-3 ${isSidebarOpen ? '' : 'gap-1'} cursor-pointer`}
                     >
                         <div className={`flex items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10 shadow-sm shrink-0 ${isSidebarOpen ? 'h-16 w-16' : 'h-10 w-10'}`}>
@@ -432,17 +508,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     })}
                 </nav>
 
-                <div className="p-4 border-t border-white/10">
-                    <div
-                        onClick={handleLogout}
-                        className="flex items-center justify-center gap-2 w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg cursor-pointer transition-colors"
-                    >
-                        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        {isSidebarOpen && <span className="text-sm font-semibold">SAIR</span>}
-                    </div>
-                </div>
             </aside>
 
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -462,7 +527,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <div className="flex items-center gap-4">
                         <button
                             type="button"
-                            onClick={() => router.push('/dashboard/notificacoes')}
+                            onClick={() => router.push('/principal/notificacoes')}
                             className="relative p-2 text-slate-400 hover:text-blue-600 transition-colors"
                         >
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -477,14 +542,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                         <div className="h-6 w-px bg-slate-200"></div>
 
-                        <div className="flex items-center gap-3 cursor-default">
-                            <div className="text-right hidden sm:block">
-                                <p className="text-sm font-bold text-slate-700 leading-tight">{getRoleLabel(currentRole)}</p>
-                                <p className="text-xs font-medium text-slate-400">{currentRole || 'SEM PERFIL'}</p>
-                            </div>
-                            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm ring-1 ring-slate-200">
-                                <span className="text-sm font-bold text-blue-700">{getRoleInitials(currentRole)}</span>
-                            </div>
+                        <div ref={userMenuRef} className="relative">
+                            <button
+                                type="button"
+                                aria-haspopup="true"
+                                aria-expanded={isUserMenuOpen}
+                                onClick={() => setUserMenuOpen((prev) => !prev)}
+                                className="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                            >
+                                <div className="text-right hidden sm:block">
+                                    <p className="text-sm font-bold text-slate-700 leading-tight">{userDisplayName}</p>
+                                    <p className="text-xs font-medium text-slate-400">{getRoleLabel(currentRole)}</p>
+                                </div>
+                                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm ring-1 ring-slate-200">
+                                    <span className="text-sm font-bold text-blue-700">{userInitials}</span>
+                                </div>
+                                <svg className={`w-3 h-3 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                                </svg>
+                            </button>
+                            {isUserMenuOpen && (
+                                <div className="absolute right-0 mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white py-2 shadow-lg shadow-slate-900/5 z-20">
+                                    <button
+                                        type="button"
+                                        onClick={handleUserMenuLogout}
+                                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                                    >
+                                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        <span>SAIR</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </header>
@@ -492,6 +582,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <main className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
                     {children}
                 </main>
+                <footer className="bg-white border-t border-slate-200 px-6 py-3 text-xs italic text-slate-500">
+                    <span className="flex items-center gap-2">
+                        Desenvolvido por MSINFOR SISTEMAS
+                        <span className="text-slate-400">•</span>
+                        (16) 3025-6025
+                        <span className="text-slate-400">/</span>
+                        <a
+                            href="https://wa.me/5516999991978"
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Clique aqui para abrir o Wattsup"
+                            className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-600 transition"
+                        >
+                            <svg className="h-5 w-5 text-emerald-500" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 3C7.03 3 3 7.03 3 12c0 1.91.56 3.69 1.53 5.19L5 22l4.88-1.39c1.59.81 3.32 1.13 5.02.62 4.97-1.36 8.02-7.13 6.08-12.04C18.66 4.56 15.6 3 12 3zm0 16c-1.37 0-2.71-.41-3.85-1.18l-.28-.18-3.41.97.83-3.19-.19-.32A8.99 8.99 0 014 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z" />
+                                <path d="M15.42 14.36c-.23-.12-1.36-.75-1.58-.84-.22-.1-.38-.12-.55.11s-.63.84-.77 1c-.14.15-.28.17-.51.06a5.1 5.1 0 01-1.5-.94 5.8 5.8 0 01-1.1-1.36c-.11-.19-.01-.29.08-.38.09-.08.21-.21.32-.32.1-.1.15-.18.23-.29.08-.11.04-.2-.02-.36-.06-.16-.57-1.36-.78-1.87-.21-.52-.43-.45-.58-.45-.15 0-.32-.01-.49-.01s-.36.05-.55.27c-.19.22-.74.72-.74 1.76s.78 2.54.89 2.72c.11.19 1.92 2.91 4.68 3.98.68.29 1.19.45 1.63.58.67.21 1.28.18 1.76.11.53-.09 1.2-.55 1.53-1.16.33-.61.33-1.12.25-1.22-.08-.1-.33-.16-.68-.28z" />
+                            </svg>
+                            <span>(16) 99999-1978</span>
+                        </a>
+                    </span>
+                </footer>
             </div>
 
             {showUnreadPopup && unreadSummary?.count ? (
@@ -530,7 +641,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     type="button"
                                     onClick={() => {
                                         setShowUnreadPopup(false);
-                                        router.push('/dashboard/notificacoes');
+                                        router.push('/principal/notificacoes');
                                     }}
                                     className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
                                 >
