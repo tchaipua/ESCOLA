@@ -1,0 +1,903 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// MODELS (COM AUDITORIA E SOFT DELETE)
+// ==========================================
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  document  String?  @unique
+
+  // 1.001 Logotipo
+  logoUrl        String?
+
+  // (DB) DADOS BÁSICOS
+  birthDate      DateTime?
+  rg             String?
+  cpf            String?
+  cnpj           String?
+  nickname       String?
+  corporateName  String?
+  phone          String?
+  whatsapp       String?
+  cellphone1     String?
+  cellphone2     String?
+  email          String?
+
+  // (EC) ENDEREÇO COMPLETO
+  zipCode      String?
+  street       String?
+  number       String?
+  city         String?
+  state        String?
+  neighborhood String?
+  complement   String?
+
+  // (DF) DADOS FINANCEIROS
+  interestRate        Float?
+  penaltyRate         Float?
+  penaltyValue        Float?
+  penaltyGracePeriod  Int?
+  interestGracePeriod Int?  // (SMTP) GATEWAY DE MENSAGERIA E EMAILS
+  smtpHost            String?
+  smtpPort            Int?
+  smtpTimeout         Int?
+  smtpAuthenticate    Boolean?
+  smtpSecure          Boolean?
+  smtpAuthType        String?
+  smtpEmail           String?
+  smtpPassword        String?
+  
+  // Auditoria Obrigatória
+  createdAt DateTime  @default(now())
+  createdBy String?
+  updatedAt DateTime  @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  users       User[]
+  people      Person[]
+  schoolYears SchoolYear[]
+  classes     Class[]
+  series      Series[]
+  seriesClasses SeriesClass[]
+  students    Student[]
+  enrollments Enrollment[]
+  guardians   Guardian[]
+  guardianStudents GuardianStudent[]
+  teachers         Teacher[]
+  subjects         Subject[]
+  teacherSubjects  TeacherSubject[]
+  teacherSubjectRateHistories TeacherSubjectRateHistory[]
+  schedules        Schedule[]
+  classScheduleItems ClassScheduleItem[]
+  lessonCalendars LessonCalendar[]
+  lessonCalendarPeriods LessonCalendarPeriod[]
+  lessonCalendarItems LessonCalendarItem[]
+  lessonEvents LessonEvent[]
+  lessonAssessments LessonAssessment[]
+  lessonAssessmentGrades LessonAssessmentGrade[]
+  notifications Notification[]
+  communicationCampaigns CommunicationCampaign[]
+  userPreferences UserPreference[]
+
+  @@map("tenants")
+}
+
+model UserPreference {
+  id              String   @id @default(uuid())
+  tenantId        String
+  userId          String
+  preferenceKey   String
+  preferenceValue String
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, userId])
+  @@unique([tenantId, userId, preferenceKey])
+  @@map("user_preferences")
+}
+
+model GlobalSetting {
+  id           String   @id @default(uuid())
+  settingKey   String   @unique
+  settingValue String
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  @@map("global_settings")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  email     String
+  password  String
+  photoUrl  String?
+  complementaryProfiles String?
+  role      String   @default("SECRETARIA") // ADMIN | SECRETARIA | PROFESSOR | ALUNO | RESPONSAVEL
+  accessProfile String?
+  permissions String?
+  
+  // Recuperação de Senha
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@unique([email, tenantId])
+  @@map("users")
+}
+
+model Person {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  birthDate DateTime?
+  rg        String?
+  cpf       String?
+  cpfDigits String?
+  cnpj      String?
+  nickname  String?
+  corporateName String?
+  phone          String?
+  whatsapp       String?
+  cellphone1     String?
+  cellphone2     String?
+  email          String?
+  password       String?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  zipCode      String?
+  street       String?
+  number       String?
+  city         String?
+  state        String?
+  neighborhood String?
+  complement   String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teachers  Teacher[]
+  students  Student[]
+  guardians Guardian[]
+
+  @@index([tenantId])
+  @@unique([tenantId, cpfDigits])
+  @@unique([tenantId, email])
+  @@map("people")
+}
+
+model SchoolYear {
+  id        String   @id @default(uuid())
+  tenantId  String
+  year      Int
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  enrollments Enrollment[]
+  classScheduleItems ClassScheduleItem[]
+  lessonCalendars LessonCalendar[]
+  lessonCalendarItems LessonCalendarItem[]
+
+  @@unique([tenantId, year])
+  @@map("school_years")
+}
+
+model Class {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  gradeLevel   Int?
+  shift        String   
+  defaultMonthlyFee Float?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  seriesClasses SeriesClass[]
+  enrollments  Enrollment[]
+
+  @@index([tenantId])
+  @@map("classes")
+}
+
+model Series {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String?
+  sortOrder Int?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  seriesClasses SeriesClass[]
+
+  @@index([tenantId])
+  @@map("series")
+}
+
+model SeriesClass {
+  id           String   @id @default(uuid())
+  tenantId     String
+  seriesId     String
+  classId      String
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  series      Series      @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  class       Class       @relation(fields: [classId], references: [id], onDelete: Restrict)
+  enrollments Enrollment[]
+  classScheduleItems ClassScheduleItem[]
+  lessonCalendars LessonCalendar[]
+  lessonCalendarItems LessonCalendarItem[]
+
+  @@index([tenantId])
+  @@index([seriesId])
+  @@index([classId])
+  @@unique([seriesId, classId])
+  @@map("series_classes")
+}
+
+// ==========================================
+// (F-RE) RESPONSÁVEIS
+// ==========================================
+model Guardian {
+  id        String   @id @default(uuid())
+  tenantId  String
+  personId  String?
+  
+  // (DB) DADOS BÁSICOS
+  name           String
+  birthDate      DateTime?
+  rg             String?
+  cpf            String?
+  cnpj           String?
+  nickname       String?
+  corporateName  String?
+  phone          String?
+  whatsapp       String?
+  cellphone1     String?
+  cellphone2     String?
+  email          String?
+  accessProfile  String?
+  permissions    String?
+  // Segurança e Recuperação
+  password             String? 
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+
+  // (EC) ENDEREÇO COMPLETO
+  zipCode      String?
+  street       String?
+  number       String?
+  city         String?
+  state        String?
+  neighborhood String?
+  complement   String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person       Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
+  students     GuardianStudent[]
+
+  @@index([tenantId])
+  @@index([personId])
+  @@map("guardians")
+}
+
+// ==========================================
+// (F-AL) ALUNOS
+// ==========================================
+model Student {
+  id        String   @id @default(uuid())
+  tenantId  String
+  personId  String?
+  
+  // (DB) DADOS BÁSICOS
+  name           String
+  photoUrl       String?
+  birthDate      DateTime?
+  rg             String?
+  cpf            String?
+  cnpj           String?
+  nickname       String?
+  corporateName  String?
+  phone          String?
+  whatsapp       String?
+  cellphone1     String?
+  cellphone2     String?
+  email          String?
+  accessProfile  String?
+  permissions    String?
+  monthlyFee     Float?
+  notes          String?
+  // Segurança e Recuperação
+  password             String? 
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+
+  // (EC) ENDEREÇO COMPLETO
+  zipCode      String?
+  street       String?
+  number       String?
+  city         String?
+  state        String?
+  neighborhood String?
+  complement   String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person      Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
+  guardians   GuardianStudent[]
+  enrollments Enrollment[]
+  lessonAssessmentGrades LessonAssessmentGrade[]
+
+  @@index([tenantId])
+  @@index([personId])
+  @@map("students")
+}
+
+// ==========================================
+// (RA) RESPONSÁVEL x ALUNO
+// ==========================================
+model GuardianStudent {
+  id         String   @id @default(uuid())
+  tenantId   String
+  studentId  String
+  guardianId String
+  
+  kinship            String // PAI, MAE, PADRASTO, MADRASTA, TIO, AVOS, OUTROS
+  kinshipDescription String? // Preenchido caso kinship seja OUTROS
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  guardian   Guardian @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@unique([studentId, guardianId])
+  @@map("guardian_students")
+}
+
+model Enrollment {
+  id           String   @id @default(uuid())
+  tenantId     String
+  studentId    String
+  classId      String
+  seriesClassId String?
+  schoolYearId String
+  status       String   @default("ATIVO") 
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  class      Class      @relation(fields: [classId], references: [id], onDelete: Restrict)
+  seriesClass SeriesClass? @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@unique([studentId, schoolYearId])
+  @@map("enrollments")
+}
+
+// ==========================================
+// (F-PR) PROFESSORES
+// ==========================================
+model Teacher {
+  id        String   @id @default(uuid())
+  tenantId  String
+  personId  String?
+  
+  // (DB) DADOS BÁSICOS
+  name           String
+  birthDate      DateTime?
+  rg             String?
+  cpf            String?
+  cnpj           String?
+  nickname       String?
+  corporateName  String?
+  phone          String?
+  whatsapp       String?
+  cellphone1     String?
+  cellphone2     String?
+  email          String?
+  accessProfile  String?
+  permissions    String?
+  // Segurança e Recuperação
+  password             String? 
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+
+  // (EC) ENDEREÇO COMPLETO
+  zipCode      String?
+  street       String?
+  number       String?
+  city         String?
+  state        String?
+  neighborhood String?
+  complement   String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person          Person?          @relation(fields: [personId], references: [id], onDelete: SetNull)
+  teacherSubjects TeacherSubject[]
+  lessonEvents    LessonEvent[]
+  lessonAssessments LessonAssessment[]
+
+  @@index([tenantId])
+  @@index([personId])
+  @@map("teachers")
+}
+
+// ==========================================
+// (MA) MATÉRIAS / DISCIPLINAS
+// ==========================================
+model Subject {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String   // Matemática, Inglês, etc
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacherSubjects TeacherSubject[]
+
+  @@index([tenantId])
+  @@map("subjects")
+}
+
+// ==========================================
+// (PM) PROFESSOR x MATÉRIA
+// ==========================================
+model TeacherSubject {
+  id          String   @id @default(uuid())
+  tenantId    String
+  teacherId   String
+  subjectId   String
+  hourlyRate  Float?   // Valor pago por aula dada
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  classScheduleItems ClassScheduleItem[]
+  lessonCalendarItems LessonCalendarItem[]
+  rateHistories TeacherSubjectRateHistory[]
+
+  @@index([tenantId])
+  @@unique([teacherId, subjectId])
+  @@map("teacher_subjects")
+}
+
+model TeacherSubjectRateHistory {
+  id               String    @id @default(uuid())
+  tenantId         String
+  teacherSubjectId String
+  hourlyRate       Float?
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacherSubject TeacherSubject @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([teacherSubjectId])
+  @@index([effectiveFrom])
+  @@map("teacher_subject_rate_histories")
+}
+
+// ==========================================
+// (GH) HORÁRIOS BASE / AULAS POR PERÍODO
+// ==========================================
+model Schedule {
+  id           String   @id @default(uuid())
+  tenantId     String
+  period       String   // MANHA, TARDE, NOITE
+  lessonNumber Int      // 1, 2, 3...
+  startTime    String   // "07:00"
+  endTime      String   // "07:50"
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@unique([tenantId, period, lessonNumber])
+  @@map("schedules")
+}
+
+model ClassScheduleItem {
+  id               String   @id @default(uuid())
+  tenantId         String
+  schoolYearId     String
+  seriesClassId    String
+  teacherSubjectId String?
+  dayOfWeek        String
+  startTime        String
+  endTime          String
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schoolYear     SchoolYear     @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  seriesClass    SeriesClass    @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  teacherSubject TeacherSubject? @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+  lessonCalendarItems LessonCalendarItem[]
+
+  @@index([tenantId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@index([teacherSubjectId])
+  @@unique([tenantId, schoolYearId, seriesClassId, teacherSubjectId, dayOfWeek, startTime, endTime])
+  @@map("class_schedule_items")
+}
+
+model LessonCalendar {
+  id        String   @id @default(uuid())
+  tenantId  String
+  schoolYearId String
+  seriesClassId String
+  lastWeeklySyncAt DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  seriesClass SeriesClass @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  periods LessonCalendarPeriod[]
+  items LessonCalendarItem[]
+
+  @@index([tenantId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@map("lesson_calendars")
+}
+
+model LessonCalendarPeriod {
+  id        String   @id @default(uuid())
+  tenantId  String
+  lessonCalendarId String
+  periodType String
+  startDate DateTime
+  endDate DateTime
+  sortOrder Int
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendar LessonCalendar @relation(fields: [lessonCalendarId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([lessonCalendarId])
+  @@map("lesson_calendar_periods")
+}
+
+model LessonCalendarItem {
+  id        String   @id @default(uuid())
+  tenantId  String
+  lessonCalendarId String
+  schoolYearId String
+  seriesClassId String
+  teacherSubjectId String
+  classScheduleItemId String?
+  lessonDate DateTime
+  dayOfWeek String
+  startTime String
+  endTime String
+  hourlyRate Float?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendar LessonCalendar @relation(fields: [lessonCalendarId], references: [id], onDelete: Restrict)
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  seriesClass SeriesClass @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  teacherSubject TeacherSubject @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+  classScheduleItem ClassScheduleItem? @relation(fields: [classScheduleItemId], references: [id], onDelete: Restrict)
+  lessonEvents LessonEvent[]
+  lessonAssessments LessonAssessment[]
+
+  @@index([tenantId])
+  @@index([lessonCalendarId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@index([teacherSubjectId])
+  @@index([classScheduleItemId])
+  @@map("lesson_calendar_items")
+}
+
+model LessonEvent {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  lessonCalendarItemId String
+  teacherId          String
+  eventType          String
+  title              String
+  description        String?
+  notifyStudents     Boolean  @default(true)
+  notifyGuardians    Boolean  @default(true)
+  notifyByEmail      Boolean  @default(true)
+  lastNotifiedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  assessment LessonAssessment?
+
+  @@index([tenantId])
+  @@index([lessonCalendarItemId])
+  @@index([teacherId])
+  @@map("lesson_events")
+}
+
+model LessonAssessment {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  lessonEventId      String   @unique
+  lessonCalendarItemId String
+  teacherId          String
+  assessmentType     String
+  title              String
+  description        String?
+  maxScore           Float?
+  notifyStudents     Boolean  @default(true)
+  notifyGuardians    Boolean  @default(true)
+  notifyByEmail      Boolean  @default(true)
+  lastNotifiedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonEvent LessonEvent @relation(fields: [lessonEventId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  grades LessonAssessmentGrade[]
+
+  @@index([tenantId])
+  @@index([lessonCalendarItemId])
+  @@index([teacherId])
+  @@map("lesson_assessments")
+}
+
+model LessonAssessmentGrade {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  lessonAssessmentId String
+  studentId          String
+  score              Float?
+  remarks            String?
+  releasedAt         DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonAssessment LessonAssessment @relation(fields: [lessonAssessmentId], references: [id], onDelete: Restrict)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([lessonAssessmentId])
+  @@index([studentId])
+  @@unique([lessonAssessmentId, studentId])
+  @@map("lesson_assessment_grades")
+}
+
+model Notification {
+  id            String   @id @default(uuid())
+  tenantId      String
+  recipientType String
+  recipientId   String
+  category      String
+  title         String
+  message       String
+  actionUrl     String?
+  sourceType    String?
+  sourceId      String?
+  readAt        DateTime?
+  readBy        String?
+  emailedAt     DateTime?
+  metadata      String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([recipientType, recipientId])
+  @@index([readAt])
+  @@map("notifications")
+}
+
+model CommunicationCampaign {
+  id                String   @id @default(uuid())
+  tenantId          String
+  senderType        String
+  senderId          String
+  senderRole        String
+  senderName        String
+  title             String
+  message           String
+  sendInternal      Boolean  @default(true)
+  sendEmail         Boolean  @default(false)
+  recipientGroups   String
+  totalRecipients   Int      @default(0)
+  internalCount     Int      @default(0)
+  emailCount        Int      @default(0)
+  lastSentAt        DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([senderType, senderId])
+  @@map("communication_campaigns")
+}
+
+
+
+

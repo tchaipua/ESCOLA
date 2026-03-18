@@ -1,0 +1,278 @@
+/*
+//
+//Quero que você atue como arquiteto de software sênior especializado em SaaS escalável.
+//Desenvolva um sistema SaaS de Gestão Escolar utilizando stack moderna TypeScript Full Stack.
+//🏗 STACK OBRIGATÓRIA
+//Backend
+//
+//Node 20+
+//TypeScript
+//NestJS
+//Prisma ORM
+//PostgreSQL
+//JWT Authentication
+//Refresh Token
+//RBAC (Role Based Access Control)
+//Redis (cache e fila futura)
+//Validação com class-validator
+//
+//Arquitetura modular
+//
+//Frontend
+//Next.js (App Router)
+//React 18+
+//TypeScript
+//TailwindCSS
+//PWA configurado
+//Axios para API
+//Context API ou Zustand para estado
+//
+//Infra
+//
+//Docker
+//Docker Compose
+//Ubuntu Server
+//Nginx como reverse proxy
+//SSL via Let's Encrypt
+//
+//🔐 REGRAS GLOBAIS DO SISTEMA
+//
+//Multi-tenant obrigatório
+//
+//Todas as tabelas possuem schoolId
+//
+//Todas as queries filtram por schoolId
+//
+//Usuário não pode acessar dados de outra escola
+//
+//Soft Delete obrigatório
+//
+//Campo: canceledAt
+//
+//Nunca excluir fisicamente
+//
+//Auditoria obrigatória
+//
+//createdAt
+//
+//createdBy
+//
+//updatedAt
+//
+//updatedBy
+//
+//canceledAt
+//
+//canceledBy
+//
+//Todos os textos armazenados em UPPERCASE (exceto senha)
+//
+//Senha é case-sensitive
+//
+O sistema vai ser dividido em 5 partes
+Toda informação gravada no sistema não pode ser excluida, apenas cancelar pra ficar de histórico.
+Todas as informações do sistema como inclusão, alteração , cancelamento gravar a hora e o usuário que fez.
+O programa vai ter que ter uma tela de login onde checar se está cadastrado na view dos usuários (VIEWUSUARIOS) que acessar o sistema, porque pode ser professor, aluno etc.
+
+
+DIRETRIZES DO SISTEMA
+	(EC) - ENDEREÇO COMPLETO
+		Cep + logradouro picture assim 99999-999
+		nome da rua\avenida etc
+		N° do imóvel
+		cidade
+		estado (já deixar cadastrados todos os estados do brasil)
+		bairro
+		complemento
+
+	para buscar do dados do endereco completo pegar o cep adaptar esse código abaixo
+
+//		//***************************************** Normaliza Requisição *********************************************
+//		&CEP = Cep + logradouro								// Converte Numerico para Caractere
+//		&method = HttpMethod.Get							// Método de requisição (GET, POST, PUT, DELETE, OPTIONS, HEAD, TRACE, CONNECT, PATCH)
+//		&modelorequisicao = ReturnType.json					// json, json_unicode, xml, piped ou querty
+//
+//		//**************************************** Verifica se CEP completo ******************************************
+//		Esse bloco pode ser totalmente comentado. Foi criado passa possibilitar a busca com o preenchimento de cinco (5)
+//		a oito (8) digitos, completando com zeros os faltantes. Dessa maneira, excluindo o erro 404 por esse motivo nesse tipo
+//		de requisição
+//		&CompletaZero = 8 - &CEP.Length()					// Verifica quantos digitos foram digitados
+//		Do case
+//			case &CompletaZero = 1
+//				&CEP = Trim(&CEP) + "0"						// Completa com um zero (0)
+//			case &CompletaZero = 2
+//				&CEP = Trim(&CEP) + "00"					// Completa com dois zeros (00)
+//			case &CompletaZero = 3
+//				&CEP = Trim(&CEP) + "000"					// Completa com três zeros (000)
+//			case &CompletaZero > 3
+//				//&Debug_V500 = 'LINHA: (21)  CEP INFORMADO INVÁLIDO '  Do   'Debug'
+//				&Mensagem = Format('CEP incompleto: %1. Esperado pelo menos 5 digitos e foi digitado ',&CEP,&CEP.Length()) // Mensagem de erro
+//				return
+//		endcase
+//
+//		//*********************************************** Requisição *************************************************
+//		&httpclient.Secure 		= 1								// http:// (0) or https:// (1), força conexão segura.
+//		&httpclient.Host 		= 'viacep.com.br'                  // host ex. extra.com
+//		&httpclient.BaseUrl  	= '/ws/'						// base ex. /departamento/
+//		&URL 					= &CEP.Trim() + "/" + &modelorequisicao.Trim()	// URL ex. cozinha/
+//		&httpclient.Execute(&method,&URL)                   // Method of execution
+//
+//		//************************************* Verify if ZipCode is Valid *************************************
+//		&Response.FromJson(&httpclient.ToString())	 		// Recebe o retorno para verificação de erro
+//		//&Debug_V500 = 'LINHA: (35)  &Response.erro: ' + &Response.erro.ToString() Do   'Debug'
+//		if &Response.erro = true							// Verifica se ocorreu erro no retorno da requisição
+//			&Mensagem = Format('O CEP %1 consta na nossa base de dados como inválido, verifique e tente novamente.',&CEP) 	// Mensagem de erro
+//		else
+//			&ModeloRetorno = &httpclient.ToString() 		// Retorna requisição com sucesso
+//			//&Debug_V500 = 'LINHA: (40)  &ModeloRetorno: ' + &ModeloRetorno Do   'Debug'
+//		endif
+
+
+
+
+	(DB) - DADOS BÁSICOS
+		DATA NASCIMENTO
+		RG
+		CPF   	- ACHAR ROTINA NA INTERNET PRA VALIDAR CPF
+		CNPJ 	- ACHAR ROTINA NA INTERNET PRA VALIDAR CNPJ
+		APELIDO
+		RAZÃO SOCIAL
+		telefone fixo
+		telefone wattsup
+		telefone celular 01
+		telefone celular 02
+		email - usado pra recuperar a senha , tem que enviar um email de confirmação, e quando clicar retornar esse informação pro sistema que o email deu certo e liberar o acesso.
+		IDENTIFICADOR ÚNICO - não pode repetir dentro da mesma escola, recomendado usar o CPF como indentificador unico
+		SENHA ACESSO - obrigatório ter no mínimo 4 letras ou números.
+
+	(DS) - DIAS DA SEMANA
+			SEGUNDA
+			TERÇA
+			QUARTA
+			QUINTA
+			SEXTA
+			SÁBADO
+			DOMINGO
+
+	A. O sistema tudo que for gravado no banco vai ser uppercase, apenas o campo de senha que vai poder ser maiúsculas e minúsculas
+	B. mesmo banco de dados vai poder ter várias escolas cadastradas.
+	C. Uma escola não pode ver nada da outra escola caso tenha mais de uma escola cadastrada no sistema.
+	D. Email - uma vez validado um email não precisa novamente validar caso ele venha ser usado novamente no sistema
+	E. (AL) - ano letivo - ATENÇÃO NÃO VAI CRIAR UMA TABELA PARA O ANO LETIVO, MAS ELE VAI SER USADO COMO CHAVE NOS CADASTROS ABAIXO QUE USAR O ANO LETIVO (AL)	, O ANO LETIVO NÃO PODERÁ SER MENOR QUE 2020 E NEM MAIOR
+		QUE O ANO ATUAL +1, ISSO VAI SER PADRÃO NO SISTEMA
+
+	F. Todo cadastro que usar os (DB) - DADOS BÁSICOS quando informar
+		IDENTIFICADOR ÚNICO - não pode repetir dentro da mesma escola, caso repetir informar quem está usando o mesmo identificador, checar na view (VIEWUSUARIOS)
+		SENHA ACESSO - obrigatório ter no mínimo 4 letras ou números.
+		gravar numa view (VIEWUSUARIOS) caso a senha de acesso seja <> 0 no banco de dados pra na tela de login validar se é válido o acesso
+
+	G. NO (DB) - DADOS BÁSICOS NENHUM CAMPO É OBRIGATÓRIO
+
+	H. no pwa dos professores \ alunos \ responsáveis ter a opção de sincronização com o servidor central
+
+
+1° 	Gerenciamento da softhouse, sistema web ela quem cadastras escolas, com endereco completo cpf (caso pessoa fisica) cnpj caso pessoa juridica,
+	1.001 tem um campo onde vai ficar armazenado o logotipo da escola
+		NO CADASTRO TER TODOS OS DADOS DO ENDEREÇO COMPLETO (EC) E TAMBÉM 	(DB) - DADOS BÁSICOS
+
+	1.002 Quero uma tela onde mostra todas as escolas cadastradas num grid com uma opção de buscar pelo nome da escola, tem um botão onde inclui uma nova escola
+
+	1.003 Quando incluir uma escola nova já incluir dois usuário do sistema (US)
+		  1° - ADMIN   e a senha Admin001   (com o A em Maiúsculo mesmo)
+		  2° - MSINFOR e a senha Mabelu2011 (com o M em Maiúsculo mesmo)
+
+
+2° Gerencimento da escola, vai ser um sistema web, onde a escola vai poder cadastar (lembrando que uma não escola não consegue ver essas informações de outra escola)
+	Cadastros
+	2.001  (SE)    - Série
+	2.002  (TU)    - turmas
+	2.003  (ST)    - série x turma
+	2.004  (SA)    - salas de aula
+	2.005  (AL)    - ano letivo - ATENÇÃO NÃO VAI CRIAR UMA TABELA PARA O ANO LETIVO, MAS ELE VAI SER USADO COMO CHAVE NOS CADASTROS ABAIXO QUE USAR O ANO LETIVO (AL)
+	2.006  (F-PR)  - professor 	- tem que conter (EC) - ENDEREÇO COMPLETO e (DB) - DADOS BÁSICOS
+	2.007  (MA)    - materias (são os tipos de aulas que a escola oferece, tipo matemática, geografia, educação física, inglês etc)
+	2.008  (PM)    - professor (F-PR) x materias (MA) -  uma materia pode ter mais de um professor e um professor pode dar mais de uma materia. Nesse cadastro colocar o valor que o professor recebe por aula dada.
+	2.009  (F-RE)  - Responsável pelo aluno - tem que conter (EC) - ENDEREÇO COMPLETO e (DB) - DADOS BÁSICOS
+	2.010  (F-AL)  - aluno  - - tem que conter (EC) - ENDEREÇO COMPLETO e (DB) - DADOS BÁSICOS
+	2.011  (RA)    - Responsável pelo aluno (F-RE) X  aluno (F-AL) - um aluno pode ter vários responsáveis por ele, incluir grau de parentesco do responsável com o aluno
+					A. PAI
+					B. MÃE
+					C.PADASTRO
+					D.MADRASTA
+					E.TIO(A)
+					F.AVÓS
+					G.OUTROS
+					QUANDO SELECIONAR G OUTROS TEM UM CAMPO TEXTO LIVRE PRA DIGITAR O PARENTESCO
+
+	2.012  Usuários do Sistema (US) tem que conter (EC) - ENDEREÇO COMPLETO e (DB) - DADOS BÁSICOS
+		Esses campos vão ser um check box na tela de cadastrodo, pode ser mais de uma opção abaixo
+		(F-GE) - Gerente
+		(F-CO) - COORDENADORA
+		(F-FU) - funcionário manutenção
+		(F-CX) - caixa
+
+	2.013  (BA)    - Bancos usado quando for fazer integração de boleto\pix via api
+	2.014  (GC)    - grade curricular ano letivo (AL) X série (SE) x materias (MA)  - GRADE CURRICULAR - infomar a quantidade de aulas que uma determinada matéria tem que ter no ano letivo para aquela série
+
+
+	2.015 (CALENDARIO) ano letivo (AL) X DIA SEMANA (DS) X série (SE) X turma (TU) X professor (F-PR) x materias (MA)  x sala aula (SA)  vai informar a hora inicio da aula e hora final da aula e quantas aulas serão dadas nesse período.
+		- uma sala não pode estar sendo ocupada no mesmo dia , hora inicial e hora final por outra grade completa
+		- um professor não pode dar aula em salas diferentes no mesmo horário
+		- pode somente selecionar materias que o professor está cadastrado pra dar (PM)
+
+	2.016  tela onde a escola olha por ano letivo + série as notas que cada aluno tirou por matéria, tem que ir fazendo uma média das notas por aluno x matéria
+
+	2.017 tela onde a escola pode lançar um comunicado ou advertência por aluno (notificação no pwa), ou por série x sala x ano letivo ou pra todos os alunos da escola
+
+	2.018  todo dia ao entrar no sistema disparar notificações para responsáveis\alunos das provas que terão no dia de hoje e também caso tiver prova amanhã notificar. quando for uma sexta feira e tiver prova na segunda notificar também.
+		caso seja feriado no dia de amanhã e depois do feriado tiver prova notificar também.
+
+
+3° Gerenciamento dos professores. Vai ser um pwa onde o professor
+	3.001 Quando abrir o pwa vai fazer a sincronização dos dados, caso o professor tenha feito a chamada no modo offline vai ter que ir essas informações pro servidor central
+	3.002 Vai ter que sincronizar também o (CALENDÁRIO) para o professor que acessou o sistema
+	3.003 professor vai fazer a chamada dos alunos pra ver se estão presente na sala de aula, vai ter a opção de informar presente ou falta. o programa tem que pegar a hora do celular do professor e achar a grade completa pra mostrar todos os alunos
+		que devem estar na sala de aula. Quando o professor fazer a chamada significa que ele trabalhou normalmente, não faltou do trabalho.
+		Quando o próximo horário for na mesma sala com a mesma matéria e o mesmo professor significa que o professor deu duas aulas seguindas, então a chamada já vale pras 2 ou mais aulas. Quando a escola for acertar com o professor
+		tem que considerar que deu 2 ou mais aulas com apenas uma chamada.
+
+	3.004 ao terminar de fazer a chamada - conferir aluno por aluno se está presente ou não, ao clicar no botão finalizar chamada disparar uma notificação para os responsáveis.
+
+	3.005 na opção do (CALENDARIO) o professor pode informar que vai ter uma prova ou um trabalho naquele dia, disparar notificações pros alunos\responáveis.
+
+	3.006 professor vai informar as notas dos alunos da prova ou trabalho que ele deu (professor x matéria), vai mandar uma notificação pros responsáveis e também pro aluno.
+
+	3.007 na opção do (CALENDARIO) o professor pode informar que vai ter uma prova ou um trabalho naquele dia, disparar notificações pros alunos\responáveis.
+
+4° gerenciamento dos alunos. vai ser um pwa por aluno, um aluno não consegue ver nada de outro.
+	4.001 Quando abrir o sistema vai ter que sincronizar os dados do aluno que logou.
+	     A.
+	4.001 tela onde ele consulta as provas que tem marcadas.
+	4.002 tela onde ele consulta as notas de todas as provas por materia e com a média por matéria.
+	4.003 tela onde consulta as grade por dias da semana, segunda,terça etc, não separar por dia do mês. Tipo segunda as 7:00 as 8:50 professor - materia
+	4.004 tela onde ele consulta as presenças em sala de aula (quando o professor faz a chamada)
+
+
+5° Gerencimento financeiro , vai ser um sistema web, onde a escola vai controlar seu contas a pagar e contas a receber, lançar despesas etc
+	2.014 escola vai ter a opção de lançar um contas a receber dos valores das mensalidades, vai poder lancar os valores de todos os alunos de um determinado ano letivo de uma vez, ter a opção de lançar quantas parcelas que dejesar e informar o dia de vencimento da mensalidade (dia permitido entre 1 a 27)
+
+	2.015 ter a opção de lançar valores avulsos, tipo apostilas, uniformes etc, criar um cadastro do tipo de contas a receber, tipo mensalidades, uniforme, apostilas etc.
+		o lançamento pode ser para todos os alunos da escola, ou por  ano letivo x sala de aula ou individual por aluno.
+
+	2.016. vai ter a opção de enviar as parcelas do contas a receber pro banco sicoob e sicred via api. Ter a opção de selecionar pra qual banco vai enviar os boletos.
+			Quando for cadastrar banco ter as opções de configuração do boleto pra comunicar via api.
+
+
+	2.017 vai ter a opção de pegar o retorno do banco dos boletos pagos, fazer uma tela que vai ler o retorno e dar baixa no contas a receber.
+	2.019 tela + relatório onde a escola olha os responsáveis que estão atrasados no pagamento da mensalidde, ter a opção de disparar um email e uma notificação (notificação no pwa) informando da parcela em atraso.
+
+	2.022. Tela onde a escola seleciona manualmente  a parcela que vai receber do aluno e dá baixa , calcular juros caso necessário, onde juros é a data do dia - data vencimento (VALOR01) , caso seja > 0 pegar o % juros informado no cadastro da escola (JUROS MENSAL), dividir pro
+		30 dias(PERCENTUAL JUROS DIÁRIO) e o resultado do valor multiplicar por (VALOR01), vai dar o total de juros (TOTAL JUROS), dai pega o valor da mensalidade que está cadastrada no cadastro do aluno (MENSALIDADE) e multiplica pelo total juros
+		(TOTAL JUROS) x (MENSALIDADE) = (VALOR JUROS). O VALOR TOTAL QUE TEM QUE RECEBER SERIA  (MENSALIDADE) + (VALOR JUROS) = (VALOR TOTAL), TER UMA OPÇÃO DE DAR DESCONTO NA HORA DE RECEBER
+		somente entidade com função caixa pode dar baixa manualmente nas mensalidades
+
+	2.023 a escola vai poder acessar o seu cadastro e informar % juros por atráso (JUROS MENSAL), dias de carência dos juros
+
+	2.024 Todo o valor movimentado diretamente na escola, não veio pelo retorno de boleto do banco tem que cair num caixa que vai ser conferido posteriormente pela escola. num dia pode ter vários caixas, ele vai ser controlado por usuário do caixa + data do dia
+
+*/

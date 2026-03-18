@@ -1,0 +1,11 @@
+/backend/node_modules/
+/backend/dist/
+/backend/dev-server.log
+/backend/backend_runtime.log
+/backend/.env
+/frontend/node_modules/
+/frontend/.next/
+/frontend/frontend_runtime.log
+/DOCUMENTACAO/AI/*.log
+/DOCUMENTACAO/AI/*.tmp
+/temp_update.py
