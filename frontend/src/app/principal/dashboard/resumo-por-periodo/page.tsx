@@ -95,7 +95,7 @@ export default function ResumoPorPeriodoPage() {
 
   return (
     <div className="space-y-6">
-      <div className="max-w-5xl space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
+      <div className="w-full space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {branding?.logoUrl ? (
@@ -115,14 +115,16 @@ export default function ResumoPorPeriodoPage() {
           </div>
         </div>
         <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Total de alunos ativos</div>
-          <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-2 text-2xl font-extrabold text-[#153a6a]">
-            {totalStudents}
+          <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">
+            Total de alunos ativos{' '}
+            <span className="ml-3 rounded-2xl border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-4 py-2 text-2xl font-extrabold text-[#153a6a] inline-flex items-center">
+              {totalStudents}
+            </span>
           </div>
         </div>
       </div>
 
-      <div className="max-w-5xl space-y-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="w-full space-y-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
         {error && <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">{error}</div>}
 
         {loading ? (

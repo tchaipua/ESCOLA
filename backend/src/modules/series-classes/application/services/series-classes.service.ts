@@ -222,15 +222,16 @@ export class SeriesClassesService {
         enrollments: {
           where: { canceledAt: null },
           include: {
-            student: {
-              select: {
-                id: true,
-                name: true,
-                cpf: true,
-                rg: true,
-                phone: true,
-                whatsapp: true,
-                cellphone1: true,
+          student: {
+            select: {
+              id: true,
+              name: true,
+              cpf: true,
+              rg: true,
+              photoUrl: true,
+              phone: true,
+              whatsapp: true,
+              cellphone1: true,
                 cellphone2: true,
                 email: true,
                 street: true,
@@ -260,6 +261,7 @@ export class SeriesClassesService {
       neighborhood: string | null;
       zipCode: string | null;
       updatedAt: Date | null;
+      photoUrl: string | null;
     }>();
 
     links.forEach((link) => {
@@ -288,6 +290,7 @@ export class SeriesClassesService {
             neighborhood: student.neighborhood ?? null,
             zipCode: student.zipCode ?? null,
             updatedAt: student.updatedAt ?? null,
+            photoUrl: student.photoUrl ?? null,
           });
         }
       });
@@ -300,6 +303,111 @@ export class SeriesClassesService {
     return {
       seriesId: series.id,
       seriesName: series.name,
+      students,
+    };
+  }
+
+  async findSeriesClassStudents(seriesClassId: string, currentUser?: ICurrentUser) {
+    const link = await this.prisma.seriesClass.findFirst({
+      where: {
+        id: seriesClassId,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+      },
+      include: {
+        series: true,
+        class: true,
+        enrollments: {
+          where: { canceledAt: null },
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+                cpf: true,
+                rg: true,
+                photoUrl: true,
+                phone: true,
+                whatsapp: true,
+                cellphone1: true,
+                cellphone2: true,
+                email: true,
+                street: true,
+                number: true,
+                city: true,
+                state: true,
+                neighborhood: true,
+                zipCode: true,
+                updatedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!link) {
+      throw new NotFoundException("Vínculo entre série e turma não encontrado.");
+    }
+
+    const sanitizedLink = this.mapSeriesClassForViewer(link, currentUser);
+    const studentsMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        cpf: string | null;
+        email: string | null;
+        phone: string | null;
+        street: string | null;
+        number: string | null;
+        city: string | null;
+        state: string | null;
+        neighborhood: string | null;
+        zipCode: string | null;
+        updatedAt: Date | null;
+        photoUrl: string | null;
+      }
+    >();
+
+    sanitizedLink.enrollments.forEach((enrollment) => {
+      const student = enrollment?.student;
+      if (!student?.id) return;
+
+      if (!studentsMap.has(student.id)) {
+        const contactPhone =
+          student.whatsapp ||
+          student.phone ||
+          student.cellphone1 ||
+          student.cellphone2 ||
+          null;
+        studentsMap.set(student.id, {
+          id: student.id,
+          name: student.name,
+          cpf: student.cpf ?? null,
+          email: student.email ?? null,
+          phone: contactPhone,
+          street: student.street ?? null,
+          number: student.number ?? null,
+          city: student.city ?? null,
+          state: student.state ?? null,
+          neighborhood: student.neighborhood ?? null,
+          zipCode: student.zipCode ?? null,
+          updatedAt: student.updatedAt ?? null,
+          photoUrl: student.photoUrl ?? null,
+        });
+      }
+    });
+
+    const students = Array.from(studentsMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    return {
+      classId: sanitizedLink.class?.id ?? null,
+      className: sanitizedLink.class?.name ?? null,
+      seriesId: sanitizedLink.series?.id ?? null,
+      seriesName: sanitizedLink.series?.name ?? null,
       students,
     };
   }

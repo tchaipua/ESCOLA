@@ -47,6 +47,13 @@ export class SeriesClassesController {
     return this.seriesClassesService.findOne(id, currentUser);
   }
 
+  @Get(":id/students")
+  @Permissions("VIEW_SERIES_CLASSES")
+  @ApiOperation({ summary: "Lista os alunos vinculados a um vínculo série x turma" })
+  findSeriesClassStudents(@Param("id") id: string, @CurrentUser() currentUser: ICurrentUser) {
+    return this.seriesClassesService.findSeriesClassStudents(id, currentUser);
+  }
+
   @Get("series/:seriesId/students")
   @Permissions("VIEW_SERIES_CLASSES")
   @ApiOperation({ summary: "Lista os alunos que pertencem a uma série" })

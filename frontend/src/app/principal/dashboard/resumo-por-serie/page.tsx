@@ -6,6 +6,8 @@ import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
+const API_BASE_URL = 'http://localhost:3001/api/v1';
+
 type SeriesSummary = {
   id: string;
   name: string;
@@ -24,43 +26,48 @@ type SeriesClassApiItem = {
   studentsCount?: number;
 };
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
-
 export default function DashboardResumoSeriePage() {
   const [seriesSummary, setSeriesSummary] = useState<SeriesSummary[]>([]);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [role, setRole] = useState<string | null>(null);
+
   const branding = useMemo(() => (tenantId ? readCachedTenantBranding(tenantId) : null), [tenantId]);
   const canView = ['SOFTHOUSE_ADMIN', 'ADMIN', 'SECRETARIA', 'COORDENACAO'].includes(role || '');
 
   useEffect(() => {
-    const { tenantId: currentTenantId, role: currentRole } = getDashboardAuthContext();
+    const { tenantId: currentTenantId, role: currentRole, token: currentToken } = getDashboardAuthContext();
     setTenantId(currentTenantId);
     setRole(currentRole);
+    setToken(currentToken);
   }, []);
 
   useEffect(() => {
-    if (!tenantId) return;
+    if (!token) {
+      setLoading(true);
+      return;
+    }
+    if (!canView) {
+      setLoading(false);
+      return;
+    }
 
-    const fetchSummary = async () => {
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        setLoading(true);
-        setError(null);
-        const { token } = getDashboardAuthContext();
-        if (!token) return;
-
         const response = await fetch(`${API_BASE_URL}/series-classes`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await response.json().catch(() => null);
         if (!response.ok) {
-          throw new Error(data?.message || 'Não foi possível carregar os dados de séries.');
+          throw new Error(data?.message || 'Não foi possível carregar o resumo por série.');
         }
 
-        const grouped = new Map<string, SeriesSummary>();
         const items = Array.isArray(data) ? (data as SeriesClassApiItem[]) : [];
+        const grouped = new Map<string, SeriesSummary>();
         items.forEach((item) => {
           const seriesId = item.series?.id ?? `__UNKNOWN__${item.id}`;
           const seriesName = (item.series?.name || 'SEM SÉRIE').toUpperCase();
@@ -93,24 +100,22 @@ export default function DashboardResumoSeriePage() {
         });
 
         setSeriesSummary(sorted);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Falha ao carregar o resumo por série.';
-        setError(message);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Falha ao carregar as séries.');
       } finally {
         setLoading(false);
       }
     };
 
-    void fetchSummary();
-  }, [tenantId]);
+    void loadData();
+  }, [token, canView]);
 
   const totalStudents = useMemo(
-    () => seriesSummary.reduce((acc, item) => acc + item.studentsCount, 0),
+    () => seriesSummary.reduce((acc, series) => acc + series.studentsCount, 0),
     [seriesSummary],
   );
-  const visibleStudents = totalStudents;
 
-  if (!canView) {
+  if (!canView && !loading) {
     return (
       <DashboardAccessDenied
         title="Acesso restrito"
@@ -121,77 +126,69 @@ export default function DashboardResumoSeriePage() {
 
   return (
     <div className="space-y-6">
-      <div className="w-full space-y-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <header className="flex flex-col gap-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="h-14 w-14 rounded-2xl border border-slate-200 bg-white shadow-sm">
             {branding?.logoUrl ? (
               <img
                 src={branding.logoUrl}
                 alt={`Logo de ${branding.schoolName}`}
-                className="h-full w-full object-contain p-1.5"
+                className="h-full w-full object-contain p-2"
               />
             ) : (
-              <span className="text-xs font-black uppercase tracking-[0.35em] text-[#153a6a]">
+              <div className="flex h-full w-full items-center justify-center text-xs font-black uppercase tracking-[0.35em] text-[#153a6a]">
                 {branding?.schoolName ? branding.schoolName.slice(0, 3).toUpperCase() : 'ESC'}
-              </span>
+              </div>
             )}
           </div>
-          <div className="min-w-0 space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-blue-600">Resumo geral</p>
-            <h1 className="text-3xl font-black text-[#153a6a]">Total de alunos por série</h1>
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.35em] text-blue-600">Resumo geral</p>
+            <h1 className="text-3xl font-black text-[#153a6a]">Alunos por série</h1>
             <p className="text-sm font-medium text-slate-500">
-              Uma visão consolidada para identificar séries com maior volume de alunos e apoiar decisões de alocação.
+              Total de alunos matriculados por série. Clique em qualquer card para abrir o detalhe desta série.
             </p>
           </div>
         </div>
-        <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-black uppercase tracking-[0.35em] text-slate-500">
-              Total de alunos ativos
-            </span>
-            <span className="flex h-10 w-10 items-center justify-center rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 text-2xl font-extrabold text-[#153a6a]">
-              {totalStudents}
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.35em] text-slate-400">exibido(s)</span>
-          </div>
+        <div className="text-sm font-black uppercase tracking-[0.35em] text-slate-500">
+          {totalStudents} aluno(s) ativos
         </div>
-      </div>
+      </header>
 
-      <div className="space-y-5">
-        {error && (
-          <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">{error}</div>
-        )}
+      {error && (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
+          {error}
+        </div>
+      )}
 
-        {loading ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="h-28 animate-pulse rounded-[28px] border border-slate-200 bg-slate-50" />
-            ))}
-          </div>
-        ) : seriesSummary.length === 0 ? (
-          <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm font-medium text-slate-500">
-            Nenhuma série com matrículas foi encontrada.
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {seriesSummary.map((series) => (
-              <Link
-                key={series.id}
-                href={`/principal/dashboard/resumo-por-serie/${series.id}`}
-                className="flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-6 text-left transition hover:border-blue-400 hover:bg-white hover:text-slate-900"
-              >
-                <div className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Série</div>
-                <div className="text-lg font-extrabold text-slate-900">{series.name}</div>
-                <div className="text-sm font-bold uppercase tracking-[0.25em] text-slate-500">
-                  Alunos matriculados
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="h-32 animate-pulse rounded-[28px] border border-slate-200 bg-slate-50" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-3">
+          {seriesSummary.map((series) => (
+            <Link
+              key={series.id}
+              href={`/principal/dashboard/resumo-por-serie/${series.id}`}
+              className="flex flex-col justify-between rounded-[28px] border border-slate-200 bg-white p-5 text-left transition hover:border-blue-400 hover:bg-blue-50"
+            >
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">Série</p>
+                <h2 className="text-2xl font-black text-slate-900">{series.name}</h2>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500">Matriculados</p>
+                  <p className="text-3xl font-extrabold text-blue-600">{series.studentsCount}</p>
                 </div>
-                <div className="text-3xl font-extrabold text-blue-600">{series.studentsCount}</div>
-                <p className="text-xs font-bold uppercase tracking-[0.3em] text-blue-500">Clique para ver os alunos</p>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
+                <span className="text-[10px] font-black uppercase tracking-[0.35em] text-blue-500">Ver alunos</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

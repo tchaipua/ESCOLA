@@ -282,6 +282,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
+            href: '/principal/dashboard/resumo-professor-aulas',
+            label: 'Resumo Semanal Professor x Aulas',
+            allowWhen: true,
+            requiresDashboardBase: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8a4 4 0 100-8 4 4 0 000 8zm-6 16a6 6 0 0112 0H6z" />
+                </svg>
+            ),
+        },
+        {
             href: '/principal/notificacoes',
             label: 'Notificações',
             allowWhen: true,
@@ -437,6 +448,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         '/principal/dashboard/resumo-por-serie',
         '/principal/dashboard/resumo-por-turma',
         '/principal/dashboard/resumo-por-periodo',
+        '/principal/dashboard/resumo-professor-aulas',
     ];
     const showDashboardBase = pathname.startsWith('/principal/dashboard');
     const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';

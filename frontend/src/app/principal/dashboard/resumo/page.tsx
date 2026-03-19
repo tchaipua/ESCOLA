@@ -10,6 +10,12 @@ const API_BASE_URL = 'http://localhost:3001/api/v1';
 type PersonRole = 'PROFESSOR' | 'ALUNO' | 'RESPONSAVEL';
 type ViewOption = PersonRole | 'ALL' | 'USERS';
 
+type PersonRoleEntry = {
+  role: PersonRole;
+  roleLabel: string;
+  recordId: string;
+};
+
 type PersonRecord = {
   id: string;
   name: string;
@@ -17,14 +23,12 @@ type PersonRecord = {
   email?: string | null;
   whatsapp?: string | null;
   phone?: string | null;
-  roles: Array<{
-    role: PersonRole;
-    roleLabel: string;
-  }>;
+  cellphone1?: string | null;
+  roles: PersonRoleEntry[];
+  photoUrl?: string | null;
   sharedLoginEnabled?: boolean;
   updatedAt?: string | null;
 };
-
 type UserRecord = {
   id: string;
   name: string;
@@ -34,9 +38,56 @@ type UserRecord = {
   updatedAt?: string | null;
 };
 
+type GuardianStudentLink = {
+  studentId: string;
+  guardianId: string;
+  kinship: string;
+  kinshipDescription?: string | null;
+  student?: {
+    id: string;
+    personId?: string | null;
+    name: string;
+  };
+};
+
+type GuardianRecord = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  cellphone1?: string | null;
+  students?: GuardianStudentLink[];
+};
+
+type GuardianSummary = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  relation?: string | null;
+};
+
+type GuardianStudentDetail = {
+  studentId: string;
+  studentName: string;
+  kinship?: string | null;
+};
+
+type TeacherSubjectRecord = {
+  id: string;
+  teacherId: string;
+  subjectId: string;
+  subject?: {
+    id: string;
+    name: string;
+  };
+};
+
 export default function DashboardResumoPage() {
   const [people, setPeople] = useState<PersonRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
+  const [guardians, setGuardians] = useState<GuardianRecord[]>([]);
+  const [teacherSubjects, setTeacherSubjects] = useState<TeacherSubjectRecord[]>([]);
+  const [photoLoadErrors, setPhotoLoadErrors] = useState<Record<string, boolean>>({});
   const [token, setToken] = useState<string | null>(null);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
@@ -56,10 +107,13 @@ export default function DashboardResumoPage() {
 
   const loadData = async () => {
     if (!token) return;
-    const [peopleResponse, usersResponse] = await Promise.all([
-      fetch(`${API_BASE_URL}/people`, { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${API_BASE_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
-    ]);
+    const [peopleResponse, usersResponse, guardiansResponse, teacherSubjectsResponse] =
+      await Promise.all([
+        fetch(`${API_BASE_URL}/people`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/users`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/guardians`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_BASE_URL}/teacher-subjects`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
 
     const peopleData = await peopleResponse.json().catch(() => null);
     if (!peopleResponse.ok) {
@@ -71,13 +125,40 @@ export default function DashboardResumoPage() {
       throw new Error(usersData?.message || 'Não foi possível carregar os usuários do sistema.');
     }
 
+    const guardiansData = await guardiansResponse.json().catch(() => null);
+    if (!guardiansResponse.ok) {
+      throw new Error(
+        guardiansData?.message || 'Não foi possível carregar os responsáveis.',
+      );
+    }
+
+    const teacherSubjectsData = await teacherSubjectsResponse.json().catch(() => null);
+    if (!teacherSubjectsResponse.ok) {
+      throw new Error(
+        teacherSubjectsData?.message || 'Não foi possível carregar os vínculos de disciplinas.',
+      );
+    }
+
     setPeople(Array.isArray(peopleData) ? peopleData : []);
+    setPhotoLoadErrors({});
     const resolvedUsers = Array.isArray(usersData)
       ? usersData
       : Array.isArray(usersData?.data)
         ? usersData.data
         : [];
     setUsers(resolvedUsers);
+    const resolvedGuardians = Array.isArray(guardiansData)
+      ? guardiansData
+      : Array.isArray(guardiansData?.data)
+        ? guardiansData.data
+        : [];
+    setGuardians(resolvedGuardians);
+    const resolvedTeacherSubjects = Array.isArray(teacherSubjectsData)
+      ? teacherSubjectsData
+      : Array.isArray(teacherSubjectsData?.data)
+        ? teacherSubjectsData.data
+        : [];
+    setTeacherSubjects(resolvedTeacherSubjects);
   };
 
   useEffect(() => {
@@ -137,9 +218,96 @@ export default function DashboardResumoPage() {
   }, [people, users]);
 
   const currentTenantBranding = useMemo(() => readCachedTenantBranding(currentTenantId), [currentTenantId]);
+  const guardiansByStudentId = useMemo(() => {
+    const map: Record<string, GuardianSummary[]> = {};
+    guardians.forEach((guardian) => {
+      guardian.students?.forEach((link) => {
+        const studentId = link.student?.id ?? link.studentId;
+        if (!studentId) return;
+        const phone = guardian.phone || guardian.cellphone1 || guardian.whatsapp || null;
+        const relation =
+          (link.kinshipDescription?.trim() || link.kinship?.trim() || null) ?? null;
+        if (!map[studentId]) {
+          map[studentId] = [];
+        }
+        if (!map[studentId].some((entry) => entry.id === guardian.id)) {
+          map[studentId].push({ id: guardian.id, name: guardian.name, phone, relation });
+        }
+      });
+    });
+    return map;
+  }, [guardians]);
+  const subjectsByTeacherId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    teacherSubjects.forEach((assignment) => {
+      const teacherId = assignment.teacherId;
+      if (!teacherId) return;
+      const subjectName = assignment.subject?.name || assignment.subjectId;
+      if (!subjectName) return;
+      if (!map[teacherId]) {
+        map[teacherId] = [];
+      }
+      if (!map[teacherId].includes(subjectName)) {
+        map[teacherId].push(subjectName);
+      }
+    });
+    return map;
+  }, [teacherSubjects]);
+  const studentsByGuardianId = useMemo(() => {
+    const map: Record<string, GuardianStudentDetail[]> = {};
+    guardians.forEach((guardian) => {
+      guardian.students?.forEach((link) => {
+        const guardianId = guardian.id;
+        const studentId = link.student?.id ?? link.studentId;
+        const studentName = link.student?.name;
+        if (!studentId || !studentName) return;
+        const kinship = link.kinshipDescription?.trim() || link.kinship?.trim() || null;
+        if (!map[guardianId]) {
+          map[guardianId] = [];
+        }
+        if (!map[guardianId].some((entry) => entry.studentId === studentId)) {
+          map[guardianId].push({ studentId, studentName, kinship });
+        }
+      });
+    });
+    return map;
+  }, [guardians]);
 
   const shouldShowUsersSection = selectedView === 'USERS' || selectedView === 'ALL';
   const shouldShowPeopleSection = selectedView !== 'USERS';
+
+  const getInitials = (name: string) => {
+    const parts = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parts.length === 0) {
+      return '';
+    }
+    if (parts.length === 1) {
+      return parts[0].slice(0, 1).toUpperCase();
+    }
+    const firstInitial = parts[0].slice(0, 1);
+    const lastInitial = parts[parts.length - 1].slice(0, 1);
+    return `${firstInitial}${lastInitial}`.toUpperCase();
+  };
+  const formatPhoneNumber = (value?: string | null) => {
+    if (!value) return null;
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 11) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+    if (digits.length === 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    if (digits.length === 9) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    if (digits.length === 8) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return value;
+  };
 
   if (!isLoading && !canView) {
     return (
@@ -274,46 +442,144 @@ export default function DashboardResumoPage() {
                 </div>
               ) : (
                 <div className="grid gap-4 lg:grid-cols-2">
-                  {filteredPeople.map((person) => (
-                    <article key={person.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-                      <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_45%,#eff6ff_100%)] p-5">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Pessoa compartilhada</div>
-                            <h3 className="mt-2 text-xl font-black text-slate-800">{person.name}</h3>
-                            <div className="mt-2 text-sm font-medium text-slate-500">
-                              {person.email || 'Sem login configurado'}
+                  {filteredPeople.map((person) => {
+                    const studentRole = person.roles.find((role) => role.role === 'ALUNO');
+                    const guardianRole = person.roles.find((role) => role.role === 'RESPONSAVEL');
+                    const teacherRole = person.roles.find((role) => role.role === 'PROFESSOR');
+                    const guardiansList = studentRole ? guardiansByStudentId[studentRole.recordId] || [] : [];
+                    const studentsForGuardian = guardianRole ? studentsByGuardianId[guardianRole.recordId] || [] : [];
+                    const shouldShowGuardianStudents = Boolean(studentsForGuardian.length > 0 && !teacherRole);
+                    const subjects = teacherRole ? subjectsByTeacherId[teacherRole.recordId] || [] : [];
+                    const loginBadgeClass = person.sharedLoginEnabled
+                      ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border border-rose-200 bg-rose-50 text-rose-600';
+                    const contactPhone = person.whatsapp || person.phone || person.cellphone1 || null;
+                    const contactType = person.whatsapp ? 'WhatsApp' : 'Telefone';
+                    const formattedContact = formatPhoneNumber(contactPhone);
+                    const contactLine = formattedContact
+                      ? `${contactType}: ${formattedContact}`
+                      : 'Contato pendente';
+
+                    const hasPhoto = Boolean(person.photoUrl && !photoLoadErrors[person.id]);
+                    const initials = getInitials(person.name) || person.name.slice(0, 1).toUpperCase();
+                    return (
+                      <article key={person.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-800">
+                                {hasPhoto ? (
+                                  <img
+                                    src={person.photoUrl!}
+                                    alt={`Foto de ${person.name}`}
+                                    className="h-full w-full object-cover"
+                                    onError={() =>
+                                      setPhotoLoadErrors((prev) => ({ ...prev, [person.id]: true }))
+                                    }
+                                  />
+                                ) : (
+                                  <span className="text-lg font-black uppercase tracking-[0.1em] text-slate-700">
+                                    {initials}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="max-w-[260px]">
+                                <h3 className="text-lg font-black text-slate-900">{person.name}</h3>
+                                <p className="mt-0.5 text-sm font-medium uppercase tracking-[0.15em] text-slate-500">
+                                  {contactLine}
+                                </p>
+                              </div>
+                            </div>
+                            <div className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] ${loginBadgeClass}`}>
+                              {person.sharedLoginEnabled ? 'Login ativo' : 'Sem login'}
                             </div>
                           </div>
-                          <div className={`rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${person.sharedLoginEnabled ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
-                            {person.sharedLoginEnabled ? 'Login ativo' : 'Sem login'}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {person.roles.map((role) => (
+                              <span
+                                key={`${person.id}-${role.role}`}
+                                className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600"
+                              >
+                                {role.roleLabel}
+                              </span>
+                            ))}
                           </div>
+                          {guardiansList.length > 0 && (
+                            <div className="mt-3 space-y-1">
+                              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+                                Responsáveis
+                              </div>
+                              <div className="space-y-1">
+                                {guardiansList.map((guardian) => {
+                                  const formattedGuardianPhone = formatPhoneNumber(guardian.phone);
+                                  const relationLabel = guardian.relation ? ` - ${guardian.relation}` : '';
+                                  return (
+                                    <div
+                                      key={guardian.id}
+                                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-600"
+                                    >
+                                      <div className="flex flex-col gap-1">
+                                        <span className="text-slate-700">
+                                          {formattedGuardianPhone
+                                            ? `${formattedGuardianPhone} · ${guardian.name}${relationLabel}`
+                                            : `${guardian.name}${relationLabel}`}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {shouldShowGuardianStudents && (
+                            <div className="mt-3">
+                              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+                                Alunos vinculados
+                              </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {studentsForGuardian.map((student) => (
+                                    <span
+                                      key={`${guardianRole?.recordId}-${student.studentId}`}
+                                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500"
+                                    >
+                                      <span className="text-slate-700">{student.studentName}</span>
+                                      {student.kinship && (
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                                          {student.kinship}
+                                        </span>
+                                      )}
+                                    </span>
+                                  ))}
+                                </div>
+                            </div>
+                          )}
+                          {teacherRole && (
+                            <div className="mt-3">
+                              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">
+                                Matérias
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-2">
+                                {subjects.length > 0 ? (
+                                  subjects.map((subject) => (
+                                    <span
+                                      key={`${teacherRole.recordId}-${subject}`}
+                                      className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700"
+                                    >
+                                      {subject}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                                    Sem matérias registradas
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {person.roles.map((role) => (
-                            <span key={`${person.id}-${role.role}`} className="inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600">
-                              {role.roleLabel}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-3 p-5 text-sm text-slate-600">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <div>
-                            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">CPF</div>
-                            <div className="mt-1 font-semibold text-slate-700">{person.cpf || 'Não informado'}</div>
-                          </div>
-                          <div>
-                            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Telefone</div>
-                            <div className="mt-1 font-semibold text-slate-700">{person.whatsapp || person.phone || 'Não informado'}</div>
-                          </div>
-                        </div>
-                        <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
-                          Última atualização: <span className="text-slate-700">{person.updatedAt ? new Date(person.updatedAt).toLocaleString() : 'Sem registro recente'}</span>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    );
+                  })}
                 </div>
               )
             )}

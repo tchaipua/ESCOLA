@@ -1,6 +1,7 @@
  'use client';
 
-import Link from 'next/link';
+'use client';
+
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
@@ -15,43 +16,52 @@ const SHIFT_LABELS: Record<string, string> = {
   NOITE: 'Noite',
 };
 
+type GuardianStudentLink = {
+  studentId: string;
+  guardianId: string;
+  kinship: string;
+  kinshipDescription?: string | null;
+};
+
+type GuardianRecord = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  cellphone1?: string | null;
+  cellphone2?: string | null;
+  students?: GuardianStudentLink[];
+};
+
 type StudentRecord = {
   id: string;
   name: string;
-  cpf?: string | null;
   email?: string | null;
+};
+
+type GuardianSummary = {
+  id: string;
+  name: string;
   phone?: string | null;
-  street?: string | null;
-  number?: string | null;
-  city?: string | null;
-  state?: string | null;
-  neighborhood?: string | null;
-  zipCode?: string | null;
-  updatedAt?: string | null;
+  relation?: string | null;
 };
 
-const formatAddress = (student: StudentRecord) => {
-  const lineOne = [student.street, student.number].filter(Boolean).join(', ');
-  const cityLine = [student.city, student.state].filter(Boolean).join(' - ');
-  const extras = [student.neighborhood, student.zipCode].filter(Boolean).join(' • ');
-  return [lineOne, cityLine, extras].filter(Boolean).join(' • ') || 'Não informado';
-};
-
-const formatPhone = (student: StudentRecord) => {
-  return student.phone || student.email || 'Não informado';
-};
-
-const formatUpdatedAt = (value?: string | null) => {
-  if (!value) return 'Não informado';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Não informado';
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+const formatPhoneNumber = (value?: string | null) => {
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 9) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 8) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return value;
 };
 
 export default function DashboardPeriodStudentsPage() {
@@ -66,6 +76,7 @@ export default function DashboardPeriodStudentsPage() {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [guardians, setGuardians] = useState<GuardianRecord[]>([]);
   const branding = tenantId ? readCachedTenantBranding(tenantId) : null;
 
   const canView = ALLOWED_ROLES.has(role || '');
@@ -122,16 +133,7 @@ export default function DashboardPeriodStudentsPage() {
             normalized.push({
               id: student.id,
               name: student.name ?? 'NOME NÃO INFORMADO',
-              cpf: student.cpf ?? null,
               email: student.email ?? null,
-              phone: student.phone ?? student.whatsapp ?? student.cellphone1 ?? student.cellphone2 ?? null,
-              street: student.street ?? null,
-              number: student.number ?? null,
-              city: student.city ?? null,
-              state: student.state ?? null,
-              neighborhood: student.neighborhood ?? null,
-              zipCode: student.zipCode ?? null,
-              updatedAt: student.updatedAt ?? null,
             });
           });
         });
@@ -146,11 +148,67 @@ export default function DashboardPeriodStudentsPage() {
     void load();
   }, [tenantId, normalizedShift]);
 
+  useEffect(() => {
+    if (!tenantId) return;
+    const loadGuardians = async () => {
+      try {
+        const { token } = getDashboardAuthContext();
+        if (!token) return;
+        const response = await fetch(`${API_BASE_URL}/guardians`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.message || 'Não foi possível carregar os responsáveis.');
+        }
+        const resolvedGuardians = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+          ? data.data
+          : [];
+        setGuardians(resolvedGuardians);
+      } catch {
+        // silencioso
+      }
+    };
+    void loadGuardians();
+  }, [tenantId]);
+
   const filteredStudents = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return students;
     return students.filter((student) => student.name.toLowerCase().includes(term));
   }, [students, searchTerm]);
+
+  const guardiansByStudentId = useMemo(() => {
+    const map: Record<string, GuardianSummary[]> = {};
+    guardians.forEach((guardian) => {
+      guardian.students?.forEach((link) => {
+        const studentId = link.studentId;
+        if (!studentId) return;
+        const phone =
+          guardian.whatsapp ||
+          guardian.phone ||
+          guardian.cellphone1 ||
+          guardian.cellphone2 ||
+          null;
+        const relation =
+          (link.kinshipDescription?.trim() || link.kinship?.trim() || null) ?? null;
+        if (!map[studentId]) {
+          map[studentId] = [];
+        }
+        if (!map[studentId].some((entry) => entry.id === guardian.id)) {
+          map[studentId].push({
+            id: guardian.id,
+            name: guardian.name,
+            phone,
+            relation: relation ? relation.toUpperCase() : null,
+          });
+        }
+      });
+    });
+    return map;
+  }, [guardians]);
 
   if (!canView) {
     return (
@@ -165,7 +223,7 @@ export default function DashboardPeriodStudentsPage() {
 
   return (
     <div className="space-y-6">
-      <section className="max-w-5xl space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
+      <section className="w-full space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm text-left">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {branding?.logoUrl ? (
@@ -190,16 +248,18 @@ export default function DashboardPeriodStudentsPage() {
             <div className="text-4xl font-black tracking-wide text-white">{shiftLabel}</div>
           </div>
           <div className="flex flex-col gap-2 text-left sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Total de alunos ativos</div>
-            <div className="rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-5 py-3 text-3xl font-extrabold text-[#153a6a]">
-              {students.length}
+            <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500 flex items-center gap-3">
+              Total de alunos ativos
+              <span className="rounded-[28px] border border-slate-200 bg-gradient-to-r from-blue-50 to-blue-100 px-5 py-3 text-3xl font-extrabold text-[#153a6a] inline-flex items-center">
+                {students.length}
+              </span>
             </div>
             <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">{visibleStudents} exibido(s)</div>
           </div>
         </div>
       </section>
 
-      <section className="max-w-5xl space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="w-full space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Pesquisa</p>
@@ -224,7 +284,7 @@ export default function DashboardPeriodStudentsPage() {
             {Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={index}
-                className="h-44 animate-pulse rounded-[28px] border border-slate-200 bg-slate-50"
+                className="h-44 animate-pulse rounded-[32px] border border-slate-200 bg-slate-50"
               />
             ))}
           </div>
@@ -233,38 +293,70 @@ export default function DashboardPeriodStudentsPage() {
             Nenhum aluno encontrado para o período selecionado.
           </div>
         ) : (
-          <div className="grid gap-5 md:grid-cols-2">
-            {filteredStudents.map((student) => (
-              <article key={student.id} className="rounded-[28px] border border-slate-200 bg-slate-50 p-6 shadow-sm transition hover:border-blue-300 hover:bg-white">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Pessoa compartilhada</p>
-                    <h3 className="text-lg font-extrabold text-slate-900">{student.name}</h3>
-                    <p className="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">Sem login configurado</p>
+          <div className="grid gap-4 md:grid-cols-2">
+            {filteredStudents.map((student) => {
+              const initials = student.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((part) => part[0])
+                .slice(0, 2)
+                .join('')
+                .toUpperCase();
+              const loginBadgeClass = student.email
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                : 'border-red-300 bg-red-50 text-red-600';
+              const guardiansList = guardiansByStudentId[student.id] ?? [];
+              return (
+                <article
+                  key={student.id}
+                  className="grid w-full gap-4 divide-y divide-slate-100 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm"
+                >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xl font-black uppercase tracking-[0.2em] text-slate-700">
+                    {initials || student.name.slice(0, 1).toUpperCase()}
                   </div>
-                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.25em] text-slate-600">
-                    ALUNO
-                  </span>
-                </div>
-                <div className="mt-6 grid gap-4 text-sm text-slate-600 sm:grid-cols-2">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">CPF</p>
-                    <p className="text-base font-semibold text-slate-900">{student.cpf || 'Não informado'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Telefone</p>
-                    <p className="text-base font-semibold text-slate-900">{formatPhone(student)}</p>
+                    <h3 className="text-lg font-black uppercase tracking-[0.04em] text-slate-900">
+                      {student.name}
+                    </h3>
+                    <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">
+                      ALUNO
+                    </span>
                   </div>
                 </div>
-                <div className="mt-5">
-                  <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Endereço base</p>
-                  <p className="text-base font-semibold text-slate-900">{formatAddress(student)}</p>
+                <span
+                  className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] ${loginBadgeClass}`}
+                >
+                  {student.email ? 'LOGIN ATIVO' : 'SEM LOGIN'}
+                </span>
+              </div>
+              {guardiansList.length > 0 && (
+                <div className="space-y-2 pt-3 text-sm">
+                  <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                    RESPONSÁVEIS
+                  </div>
+                  <div className="space-y-1">
+                    {guardiansList.map((guardian) => {
+                      const formattedPhone = guardian.phone
+                        ? `${formatPhoneNumber(guardian.phone)} · `
+                        : '';
+                      const relationLabel = guardian.relation ? ` - ${guardian.relation}` : '';
+                      return (
+                        <div
+                          key={`${student.id}-${guardian.id}`}
+                          className="overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700"
+                        >
+                          {`${formattedPhone}${guardian.name}${relationLabel}`}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-medium text-slate-500">
-                  Última atualização: <span className="text-slate-900">{formatUpdatedAt(student.updatedAt)}</span>
-                </div>
-              </article>
-            ))}
+              )}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

@@ -26,6 +26,7 @@ type LinkedRoleRecord = {
   canceledAt: Date | null;
   accessProfile: string | null;
   permissions: string | null;
+  photoUrl?: string | null;
 };
 
 type PersonWithRoles = {
@@ -182,6 +183,10 @@ export class PeopleService {
         : null,
     ].filter(Boolean);
 
+    const primaryStudent = this.getPrimaryRoleRecord(person.students);
+    const photoUrl = primaryStudent?.photoUrl ?? null;
+    const sharedLoginEnabled = Boolean(person.email && person.password);
+
     return {
       id: person.id,
       tenantId: person.tenantId,
@@ -207,7 +212,8 @@ export class PeopleService {
       createdAt: person.createdAt,
       updatedAt: person.updatedAt,
       canceledAt: person.canceledAt,
-      sharedLoginEnabled: Boolean(person.email && person.password),
+      sharedLoginEnabled,
+      photoUrl,
       roles,
     };
   }
@@ -275,6 +281,7 @@ export class PeopleService {
             canceledAt: true,
             accessProfile: true,
             permissions: true,
+            photoUrl: true,
           },
           orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
         },
@@ -462,13 +469,14 @@ export class PeopleService {
           },
           orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
         },
-        students: {
-          select: {
-            id: true,
-            canceledAt: true,
-            accessProfile: true,
-            permissions: true,
-          },
+       students: {
+         select: {
+           id: true,
+           canceledAt: true,
+           accessProfile: true,
+           permissions: true,
+            photoUrl: true,
+         },
           orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
         },
         guardians: {

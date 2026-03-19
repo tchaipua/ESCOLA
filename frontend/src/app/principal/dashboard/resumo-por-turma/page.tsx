@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
@@ -10,21 +11,21 @@ type SeriesClassSummary = {
   label: string;
   studentsCount: number;
   seriesSortOrder?: number | null;
-};
-
-type TenantBranding = {
-  schoolName: string;
-  logoUrl?: string | null;
+  seriesName?: string | null;
+  className?: string | null;
 };
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 
 export default function ResumoPorTurmaPage() {
-const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
+  const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
-  const branding = readCachedTenantBranding(tenantId);
+  const [canView, setCanView] = useState(true);
+
+  const branding = tenantId ? readCachedTenantBranding(tenantId) : null;
+
   const totalStudents = useMemo(
     () => summary.reduce((acc, item) => acc + item.studentsCount, 0),
     [summary],
@@ -33,6 +34,11 @@ const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
   useEffect(() => {
     const auth = getDashboardAuthContext();
     setTenantId(auth.tenantId);
+  }, []);
+
+  useEffect(() => {
+    const { role } = getDashboardAuthContext();
+    setCanView(['SOFTHOUSE_ADMIN', 'ADMIN', 'SECRETARIA', 'COORDENACAO'].includes(role || ''));
   }, []);
 
   useEffect(() => {
@@ -58,6 +64,8 @@ const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
               studentsCount:
                 Array.isArray(item.enrollments) ? item.enrollments.length : item.studentsCount ?? 0,
               seriesSortOrder: item.series?.sortOrder ?? null,
+              seriesName: item.series?.name ?? null,
+              className: item.class?.name ?? null,
             }))
           : [];
 
@@ -81,12 +89,13 @@ const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
     void fetchSummary();
   }, []);
 
-  if (!tenantId) {
-    return null;
-  }
-
-  if (!loading && !branding) {
-    // still show even without branding
+  if (!canView) {
+    return (
+      <DashboardAccessDenied
+        title="Acesso restrito"
+        message="Você não possui autorização para visualizar o resumo por turma desta escola."
+      />
+    );
   }
 
   return (
@@ -95,7 +104,11 @@ const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {branding?.logoUrl ? (
-              <img src={branding.logoUrl} alt={`Logo de ${branding.schoolName}`} className="h-full w-full object-contain p-1.5" />
+              <img
+                src={branding.logoUrl}
+                alt={`Logo de ${branding.schoolName}`}
+                className="h-full w-full object-contain p-1.5"
+              />
             ) : (
               <span className="text-xs font-black uppercase tracking-[0.35em] text-[#153a6a]">
                 {branding?.schoolName ? branding.schoolName.slice(0, 3).toUpperCase() : 'ESC'}
@@ -121,7 +134,9 @@ const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
 
       <section className="w-full space-y-4 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
         {error && (
-          <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">{error}</div>
+          <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
+            {error}
+          </div>
         )}
 
         {loading ? (
@@ -133,12 +148,23 @@ const [summary, setSummary] = useState<SeriesClassSummary[]>([]);
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {summary.map((item) => (
-              <article key={item.id} className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-slate-700 shadow-sm">
-                <div className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Turma</div>
-                <div className="mt-2 text-lg font-extrabold text-slate-900">{item.label}</div>
-                <div className="mt-4 text-sm font-bold uppercase tracking-[0.25em] text-slate-500">Alunos matriculados</div>
-                <div className="text-3xl font-extrabold text-blue-600">{item.studentsCount}</div>
-              </article>
+              <Link
+                key={item.id}
+                href={`/principal/dashboard/resumo-por-turma/${item.id}`}
+                className="flex flex-col justify-between rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-slate-700 shadow-sm transition hover:border-blue-400 hover:bg-white"
+              >
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Turma</p>
+                  <h2 className="text-2xl font-black text-slate-900">{item.label}</h2>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500">Matriculados</p>
+                    <p className="text-3xl font-extrabold text-blue-600">{item.studentsCount}</p>
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.35em] text-blue-500">Ver alunos</span>
+                </div>
+              </Link>
             ))}
             {summary.length === 0 && (
               <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm font-medium text-slate-500">

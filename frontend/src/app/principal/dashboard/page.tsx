@@ -43,6 +43,11 @@ export default function DashboardOverviewPage() {
       title: 'Resumo por período',
       description: 'Apresenta os totais de alunos por turno (manhã, tarde e noite).',
     },
+    {
+      href: '/principal/dashboard/resumo-professor-aulas',
+      title: 'Resumo Semanal Professor x Aulas',
+      description: 'Relaciona professores ativos com o total de aulas agendadas e registradas.',
+    },
   ];
 
   return (
