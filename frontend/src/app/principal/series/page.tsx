@@ -319,6 +319,7 @@ export default function SeriesPage() {
                     ],
                 },
             ]}
+            contextLabel="PRINCIPAL_SERIES_POPUP"
         />
     );
 

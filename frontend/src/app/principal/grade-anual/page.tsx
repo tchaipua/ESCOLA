@@ -159,7 +159,6 @@ const GRID_COLUMNS: ConfigurableGridColumn<LessonCalendarRecord, AnnualColumnKey
         aggregateOptions: ['sum', 'avg', 'min', 'max'],
         getAggregateValue: (row) => row.generatedItemsCount,
     },
-    { key: 'lastWeeklySyncAt', label: 'Última busca semanal', getValue: (row) => formatDateTimeLabel(row.lastWeeklySyncAt), getSortValue: (row) => row.lastWeeklySyncAt || '' },
     { key: 'recordStatus', label: 'Status do cadastro', getValue: (row) => (row.canceledAt ? 'INATIVO' : 'ATIVO'), visibleByDefault: false },
 ];
 
@@ -206,13 +205,6 @@ function getSeriesClassLabel(seriesClass?: SeriesClassSummary | LessonCalendarRe
 function normalizeSeriesClassOptions(input: unknown): SeriesClassSummary[] {
     const items = Array.isArray(input) ? (input as SeriesClassSummary[]) : [];
     return dedupeSeriesClassOptions(items, getSeriesClassLabel);
-}
-
-function formatDateTimeLabel(value?: string | null) {
-    if (!value) return '---';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '---';
-    return date.toLocaleString('pt-BR');
 }
 
 function getDayLabel(value: string) {
@@ -269,6 +261,7 @@ export default function GradeAnualPage() {
     const [annualStatusToggleAction, setAnnualStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingAnnualToggle, setIsProcessingAnnualToggle] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const GRADE_ANNUAL_MODAL_LABEL = 'PRINCIPAL_GRADE_ANUAL_MODAL';
 
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, [
         'VIEW_LESSON_CALENDARS',
@@ -394,6 +387,34 @@ export default function GradeAnualPage() {
         if (!isGridConfigReady) return;
         writeGridColumnConfig(getGridConfigStorageKey(currentTenantId), GRID_COLUMN_KEYS, columnOrder, hiddenColumns, columnAggregations);
     }, [columnAggregations, columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
+
+    const normalizePeriodDate = (value: string) => (value ? new Date(`${value}T00:00:00`) : null);
+
+    const validatePeriodsNoOverlap = (periods: PeriodFormState[]) => {
+        const normalizedPeriods = periods.map((period) => {
+            const start = normalizePeriodDate(period.startDate);
+            const end = normalizePeriodDate(period.endDate);
+            return { ...period, start, end };
+        });
+
+        for (const period of normalizedPeriods) {
+            if (!period.start || !period.end) {
+                throw new Error('Informe a data de início e fim para todas as faixas da grade anual.');
+            }
+            if (period.start > period.end) {
+                throw new Error('A data de início não pode ser posterior à data de fim em uma faixa.');
+            }
+        }
+
+        const sorted = [...normalizedPeriods].sort((a, b) => (a.start!.getTime() - b.start!.getTime()));
+        for (let index = 1; index < sorted.length; index++) {
+            const previous = sorted[index - 1];
+            const current = sorted[index];
+            if (current.start!.getTime() <= previous.end!.getTime()) {
+                throw new Error('As faixas não podem se sobrepor. Ajuste os intervalos para evitar datas conflitantes.');
+            }
+        }
+    };
 
     const resetForm = () => {
         setEditingId(null);
@@ -584,6 +605,7 @@ export default function GradeAnualPage() {
             if (!hasWeeklySource) {
                 throw new Error('Busque novamente a grade semanal antes de salvar a grade anual.');
             }
+            validatePeriodsNoOverlap(formData.periods);
 
             const response = await fetch(
                 editingId ? `${API_BASE_URL}/lesson-calendars/${editingId}` : `${API_BASE_URL}/lesson-calendars`,
@@ -693,7 +715,6 @@ export default function GradeAnualPage() {
                         { label: 'Períodos de aula', value: String(record.classPeriodsCount) },
                         { label: 'Férias / intervalos', value: String(record.intervalPeriodsCount) },
                         { label: 'Aulas geradas', value: String(record.generatedItemsCount) },
-                        { label: 'Última busca semanal', value: formatDateTimeLabel(record.lastWeeklySyncAt) },
                     ],
                 },
                 {
@@ -705,6 +726,7 @@ export default function GradeAnualPage() {
                     ],
                 },
             ]}
+            contextLabel="PRINCIPAL_GRADE_ANUAL_POPUP"
         />
     );
 
@@ -734,7 +756,7 @@ export default function GradeAnualPage() {
                 </td>
             );
         }
-        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{formatDateTimeLabel(record.lastWeeklySyncAt)}</td>;
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>---</td>;
     };
 
     if (!isLoading && !canView) {
@@ -890,128 +912,181 @@ export default function GradeAnualPage() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSave} className="min-h-0 flex-1 overflow-y-auto p-6">
-                            <div className="space-y-5">
-                                {modalErrorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{modalErrorStatus}</div> : null}
-
-                                <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr_auto]">
-                                    <select
-                                        value={formData.schoolYearId}
-                                        onChange={(event) => {
-                                            setModalErrorStatus(null);
-                                            setWeeklySource(null);
-                                            setFormData((current) => ({ ...current, schoolYearId: event.target.value }));
-                                        }}
-                                        className={inputClass}
-                                    >
-                                        <option value="">Selecione o ano letivo</option>
-                                        {schoolYears.map((item) => (
-                                            <option key={item.id} value={item.id}>{item.year}{item.isActive ? ' (ATIVO)' : ''}</option>
-                                        ))}
-                                    </select>
-
-                                    <select
-                                        value={formData.seriesClassId}
-                                        onChange={(event) => {
-                                            setModalErrorStatus(null);
-                                            setWeeklySource(null);
-                                            setFormData((current) => ({ ...current, seriesClassId: event.target.value }));
-                                        }}
-                                        className={inputClass}
-                                    >
-                                        <option value="">Selecione a turma</option>
-                                        {seriesClasses.map((item) => (
-                                            <option key={item.id} value={item.id}>{getSeriesClassLabel(item)}</option>
-                                        ))}
-                                    </select>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void fetchWeeklySource(formData.schoolYearId, formData.seriesClassId)}
-                                        disabled={!formData.schoolYearId || !formData.seriesClassId || isLoadingWeeklySource}
-                                        className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-                                    >
-                                        {isLoadingWeeklySource ? 'Buscando...' : 'Buscar novamente grade semanal'}
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-700">Faixas da grade anual</div>
-                                                <div className="text-xs font-medium text-slate-500">Você pode lançar vários períodos de aula e vários intervalos/férias no mesmo ano letivo.</div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <button type="button" onClick={() => addPeriod('AULA')} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">+ Período de aula</button>
-                                                <button type="button" onClick={() => addPeriod('INTERVALO')} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">+ Intervalo / férias</button>
-                                            </div>
+                        <form onSubmit={handleSave} className="flex flex-1 flex-col min-h-0">
+                            <div className="flex-1 overflow-y-auto px-6">
+                                <div className="space-y-5 pb-6">
+                                    {modalErrorStatus ? (
+                                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                                            {modalErrorStatus}
                                         </div>
+                                    ) : null}
 
-                                        <div className="space-y-3">
-                                            {formData.periods.map((period, index) => (
-                                                <div key={period.localId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                                                    <div className="mb-3 flex items-center justify-between gap-3">
-                                                        <div className="text-sm font-bold text-slate-700">Faixa #{index + 1}</div>
-                                                        {formData.periods.length > 1 ? (
-                                                            <button type="button" onClick={() => removePeriod(period.localId)} className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100">Remover</button>
-                                                        ) : null}
-                                                    </div>
-                                                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[0.9fr_1fr_1fr]">
-                                                        <select value={period.periodType} onChange={(event) => handlePeriodChange(period.localId, 'periodType', event.target.value)} className={inputClass}>
-                                                            <option value="AULA">Período de aula</option>
-                                                            <option value="INTERVALO">Intervalo / férias</option>
-                                                        </select>
-                                                        <input type="date" value={period.startDate} onChange={(event) => handlePeriodChange(period.localId, 'startDate', event.target.value)} className={inputClass} />
-                                                        <input type="date" value={period.endDate} onChange={(event) => handlePeriodChange(period.localId, 'endDate', event.target.value)} className={inputClass} />
-                                                    </div>
-                                                </div>
+                                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr_0.9fr]">
+                                        <select
+                                            value={formData.schoolYearId}
+                                            onChange={(event) => {
+                                                setModalErrorStatus(null);
+                                                setWeeklySource(null);
+                                                setFormData((current) => ({ ...current, schoolYearId: event.target.value }));
+                                            }}
+                                            className={inputClass}
+                                        >
+                                            <option value="">Selecione o ano letivo</option>
+                                            {schoolYears.map((item) => (
+                                                <option key={item.id} value={item.id}>
+                                                    {item.year}
+                                                    {item.isActive ? ' (ATIVO)' : ''}
+                                                </option>
                                             ))}
-                                        </div>
+                                        </select>
+
+                                        <select
+                                            value={formData.seriesClassId}
+                                            onChange={(event) => {
+                                                setModalErrorStatus(null);
+                                                setWeeklySource(null);
+                                                setFormData((current) => ({ ...current, seriesClassId: event.target.value }));
+                                            }}
+                                            className={inputClass}
+                                        >
+                                            <option value="">Selecione a turma</option>
+                                            {seriesClasses.map((item) => (
+                                                <option key={item.id} value={item.id}>
+                                                    {getSeriesClassLabel(item)}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => void fetchWeeklySource(formData.schoolYearId, formData.seriesClassId)}
+                                            disabled={!formData.schoolYearId || !formData.seriesClassId || isLoadingWeeklySource}
+                                            className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                                        >
+                                            {isLoadingWeeklySource ? 'Buscando...' : 'Buscar novamente grade semanal'}
+                                        </button>
                                     </div>
 
-                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="mb-4 flex items-center justify-between gap-3">
-                                            <div>
-                                                <div className="text-sm font-bold text-slate-700">Grade semanal carregada</div>
-                                                <div className="text-xs font-medium text-slate-500">A grade anual será gerada com os horários, professores e matérias já lançados.</div>
+                                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-sm font-bold text-slate-700">Faixas da grade anual</div>
+                                                    <div className="text-xs font-medium text-slate-500">
+                                                        Você pode lançar vários períodos de aula e vários intervalos/férias no mesmo ano letivo.
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button type="button" onClick={() => addPeriod('AULA')} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">
+                                                        + Período de aula
+                                                    </button>
+                                                    <button type="button" onClick={() => addPeriod('INTERVALO')} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">
+                                                        + Intervalo / férias
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <span className={`rounded-full px-3 py-1 text-xs font-bold ${hasWeeklySource ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                                                {weeklySource?.items.length || 0} aula(s)
-                                            </span>
-                                        </div>
 
-                                        {!hasWeeklySource ? (
-                                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-800">
-                                                Busque novamente a grade semanal desta turma para habilitar a geração da grade anual.
-                                            </div>
-                                        ) : (
                                             <div className="space-y-3">
-                                                {weeklySource?.items.map((item) => (
-                                                    <div key={item.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                                                        <div className="grid grid-cols-1 gap-2 xl:grid-cols-3">
-                                                            <div><div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Dia</div><div className="mt-1 text-sm font-semibold text-slate-700">{getDayLabel(item.dayOfWeek)}</div></div>
-                                                            <div><div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Professor</div><div className="mt-1 text-sm font-semibold text-slate-700">{item.teacherSubject?.teacher?.name || '---'}</div></div>
-                                                            <div><div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Matéria</div><div className="mt-1 text-sm font-semibold text-slate-700">{item.teacherSubject?.subject?.name || '---'}</div></div>
+                                                {formData.periods.map((period, index) => (
+                                                    <div key={period.localId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                                            <div className="text-sm font-bold text-slate-700">Faixa #{index + 1}</div>
+                                                            {formData.periods.length > 1 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removePeriod(period.localId)}
+                                                                    className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100"
+                                                                >
+                                                                    Remover
+                                                                </button>
+                                                            ) : null}
                                                         </div>
-                                                        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">{item.startTime} às {item.endTime}</div>
+                                                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[0.9fr_1fr_1fr]">
+                                                            <select
+                                                                value={period.periodType}
+                                                                onChange={(event) => handlePeriodChange(period.localId, 'periodType', event.target.value)}
+                                                                className={inputClass}
+                                                            >
+                                                                <option value="AULA">Período de aula</option>
+                                                                <option value="INTERVALO">Intervalo / férias</option>
+                                                            </select>
+                                                            <input type="date" value={period.startDate} onChange={(event) => handlePeriodChange(period.localId, 'startDate', event.target.value)} className={inputClass} />
+                                                            <input type="date" value={period.endDate} onChange={(event) => handlePeriodChange(period.localId, 'endDate', event.target.value)} className={inputClass} />
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
-                                        )}
+                                        </div>
+
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="mb-4 flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-sm font-bold text-slate-700">Grade semanal carregada</div>
+                                                    <div className="text-xs font-medium text-slate-500">
+                                                        A grade anual será gerada com os horários, professores e matérias já lançados.
+                                                    </div>
+                                                </div>
+                                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${hasWeeklySource ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                                                    {weeklySource?.items.length || 0} aula(s)
+                                                </span>
+                                            </div>
+
+                                            {!hasWeeklySource ? (
+                                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-800">
+                                                    Busque novamente a grade semanal desta turma para habilitar a geração da grade anual.
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {weeklySource?.items.map((item) => (
+                                                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                                                            <div className="grid grid-cols-1 gap-2 xl:grid-cols-3">
+                                                                <div>
+                                                                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Dia</div>
+                                                                    <div className="mt-1 text-sm font-semibold text-slate-700">{getDayLabel(item.dayOfWeek)}</div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Professor</div>
+                                                                    <div className="mt-1 text-sm font-semibold text-slate-700">{item.teacherSubject?.teacher?.name || '---'}</div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">Matéria</div>
+                                                                    <div className="mt-1 text-sm font-semibold text-slate-700">{item.teacherSubject?.subject?.name || '---'}</div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                                                                {item.startTime} às {item.endTime}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
 
                                 <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm font-medium text-slate-600">
                                     Sempre que a grade semanal mudar ao longo do ano, use o botão <span className="font-bold text-slate-800">Buscar novamente grade semanal</span> antes de salvar ou use a ação da listagem para regenerar a grade anual já cadastrada.
                                 </div>
-
-                                <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
-                                    <button type="button" onClick={closeModal} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancelar</button>
-                                    <button type="submit" disabled={!canManage || isSaving || !hasWeeklySource || !hasClassPeriod} className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300">
-                                        {isSaving ? 'Salvando...' : editingId ? 'Salvar grade anual' : 'Cadastrar grade anual'}
-                                    </button>
+                                <div className="mt-6 text-right text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">
+                                    Tela: {GRADE_ANNUAL_MODAL_LABEL}
                                 </div>
+                        </div>
+                        <div className="sticky bottom-0 left-0 right-0 z-20 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm">
+                            <div className="flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={closeModal}
+                                    className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold uppercase tracking-[0.25em] text-white shadow hover:bg-rose-600 transition"
+                                >
+                                    Sair sem Salvar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!canManage || isSaving || !hasWeeklySource || !hasClassPeriod}
+                                    className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isSaving ? 'Salvando...' : editingId ? 'Salvar grade anual' : 'Cadastrar grade anual'}
+                                </button>
+                            </div>
                             </div>
                         </form>
                     </div>

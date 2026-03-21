@@ -31,6 +31,24 @@ type NavItem = {
     showAfterDashboardBase?: boolean;
 };
 
+function deriveScreenContextLabel(pathnameValue: string | null) {
+    if (!pathnameValue) return 'PRINCIPAL_ROOT';
+    const segments = pathnameValue.split('/').filter(Boolean);
+    if (!segments.length) return 'PRINCIPAL_ROOT';
+    const label = segments
+        .map((segment) =>
+            segment
+                .replace(/\[(.*?)\]/g, '$1')
+                .replace(/[^a-z0-9]+/gi, '_')
+                .replace(/_+/g, '_')
+                .trim(),
+        )
+        .filter(Boolean)
+        .join('_')
+        .toUpperCase();
+    return label || 'PRINCIPAL_ROOT';
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
@@ -466,6 +484,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   (!item.showAfterDashboardBase || showDashboardProgram),
           )
         : [];
+    const screenContextLabel = useMemo(() => deriveScreenContextLabel(pathname), [pathname]);
     const topLinks: NavItem[] = [];
     if (menuPrincipalItem) topLinks.push(menuPrincipalItem);
     if (showSummaryNav && menuDashboardItem) topLinks.push(menuDashboardItem);
@@ -595,25 +614,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {children}
                 </main>
                 <footer className="bg-white border-t border-slate-200 px-6 py-3 text-xs italic text-slate-500">
-                    <span className="flex items-center gap-2">
-                        Desenvolvido por MSINFOR SISTEMAS
-                        <span className="text-slate-400">•</span>
-                        (16) 3025-6025
-                        <span className="text-slate-400">/</span>
-                        <a
-                            href="https://wa.me/5516999991978"
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Clique aqui para abrir o Wattsup"
-                            className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-600 transition"
-                        >
-                            <svg className="h-5 w-5 text-emerald-500" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M12 3C7.03 3 3 7.03 3 12c0 1.91.56 3.69 1.53 5.19L5 22l4.88-1.39c1.59.81 3.32 1.13 5.02.62 4.97-1.36 8.02-7.13 6.08-12.04C18.66 4.56 15.6 3 12 3zm0 16c-1.37 0-2.71-.41-3.85-1.18l-.28-.18-3.41.97.83-3.19-.19-.32A8.99 8.99 0 014 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z" />
-                                <path d="M15.42 14.36c-.23-.12-1.36-.75-1.58-.84-.22-.1-.38-.12-.55.11s-.63.84-.77 1c-.14.15-.28.17-.51.06a5.1 5.1 0 01-1.5-.94 5.8 5.8 0 01-1.1-1.36c-.11-.19-.01-.29.08-.38.09-.08.21-.21.32-.32.1-.1.15-.18.23-.29.08-.11.04-.2-.02-.36-.06-.16-.57-1.36-.78-1.87-.21-.52-.43-.45-.58-.45-.15 0-.32-.01-.49-.01s-.36.05-.55.27c-.19.22-.74.72-.74 1.76s.78 2.54.89 2.72c.11.19 1.92 2.91 4.68 3.98.68.29 1.19.45 1.63.58.67.21 1.28.18 1.76.11.53-.09 1.2-.55 1.53-1.16.33-.61.33-1.12.25-1.22-.08-.1-.33-.16-.68-.28z" />
-                            </svg>
-                            <span>(16) 99999-1978</span>
-                        </a>
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2 justify-between">
+                        <span className="flex-1 text-slate-500 min-w-[240px] text-left">
+                            Desenvolvido por MSINFOR SISTEMAS
+                            <span className="mx-2 text-slate-400">•</span>
+                            (16) 3025-6025
+                            <span className="mx-2 text-slate-400">/</span>
+                            <a
+                                href="https://wa.me/5516999991978"
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Clique aqui para abrir o Wattsup"
+                                className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-600 transition"
+                            >
+                                <svg className="h-5 w-5 text-emerald-500" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 3C7.03 3 3 7.03 3 12c0 1.91.56 3.69 1.53 5.19L5 22l4.88-1.39c1.59.81 3.32 1.13 5.02.62 4.97-1.36 8.02-7.13 6.08-12.04C18.66 4.56 15.6 3 12 3zm0 16c-1.37 0-2.71-.41-3.85-1.18l-.28-.18-3.41.97.83-3.19-.19-.32A8.99 8.99 0 014 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z" />
+                                    <path d="M15.42 14.36c-.23-.12-1.36-.75-1.58-.84-.22-.1-.38-.12-.55.11s-.63.84-.77 1c-.14.15-.28.17-.51.06a5.1 5.1 0 01-1.5-.94 5.8 5.8 0 01-1.1-1.36c-.11-.19-.01-.29.08-.38.09-.08.21-.21.32-.32.1-.1.15-.18.23-.29.08-.11.04-.2-.02-.36-.06-.16-.57-1.36-.78-1.87-.21-.52-.43-.45-.58-.45-.15 0-.32-.01-.49-.01s-.36.05-.55.27c-.19.22-.74.72-.74 1.76s.78 2.54.89 2.72c.11.19 1.92 2.91 4.68 3.98.68.29 1.19.45 1.63.58.67.21 1.28.18 1.76.11.53-.09 1.2-.55 1.53-1.16.33-.61.33-1.12.25-1.22-.08-.1-.33-.16-.68-.28z" />
+                                </svg>
+                                <span>(16) 99999-1978</span>
+                            </a>
+                        </span>
+                        <span className="flex-1 text-right text-[11px] font-black uppercase tracking-[0.4em] text-slate-400">
+                            Tela: {screenContextLabel}
+                        </span>
+                    </div>
                 </footer>
             </div>
 

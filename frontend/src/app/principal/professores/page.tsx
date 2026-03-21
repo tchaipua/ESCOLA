@@ -189,10 +189,6 @@ function formatTeacherAddress(row: TeacherRecord) {
     return [row.street, row.number, row.neighborhood].filter(Boolean).join(', ') || '---';
 }
 
-function formatTeacherAccessProfile(value?: AccessProfileCode | null) {
-    return value ? value.replaceAll('_', ' ') : 'PADRÃO';
-}
-
 function formatTeacherPermissions(row: TeacherRecord) {
     const permissionLabels = row.permissions
         ?.map((permission) => PERMISSION_LABEL_MAP[permission] || permission)
@@ -200,29 +196,17 @@ function formatTeacherPermissions(row: TeacherRecord) {
     return permissionLabels.length ? permissionLabels.join(', ') : '---';
 }
 
-function formatTeacherSubjects(row: TeacherRecord, includeFinancialDetails = true) {
+function formatTeacherSubjects(row: TeacherRecord) {
     const subjects = row.teacherSubjects
-        ?.map((assignment) => {
-            const subjectName = assignment.subject?.name || 'DISCIPLINA';
-            if (includeFinancialDetails && assignment.hourlyRate) {
-                return `${subjectName} (R$ ${assignment.hourlyRate.toFixed(2)}/h)`;
-            }
-            return subjectName;
-        })
+        ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
         .filter(Boolean) || [];
-    return subjects.length ? subjects.join(' | ') : 'Sem disciplinas vinculadas';
+    return subjects.length ? subjects.join(' | ') : null;
 }
 
-function formatTeacherSubjectDetails(row: TeacherRecord, includeFinancialDetails = true) {
-    const subjects = row.teacherSubjects
-        ?.map((assignment) => {
-            const subjectName = assignment.subject?.name || 'DISCIPLINA';
-            return includeFinancialDetails && assignment.hourlyRate
-                ? `${subjectName} (R$ ${assignment.hourlyRate.toFixed(2)}/h)`
-                : subjectName;
-        })
+function getTeacherSubjectNames(row: TeacherRecord) {
+    return row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
         .filter(Boolean) || [];
-    return subjects.length ? subjects.join(' | ') : 'Sem disciplinas vinculadas';
 }
 
 function normalizeTeacherSubjectName(value?: string | null) {
@@ -869,7 +853,6 @@ export default function ProfessoresPage() {
             buttonLabel={`Ver detalhes do professor ${teacher.name}`}
             badges={[
                 teacher.canceledAt ? 'INATIVO' : 'ATIVO',
-                ...(teacherFieldAccess.access ? [teacher.email ? 'APP LIBERADO' : 'SEM ACESSO', formatTeacherAccessProfile(teacher.accessProfile)] : []),
             ]}
             sections={[
                 {
@@ -905,18 +888,9 @@ export default function ProfessoresPage() {
                         { label: 'Complemento', value: teacher.complement || 'Não informado' },
                     ],
                 }] : []),
-                ...(teacherFieldAccess.academic || teacherFieldAccess.financial || teacherFieldAccess.access ? [{
-                    title: 'Pedagógico',
-                    items: [
-                        ...(teacherFieldAccess.academic ? [
-                            { label: 'Disciplinas', value: formatTeacherSubjectDetails(teacher, teacherFieldAccess.financial) },
-                            { label: 'Total de vínculos', value: String(teacher.teacherSubjects?.length || 0) },
-                            { label: 'Resumo rápido', value: formatTeacherSubjects(teacher, teacherFieldAccess.financial) },
-                        ] : []),
-                        ...(teacherFieldAccess.access ? [{ label: 'Permissões específicas', value: formatTeacherPermissions(teacher) }] : []),
-                    ],
-                }] : []),
             ]}
+            disciplines={getTeacherSubjectNames(teacher)}
+            contextLabel="PRINCIPAL_PROFESSORES_POPUP"
         />
     );
 
@@ -966,6 +940,17 @@ export default function ProfessoresPage() {
                                 <span>{prof.name}</span>
                                 <RecordStatusIndicator active={!prof.canceledAt} />
                             </div>
+                            {(() => {
+                                const subjectList = formatTeacherSubjects(prof);
+                                return subjectList ? (
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+                                            DISCIPLINAS
+                                        </span>
+                                        <span className="text-xs font-semibold text-slate-500">{subjectList}</span>
+                                    </div>
+                                ) : null;
+                            })()}
                         </div>
                     </div>
                 </td>
@@ -1673,8 +1658,11 @@ export default function ProfessoresPage() {
                                     </h2>
                                 </div>
                             </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            <button
+                                onClick={closeModal}
+                                className="rounded-full bg-red-600 px-4 py-2 text-sm font-black uppercase tracking-[0.3em] text-white shadow-sm shadow-red-600/30 transition hover:bg-red-700"
+                            >
+                                Fechar
                             </button>
                         </div>
                         <div className="border-b border-slate-100 bg-white px-6 py-3">
@@ -1692,6 +1680,23 @@ export default function ProfessoresPage() {
                                 ))}
                             </div>
                         </div>
+                        {currentTeacherAssignments.length ? (
+                            <div className="border-b border-slate-100 bg-white px-6 py-4">
+                                <div className="mb-2 text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
+                                    DISCIPLINAS
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {currentTeacherAssignments.map((assignment) => (
+                                        <span
+                                            key={assignment.id}
+                                            className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-5 py-1.5 text-[11px] font-bold uppercase tracking-[0.24em] text-emerald-600 shadow-sm"
+                                        >
+                                            {assignment.subject?.name || 'DISCIPLINA'}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
 
                         {/* Abas */}
                         <div className="flex border-b border-slate-200 bg-slate-50/50 px-6 pt-4 gap-2 shrink-0">
@@ -2123,24 +2128,27 @@ export default function ProfessoresPage() {
 
                         </form>
                         <div className="shrink-0 border-t border-slate-100 bg-white px-6 py-5 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div className="flex flex-wrap gap-3">
-                                    <button type="button" onClick={closeModal} className="px-6 py-3 font-semibold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 text-sm">Sair sem Gravar</button>
-                                    {activeTab > 1 ? (
-                                        <button type="button" onClick={() => setActiveTab((prev) => prev - 1)} className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Voltar</button>
-                                    ) : null}
-                                </div>
-                                <div className="flex flex-wrap justify-end gap-3">
-                                    {activeTab < 4 ? (
-                                        <button type="button" onClick={() => setActiveTab((prev) => prev + 1)} className="bg-[#153a6a] hover:bg-blue-800 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-900/30 text-sm tracking-wide transition-all">Próxima Etapa →</button>
-                                    ) : null}
-                                    <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
-                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                        {editingTeacherId ? 'Salvar Edição do Professor' : 'Registrar Professor'}
-                                    </button>
-                                </div>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap gap-3">
+                                <button type="button" onClick={closeModal} className="px-6 py-3 font-semibold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 text-sm">Sair sem Gravar</button>
+                                {activeTab > 1 ? (
+                                    <button type="button" onClick={() => setActiveTab((prev) => prev - 1)} className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Voltar</button>
+                                ) : null}
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-3">
+                                {activeTab < 4 ? (
+                                    <button type="button" onClick={() => setActiveTab((prev) => prev + 1)} className="bg-[#153a6a] hover:bg-blue-800 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-900/30 text-sm tracking-wide transition-all">Próxima Etapa →</button>
+                                ) : null}
+                                <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                    {editingTeacherId ? 'Salvar Edição do Professor' : 'Registrar Professor'}
+                                </button>
                             </div>
                         </div>
+                        <div className="mt-3 w-full text-right text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">
+                            Tela: PRINCIPAL_PROFESSORES_DETAIL
+                        </div>
+                    </div>
                     </div>
                 </div>
             )}

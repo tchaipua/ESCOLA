@@ -368,8 +368,9 @@ export default function DisciplinasPage() {
                             }))
                             : [{ label: 'Professores', value: 'Nenhum professor vinculado a esta disciplina' }],
                     },
-                ]}
-            />
+            ]}
+            contextLabel="PRINCIPAL_DISCIPLINAS_POPUP"
+        />
         );
     };
 

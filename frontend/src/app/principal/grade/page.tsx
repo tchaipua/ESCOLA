@@ -362,6 +362,7 @@ export default function GradeHorariaPage() {
                     ],
                 },
             ]}
+            contextLabel="PRINCIPAL_GRADE_POPUP"
         />
     );
 

@@ -1388,6 +1388,7 @@ export default function AlunosPage() {
                     ],
                 }] : []),
             ]}
+            contextLabel="PRINCIPAL_ALUNOS_POPUP"
         />
     );
 

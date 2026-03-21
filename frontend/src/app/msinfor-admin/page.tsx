@@ -362,6 +362,7 @@ export default function MsinforAdminPage() {
                     ],
                 },
             ]}
+            contextLabel="MSINFOR_ADMIN_TENANT_POPUP"
         />
     );
 
@@ -396,6 +397,7 @@ export default function MsinforAdminPage() {
                     ],
                 },
             ]}
+            contextLabel="MSINFOR_ADMIN_EMAIL_USAGE_POPUP"
         />
     );
 

@@ -590,6 +590,7 @@ export default function TurmasPage() {
                     ],
                 },
             ]}
+            contextLabel="PRINCIPAL_TURMAS_POPUP"
         />
     );
 

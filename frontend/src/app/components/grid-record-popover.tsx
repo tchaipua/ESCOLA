@@ -21,6 +21,8 @@ type GridRecordPopoverProps = {
     buttonLabel: string;
     avatarUrl?: string | null;
     badges?: string[];
+    disciplines?: string[];
+    contextLabel?: string;
 };
 
 function getVisibleSections(sections: GridRecordPopoverSection[]) {
@@ -38,8 +40,12 @@ export default function GridRecordPopover({
     sections,
     buttonLabel,
     avatarUrl,
+    disciplines,
+    contextLabel,
 }: GridRecordPopoverProps) {
     const [isOpen, setIsOpen] = useState(false);
+
+    const visibleDisciplines = useMemo(() => (disciplines || []).filter(Boolean), [disciplines]);
 
     const visibleSections = useMemo(() => getVisibleSections(sections), [sections]);
     const brandingLogoUrl = useMemo(() => {
@@ -122,37 +128,62 @@ export default function GridRecordPopover({
                                 <button
                                     type="button"
                                     onClick={() => setIsOpen(false)}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                                    className="rounded-full bg-red-600 px-4 py-2 text-xs font-black uppercase tracking-[0.3em] text-white transition hover:bg-red-700"
                                 >
                                     Fechar
                                 </button>
                             </div>
                         </div>
 
-                        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                            <div className="space-y-5">
-                                {visibleSections.map((section, sectionIndex) => (
-                                    <section key={`${section.title || 'section'}-${sectionIndex}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
-                                        {section.title ? (
-                                            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                                                {section.title}
-                                            </div>
-                                        ) : null}
-
-                                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                            {section.items.map((item) => (
-                                                <div key={`${sectionIndex}-${item.label}`} className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                                                    <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
-                                                        {item.label}
-                                                    </div>
-                                                    <div className="mt-1 break-words text-sm font-semibold text-slate-700">
-                                                        {item.value}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </section>
+                        {visibleDisciplines.length ? (
+                            <div className="border-b border-slate-100 bg-white px-5 py-4">
+                                <div className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
+                                    DISCIPLINAS
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                {visibleDisciplines.map((item) => (
+                                    <span
+                                        key={item}
+                                        className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-5 py-1.5 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-600 shadow-sm"
+                                    >
+                                        {item}
+                                    </span>
                                 ))}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                            <div className="flex min-h-[220px] min-w-0 flex-col gap-5">
+                                <div className="space-y-5">
+                                    {visibleSections.map((section, sectionIndex) => (
+                                        <section key={`${section.title || 'section'}-${sectionIndex}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                                            {section.title ? (
+                                                <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                                    {section.title}
+                                                </div>
+                                            ) : null}
+
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                                {section.items.map((item) => (
+                                                    <div key={`${sectionIndex}-${item.label}`} className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                                                        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+                                                            {item.label}
+                                                        </div>
+                                                        <div className="mt-1 break-words text-sm font-semibold text-slate-700">
+                                                            {item.value}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    ))}
+                                </div>
+                                {contextLabel ? (
+                                    <div className="mt-auto text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 text-right">
+                                        Tela: {contextLabel}
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
                     </div>

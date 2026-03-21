@@ -895,6 +895,7 @@ export default function GradeHorariaPlanejadaPage() {
                     ],
                 },
             ]}
+            contextLabel="PRINCIPAL_GRADE_HORARIA_POPUP"
         />
     );
 
