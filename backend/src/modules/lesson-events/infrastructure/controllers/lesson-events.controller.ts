@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { LessonEventsService } from "../../application/services/lesson-events.service";
 import { CreateLessonEventDto } from "../../application/dto/create-lesson-event.dto";
+import { CreateStandaloneLessonNoticeDto } from "../../application/dto/create-standalone-lesson-notice.dto";
 import { UpdateLessonEventDto } from "../../application/dto/update-lesson-event.dto";
 import { FindMyTeacherAgendaDto } from "../../application/dto/find-my-teacher-agenda.dto";
 import { FindMyTeacherCalendarDto } from "../../application/dto/find-my-teacher-calendar.dto";
@@ -35,10 +36,22 @@ export class LessonEventsController {
     return this.lessonEventsService.findMyAgenda(query);
   }
 
+  @Get("standalone-targets")
+  @ApiOperation({ summary: "Lista turmas e disciplinas do professor para recados avulsos" })
+  findStandaloneTargets() {
+    return this.lessonEventsService.findStandaloneTargets();
+  }
+
   @Post()
   @ApiOperation({ summary: "Lança prova, trabalho, recado ou falta sobre uma aula do professor" })
   create(@Body() createDto: CreateLessonEventDto) {
     return this.lessonEventsService.create(createDto);
+  }
+
+  @Post("standalone-notices")
+  @ApiOperation({ summary: "Lança recado avulso do professor em dia sem aula" })
+  createStandaloneNotice(@Body() createDto: CreateStandaloneLessonNoticeDto) {
+    return this.lessonEventsService.createStandaloneNotice(createDto);
   }
 
   @Patch(":id")

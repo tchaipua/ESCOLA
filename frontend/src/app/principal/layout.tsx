@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 type CurrentTenant = {
     id: string;
@@ -634,9 +635,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <span>(16) 99999-1978</span>
                             </a>
                         </span>
-                        <span className="flex-1 text-right text-[11px] font-black uppercase tracking-[0.4em] text-slate-400">
-                            Tela: {screenContextLabel}
-                        </span>
+                        <ScreenNameCopy
+                            screenId={screenContextLabel}
+                            className="flex-1 justify-end text-right text-[11px]"
+                        />
                     </div>
                 </footer>
             </div>

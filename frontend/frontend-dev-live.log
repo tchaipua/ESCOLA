@@ -1,0 +1,145 @@
+
+> frontend@0.1.0 dev
+> next dev --hostname 0.0.0.0 --port 3000
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 665ms
+ GET /msinfor-admin 200 in 750ms (compile: 634ms, render: 116ms)
+ GET / 200 in 60ms (compile: 19ms, render: 41ms)
+ GET /principal 200 in 41ms (compile: 24ms, render: 17ms)
+ GET /principal/professores 200 in 218ms (compile: 205ms, render: 12ms)
+✓ Compiled in 98ms
+✓ Compiled in 58ms
+✓ Compiled in 54ms
+ GET / 200 in 45ms (compile: 4ms, render: 41ms)
+ GET /principal 200 in 13ms (compile: 2ms, render: 11ms)
+✓ Compiled in 88ms
+ GET /principal 200 in 16ms (compile: 2ms, render: 14ms)
+ GET /principal/pessoas 200 in 254ms (compile: 243ms, render: 11ms)
+ GET /principal/professores 200 in 248ms (compile: 229ms, render: 19ms)
+✓ Compiled in 45ms
+✓ Compiled in 38ms
+✓ Compiled in 45ms
+⨯ ReferenceError: className is not defined
+    at ScreenNameCopy (src\app\components\screen-name-copy.tsx:57:5)
+  55 |   const containerClasses = [
+  56 |     'mt-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400',
+> 57 |     className,
+     |     ^
+  58 |   ]
+  59 |     .filter(Boolean)
+  60 |     .join(' '); {
+  digest: '2372704973'
+}
+ GET /principal/professores 200 in 891ms (compile: 635ms, render: 256ms)
+ GET /principal/professores 200 in 236ms (compile: 218ms, render: 17ms)
+ GET /principal/professores 500 in 896ms (compile: 294ms, render: 602ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 45ms
+ GET /principal/professores 200 in 283ms (compile: 218ms, render: 65ms)
+ GET /principal/professores 200 in 216ms (compile: 183ms, render: 33ms)
+ GET /principal/professores 200 in 697ms (compile: 264ms, render: 433ms)
+ GET /principal/professores 200 in 235ms (compile: 216ms, render: 19ms)
+ GET /principal/professores 200 in 548ms (compile: 163ms, render: 386ms)
+✓ Compiled in 39ms
+ GET /principal/notificacoes 200 in 171ms (compile: 156ms, render: 16ms)
+ GET /principal/pessoas 200 in 85ms (compile: 65ms, render: 20ms)
+ GET /principal/comunicacoes 200 in 163ms (compile: 150ms, render: 13ms)
+ GET /principal/professores 200 in 272ms (compile: 253ms, render: 19ms)
+⨯ ./src/app/principal/grade-anual/page.tsx:1092:32
+Parsing ecmascript source code failed
+[0m [90m 1090 |[39m                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+ [90m 1091 |[39m                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+[31m[1m>[22m[39m[90m 1092 |[39m                         [33m<[39m[33m/[39m[33mform[39m[33m>[39m
+ [90m      |[39m                                [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 1093 |[39m                     [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+ [90m      |[39m [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 1094 |[39m                 [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+ [90m 1095 |[39m             ) [33m:[39m [36mnull[39m}
+ [90m 1096 |[39m[0m
+
+Expected '</', got 'jsx text'
+
+
+ GET /principal/grade-anual 500 in 651ms (compile: 566ms, render: 85ms)
+⨯ ./src/app/principal/grade-anual/page.tsx:1092:32
+Parsing ecmascript source code failed
+[0m [90m 1090 |[39m                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+ [90m 1091 |[39m                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+[31m[1m>[22m[39m[90m 1092 |[39m                         [33m<[39m[33m/[39m[33mform[39m[33m>[39m
+ [90m      |[39m                                [31m[1m^[22m[39m
+[31m[1m>[22m[39m[90m 1093 |[39m                     [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+ [90m      |[39m [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 1094 |[39m                 [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+ [90m 1095 |[39m             ) [33m:[39m [36mnull[39m}
+ [90m 1096 |[39m[0m
+
+Expected '</', got 'jsx text'
+
+
+ GET /principal/grade-anual 500 in 20ms (compile: 14ms, render: 6ms)
+ GET / 200 in 39ms (compile: 3ms, render: 36ms)
+ GET /principal 200 in 85ms (compile: 60ms, render: 25ms)
+ GET / 200 in 24ms (compile: 2ms, render: 22ms)
+ GET /principal 200 in 16ms (compile: 3ms, render: 14ms)
+ GET /principal 200 in 13ms (compile: 2ms, render: 11ms)
+✓ Compiled in 39ms
+ GET /principal/grade 200 in 208ms (compile: 197ms, render: 12ms)
+ GET / 200 in 9ms (compile: 1536µs, render: 7ms)
+ GET /principal 200 in 13ms (compile: 1914µs, render: 11ms)
+ GET /principal/calendario-aulas 200 in 182ms (compile: 168ms, render: 14ms)
+ GET /principal/calendario-aulas 200 in 84ms (compile: 1667µs, render: 83ms)
+✓ Compiled in 44ms
+✓ Compiled in 50ms
+✓ Compiled in 42ms
+✓ Compiled in 49ms
+✓ Compiled in 47ms
+✓ Compiled in 40ms
+✓ Compiled in 46ms
+✓ Compiled in 55ms
+✓ Compiled in 48ms
+✓ Compiled in 49ms
+✓ Compiled in 52ms
+✓ Compiled in 51ms
+✓ Compiled in 46ms
+✓ Compiled in 49ms
+✓ Compiled in 88ms
+✓ Compiled in 50ms
+✓ Compiled in 48ms
+ GET /principal/calendario-aulas 200 in 112ms (compile: 89ms, render: 23ms)
+ GET /principal 200 in 14ms (compile: 2ms, render: 12ms)
+ GET /principal/calendario-aulas 200 in 15ms (compile: 2ms, render: 13ms)
+✓ Compiled in 53ms
+ GET /principal/calendario-aulas 200 in 189ms (compile: 78ms, render: 111ms)
+ GET /principal/calendario-aulas 200 in 39ms (compile: 3ms, render: 36ms)
+✓ Compiled in 48ms
+✓ Compiled in 96ms
+ GET /dashboard 404 in 241ms (compile: 226ms, render: 16ms)
+ GET /dashboard 404 in 48ms (compile: 4ms, render: 44ms)
+ GET /principal/calendario-aulas 200 in 175ms (compile: 73ms, render: 102ms)
+ GET /principal/calendario-aulas 200 in 14ms (compile: 2ms, render: 12ms)
+ GET /principal 200 in 13ms (compile: 1867µs, render: 11ms)
+ GET /principal/calendario-aulas 200 in 16ms (compile: 3ms, render: 14ms)
+ GET /dashboard 404 in 15ms (compile: 3ms, render: 12ms)
+ GET /dashboard 404 in 29ms (compile: 3ms, render: 26ms)
+ GET /principal/calendario-aulas 200 in 41ms (compile: 2ms, render: 39ms)
+ GET /dashboard 404 in 15ms (compile: 3ms, render: 12ms)
+ GET /dashboard 404 in 27ms (compile: 3ms, render: 25ms)
+ GET /principal/calendario-aulas 200 in 186ms (compile: 76ms, render: 110ms)
+ GET /msinfor-admin 200 in 310ms (compile: 291ms, render: 20ms)
+ GET / 200 in 27ms (compile: 2ms, render: 25ms)
+ GET /principal 200 in 12ms (compile: 1614µs, render: 10ms)
+ GET /principal/calendario-aulas 200 in 14ms (compile: 1674µs, render: 12ms)
+ GET /msinfor-admin 200 in 134ms (compile: 124ms, render: 10ms)
+ GET /msinfor-admin 200 in 136ms (compile: 125ms, render: 11ms)
+ GET /principal 200 in 12ms (compile: 1964µs, render: 10ms)
+✓ Compiled in 47ms
+ GET /principal/calendario-aulas 200 in 64ms (compile: 50ms, render: 14ms)
+ GET /principal 200 in 10ms (compile: 1593µs, render: 8ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 3ms, render: 9ms)
+✓ Compiled in 76ms
+✓ Compiled in 40ms

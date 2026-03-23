@@ -94,6 +94,20 @@ export class LessonAssessmentsService {
     return lessonEvent;
   }
 
+  private requireLessonCalendarItem(
+    lessonEvent: Awaited<
+      ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>
+    >,
+  ) {
+    if (!lessonEvent.lessonCalendarItem) {
+      throw new BadRequestException(
+        "A avaliação precisa estar vinculada a uma aula válida.",
+      );
+    }
+
+    return lessonEvent.lessonCalendarItem;
+  }
+
   async findMyTeacherAssessments(query: ListMyTeacherAssessmentsDto) {
     const normalizedStatus = String(query.status || "ALL").trim().toUpperCase();
     const events = await this.prisma.lessonEvent.findMany({
@@ -139,11 +153,12 @@ export class LessonAssessmentsService {
     });
 
     const enrollmentKeys = new Map<string, number>();
+    const linkedEvents = events.filter((event) => event.lessonCalendarItem);
     const uniqueCombos = Array.from(
       new Set(
-        events.map(
+        linkedEvents.map(
           (event) =>
-            `${event.lessonCalendarItem.schoolYearId}:${event.lessonCalendarItem.seriesClassId}`,
+            `${event.lessonCalendarItem!.schoolYearId}:${event.lessonCalendarItem!.seriesClassId}`,
         ),
       ),
     );
@@ -167,8 +182,9 @@ export class LessonAssessmentsService {
       }),
     );
 
-    const mapped = events.map((event) => {
-      const comboKey = `${event.lessonCalendarItem.schoolYearId}:${event.lessonCalendarItem.seriesClassId}`;
+    const mapped = linkedEvents.map((event) => {
+      const lessonItem = event.lessonCalendarItem!;
+      const comboKey = `${lessonItem.schoolYearId}:${lessonItem.seriesClassId}`;
       const totalStudents = enrollmentKeys.get(comboKey) || 0;
       const gradedStudentsCount =
         event.assessment?.grades.filter((grade) => grade.score !== null).length || 0;
@@ -180,18 +196,14 @@ export class LessonAssessmentsService {
         eventTypeLabel: event.eventType === "PROVA" ? "PROVA" : "TRABALHO",
         title: event.title,
         description: event.description,
-        lessonDate: event.lessonCalendarItem.lessonDate,
-        startTime: event.lessonCalendarItem.startTime,
-        endTime: event.lessonCalendarItem.endTime,
-        subjectName:
-          event.lessonCalendarItem.teacherSubject.subject?.name || "DISCIPLINA",
-        teacherName:
-          event.lessonCalendarItem.teacherSubject.teacher?.name || "PROFESSOR",
-        seriesName:
-          event.lessonCalendarItem.seriesClass.series?.name || "SEM SÉRIE",
-        className:
-          event.lessonCalendarItem.seriesClass.class?.name || "SEM TURMA",
-        shift: event.lessonCalendarItem.seriesClass.class?.shift || null,
+        lessonDate: lessonItem.lessonDate,
+        startTime: lessonItem.startTime,
+        endTime: lessonItem.endTime,
+        subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
+        teacherName: lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
+        seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
+        className: lessonItem.seriesClass.class?.name || "SEM TURMA",
+        shift: lessonItem.seriesClass.class?.shift || null,
         totalStudents,
         gradedStudentsCount,
         pendingStudentsCount: Math.max(totalStudents - gradedStudentsCount, 0),
@@ -217,11 +229,12 @@ export class LessonAssessmentsService {
   }
 
   private async findActiveStudentsForLessonEvent(lessonEvent: Awaited<ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>>) {
+    const lessonItem = this.requireLessonCalendarItem(lessonEvent);
     return this.prisma.enrollment.findMany({
       where: {
         tenantId: this.tenantId(),
-        schoolYearId: lessonEvent.lessonCalendarItem.schoolYearId,
-        seriesClassId: lessonEvent.lessonCalendarItem.seriesClassId,
+        schoolYearId: lessonItem.schoolYearId,
+        seriesClassId: lessonItem.seriesClassId,
         status: "ATIVO",
         canceledAt: null,
         student: {
@@ -250,6 +263,7 @@ export class LessonAssessmentsService {
     lessonEvent: Awaited<ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>>,
     enrollments: Awaited<ReturnType<LessonAssessmentsService["findActiveStudentsForLessonEvent"]>>,
   ) {
+    const lessonItem = this.requireLessonCalendarItem(lessonEvent);
     const gradesByStudent = new Map(
       (lessonEvent.assessment?.grades || []).map((grade) => [grade.studentId, grade]),
     );
@@ -263,22 +277,16 @@ export class LessonAssessmentsService {
         description: lessonEvent.description,
       },
       lessonItem: {
-        id: lessonEvent.lessonCalendarItem.id,
-        lessonDate: lessonEvent.lessonCalendarItem.lessonDate,
-        startTime: lessonEvent.lessonCalendarItem.startTime,
-        endTime: lessonEvent.lessonCalendarItem.endTime,
-        subjectName:
-          lessonEvent.lessonCalendarItem.teacherSubject.subject?.name ||
-          "DISCIPLINA",
-        teacherName:
-          lessonEvent.lessonCalendarItem.teacherSubject.teacher?.name ||
-          "PROFESSOR",
-        seriesName:
-          lessonEvent.lessonCalendarItem.seriesClass.series?.name || "SEM SÉRIE",
-        className:
-          lessonEvent.lessonCalendarItem.seriesClass.class?.name || "SEM TURMA",
-        schoolYearId: lessonEvent.lessonCalendarItem.schoolYearId,
-        seriesClassId: lessonEvent.lessonCalendarItem.seriesClassId,
+        id: lessonItem.id,
+        lessonDate: lessonItem.lessonDate,
+        startTime: lessonItem.startTime,
+        endTime: lessonItem.endTime,
+        subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
+        teacherName: lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
+        seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
+        className: lessonItem.seriesClass.class?.name || "SEM TURMA",
+        schoolYearId: lessonItem.schoolYearId,
+        seriesClassId: lessonItem.seriesClassId,
       },
       assessment: lessonEvent.assessment
         ? {
@@ -316,6 +324,7 @@ export class LessonAssessmentsService {
 
   async upsertByLessonEvent(lessonEventId: string, dto: UpsertLessonAssessmentDto) {
     const lessonEvent = await this.findLessonEventForTeacher(lessonEventId);
+    const lessonItem = this.requireLessonCalendarItem(lessonEvent);
     const enrollments = await this.findActiveStudentsForLessonEvent(lessonEvent);
     const validStudentIds = new Set(enrollments.map((enrollment) => enrollment.studentId));
 
@@ -374,7 +383,7 @@ export class LessonAssessmentsService {
             data: {
               tenantId: this.tenantId(),
               lessonEventId,
-              lessonCalendarItemId: lessonEvent.lessonCalendarItemId,
+              lessonCalendarItemId: lessonItem.id,
               teacherId: this.userId(),
               assessmentType: lessonEvent.eventType,
               title: assessmentTitle,
@@ -447,7 +456,7 @@ export class LessonAssessmentsService {
             notifyGuardians: result.notifyGuardians,
             notifyByEmail: result.notifyByEmail,
           },
-          lessonItem: lessonEvent.lessonCalendarItem,
+          lessonItem,
           gradedStudents: assessedStudents,
         });
 

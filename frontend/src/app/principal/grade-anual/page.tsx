@@ -12,6 +12,7 @@ import StatusConfirmationModal from '@/app/components/status-confirmation-modal'
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 import {
     buildGridAggregateSummaries,
     getAllGridColumnKeys,
@@ -1067,8 +1068,9 @@ export default function GradeAnualPage() {
                                     Sempre que a grade semanal mudar ao longo do ano, use o botão <span className="font-bold text-slate-800">Buscar novamente grade semanal</span> antes de salvar ou use a ação da listagem para regenerar a grade anual já cadastrada.
                                 </div>
                                 <div className="mt-6 text-right text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">
-                                    Tela: {GRADE_ANNUAL_MODAL_LABEL}
+                                    <ScreenNameCopy screenId={GRADE_ANNUAL_MODAL_LABEL} className="justify-end" />
                                 </div>
+                            </div>
                         </div>
                         <div className="sticky bottom-0 left-0 right-0 z-20 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm">
                             <div className="flex items-center justify-between gap-3">

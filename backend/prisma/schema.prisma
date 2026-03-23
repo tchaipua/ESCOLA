@@ -747,11 +747,19 @@ model LessonCalendarItem {
 model LessonEvent {
   id                 String   @id @default(uuid())
   tenantId           String
-  lessonCalendarItemId String
+  lessonCalendarItemId String?
   teacherId          String
   eventType          String
   title              String
   description        String?
+  eventDate          DateTime?
+  schoolYearId       String?
+  seriesClassId      String?
+  teacherSubjectId   String?
+  subjectNameSnapshot String?
+  seriesNameSnapshot  String?
+  classNameSnapshot   String?
+  shiftSnapshot       String?
   notifyStudents     Boolean  @default(true)
   notifyGuardians    Boolean  @default(true)
   notifyByEmail      Boolean  @default(true)
@@ -765,13 +773,15 @@ model LessonEvent {
   canceledBy String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  lessonCalendarItem LessonCalendarItem @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem? @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
   teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
   assessment LessonAssessment?
 
   @@index([tenantId])
   @@index([lessonCalendarItemId])
   @@index([teacherId])
+  @@index([eventDate])
+  @@index([schoolYearId, seriesClassId])
   @@map("lesson_events")
 }
 

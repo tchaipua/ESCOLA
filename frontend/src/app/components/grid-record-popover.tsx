@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 type GridRecordPopoverItem = {
     label: string;
@@ -180,8 +181,8 @@ export default function GridRecordPopover({
                                     ))}
                                 </div>
                                 {contextLabel ? (
-                                    <div className="mt-auto text-[10px] font-black uppercase tracking-[0.4em] text-slate-400 text-right">
-                                        Tela: {contextLabel}
+                                    <div className="mt-auto text-right">
+                                        <ScreenNameCopy screenId={contextLabel} className="justify-end" />
                                     </div>
                                 ) : null}
                             </div>

@@ -21,12 +21,15 @@ type LessonEventNotificationPayload = {
     notifyByEmail: boolean;
   };
   lessonItem: {
-    id: string;
+    id?: string | null;
     lessonDate: Date;
-    startTime: string;
-    endTime: string;
+    startTime?: string | null;
+    endTime?: string | null;
     schoolYearId: string;
     seriesClassId: string;
+    subjectName?: string | null;
+    teacherName?: string | null;
+    shift?: string | null;
     teacherSubject: {
       subject?: { name?: string | null } | null;
       teacher?: { name?: string | null } | null;
@@ -173,10 +176,18 @@ export class NotificationsService {
       payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE";
     const className = payload.lessonItem.seriesClass?.class?.name || "SEM TURMA";
     const subjectName =
-      payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
+      payload.lessonItem.teacherSubject?.subject?.name ||
+      payload.lessonItem.subjectName ||
+      "DISCIPLINA";
     const teacherName =
-      payload.lessonItem.teacherSubject?.teacher?.name || "PROFESSOR";
-    const base = `${this.getEventTypeLabel(payload.lessonEvent.eventType)} EM ${subjectName} NO DIA ${this.formatDate(payload.lessonItem.lessonDate)} DAS ${payload.lessonItem.startTime} ÀS ${payload.lessonItem.endTime} PARA ${seriesName} - ${className}.`;
+      payload.lessonItem.teacherSubject?.teacher?.name ||
+      payload.lessonItem.teacherName ||
+      "PROFESSOR";
+    const timeRange =
+      payload.lessonItem.startTime && payload.lessonItem.endTime
+        ? ` DAS ${payload.lessonItem.startTime} ÀS ${payload.lessonItem.endTime}`
+        : "";
+    const base = `${this.getEventTypeLabel(payload.lessonEvent.eventType)} EM ${subjectName} NO DIA ${this.formatDate(payload.lessonItem.lessonDate)}${timeRange} PARA ${seriesName} - ${className}.`;
     const detail = payload.lessonEvent.description
       ? ` ${payload.lessonEvent.description}`
       : "";
@@ -342,14 +353,22 @@ export class NotificationsService {
         : undefined,
     });
 
-    const subject = `${this.getEventTypeLabel(payload.lessonEvent.eventType)} - ${payload.lessonItem.teacherSubject?.subject?.name || "AULA"}`;
+    const subjectName =
+      payload.lessonItem.teacherSubject?.subject?.name ||
+      payload.lessonItem.subjectName ||
+      "DISCIPLINA NÃO INFORMADA";
+    const subject = `${this.getEventTypeLabel(payload.lessonEvent.eventType)} - ${subjectName}`;
+    const timeLabel =
+      payload.lessonItem.startTime && payload.lessonItem.endTime
+        ? `${payload.lessonItem.startTime} às ${payload.lessonItem.endTime}`
+        : "Sem horário vinculado";
     const textBody = [
       `${payload.action === "UPDATE" ? "Houve uma atualização" : "Foi lançado um novo aviso"} na agenda escolar.`,
       `Tipo: ${this.getEventTypeLabel(payload.lessonEvent.eventType)}`,
       `Data: ${this.formatDate(payload.lessonItem.lessonDate)}`,
-      `Horário: ${payload.lessonItem.startTime} às ${payload.lessonItem.endTime}`,
+      `Horário: ${timeLabel}`,
       `Turma: ${(payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE")} - ${(payload.lessonItem.seriesClass?.class?.name || "SEM TURMA")}`,
-      `Disciplina: ${payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA NÃO INFORMADA"}`,
+      `Disciplina: ${subjectName}`,
       payload.lessonEvent.description
         ? `Detalhes: ${payload.lessonEvent.description}`
         : null,
@@ -373,9 +392,9 @@ export class NotificationsService {
                 <h2 style="margin: 0 0 12px;">${payload.action === "UPDATE" ? "Atualização de agenda" : "Novo aviso na agenda escolar"}</h2>
                 <p><strong>Tipo:</strong> ${this.getEventTypeLabel(payload.lessonEvent.eventType)}</p>
                 <p><strong>Data:</strong> ${this.formatDate(payload.lessonItem.lessonDate)}</p>
-                <p><strong>Horário:</strong> ${payload.lessonItem.startTime} às ${payload.lessonItem.endTime}</p>
+                <p><strong>Horário:</strong> ${timeLabel}</p>
                 <p><strong>Turma:</strong> ${(payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE")} - ${(payload.lessonItem.seriesClass?.class?.name || "SEM TURMA")}</p>
-                <p><strong>Disciplina:</strong> ${payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA NÃO INFORMADA"}</p>
+                <p><strong>Disciplina:</strong> ${subjectName}</p>
                 ${
                   payload.lessonEvent.description
                     ? `<p><strong>Detalhes:</strong> ${payload.lessonEvent.description}</p>`
@@ -534,6 +553,8 @@ export class NotificationsService {
         sourceId: payload.lessonEvent.id,
         metadata: JSON.stringify({
           lessonCalendarItemId: payload.lessonItem.id,
+          schoolYearId: payload.lessonItem.schoolYearId,
+          seriesClassId: payload.lessonItem.seriesClassId,
           eventType: payload.lessonEvent.eventType,
           lessonDate: payload.lessonItem.lessonDate,
         }),

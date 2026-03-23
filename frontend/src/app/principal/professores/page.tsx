@@ -18,6 +18,7 @@ import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRo
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 type SubjectRecord = {
     id: string;
@@ -2145,9 +2146,7 @@ export default function ProfessoresPage() {
                                 </button>
                             </div>
                         </div>
-                        <div className="mt-3 w-full text-right text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">
-                            Tela: PRINCIPAL_PROFESSORES_DETAIL
-                        </div>
+                        <ScreenNameCopy screenId="PRINCIPAL_PROFESSORES_DETAIL" />
                     </div>
                     </div>
                 </div>

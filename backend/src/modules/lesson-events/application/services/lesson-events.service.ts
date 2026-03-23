@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -7,6 +8,7 @@ import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 import { CreateLessonEventDto } from "../dto/create-lesson-event.dto";
+import { CreateStandaloneLessonNoticeDto } from "../dto/create-standalone-lesson-notice.dto";
 import { UpdateLessonEventDto } from "../dto/update-lesson-event.dto";
 import { FindMyTeacherAgendaDto } from "../dto/find-my-teacher-agenda.dto";
 import { FindMyTeacherCalendarDto } from "../dto/find-my-teacher-calendar.dto";
@@ -163,6 +165,18 @@ export class LessonEventsService {
     };
   }
 
+  private parseDateOnly(value: string) {
+    return new Date(`${value}T00:00:00.000Z`);
+  }
+
+  private formatDisplayTimeRange(startTime?: string | null, endTime?: string | null) {
+    if (!startTime || !endTime) {
+      return "SEM HORÁRIO";
+    }
+
+    return `${startTime} - ${endTime}`;
+  }
+
   private mapLessonItem(item: any) {
     const dateKey = this.formatDateKey(item.lessonDate);
 
@@ -178,8 +192,42 @@ export class LessonEventsService {
       seriesName: item.seriesClass.series?.name || "SEM SÉRIE",
       className: item.seriesClass.class?.name || "SEM TURMA",
       shift: item.seriesClass.class?.shift || null,
+      schoolYearId: item.schoolYearId,
+      seriesClassId: item.seriesClassId,
+      teacherSubjectId: item.teacherSubjectId,
       events: item.lessonEvents.map((event: any) => this.mapEvent(event)),
       hasEvents: item.lessonEvents.length > 0,
+      isStandaloneNotice: false,
+    };
+  }
+
+  private mapStandaloneEventItem(event: any) {
+    const date = event.eventDate || event.createdAt;
+    const dateKey = this.formatDateKey(date);
+
+    return {
+      id: `STANDALONE-${event.id}`,
+      lessonDate: dateKey,
+      dateLabel: this.formatDateLabel(date),
+      dayOfWeek: new Intl.DateTimeFormat("pt-BR", {
+        weekday: "long",
+        timeZone: "UTC",
+      }).format(new Date(date)),
+      startTime: event.startTime || "AVISO",
+      endTime: event.endTime || "",
+      displayTimeLabel: "EVENTO EXTRA",
+      subjectName: event.title || event.subjectNameSnapshot || "RECADO AVULSO",
+      teacherName: "PROFESSOR",
+      seriesName: event.seriesNameSnapshot || "SEM SÉRIE",
+      className: event.classNameSnapshot || "SEM TURMA",
+      shift: event.shiftSnapshot || null,
+      events: [this.mapEvent(event)],
+      hasEvents: true,
+      isStandaloneNotice: true,
+      standaloneEventId: event.id,
+      schoolYearId: event.schoolYearId || null,
+      seriesClassId: event.seriesClassId || null,
+      teacherSubjectId: event.teacherSubjectId || null,
     };
   }
 
@@ -228,6 +276,75 @@ export class LessonEventsService {
       },
       orderBy: [{ lessonDate: "asc" }, { startTime: "asc" }],
     });
+  }
+
+  private async findTeacherStandaloneEvents(start: Date, end: Date) {
+    return this.prisma.lessonEvent.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        teacherId: this.userId(),
+        lessonCalendarItemId: null,
+        canceledAt: null,
+        eventDate: {
+          gte: start,
+          lte: end,
+        },
+      },
+      orderBy: [{ eventDate: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  private async findStandaloneTargetForTeacher(
+    schoolYearId: string,
+    seriesClassId: string,
+    teacherSubjectId: string,
+  ) {
+    const lessonItem = await this.prisma.lessonCalendarItem.findFirst({
+      where: {
+        tenantId: this.tenantId(),
+        canceledAt: null,
+        schoolYearId,
+        seriesClassId,
+        teacherSubjectId,
+        teacherSubject: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+            teacherId: this.userId(),
+            teacher: {
+              is: {
+                tenantId: this.tenantId(),
+                canceledAt: null,
+              },
+            },
+          },
+        },
+      },
+      include: {
+        teacherSubject: {
+          include: {
+            subject: true,
+            teacher: true,
+          },
+        },
+        seriesClass: {
+          include: {
+            series: true,
+            class: true,
+          },
+        },
+        schoolYear: true,
+      },
+      orderBy: [{ lessonDate: "asc" }],
+    });
+
+    if (!lessonItem) {
+      throw new NotFoundException(
+        "Turma e disciplina não encontradas para este professor.",
+      );
+    }
+
+    return lessonItem;
   }
 
   private async findLessonItemForTeacher(lessonCalendarItemId: string) {
@@ -310,6 +427,81 @@ export class LessonEventsService {
     return lessonEvent;
   }
 
+  private buildStandaloneLessonContextFromTarget(target: any, eventDate: Date) {
+    return {
+      id: null,
+      lessonDate: eventDate,
+      startTime: null,
+      endTime: null,
+      schoolYearId: target.schoolYearId,
+      seriesClassId: target.seriesClassId,
+      subjectName: target.teacherSubject?.subject?.name || null,
+      teacherName: target.teacherSubject?.teacher?.name || null,
+      shift: target.seriesClass?.class?.shift || null,
+      teacherSubject: target.teacherSubject,
+      seriesClass: target.seriesClass,
+    };
+  }
+
+  private buildNotificationLessonContext(event: any) {
+    if (event.lessonCalendarItem) {
+      return {
+        id: event.lessonCalendarItem.id,
+        lessonDate: event.lessonCalendarItem.lessonDate,
+        startTime: event.lessonCalendarItem.startTime,
+        endTime: event.lessonCalendarItem.endTime,
+        schoolYearId: event.lessonCalendarItem.schoolYearId,
+        seriesClassId: event.lessonCalendarItem.seriesClassId,
+        subjectName: event.lessonCalendarItem.teacherSubject?.subject?.name || null,
+        teacherName: event.lessonCalendarItem.teacherSubject?.teacher?.name || null,
+        shift: event.lessonCalendarItem.seriesClass?.class?.shift || null,
+        teacherSubject: event.lessonCalendarItem.teacherSubject,
+        seriesClass: event.lessonCalendarItem.seriesClass,
+      };
+    }
+
+    return {
+      id: null,
+      lessonDate: event.eventDate,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      schoolYearId: event.schoolYearId,
+      seriesClassId: event.seriesClassId,
+      subjectName: event.subjectNameSnapshot || null,
+      teacherName: null,
+      shift: event.shiftSnapshot || null,
+      teacherSubject: {
+        subject: { name: event.subjectNameSnapshot || null },
+        teacher: { name: null },
+      },
+      seriesClass: {
+        series: { name: event.seriesNameSnapshot || null },
+        class: { name: event.classNameSnapshot || null },
+      },
+    };
+  }
+
+  private async buildNotificationContextForEvent(event: any) {
+    if (event.lessonCalendarItemId) {
+      return this.buildNotificationLessonContext(event);
+    }
+
+    if (event.schoolYearId && event.seriesClassId && event.teacherSubjectId) {
+      const target = await this.findStandaloneTargetForTeacher(
+        event.schoolYearId,
+        event.seriesClassId,
+        event.teacherSubjectId,
+      );
+
+      return this.buildStandaloneLessonContextFromTarget(
+        target,
+        event.eventDate || new Date(),
+      );
+    }
+
+    return this.buildNotificationLessonContext(event);
+  }
+
   private mapEvent(event: any) {
     return {
       id: event.id,
@@ -320,25 +512,99 @@ export class LessonEventsService {
       notifyStudents: event.notifyStudents,
       notifyGuardians: event.notifyGuardians,
       notifyByEmail: event.notifyByEmail,
+      isStandaloneNotice: !event.lessonCalendarItemId,
       lastNotifiedAt: event.lastNotifiedAt,
       createdAt: event.createdAt,
       updatedAt: event.updatedAt,
     };
   }
 
+  async findStandaloneTargets() {
+    const lessonItems = await this.prisma.lessonCalendarItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        canceledAt: null,
+        teacherSubject: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+            teacherId: this.userId(),
+            teacher: {
+              is: {
+                tenantId: this.tenantId(),
+                canceledAt: null,
+              },
+            },
+          },
+        },
+      },
+      include: {
+        schoolYear: true,
+        seriesClass: {
+          include: {
+            series: true,
+            class: true,
+          },
+        },
+        teacherSubject: {
+          include: {
+            subject: true,
+          },
+        },
+      },
+      orderBy: [
+        { schoolYear: { year: "desc" } },
+        { lessonDate: "asc" },
+      ],
+    });
+
+    const uniqueTargets = new Map<string, any>();
+    for (const item of lessonItems) {
+      const key = `${item.schoolYearId}:${item.seriesClassId}:${item.teacherSubjectId}`;
+      if (uniqueTargets.has(key)) {
+        continue;
+      }
+
+      uniqueTargets.set(key, {
+        key,
+        schoolYearId: item.schoolYearId,
+        schoolYearLabel: String(item.schoolYear?.year || ""),
+        seriesClassId: item.seriesClassId,
+        teacherSubjectId: item.teacherSubjectId,
+        subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
+        seriesName: item.seriesClass?.series?.name || "SEM SÉRIE",
+        className: item.seriesClass?.class?.name || "SEM TURMA",
+        shift: item.seriesClass?.class?.shift || null,
+        label: `${item.seriesClass?.series?.name || "SEM SÉRIE"} - ${item.seriesClass?.class?.name || "SEM TURMA"} • ${item.teacherSubject?.subject?.name || "DISCIPLINA"} • ${item.schoolYear?.year || ""}`,
+      });
+    }
+
+    return Array.from(uniqueTargets.values());
+  }
+
   async findMyAgenda(query: FindMyTeacherAgendaDto) {
     const { selectedDate, start, end } = this.buildDateRange(query.date);
-    const items = await this.findTeacherLessonItems(start, end);
+    const [lessonItems, standaloneEvents] = await Promise.all([
+      this.findTeacherLessonItems(start, end),
+      this.findTeacherStandaloneEvents(start, end),
+    ]);
+    const items = [
+      ...lessonItems.map((item) => this.mapLessonItem(item)),
+      ...standaloneEvents.map((event) => this.mapStandaloneEventItem(event)),
+    ].sort((left, right) => {
+      const dateCompare = left.lessonDate.localeCompare(right.lessonDate);
+      if (dateCompare !== 0) return dateCompare;
+      return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+    });
 
     const grouped = new Map<string, any[]>();
     for (const item of items) {
-      const mappedItem = this.mapLessonItem(item);
-      const dateKey = mappedItem.lessonDate;
+      const dateKey = item.lessonDate;
       if (!grouped.has(dateKey)) {
         grouped.set(dateKey, []);
       }
 
-      grouped.get(dateKey)!.push(mappedItem);
+      grouped.get(dateKey)!.push(item);
     }
 
     const days = Array.from(grouped.entries()).map(([date, dayItems]) => ({
@@ -365,8 +631,18 @@ export class LessonEventsService {
       query.referenceDate,
       query.view,
     );
-    const items = await this.findTeacherLessonItems(start, end);
-    const mappedItems = items.map((item) => this.mapLessonItem(item));
+    const [lessonItems, standaloneEvents] = await Promise.all([
+      this.findTeacherLessonItems(start, end),
+      this.findTeacherStandaloneEvents(start, end),
+    ]);
+    const mappedItems = [
+      ...lessonItems.map((item) => this.mapLessonItem(item)),
+      ...standaloneEvents.map((event) => this.mapStandaloneEventItem(event)),
+    ].sort((left, right) => {
+      const dateCompare = left.lessonDate.localeCompare(right.lessonDate);
+      if (dateCompare !== 0) return dateCompare;
+      return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+    });
     const dates = new Set(mappedItems.map((item) => item.lessonDate));
 
     return {
@@ -377,6 +653,66 @@ export class LessonEventsService {
       totalItems: mappedItems.length,
       totalDaysWithLessons: dates.size,
       items: mappedItems,
+    };
+  }
+
+  async createStandaloneNotice(createDto: CreateStandaloneLessonNoticeDto) {
+    const eventType = "RECADO";
+    const eventDate = this.parseDateOnly(createDto.eventDate);
+    const target = await this.findStandaloneTargetForTeacher(
+      createDto.schoolYearId,
+      createDto.seriesClassId,
+      createDto.teacherSubjectId,
+    );
+
+    const lessonEvent = await this.prisma.lessonEvent.create({
+      data: {
+        tenantId: this.tenantId(),
+        lessonCalendarItemId: null,
+        teacherId: this.userId(),
+        eventType,
+        title: this.normalizeText(
+          createDto.title || this.getDefaultTitle(eventType),
+        ),
+        description: createDto.description
+          ? this.normalizeText(createDto.description)
+          : null,
+        notifyStudents: createDto.notifyStudents !== false,
+        notifyGuardians: createDto.notifyGuardians !== false,
+        notifyByEmail: createDto.notifyByEmail !== false,
+        eventDate,
+        schoolYearId: target.schoolYearId,
+        seriesClassId: target.seriesClassId,
+        teacherSubjectId: target.teacherSubjectId,
+        subjectNameSnapshot: target.teacherSubject?.subject?.name || null,
+        seriesNameSnapshot: target.seriesClass?.series?.name || null,
+        classNameSnapshot: target.seriesClass?.class?.name || null,
+        shiftSnapshot: target.seriesClass?.class?.shift || null,
+        createdBy: this.userId(),
+        updatedBy: this.userId(),
+      },
+    });
+
+    const dispatchResult =
+      await this.notificationsService.dispatchLessonEventNotifications({
+        lessonEvent,
+        lessonItem: this.buildStandaloneLessonContextFromTarget(target, eventDate),
+        action: "CREATE",
+      });
+
+    const syncedEvent = await this.prisma.lessonEvent.update({
+      where: { id: lessonEvent.id },
+      data: {
+        lastNotifiedAt:
+          dispatchResult.notificationsCreated > 0 ? new Date() : null,
+        updatedBy: this.userId(),
+      },
+    });
+
+    return {
+      ...this.mapEvent(syncedEvent),
+      notificationsCreated: dispatchResult.notificationsCreated,
+      emailSent: dispatchResult.emailSent,
     };
   }
 
@@ -451,7 +787,13 @@ export class LessonEventsService {
       ? this.normalizeText(updateDto.eventType)
       : currentEvent.eventType;
 
-    if (nextEventType !== currentEvent.eventType) {
+    if (!currentEvent.lessonCalendarItemId && nextEventType !== "RECADO") {
+      throw new BadRequestException(
+        "Aviso avulso aceita somente o tipo RECADO.",
+      );
+    }
+
+    if (currentEvent.lessonCalendarItemId && nextEventType !== currentEvent.eventType) {
       const conflict = await this.prisma.lessonEvent.findFirst({
         where: {
           tenantId: this.tenantId(),
@@ -491,12 +833,33 @@ export class LessonEventsService {
         notifyByEmail: updateDto.notifyByEmail,
         updatedBy: this.userId(),
       },
+      include: {
+        lessonCalendarItem: {
+          include: {
+            teacherSubject: {
+              include: {
+                subject: true,
+                teacher: true,
+              },
+            },
+            seriesClass: {
+              include: {
+                series: true,
+                class: true,
+              },
+            },
+          },
+        },
+      },
     });
+
+    const notificationLessonItem =
+      await this.buildNotificationContextForEvent(updatedEvent);
 
     const dispatchResult =
       await this.notificationsService.dispatchLessonEventNotifications({
         lessonEvent: updatedEvent,
-        lessonItem: currentEvent.lessonCalendarItem,
+        lessonItem: notificationLessonItem,
         action: "UPDATE",
       });
 
