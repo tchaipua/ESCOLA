@@ -38,6 +38,7 @@ type Teacher = {
 };
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
+const DISCIPLINAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS_STATUS_MODAL';
 
 type SubjectColumnKey = 'name' | 'recordStatus';
 type SubjectExportColumnKey = SubjectColumnKey;
@@ -769,12 +770,12 @@ export default function DisciplinasPage() {
                 description={toggleModalAction === 'activate'
                     ? 'Ao ativar esta disciplina ela voltará a ser oferecida na grade e os professores poderão vinculá-la novamente.'
                     : 'Ao inativar esta disciplina ela será removida das opções de vinculação e aparecerá como inativa em relatórios.'}
-                hintText="Esta ação é obrigatória para manter a conformidade com o histórico da escola."
                 confirmLabel={toggleModalAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeToggleModal(true)}
                 onConfirm={confirmToggleSubjectStatus}
                 isProcessing={isProcessingToggle}
                 statusActive={!toggleModalSubject?.canceledAt}
+                screenId={DISCIPLINAS_STATUS_MODAL_SCREEN_ID}
             />
 
             {isModalOpen ? (

@@ -50,6 +50,7 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
+const ALUNOS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_ALUNOS_STATUS_MODAL';
 
 const KINSHIP_OPTIONS = [
     { value: 'PAI', label: 'PAI' },
@@ -1533,12 +1534,12 @@ export default function AlunosPage() {
                 description={studentStatusToggleAction === 'activate'
                     ? 'Ao ativar um aluno, ele volta a constar na lista de ativos e pode ser matriculado novamente nas turmas e relatórios.'
                     : 'Ao inativar um aluno, seu histórico fica preservado e ele deixa de ser considerado ativo para futuras operações.'}
-                hintText="Esta ação mantém a trilha de auditoria do aluno."
                 confirmLabel={studentStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeStudentStatusModal(true)}
                 onConfirm={confirmStudentStatusToggle}
                 isProcessing={isProcessingStudentToggle}
                 statusActive={!studentStatusToggleTarget?.canceledAt}
+                screenId={ALUNOS_STATUS_MODAL_SCREEN_ID}
             />
 
             <GridExportModal

@@ -37,6 +37,7 @@ import {
     PERMISSION_OPTIONS,
     type AccessProfileCode,
 } from '@/app/lib/access-profiles';
+const RESPONSAVEIS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_STATUS_MODAL';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
@@ -970,12 +971,12 @@ export default function ResponsaveisPage() {
                 description={guardianStatusToggleAction === 'activate'
                     ? 'Ao ativar este responsável ele volta a ter acesso ao PWA e pode acompanhar os alunos novamente.'
                     : 'Ao inativar este responsável, ele sai das listas de comunicação ativos, mas o histórico persiste.'}
-                hintText="A alteração fica registrada na trilha de auditoria."
                 confirmLabel={guardianStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeGuardianStatusModal(true)}
                 onConfirm={confirmGuardianStatusToggle}
                 isProcessing={isProcessingGuardianToggle}
                 statusActive={!guardianStatusToggleTarget?.canceledAt}
+                screenId={RESPONSAVEIS_STATUS_MODAL_SCREEN_ID}
             />
 
             <GridExportModal

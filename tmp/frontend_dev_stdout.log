@@ -100,3 +100,77 @@
  GET /principal/grade-horaria 200 in 165ms (compile: 153ms, render: 12ms)
  GET /principal/grade-anual 200 in 186ms (compile: 171ms, render: 15ms)
 ✓ Compiled in 43ms
+✓ Compiled in 47ms
+✓ Compiled in 44ms
+ GET /principal/turmas 200 in 142ms (compile: 130ms, render: 12ms)
+✓ Compiled in 42ms
+✓ Compiled in 41ms
+✓ Compiled in 37ms
+✓ Compiled in 76ms
+ GET / 200 in 30ms (compile: 3ms, render: 27ms)
+ GET /principal 200 in 12ms (compile: 1950µs, render: 10ms)
+✓ Compiled in 47ms
+ GET /principal 200 in 15ms (compile: 1642µs, render: 13ms)
+ GET /principal/turmas 200 in 303ms (compile: 281ms, render: 23ms)
+ GET /principal/series 200 in 155ms (compile: 142ms, render: 13ms)
+✓ Compiled in 44ms
+ GET /principal/turmas 200 in 129ms (compile: 119ms, render: 10ms)
+✓ Compiled in 44ms
+✓ Compiled in 45ms
+✓ Compiled in 39ms
+✓ Compiled in 36ms
+✓ Compiled in 44ms
+✓ Compiled in 40ms
+✓ Compiled in 41ms
+✓ Compiled in 35ms
+✓ Compiled in 45ms
+✓ Compiled in 36ms
+✓ Compiled in 41ms
+✓ Compiled in 54ms
+✓ Compiled in 40ms
+✓ Compiled in 46ms
+✓ Compiled in 41ms
+✓ Compiled in 81ms
+✓ Compiled in 89ms
+✓ Compiled in 46ms
+✓ Compiled in 42ms
+✓ Compiled in 45ms
+✓ Compiled in 73ms
+✓ Compiled in 131ms
+✓ Compiled in 39ms
+✓ Compiled in 40ms
+✓ Compiled in 46ms
+✓ Compiled in 40ms
+✓ Compiled in 43ms
+✓ Compiled in 78ms
+✓ Compiled in 43ms
+✓ Compiled in 73ms
+✓ Compiled in 41ms
+✓ Compiled in 41ms
+✓ Compiled in 45ms
+✓ Compiled in 45ms
+ GET /principal/grade-anual 200 in 296ms (compile: 277ms, render: 19ms)
+ GET / 200 in 16ms (compile: 1977µs, render: 14ms)
+✓ Compiled in 47ms
+ GET /principal 200 in 77ms (compile: 62ms, render: 16ms)
+ GET /principal/lancar-notas 200 in 49ms (compile: 35ms, render: 14ms)
+ GET /principal/calendario-aulas 200 in 82ms (compile: 66ms, render: 16ms)
+ GET / 200 in 86ms (compile: 66ms, render: 20ms)
+ GET /principal 200 in 12ms (compile: 1602µs, render: 10ms)
+ GET /principal/series 200 in 255ms (compile: 238ms, render: 17ms)
+ GET /principal/grade-horaria 200 in 222ms (compile: 202ms, render: 19ms)
+ GET /principal/grade-anual 200 in 147ms (compile: 135ms, render: 12ms)
+ GET /principal/grade-horaria 200 in 187ms (compile: 174ms, render: 13ms)
+ GET /principal/grade-anual 200 in 168ms (compile: 157ms, render: 12ms)
+✓ Compiled in 44ms
+✓ Compiled in 50ms
+✓ Compiled in 45ms
+✓ Compiled in 47ms
+✓ Compiled in 48ms
+✓ Compiled in 41ms
+✓ Compiled in 45ms
+✓ Compiled in 80ms
+✓ Compiled in 43ms
+ GET /principal/grade-horaria 200 in 123ms (compile: 111ms, render: 12ms)
+ GET /principal/grade-anual 200 in 202ms (compile: 180ms, render: 23ms)
+ GET /principal/grade-anual 200 in 133ms (compile: 121ms, render: 12ms)

@@ -190,6 +190,26 @@ export class AuthService {
     };
   }
 
+  private async loadAccountPassword(
+    modelType: AccountModelType,
+    userId: string,
+    tenantId: string,
+  ): Promise<{ password: string | null } | null> {
+    const where = { id: userId, tenantId };
+    switch (modelType) {
+      case "user":
+        return this.prisma.user.findFirst({ where, select: { password: true } });
+      case "teacher":
+        return this.prisma.teacher.findFirst({ where, select: { password: true } });
+      case "student":
+        return this.prisma.student.findFirst({ where, select: { password: true } });
+      case "guardian":
+        return this.prisma.guardian.findFirst({ where, select: { password: true } });
+      default:
+        return null;
+    }
+  }
+
   private getUniqueTenants(accounts: AccountLookup[]) {
     return Array.from(
       new Map(
@@ -320,14 +340,15 @@ export class AuthService {
         );
       }
 
-      const payload = {
-        userId: MASTER_USER_ID,
-        tenantId: selectedTenant.id,
-        role: MASTER_ROLE,
-        permissions: MASTER_PERMISSIONS,
-        isMaster: true,
-        name: MASTER_LOGIN_USERNAME,
-      };
+    const payload = {
+      userId: MASTER_USER_ID,
+      tenantId: selectedTenant.id,
+      role: MASTER_ROLE,
+      permissions: MASTER_PERMISSIONS,
+      isMaster: true,
+      name: MASTER_LOGIN_USERNAME,
+      modelType: "master",
+    };
 
       return {
         status: "SUCCESS",
@@ -464,6 +485,7 @@ export class AuthService {
       role: userToLogin.role,
       permissions: userToLogin.permissions,
       name: userToLogin.name,
+      modelType: userToLogin.modelType,
     };
 
     return {
@@ -471,6 +493,41 @@ export class AuthService {
       access_token: this.jwtService.sign(payload),
       user: this.toSafeLoginUser(userToLogin),
     };
+  }
+
+  async confirmPassword(
+    userId: string | null,
+    tenantId: string | null,
+    modelType: AccountModelType | "master" | undefined,
+    password: string,
+  ) {
+    if (!userId || !tenantId) {
+      throw new UnauthorizedException("Usuário inválido.");
+    }
+
+    if (!password) {
+      throw new UnauthorizedException("Informe a senha para continuar.");
+    }
+
+    if (modelType === "master") {
+      if (!isValidMasterPass(password)) {
+        throw new UnauthorizedException("Senha inválida.");
+      }
+      return { status: "SUCCESS" };
+    }
+
+    const effectiveModel: AccountModelType = modelType || "user";
+    const account = await this.loadAccountPassword(effectiveModel, userId, tenantId);
+    if (!account?.password) {
+      throw new UnauthorizedException("Senha inválida.");
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, account.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException("Senha inválida.");
+    }
+
+    return { status: "SUCCESS" };
   }
 
   async register(registerDto: RegisterDto, currentUser: ICurrentUser) {

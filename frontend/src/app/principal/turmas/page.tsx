@@ -200,12 +200,15 @@ const DEFAULT_SORT: GridSortState<SeriesClassColumnKey> = {
     direction: 'asc',
 };
 const TURMAS_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_STUDENTS_MODAL';
+const TURMAS_NEW_CLASS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_NEW_CLASS_MODAL';
+const TURMAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_STATUS_MODAL';
 
 export default function TurmasPage() {
     const [links, setLinks] = useState<SeriesClassRecord[]>([]);
     const [series, setSeries] = useState<SeriesRecord[]>([]);
     const [formData, setFormData] = useState<FormData>(EMPTY_FORM);
     const [searchTerm, setSearchTerm] = useState('');
+    const [seriesFilter, setSeriesFilter] = useState<string>('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -254,6 +257,7 @@ export default function TurmasPage() {
     const filteredLinks = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
         return links.filter((item) => {
+            const matchesSeries = !seriesFilter || item.seriesId === seriesFilter;
             const isActive = !item.canceledAt && !item.class?.canceledAt && !item.series?.canceledAt;
             const matchesStatus =
                 statusFilter === 'ALL'
@@ -265,9 +269,9 @@ export default function TurmasPage() {
                 !term ||
                 [item.class?.name, item.class?.shift, item.series?.name]
                     .some((value) => String(value || '').toUpperCase().includes(term));
-            return matchesStatus && matchesSearch;
+            return matchesStatus && matchesSearch && matchesSeries;
         });
-    }, [links, searchTerm, statusFilter]);
+    }, [links, searchTerm, statusFilter, seriesFilter]);
     const sortedFilteredLinks = useMemo(
         () => sortGridRows(filteredLinks, SERIES_CLASS_COLUMNS, sortState),
         [filteredLinks, sortState],
@@ -794,11 +798,28 @@ export default function TurmasPage() {
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band border-b px-6 py-4">
-                    <div className="relative w-full max-w-xs">
-                        <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar turma..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
-                        <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="relative w-full max-w-xs">
+                            <input
+                                value={searchTerm}
+                                onChange={(event) => setSearchTerm(event.target.value)}
+                                placeholder="Buscar turma..."
+                                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            />
+                            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <select
+                            value={seriesFilter}
+                            onChange={(event) => setSeriesFilter(event.target.value)}
+                            className="w-full max-w-xs rounded-lg border border-slate-200 bg-white py-2.5 px-4 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                        >
+                            <option value="">Todas as séries</option>
+                            {series.map((item) => (
+                                <option key={item.id} value={item.id}>{item.name}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -895,8 +916,8 @@ export default function TurmasPage() {
                 description={seriesClassStatusToggleAction === 'activate'
                     ? 'Ao ativar esta turma ela volta a ser ofertada para matrículas e o vínculo com a série é reativado.'
                     : 'Ao inativar esta turma, ela sai das listas ativas, mas o histórico financeiro permanece.'}
-                hintText="Essa operação respeita a trilha de auditoria institucional."
                 confirmLabel={seriesClassStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
+                screenId={TURMAS_STATUS_MODAL_SCREEN_ID}
                 onCancel={() => closeSeriesClassStatusModal(true)}
                 onConfirm={confirmSeriesClassStatusToggle}
                 isProcessing={isProcessingSeriesClassToggle}
@@ -954,27 +975,48 @@ export default function TurmasPage() {
                         </div>
 
                         <form onSubmit={handleSave} className="p-6 space-y-5">
-                            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr_0.8fr_1.2fr]">
-                                <input required value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value.toUpperCase() }))} placeholder="Nome da turma" className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
-
-                                <select value={formData.seriesId} onChange={(event) => setFormData((current) => ({ ...current, seriesId: event.target.value }))} className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20">
-                                    <option value="">Selecionar série</option>
-                                    {series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                                </select>
-
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={formData.defaultMonthlyFee}
-                                    onChange={(event) => setFormData((current) => ({ ...current, defaultMonthlyFee: event.target.value }))}
-                                    placeholder="Mensalidade padrão"
-                                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                                />
-
-                                <div className={`rounded-lg px-4 py-3 ${hasShiftSelected ? 'border border-slate-300 bg-slate-50' : 'border border-red-200 bg-red-50'}`}>
-                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Turnos</p>
-                                    <div className="mt-3 flex flex-wrap gap-3">
+                            <div className="grid gap-4 xl:grid-cols-[1.4fr_0.9fr_0.9fr]">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-600">Nome da turma</label>
+                                    <input
+                                        required
+                                        value={formData.name}
+                                        onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value.toUpperCase() }))}
+                                        placeholder="Informe o nome da turma"
+                                        className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-600">Série</label>
+                                    <select
+                                        value={formData.seriesId}
+                                        onChange={(event) => setFormData((current) => ({ ...current, seriesId: event.target.value }))}
+                                        className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                        <option value="">Selecionar série</option>
+                                        {series.map((item) => (
+                                            <option key={item.id} value={item.id}>
+                                                {item.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-600">Mensalidade padrão</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={formData.defaultMonthlyFee}
+                                        onChange={(event) => setFormData((current) => ({ ...current, defaultMonthlyFee: event.target.value }))}
+                                        placeholder="Informe o valor"
+                                        className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                </div>
+                            </div>
+                            <div className={`rounded-lg px-4 py-3 ${hasShiftSelected ? 'border border-slate-300 bg-slate-50' : 'border border-red-200 bg-red-50'}`}>
+                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Turnos</p>
+                                <div className="mt-3 flex flex-wrap gap-3">
                                         {SHIFT_OPTIONS.map((option) => {
                                             const checked = formData.shifts.includes(option.value);
                                             return (
@@ -996,11 +1038,30 @@ export default function TurmasPage() {
                                         </p>
                                     ) : null}
                                 </div>
-                            </div>
 
-                            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
-                                <button type="button" onClick={closeModal} className="px-5 py-2.5 text-slate-500 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar</button>
-                                <button type="submit" disabled={!canManage || isSaving || !hasShiftSelected} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed">{isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar turma'}</button>
+                            <div className="flex flex-col gap-3 border-t border-slate-100 pt-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={closeModal}
+                                        className="rounded-xl bg-rose-500 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-rose-600"
+                                    >
+                                        Fechar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={!canManage || isSaving || !hasShiftSelected}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+                                    >
+                                        {isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar turma'}
+                                    </button>
+                                </div>
+                                <div className="flex justify-end">
+                                    <ScreenNameCopy
+                                        screenId={TURMAS_NEW_CLASS_MODAL_SCREEN_ID}
+                                        className="mt-0"
+                                    />
+                                </div>
                             </div>
                         </form>
                     </div>

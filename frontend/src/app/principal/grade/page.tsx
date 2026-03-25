@@ -16,6 +16,7 @@ import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnCo
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
+const GRADE_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_STATUS_MODAL';
 const PERIOD_OPTIONS = [
     { value: 'MANHA', label: 'Manhã' },
     { value: 'TARDE', label: 'Tarde' },
@@ -554,12 +555,12 @@ export default function GradeHorariaPage() {
                 description={scheduleStatusToggleAction === 'activate'
                     ? 'Ao ativar este horário, ele volta a constar na grade e pode receber disciplinas e professores novamente.'
                     : 'Ao inativar este horário, ele é marcado como indisponível, mas o histórico permanece disponível.'}
-                hintText="A operação respeita a trilha de auditoria institucional."
                 confirmLabel={scheduleStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeScheduleStatusModal(true)}
                 onConfirm={confirmScheduleStatusToggle}
                 isProcessing={isProcessingScheduleToggle}
                 statusActive={!scheduleStatusToggleTarget?.canceledAt}
+                screenId={GRADE_STATUS_MODAL_SCREEN_ID}
             />
 
             <GridExportModal

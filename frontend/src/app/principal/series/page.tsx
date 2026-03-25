@@ -110,6 +110,8 @@ const DEFAULT_SORT: GridSortState<SeriesColumnKey> = {
     direction: 'asc',
 };
 const SERIES_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STUDENTS_MODAL';
+const SERIES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STATUS_MODAL';
+const SERIES_NEW_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_NEW_MODAL';
 
 export default function SeriesPage() {
     const [series, setSeries] = useState<SeriesRecord[]>([]);
@@ -729,12 +731,12 @@ export default function SeriesPage() {
                 description={seriesStatusToggleAction === 'activate'
                     ? 'Ao ativar uma série ela volta a ser ofertada para matrículas e aparecerá nos relatórios.'
                     : 'Ao inativar uma série ela sai das opções de turma, mas o histórico de registros permanece.'}
-                hintText="A alteração fica registrada na trilha de auditoria da escola."
                 confirmLabel={seriesStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeSeriesStatusModal(true)}
                 onConfirm={confirmSeriesStatusToggle}
                 isProcessing={isProcessingSeriesToggle}
                 statusActive={!seriesStatusToggleTarget?.canceledAt}
+                screenId={SERIES_STATUS_MODAL_SCREEN_ID}
             />
 
             <GridExportModal
@@ -794,9 +796,26 @@ export default function SeriesPage() {
                                 <input value={formData.sortOrder} onChange={(event) => setFormData((current) => ({ ...current, sortOrder: event.target.value }))} placeholder="Ordem de aprendizado" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
                             </div>
 
-                            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
-                                <button type="button" onClick={closeModal} className="px-5 py-2.5 text-slate-500 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar</button>
-                                <button type="submit" disabled={!canManage || isSaving} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed">{isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar série'}</button>
+                            <div className="flex flex-col gap-3 border-t border-slate-100 pt-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={closeModal}
+                                        className="rounded-xl bg-rose-500 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-rose-600"
+                                    >
+                                        Fechar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={!canManage || isSaving}
+                                        className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
+                                    >
+                                        {isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar série'}
+                                    </button>
+                                </div>
+                                <div className="flex justify-end">
+                                    <ScreenNameCopy screenId={SERIES_NEW_MODAL_SCREEN_ID} className="mt-0" />
+                                </div>
                             </div>
                         </form>
                     </div>

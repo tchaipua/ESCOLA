@@ -897,7 +897,6 @@ export class LessonCalendarsService {
     this.ensurePeriodsWithinSchoolYear(periods, schoolYear);
     await this.ensureNoActiveCalendarConflict(schoolYearId, seriesClassId, id);
     const weeklyItems = await this.loadWeeklySource(schoolYearId, seriesClassId);
-    const preserveUntilDate = this.todayDateOnly();
 
     await this.prisma.$transaction(async (tx) => {
       await tx.lessonCalendar.update({
@@ -927,9 +926,6 @@ export class LessonCalendarsService {
           lessonCalendarId: id,
           tenantId: this.tenantId(),
           canceledAt: null,
-          lessonDate: {
-            gte: preserveUntilDate,
-          },
         },
         data: {
           canceledAt: new Date(),
@@ -992,7 +988,6 @@ export class LessonCalendarsService {
       calendar.schoolYearId,
       calendar.seriesClassId,
     );
-    const preserveUntilDate = this.todayDateOnly();
     const periods = this.normalizePeriods(
       calendar.periods.map((period) => ({
         periodType: period.periodType,
@@ -1007,9 +1002,6 @@ export class LessonCalendarsService {
           lessonCalendarId: id,
           tenantId: this.tenantId(),
           canceledAt: null,
-          lessonDate: {
-            gte: preserveUntilDate,
-          },
         },
         data: {
           canceledAt: new Date(),

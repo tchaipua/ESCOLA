@@ -30,6 +30,7 @@ export default function LoginPage() {
   };
   const [email, setEmail] = useState('tchaipua@gmail.com');
   const [password, setPassword] = useState('Mabelu2011');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorStatus, setErrorStatus] = useState<{ message: string; detail?: string } | null>(null);
   const [successStatus, setSuccessStatus] = useState<{ message: string; devResetLink?: string } | null>(null);
@@ -318,13 +319,33 @@ export default function LoginPage() {
                   </svg>
                 </div>
                 <input
-                  type="password"
+                  type={isPasswordVisible ? "text" : "password"}
                   placeholder="Senha"
                   className="flex-1 px-4 outline-none text-slate-700 placeholder:text-slate-400 font-medium text-[15px] min-w-0"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setIsPasswordVisible((current) => !current)}
+                  className="flex w-12 items-center justify-center text-slate-500 transition hover:bg-slate-50 hover:text-[#2272c7]"
+                  aria-label={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                  title={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {isPasswordVisible ? (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.77 9.77 0 0112 4.8c5.05 0 9.27 3.11 10.5 7.2a10.76 10.76 0 01-4.04 5.45M6.1 6.1A10.75 10.75 0 001.5 12c.64 2.13 2.1 3.99 4.1 5.3" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M1.5 12S5.5 4.8 12 4.8 22.5 12 22.5 12 18.5 19.2 12 19.2 1.5 12 1.5 12z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
               </div>
 
               {/* Checkboxes inferiores */}

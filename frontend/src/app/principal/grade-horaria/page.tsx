@@ -16,6 +16,7 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
+const GRADE_HORARIA_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_STATUS_MODAL';
 const SCHOOL_YEAR_START = 2025;
 const SCREEN_PROGRAM_NAME = 'PRINCIPAL_GRADE_HORARIA_SEMANAL_CARDS';
 const DAY_OPTIONS = [
@@ -1532,14 +1533,12 @@ export default function GradeHorariaPlanejadaPage() {
                 description={scheduleStatusToggleAction === 'activate'
                     ? 'Ao ativar este lançamento da grade ele volta a ser considerado ativo e entra nas rotas de aula.'
                     : 'Ao excluir este lançamento, ele será removido definitivamente desta grade horária.'}
-                hintText={scheduleStatusToggleAction === 'activate'
-                    ? 'A alteração fica registrada na trilha de auditoria da escola.'
-                    : 'A exclusão física só é permitida enquanto este lançamento ainda não estiver vinculado ao calendário anual.'}
                 confirmLabel={scheduleStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar exclusão'}
                 onCancel={() => closeScheduleStatusModal(true)}
                 onConfirm={confirmScheduleStatusToggle}
                 isProcessing={isProcessingScheduleToggle}
                 statusActive={!scheduleStatusToggleTarget?.canceledAt}
+                screenId={GRADE_HORARIA_STATUS_MODAL_SCREEN_ID}
             />
 
             <GridExportModal

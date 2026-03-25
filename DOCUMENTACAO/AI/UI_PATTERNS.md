@@ -228,7 +228,24 @@ Componentes/Telas base:
   - o padrão pode ser reutilizado para confirmações de status em outros módulos (mensalidades, professores, responsaveis, usuários, etc.).
 - **Componentes/Telas**:
   - `frontend/src/app/dashboard/disciplinas/page.tsx`
-  - padrão aplicável a qualquer grid com ações de status confirmadas pelo usuário.
+- padrão aplicável a qualquer grid com ações de status confirmadas pelo usuário.
+
+### PAT-012 - Identificador padronizado e “Fechar” em modais principais
+
+- **Contexto**: garantir rastreabilidade e consistência visual em todas as telas administrativas (incluindo modais/popup) para manter histórico e facilitar auditoria.
+- **Comportamento obrigatório**:
+  - toda tela, seja uma página inteira ou um modal/popup, deve ter um nome curto exclusivo exibido no rodapé, preferencialmente no canto inferior direito.
+  - o nome exibido deve ter um botão de cópia ao lado, reutilizando o componente `ScreenNameCopy` para que o usuário consiga replicar o valor (`Ctrl+C`).
+  - quando o layout do modal inclui um botão “Cancelar”, ele deve ser renomeado para “Fechar”, alinhado ao canto inferior esquerdo, com fundo vermelho, texto branco em uppercase e borda arredondada.
+  - o rodapé permanece com ações principais à direita (como `Cadastrar`/`Salvar`) e o identificador no lado oposto para manter equilíbrio visual.
+  - sempre que possível, o identificador e o botão de cópia devem respeitar o mesmo espaçamento e tipografia utilizados em `screen-name-copy.tsx`.
+  - em telas de cancelamento/inativação o usuário precisa informar a senha de login antes de confirmar; o sistema mantém a confirmação válida por 5 minutos e só volta a pedir quando o período expirar, evitando solicitar repetidamente para a mesma sessão.
+  - quando a senha for obrigatória e estiver em branco ou incorreta, o modal deve exibir um alerta em estilo “pop-up” (um bloco flutuante com borda, sombra e texto uppercase no canto superior) para reforçar o erro antes de prosseguir.
+- **Componentes/Telas**:
+  - `frontend/src/app/components/screen-name-copy.tsx`
+  - `frontend/src/app/components/status-confirmation-modal.tsx`
+  - modais/popup dos dashboards acadêmicos (`series`, `turmas`, `grade`, etc.)
+  - qualquer modal de confirmação ou formulário com ações de cancelamento/fechamento.
 
 ## Telas-modelo para novos sistemas
 

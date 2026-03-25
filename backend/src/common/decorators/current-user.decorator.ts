@@ -6,6 +6,7 @@ export interface ICurrentUser {
   role: string;
   permissions: string[];
   isMaster?: boolean;
+  modelType?: "user" | "teacher" | "student" | "guardian" | "master";
 }
 
 export const CurrentUser = createParamDecorator(

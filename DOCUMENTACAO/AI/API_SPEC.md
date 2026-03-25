@@ -81,6 +81,28 @@ Respostas possiveis:
 - redefine a senha por token
 - respeita tenant e trilha de auditoria
 
+### POST `/auth/confirm-password`
+
+- Autenticação: `Authorization: Bearer <access_token>`
+- Body:
+
+```json
+{
+  "password": "SENHA_ATUAL"
+}
+```
+
+- Uso: confirma a identidade do usuário logado antes de operações sensíveis (inativação/exclusão) sem exigir um novo login.
+- Resposta de sucesso:
+
+```json
+{
+  "status": "SUCCESS"
+}
+```
+
+- Em caso de senha inválida, retorna `401 Unauthorized` com a mensagem padrão `"Senha inválida."`.
+
 ## People
 
 ### GET `/people`

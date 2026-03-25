@@ -10,6 +10,7 @@ export type DashboardTokenPayload = {
     tenantId?: string;
     isMaster?: boolean;
     name?: string;
+    modelType?: string;
 };
 
 export type DashboardAuthContext = {
@@ -19,6 +20,7 @@ export type DashboardAuthContext = {
     permissions: string[];
     tenantId: string | null;
     name: string | null;
+    modelType: string | null;
 };
 
 export type ViaCepAddress = {
@@ -107,20 +109,21 @@ export function decodeDashboardToken(token: string): DashboardTokenPayload | nul
 export function getDashboardAuthContext(): DashboardAuthContext {
     const token = getStoredToken();
     if (!token) {
-        return { token: null, userId: null, role: null, permissions: [], tenantId: null, name: null };
+        return { token: null, userId: null, role: null, permissions: [], tenantId: null, name: null, modelType: null };
     }
 
     const payload = decodeDashboardToken(token);
-    return {
-        token,
-        userId: typeof payload?.userId === 'string' ? payload.userId : null,
-        role: typeof payload?.role === 'string' ? payload.role : null,
-        permissions: Array.isArray(payload?.permissions)
-            ? payload!.permissions.filter((permission): permission is string => typeof permission === 'string')
-            : [],
-        tenantId: typeof payload?.tenantId === 'string' ? payload.tenantId : null,
-        name: typeof payload?.name === 'string' ? payload.name : null,
-    };
+        return {
+            token,
+            userId: typeof payload?.userId === 'string' ? payload.userId : null,
+            role: typeof payload?.role === 'string' ? payload.role : null,
+            permissions: Array.isArray(payload?.permissions)
+                ? payload!.permissions.filter((permission): permission is string => typeof permission === 'string')
+                : [],
+            tenantId: typeof payload?.tenantId === 'string' ? payload.tenantId : null,
+            name: typeof payload?.name === 'string' ? payload.name : null,
+            modelType: typeof payload?.modelType === 'string' ? payload.modelType : null,
+        };
 }
 
 export function isDashboardMasterRole(role: string | null) {

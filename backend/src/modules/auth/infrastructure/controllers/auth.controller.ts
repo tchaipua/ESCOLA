@@ -5,6 +5,7 @@ import { LoginDto } from "../../application/dto/login.dto";
 import { RegisterDto } from "../../application/dto/register.dto";
 import { ForgotPasswordDto } from "../../application/dto/forgot-password.dto";
 import { ResetPasswordDto } from "../../application/dto/reset-password.dto";
+import { ConfirmPasswordDto } from "../../application/dto/confirm-password.dto";
 import { Public } from "../../../../common/decorators/public.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
@@ -45,6 +46,21 @@ export class AuthController {
   @ApiOperation({ summary: "Re-valida dados do Usuário Atual em Sessão" })
   getProfile(@CurrentUser() user: ICurrentUser) {
     return user;
+  }
+
+  @ApiBearerAuth()
+  @Post("confirm-password")
+  @ApiOperation({ summary: "Confirma a senha do usuário logado" })
+  async confirmPassword(
+    @CurrentUser() user: ICurrentUser,
+    @Body() payload: ConfirmPasswordDto,
+  ) {
+    return this.authService.confirmPassword(
+      user.userId,
+      user.tenantId,
+      user.modelType,
+      payload.password,
+    );
   }
 
   @Public()

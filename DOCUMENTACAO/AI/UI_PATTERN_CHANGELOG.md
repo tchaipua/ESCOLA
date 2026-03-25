@@ -105,3 +105,28 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `frontend/src/app/dashboard/disciplinas/page.tsx`
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
 - Status: aprovado
+
+### UIP-0007
+
+- Data: 2026-03-25
+- Padrão: identificador e botão Fechar em modais/popup
+- Contexto: definir um comportamento uniforme para nomes de tela e botões de cancelamento em todos os modais do painel principal, garantindo rastreabilidade e linguagem visual coerente com o `screen-name-copy`.
+- Alteração: toda tela/modal passou a expor um nome exclusivo com botão de cópia no canto inferior direito e a ação “Cancelar” foi padronizada como “Fechar” com fundo vermelho e posicionamento à esquerda no rodapé de ações.
+- Contexto adicional: telas de inativação/remover agora exigem a senha do usuário logado para abrir o modal, com confirmação válida por 5 minutos antes de pedir novamente.
+- Componentes/Telas:
+  - `frontend/src/app/components/screen-name-copy.tsx`
+  - `frontend/src/app/principal/series/page.tsx`
+  - `frontend/src/app/principal/turmas/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- Status: aprovado
+
+### UIP-0008
+
+- Data: 2026-03-25
+- Padrão: alerta de validação de senha em modais sensíveis
+- Contexto: as telas de cancelamento e inativação precisam deixar o erro de senha em branco ou inválida mais visível para evitar ações indevidas após múltiplas tentativas.
+- Alteração: o `StatusConfirmationModal` agora rende um alerta em estilo “pop-up” no canto superior, reforçando o texto uppercase com `role="alert"` sempre que a senha falha; o botão “Fechar” foi estilizado com fundo vermelho e o rodapé garante os botões na mesma linha. O padrão foi documentado em `UI_PATTERNS.md`.
+- Componentes/Telas:
+  - `frontend/src/app/components/status-confirmation-modal.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- Status: aprovado

@@ -19,6 +19,7 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
 
 type SubjectRecord = {
     id: string;
@@ -1583,12 +1584,12 @@ export default function ProfessoresPage() {
                 description={teacherStatusToggleAction === 'activate'
                     ? 'Ao ativar o professor, ele volta a ter acesso ao PWA e pode ser vinculado a disciplinas normalmente.'
                     : 'Ao inativar o professor, seu acesso é suspenso, mantendo o histórico das aulas ministradas.'}
-                hintText="A alteração permanece registrada na trilha de auditoria."
                 confirmLabel={teacherStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeTeacherStatusModal(true)}
                 onConfirm={confirmTeacherStatusToggle}
                 isProcessing={isProcessingTeacherToggle}
                 statusActive={!teacherStatusToggleTarget?.canceledAt}
+                screenId={PROFESSORES_STATUS_MODAL_SCREEN_ID}
             />
 
             <GridExportModal
