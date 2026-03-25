@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { CreateLessonCalendarDto } from "../dto/create-lesson-calendar.dto";
+import { UpdateLessonCalendarItemDto } from "../dto/update-lesson-calendar-item.dto";
 import { UpdateLessonCalendarDto } from "../dto/update-lesson-calendar.dto";
 
 type NormalizedPeriod = {
@@ -32,6 +33,15 @@ type WeeklySourceItem = {
     teacher: { id: string; name: string } | null;
     subject: { id: string; name: string } | null;
   } | null;
+};
+
+type TeacherSubjectRateSource = {
+  hourlyRate: number | null;
+  rateHistories: Array<{
+    hourlyRate: number | null;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+  }>;
 };
 
 @Injectable()
@@ -83,11 +93,56 @@ export class LessonCalendarsService {
     return new Date(date.getTime() + amount * 24 * 60 * 60 * 1000);
   }
 
-  private resolveTeacherHourlyRate(
-    weeklyItem: WeeklySourceItem,
+  private startOfDay(value: Date) {
+    const next = new Date(value);
+    next.setUTCHours(0, 0, 0, 0);
+    return next;
+  }
+
+  private endOfDay(value: Date) {
+    const next = new Date(value);
+    next.setUTCHours(23, 59, 59, 999);
+    return next;
+  }
+
+  private startOfWeek(value: Date) {
+    const next = this.startOfDay(value);
+    const day = next.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    next.setUTCDate(next.getUTCDate() + diff);
+    return next;
+  }
+
+  private endOfWeek(value: Date) {
+    const next = this.startOfWeek(value);
+    next.setUTCDate(next.getUTCDate() + 6);
+    return this.endOfDay(next);
+  }
+
+  private buildCalendarMonthRange(referenceDate?: string) {
+    const selectedDate = referenceDate
+      ? new Date(`${referenceDate}T00:00:00.000Z`)
+      : new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+
+    const monthStart = new Date(
+      Date.UTC(selectedDate.getUTCFullYear(), selectedDate.getUTCMonth(), 1),
+    );
+    const monthEnd = new Date(
+      Date.UTC(selectedDate.getUTCFullYear(), selectedDate.getUTCMonth() + 1, 0),
+    );
+
+    return {
+      selectedDate,
+      start: this.startOfWeek(monthStart),
+      end: this.endOfWeek(monthEnd),
+    };
+  }
+
+  private resolveTeacherHourlyRateFromSource(
+    source: TeacherSubjectRateSource | null | undefined,
     lessonDate: Date,
   ) {
-    const histories = weeklyItem.teacherSubject?.rateHistories || [];
+    const histories = source?.rateHistories || [];
     const match = histories.find((history) => {
       const startsOk =
         lessonDate.getTime() >= new Date(history.effectiveFrom).getTime();
@@ -101,7 +156,17 @@ export class LessonCalendarsService {
       return match.hourlyRate ?? null;
     }
 
-    return weeklyItem.teacherSubject?.hourlyRate ?? null;
+    return source?.hourlyRate ?? null;
+  }
+
+  private resolveTeacherHourlyRate(
+    weeklyItem: WeeklySourceItem,
+    lessonDate: Date,
+  ) {
+    return this.resolveTeacherHourlyRateFromSource(
+      weeklyItem.teacherSubject,
+      lessonDate,
+    );
   }
 
   private getDayOfWeek(date: Date) {
@@ -222,6 +287,107 @@ export class LessonCalendarsService {
     }
 
     return { schoolYear, seriesClass };
+  }
+
+  private async validateTeacherSubject(teacherSubjectId: string) {
+    const teacherSubject = await this.prisma.teacherSubject.findFirst({
+      where: {
+        id: teacherSubjectId,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+        teacher: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+        },
+        subject: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+        },
+      },
+      include: {
+        teacher: true,
+        subject: true,
+        rateHistories: {
+          where: {
+            canceledAt: null,
+          },
+          orderBy: [{ effectiveFrom: "asc" }, { createdAt: "asc" }],
+        },
+      },
+    });
+
+    if (!teacherSubject) {
+      throw new NotFoundException(
+        "Professor e matéria inválidos para esta escola.",
+      );
+    }
+
+    return teacherSubject;
+  }
+
+  private async mapLessonCalendarItem(id: string) {
+    const item = await this.prisma.lessonCalendarItem.findFirst({
+      where: {
+        id,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+      },
+      include: {
+        schoolYear: true,
+        seriesClass: {
+          include: {
+            series: true,
+            class: true,
+          },
+        },
+        teacherSubject: {
+          include: {
+            teacher: true,
+            subject: true,
+          },
+        },
+        lessonEvents: {
+          where: {
+            canceledAt: null,
+          },
+          orderBy: [{ createdAt: "asc" }],
+        },
+      },
+    });
+
+    if (!item) {
+      throw new NotFoundException("Aula anual não encontrada.");
+    }
+
+    return {
+      id: item.id,
+      lessonCalendarId: item.lessonCalendarId,
+      date: this.formatDateOnly(item.lessonDate),
+      classScheduleItemId: item.classScheduleItemId,
+      dayOfWeek: item.dayOfWeek,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      schoolYearId: item.schoolYearId,
+      schoolYearLabel: String(item.schoolYear?.year || ""),
+      seriesClassId: item.seriesClassId,
+      seriesClassLabel: `${item.seriesClass?.series?.name || "SEM SÉRIE"} - ${item.seriesClass?.class?.name || "SEM TURMA"}`,
+      subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
+      teacherName: item.teacherSubject?.teacher?.name || "PROFESSOR",
+      teacherSubjectId: item.teacherSubjectId,
+      events: item.lessonEvents.map((event) => ({
+        id: event.id,
+        date: this.formatDateOnly(item.lessonDate),
+        eventType: event.eventType,
+        eventTypeLabel:
+          event.eventType === "FALTA_PROFESSOR"
+            ? "FALTA DO PROFESSOR"
+            : event.eventType,
+        title: event.title,
+        description: event.description,
+        startTime: item.startTime,
+        endTime: item.endTime,
+      })),
+    };
   }
 
   private ensurePeriodsWithinSchoolYear(
@@ -525,6 +691,161 @@ export class LessonCalendarsService {
 
   async findOne(id: string) {
     return this.mapCalendarSummary(id);
+  }
+
+  async findSchoolCalendarEvents(referenceDate?: string) {
+    const { selectedDate, start, end } = this.buildCalendarMonthRange(referenceDate);
+
+    const [lessonItems, standaloneEvents] = await Promise.all([
+      this.prisma.lessonCalendarItem.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+          lessonDate: {
+            gte: start,
+            lte: end,
+          },
+        },
+        include: {
+          schoolYear: true,
+          seriesClass: {
+            include: {
+              series: true,
+              class: true,
+            },
+          },
+          teacherSubject: {
+            include: {
+              subject: true,
+              teacher: true,
+            },
+          },
+          lessonEvents: {
+            where: {
+              canceledAt: null,
+            },
+            orderBy: [{ createdAt: "asc" }],
+          },
+        },
+        orderBy: [{ lessonDate: "asc" }, { startTime: "asc" }],
+      }),
+      this.prisma.lessonEvent.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+          lessonCalendarItemId: null,
+          eventDate: {
+            gte: start,
+            lte: end,
+          },
+        },
+        include: {
+          teacher: true,
+        },
+        orderBy: [{ eventDate: "asc" }, { createdAt: "asc" }],
+      }),
+    ]);
+
+    const mappedLessonItems = lessonItems.map((item) => ({
+      id: item.id,
+      lessonCalendarId: item.lessonCalendarId,
+      date: this.formatDateOnly(item.lessonDate),
+      classScheduleItemId: item.classScheduleItemId,
+      dayOfWeek: item.dayOfWeek,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      schoolYearId: item.schoolYearId,
+      schoolYearLabel: String(item.schoolYear?.year || ""),
+      seriesClassId: item.seriesClassId,
+      seriesClassLabel: `${item.seriesClass?.series?.name || "SEM SÉRIE"} - ${item.seriesClass?.class?.name || "SEM TURMA"}`,
+      subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
+      teacherName: item.teacherSubject?.teacher?.name || "PROFESSOR",
+      teacherSubjectId: item.teacherSubjectId || null,
+      events: item.lessonEvents.map((event) => ({
+        id: event.id,
+        date: this.formatDateOnly(item.lessonDate),
+        eventType: event.eventType,
+        eventTypeLabel: event.eventType === "FALTA_PROFESSOR" ? "FALTA DO PROFESSOR" : event.eventType,
+        title: event.title,
+        description: event.description,
+        startTime: item.startTime,
+        endTime: item.endTime,
+      })),
+    }));
+
+    const standaloneEventItems = standaloneEvents.map((event) => ({
+      id: event.id,
+      date: this.formatDateOnly(event.eventDate || event.createdAt),
+      eventType: event.eventType,
+      eventTypeLabel: event.eventType === "FALTA_PROFESSOR" ? "FALTA DO PROFESSOR" : event.eventType,
+      title: event.title,
+      description: event.description,
+      startTime: null,
+      endTime: null,
+      isStandaloneNotice: true,
+      schoolYearId: event.schoolYearId || null,
+      schoolYearLabel: "",
+      seriesClassId: event.seriesClassId || null,
+      seriesClassLabel: `${event.seriesNameSnapshot || "SEM SÉRIE"} - ${event.classNameSnapshot || "SEM TURMA"}`,
+      subjectName: event.subjectNameSnapshot || "RECADO AVULSO",
+      teacherName: event.teacher?.name || "PROFESSOR",
+    }));
+
+    return {
+      selectedDate: this.formatDateOnly(selectedDate),
+      rangeStart: this.formatDateOnly(start),
+      rangeEnd: this.formatDateOnly(end),
+      lessonItems: mappedLessonItems.sort((left, right) => {
+        const dateCompare = left.date.localeCompare(right.date);
+        if (dateCompare !== 0) return dateCompare;
+        return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+      }),
+      standaloneEvents: standaloneEventItems.sort((left, right) => {
+        const dateCompare = left.date.localeCompare(right.date);
+        if (dateCompare !== 0) return dateCompare;
+        return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+      }),
+    };
+  }
+
+  async updateLessonCalendarItem(
+    lessonCalendarItemId: string,
+    updateDto: UpdateLessonCalendarItemDto,
+  ) {
+    const current = await this.prisma.lessonCalendarItem.findFirst({
+      where: {
+        id: lessonCalendarItemId,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+        lessonDate: true,
+        teacherSubjectId: true,
+      },
+    });
+
+    if (!current) {
+      throw new NotFoundException("Aula anual não encontrada.");
+    }
+
+    const teacherSubject = await this.validateTeacherSubject(
+      updateDto.teacherSubjectId,
+    );
+
+    await this.prisma.lessonCalendarItem.update({
+      where: { id: lessonCalendarItemId },
+      data: {
+        teacherSubjectId: updateDto.teacherSubjectId,
+        hourlyRate: this.resolveTeacherHourlyRateFromSource(
+          teacherSubject,
+          current.lessonDate,
+        ),
+        updatedBy: this.userId(),
+      },
+    });
+
+    return this.mapLessonCalendarItem(lessonCalendarItemId);
   }
 
   async getWeeklySource(schoolYearId: string, seriesClassId: string) {

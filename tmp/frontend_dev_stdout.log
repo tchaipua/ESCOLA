@@ -1,0 +1,102 @@
+
+> frontend@0.1.0 dev
+> next dev --hostname 0.0.0.0 --port 3000
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 644ms
+ GET /msinfor-admin 200 in 715ms (compile: 612ms, render: 103ms)
+ GET /msinfor-admin 200 in 183ms (compile: 160ms, render: 23ms)
+ GET /msinfor-admin 200 in 151ms (compile: 130ms, render: 21ms)
+ GET / 200 in 50ms (compile: 17ms, render: 33ms)
+ GET /principal 200 in 35ms (compile: 20ms, render: 15ms)
+ GET /principal/grade-anual 200 in 185ms (compile: 173ms, render: 12ms)
+✓ Compiled in 134ms
+✓ Compiled in 56ms
+✓ Compiled in 51ms
+✓ Compiled in 65ms
+✓ Compiled in 50ms
+✓ Compiled in 47ms
+✓ Compiled in 49ms
+✓ Compiled in 49ms
+✓ Compiled in 41ms
+✓ Compiled in 45ms
+✓ Compiled in 41ms
+✓ Compiled in 79ms
+ GET /principal/grade-anual 200 in 313ms (compile: 287ms, render: 26ms)
+ GET /principal/grade-horaria 200 in 201ms (compile: 188ms, render: 13ms)
+ GET /principal/grade-anual 200 in 146ms (compile: 136ms, render: 9ms)
+ GET /api/v1/school-years 404 in 152ms (compile: 42ms, render: 110ms)
+ GET /api/v1/tenants/current 404 in 151ms (compile: 51ms, render: 100ms)
+ GET /api/v1/series-classes 404 in 153ms (compile: 93ms, render: 59ms)
+ GET /api/v1/lesson-calendars 404 in 159ms (compile: 107ms, render: 51ms)
+ GET /api/v1/series-classes 404 in 81ms (compile: 43ms, render: 38ms)
+ GET /api/v1/tenants/current 404 in 83ms (compile: 34ms, render: 49ms)
+ GET /api/v1/teacher-subjects 404 in 88ms (compile: 8ms, render: 80ms)
+ GET /api/v1/school-years 404 in 88ms (compile: 27ms, render: 61ms)
+ GET /api/v1/lesson-calendars 404 in 42ms (compile: 5ms, render: 37ms)
+ GET /api/v1/teacher-subjects 404 in 42ms (compile: 18ms, render: 24ms)
+ GET /api/v1/lesson-calendars/school-calendar-events?referenceDate=2026-03-01 404 in 22ms (compile: 2ms, render: 20ms)
+✓ Compiled in 47ms
+✓ Compiled in 44ms
+✓ Compiled in 47ms
+ GET /principal/grade-anual 200 in 271ms (compile: 252ms, render: 19ms)
+ GET /principal/grade-horaria 200 in 136ms (compile: 125ms, render: 11ms)
+ GET /principal/grade-anual 200 in 171ms (compile: 161ms, render: 10ms)
+ GET /api/v1/lesson-calendars 404 in 46ms (compile: 5ms, render: 41ms)
+ GET /api/v1/school-years 404 in 46ms (compile: 22ms, render: 24ms)
+ GET /api/v1/series-classes 404 in 47ms (compile: 4ms, render: 43ms)
+ GET /api/v1/tenants/current 404 in 46ms (compile: 21ms, render: 24ms)
+ GET /api/v1/teacher-subjects 404 in 39ms (compile: 3ms, render: 36ms)
+ GET /api/v1/lesson-calendars/school-calendar-events?referenceDate=2026-03-01 404 in 38ms (compile: 20ms, render: 18ms)
+ GET /api/v1/lesson-calendars 404 in 47ms (compile: 4ms, render: 43ms)
+ GET /api/v1/school-years 404 in 47ms (compile: 19ms, render: 28ms)
+ GET /api/v1/series-classes 404 in 51ms (compile: 3ms, render: 48ms)
+ GET /api/v1/tenants/current 404 in 50ms (compile: 21ms, render: 29ms)
+ GET /api/v1/teacher-subjects 404 in 37ms (compile: 3ms, render: 34ms)
+ GET /principal/grade-horaria 200 in 181ms (compile: 172ms, render: 9ms)
+ GET /principal/grade-anual 200 in 223ms (compile: 210ms, render: 13ms)
+ GET /api/v1/lesson-calendars 404 in 48ms (compile: 3ms, render: 44ms)
+ GET /api/v1/school-years 404 in 28ms (compile: 5ms, render: 24ms)
+ GET /api/v1/series-classes 404 in 50ms (compile: 5ms, render: 46ms)
+ GET /api/v1/tenants/current 404 in 49ms (compile: 23ms, render: 26ms)
+ GET /api/v1/teacher-subjects 404 in 49ms (compile: 3ms, render: 46ms)
+ GET /api/v1/lesson-calendars/school-calendar-events?referenceDate=2026-03-01 404 in 39ms (compile: 8ms, render: 31ms)
+ GET /api/v1/lesson-calendars 404 in 36ms (compile: 3ms, render: 33ms)
+ GET /api/v1/school-years 404 in 36ms (compile: 16ms, render: 19ms)
+ GET /api/v1/series-classes 404 in 39ms (compile: 6ms, render: 33ms)
+ GET /api/v1/tenants/current 404 in 21ms (compile: 3ms, render: 18ms)
+ GET /api/v1/teacher-subjects 404 in 24ms (compile: 2ms, render: 22ms)
+ GET /api/v1/lesson-calendars/school-calendar-events?referenceDate=2026-04-01 404 in 21ms (compile: 2ms, render: 19ms)
+✓ Compiled in 39ms
+ GET /principal/grade-horaria 200 in 238ms (compile: 224ms, render: 15ms)
+ GET /principal/grade-anual 200 in 259ms (compile: 237ms, render: 22ms)
+ GET /principal/grade-horaria 200 in 179ms (compile: 170ms, render: 9ms)
+ GET /principal/grade-anual 200 in 158ms (compile: 148ms, render: 10ms)
+✓ Compiled in 51ms
+ GET /principal/grade-horaria 200 in 218ms (compile: 207ms, render: 11ms)
+ GET /principal/grade-anual 200 in 234ms (compile: 213ms, render: 22ms)
+✓ Compiled in 51ms
+✓ Compiled in 45ms
+ GET /principal/grade-horaria 200 in 169ms (compile: 158ms, render: 11ms)
+ GET /principal/grade-anual 200 in 213ms (compile: 198ms, render: 15ms)
+✓ Compiled in 50ms
+ GET /principal/grade-horaria 200 in 201ms (compile: 191ms, render: 10ms)
+ GET /principal/grade-anual 200 in 207ms (compile: 192ms, render: 15ms)
+ GET /principal/turmas 200 in 165ms (compile: 155ms, render: 11ms)
+ GET /principal/grade-anual 200 in 140ms (compile: 131ms, render: 9ms)
+ GET /principal/grade-horaria 200 in 135ms (compile: 125ms, render: 10ms)
+ GET /principal/grade-anual 200 in 144ms (compile: 133ms, render: 12ms)
+✓ Compiled in 43ms
+ GET /principal/grade-anual 200 in 284ms (compile: 208ms, render: 76ms)
+✓ Compiled in 37ms
+ GET /principal/grade-anual 200 in 258ms (compile: 179ms, render: 79ms)
+✓ Compiled in 46ms
+✓ Compiled in 48ms
+✓ Compiled in 77ms
+ GET /principal/grade-horaria 200 in 165ms (compile: 153ms, render: 12ms)
+ GET /principal/grade-anual 200 in 186ms (compile: 171ms, render: 15ms)
+✓ Compiled in 43ms

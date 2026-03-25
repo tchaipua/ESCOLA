@@ -1,5 +1,3 @@
- 'use client';
-
 'use client';
 
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
@@ -66,7 +64,8 @@ const formatPhoneNumber = (value?: string | null) => {
 
 export default function DashboardPeriodStudentsPage() {
   const params = useParams();
-  const shiftParam = params?.shift;
+  const rawShiftParam = params?.shift;
+  const shiftParam = Array.isArray(rawShiftParam) ? rawShiftParam[0] : rawShiftParam;
   const normalizedShift = (shiftParam || 'manha').toUpperCase();
   const shiftLabel = SHIFT_LABELS[normalizedShift] || 'Período';
 

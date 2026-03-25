@@ -44,6 +44,20 @@ export class ClassScheduleItemsService {
     return String(value || "").trim();
   }
 
+  private parseDateOnly(value: string) {
+    const parsed = new Date(`${String(value || "").trim()}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new ConflictException(
+        "Informe uma data válida no formato AAAA-MM-DD.",
+      );
+    }
+    return parsed;
+  }
+
+  private todayDateOnly() {
+    return this.parseDateOnly(new Date().toISOString().slice(0, 10));
+  }
+
   private ensureValidTimeRange(startTime: string, endTime: string) {
     if (startTime >= endTime) {
       throw new ConflictException(
@@ -152,6 +166,123 @@ export class ClassScheduleItemsService {
         },
       },
     } as const;
+  }
+
+  private resolveTeacherHourlyRate(
+    teacherSubject: {
+      hourlyRate: number | null;
+      rateHistories: Array<{
+        hourlyRate: number | null;
+        effectiveFrom: Date;
+        effectiveTo: Date | null;
+      }>;
+    },
+    lessonDate: Date,
+  ) {
+    const match = teacherSubject.rateHistories.find((history) => {
+      const startsOk =
+        lessonDate.getTime() >= new Date(history.effectiveFrom).getTime();
+      const endsOk =
+        !history.effectiveTo ||
+        lessonDate.getTime() <= new Date(history.effectiveTo).getTime();
+      return startsOk && endsOk;
+    });
+
+    if (match) {
+      return match.hourlyRate ?? null;
+    }
+
+    return teacherSubject.hourlyRate ?? null;
+  }
+
+  private async syncFutureGeneratedLessonsTeacherSubject(
+    tx: Prisma.TransactionClient,
+    classScheduleItemId: string,
+    currentTeacherSubjectId: string | null,
+    nextTeacherSubjectId: string | null,
+    effectiveFromDate: Date,
+  ) {
+    if (!currentTeacherSubjectId && !nextTeacherSubjectId) {
+      return;
+    }
+
+    const futureLessonItems = await tx.lessonCalendarItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        classScheduleItemId,
+        canceledAt: null,
+        lessonDate: {
+          gte: effectiveFromDate,
+        },
+      },
+      select: {
+        id: true,
+        lessonDate: true,
+      },
+      orderBy: [{ lessonDate: "asc" }, { startTime: "asc" }],
+    });
+
+    if (futureLessonItems.length === 0) {
+      return;
+    }
+
+    if (!nextTeacherSubjectId) {
+      throw new ConflictException(
+        "Não é possível remover professor e matéria porque esta aula já foi gerada na grade anual.",
+      );
+    }
+
+    const teacherSubject = await tx.teacherSubject.findFirst({
+      where: {
+        id: nextTeacherSubjectId,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+        teacher: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+        },
+        subject: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+        },
+      },
+      select: {
+        hourlyRate: true,
+        rateHistories: {
+          where: {
+            canceledAt: null,
+          },
+          orderBy: [{ effectiveFrom: "asc" }, { createdAt: "asc" }],
+          select: {
+            hourlyRate: true,
+            effectiveFrom: true,
+            effectiveTo: true,
+          },
+        },
+      },
+    });
+
+    if (!teacherSubject) {
+      throw new NotFoundException(
+        "Professor e matéria inválidos para esta escola.",
+      );
+    }
+
+    // Mantém o calendário anual coerente sem recriar os lançamentos futuros,
+    // preservando auditoria e relacionamentos já existentes.
+    for (const lessonItem of futureLessonItems) {
+      await tx.lessonCalendarItem.update({
+        where: { id: lessonItem.id },
+        data: {
+          teacherSubjectId: nextTeacherSubjectId,
+          hourlyRate: this.resolveTeacherHourlyRate(
+            teacherSubject,
+            lessonItem.lessonDate,
+          ),
+          updatedBy: this.userId(),
+        },
+      });
+    }
   }
 
   private sortScheduleItems<T extends { dayOfWeek: string; startTime: string }>(
@@ -428,6 +559,9 @@ export class ClassScheduleItemsService {
     const endTime = updateDto.endTime
       ? this.normalizeTime(updateDto.endTime)
       : currentItem.endTime;
+    const effectiveFromDate = updateDto.effectiveFromDate
+      ? this.parseDateOnly(updateDto.effectiveFromDate)
+      : this.todayDateOnly();
 
     this.ensureValidTimeRange(startTime, endTime);
     await this.validateReferences(schoolYearId, seriesClassId, teacherSubjectId);
@@ -442,43 +576,68 @@ export class ClassScheduleItemsService {
     );
 
     try {
-      return await this.prisma.classScheduleItem.update({
-        where: { id },
-        data: {
-          schoolYearId: updateDto.schoolYearId,
-          seriesClassId: updateDto.seriesClassId,
-          teacherSubjectId,
-          dayOfWeek: updateDto.dayOfWeek ? dayOfWeek : undefined,
-          startTime: updateDto.startTime ? startTime : undefined,
-          endTime: updateDto.endTime ? endTime : undefined,
-          updatedBy: this.userId(),
-        },
-        include: this.includeRelations(),
+      await this.prisma.$transaction(async (tx) => {
+        await tx.classScheduleItem.update({
+          where: { id },
+          data: {
+            schoolYearId: updateDto.schoolYearId,
+            seriesClassId: updateDto.seriesClassId,
+            teacherSubjectId,
+            dayOfWeek: updateDto.dayOfWeek ? dayOfWeek : undefined,
+            startTime: updateDto.startTime ? startTime : undefined,
+            endTime: updateDto.endTime ? endTime : undefined,
+            updatedBy: this.userId(),
+          },
+        });
+
+        await this.syncFutureGeneratedLessonsTeacherSubject(
+          tx,
+          id,
+          currentItem.teacherSubjectId ?? null,
+          teacherSubjectId ?? null,
+          effectiveFromDate,
+        );
       });
     } catch (error) {
       this.rethrowPersistenceError(error);
     }
+
+    return this.findOne(id);
   }
 
   async remove(id: string) {
     await this.findOne(id);
 
-    return this.prisma.classScheduleItem.updateMany({
+    const linkedLessonItems = await this.prisma.lessonCalendarItem.count({
       where: {
-        id,
         tenantId: this.tenantId(),
-      },
-      data: {
-        canceledAt: new Date(),
-        canceledBy: this.userId(),
+        classScheduleItemId: id,
       },
     });
+
+    if (linkedLessonItems > 0) {
+      throw new ConflictException(
+        "Este lançamento já foi usado no calendário anual e não pode mais ser excluído fisicamente.",
+      );
+    }
+
+    try {
+      await this.prisma.classScheduleItem.delete({
+        where: { id },
+      });
+
+      return {
+        message: "Lançamento da grade excluído com sucesso.",
+      };
+    } catch (error) {
+      this.rethrowPersistenceError(error);
+    }
   }
 
   async setActiveStatus(id: string, active: boolean) {
     await this.findOne(id);
 
-    const updatedItem = await this.prisma.classScheduleItem.update({
+    await this.prisma.classScheduleItem.update({
       where: { id },
       data: active
         ? {
@@ -491,8 +650,9 @@ export class ClassScheduleItemsService {
             canceledBy: this.userId(),
             updatedBy: this.userId(),
           },
-      include: this.includeRelations(),
     });
+
+    const updatedItem = await this.findOne(id);
 
     return {
       message: active

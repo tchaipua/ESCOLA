@@ -11,7 +11,7 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
-import { getStoredToken } from '@/app/lib/auth-storage';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import {
     buildGridAggregateSummaries,
@@ -108,6 +108,34 @@ const getShiftTone = (shift: ShiftValue) => {
     }
 };
 
+type ClassStudent = {
+    id: string;
+    name: string;
+    cpf: string | null;
+    email: string | null;
+    phone: string | null;
+    street: string | null;
+    number: string | null;
+    city: string | null;
+    state: string | null;
+    neighborhood: string | null;
+    zipCode: string | null;
+    updatedAt: string | null;
+    photoUrl: string | null;
+};
+
+const formatPhoneNumber = (value?: string | null) => {
+    if (!value) return '';
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 11) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+    if (digits.length === 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return value;
+};
+
 type SeriesClassColumnKey = 'className' | 'series' | 'seriesCode' | 'shift' | 'studentsCount' | 'defaultMonthlyFee' | 'totalMonthlyFee' | 'recordStatus';
 type SeriesClassExportColumnKey = SeriesClassColumnKey;
 
@@ -171,6 +199,7 @@ const DEFAULT_SORT: GridSortState<SeriesClassColumnKey> = {
     column: 'className',
     direction: 'asc',
 };
+const TURMAS_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_STUDENTS_MODAL';
 
 export default function TurmasPage() {
     const [links, setLinks] = useState<SeriesClassRecord[]>([]);
@@ -201,9 +230,10 @@ export default function TurmasPage() {
     const [seriesClassStatusToggleTarget, setSeriesClassStatusToggleTarget] = useState<SeriesClassRecord | null>(null);
     const [seriesClassStatusToggleAction, setSeriesClassStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingSeriesClassToggle, setIsProcessingSeriesClassToggle] = useState(false);
-    const [selectedSeriesClassForStudents, setSelectedSeriesClassForStudents] = useState<SeriesClassRecord | null>(null);
-    const [isStudentsModalLoading, setIsStudentsModalLoading] = useState(false);
-    const [studentsModalError, setStudentsModalError] = useState<string | null>(null);
+    const [classStudentsModalOpen, setClassStudentsModalOpen] = useState(false);
+    const [classStudentsLoading, setClassStudentsLoading] = useState(false);
+    const [classStudentsError, setClassStudentsError] = useState<string | null>(null);
+    const [classStudentsData, setClassStudentsData] = useState<{ className: string; seriesName: string; students: ClassStudent[] } | null>(null);
 
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_SERIES', 'VIEW_SERIES_CLASSES']);
     const canManageClasses = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_CLASSES');
@@ -645,23 +675,39 @@ export default function TurmasPage() {
     };
 
     const openStudentsModal = async (item: SeriesClassRecord) => {
+        setClassStudentsModalOpen(true);
+        setClassStudentsLoading(true);
+        setClassStudentsError(null);
+        setClassStudentsData(null);
         try {
-            setIsStudentsModalLoading(true);
-            setStudentsModalError(null);
-            const token = getStoredToken();
+            const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
-            const response = await fetch(`${API_BASE_URL}/series-classes/${item.id}`, {
+            const response = await fetch(`${API_BASE_URL}/series-classes/${item.id}/students`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(data?.message || 'Não foi possível carregar os alunos da turma.');
-            setSelectedSeriesClassForStudents(data);
+
+            setClassStudentsData({
+                className: item.class?.name || 'Turma',
+                seriesName: item.series?.name || 'Série não informada',
+                students: Array.isArray(data.students) ? data.students.map((student: ClassStudent) => ({
+                    ...student,
+                    updatedAt: student.updatedAt ? student.updatedAt : null,
+                })) : [],
+            });
         } catch (error) {
-            setStudentsModalError(error instanceof Error ? error.message : 'Não foi possível carregar os alunos da turma.');
+            setClassStudentsError(error instanceof Error ? error.message : 'Não foi possível carregar os alunos da turma.');
         } finally {
-            setIsStudentsModalLoading(false);
+            setClassStudentsLoading(false);
         }
+    };
+
+    const closeClassStudentsModal = () => {
+        setClassStudentsModalOpen(false);
+        setClassStudentsData(null);
+        setClassStudentsError(null);
     };
 
     const renderSeriesClassGridCell = (item: SeriesClassRecord, columnKey: SeriesClassColumnKey) => {
@@ -776,7 +822,9 @@ export default function TurmasPage() {
                                             {canViewStudents ? (
                                                 <GridRowActionIconButton title="Listar alunos da turma" onClick={() => void openStudentsModal(item)} tone="emerald">
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
+                                                        <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                        <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
                                                     </svg>
                                                 </GridRowActionIconButton>
                                             ) : null}
@@ -959,119 +1007,70 @@ export default function TurmasPage() {
                 </div>
             ) : null}
 
-            {selectedSeriesClassForStudents || isStudentsModalLoading ? (
-                <div className="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
-                    <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
-                        <div className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex min-w-0 items-center gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {tenantBranding?.logoUrl ? (
-                                        <img src={tenantBranding.logoUrl} alt={tenantBranding.schoolName} className="h-full w-full object-contain" />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
-                                        {tenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">
-                                        Alunos da turma {selectedSeriesClassForStudents?.class?.name || ''}
-                                    </h2>
-                                    <p className="mt-1 text-sm font-medium text-slate-500">
-                                        {selectedSeriesClassForStudents?.series?.name || 'Série não informada'} | {selectedSeriesClassForStudents?.studentCount ?? selectedSeriesClassForStudents?._count?.enrollments ?? 0} aluno(s)
-                                    </p>
-                                </div>
+            {classStudentsModalOpen ? (
+                <div className="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-[32px] bg-white shadow-2xl">
+                        <div className="dashboard-band border-b px-6 py-5">
+                            <div>
+                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Alunos da turma</div>
+                                <h3 className="mt-1 text-2xl font-black text-slate-800">{classStudentsData?.className || 'Turma'}</h3>
+                                <p className="text-sm font-semibold text-slate-500">{classStudentsData?.seriesName || 'Série não informada'}</p>
                             </div>
-                            <button type="button" onClick={() => { setSelectedSeriesClassForStudents(null); setStudentsModalError(null); }} className="text-slate-400 hover:text-red-500">
-                                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
                         </div>
-
-                        <div className="flex-1 overflow-auto p-6">
-                            {studentsModalError ? (
-                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                                    {studentsModalError}
-                                </div>
-                            ) : isStudentsModalLoading ? (
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                        <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+                            {classStudentsLoading ? (
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm font-medium text-slate-500">
                                     Carregando alunos da turma...
                                 </div>
+                            ) : classStudentsError ? (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-12 text-center text-sm font-medium text-red-700">
+                                    {classStudentsError}
+                                </div>
+                            ) : classStudentsData && classStudentsData.students.length === 0 ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                    Nenhum aluno encontrado para esta turma.
+                                </div>
                             ) : (
-                                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                                    <table className="w-full border-collapse text-left">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
                                         <thead>
-                                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
-                                                <th className="px-6 py-4">Aluno</th>
-                                                <th className="px-6 py-4 text-right">Mensalidade</th>
+                                            <tr className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                                                <th className="px-3 py-2">Aluno</th>
+                                                <th className="px-3 py-2">CPF</th>
+                                                <th className="px-3 py-2">E-mail</th>
+                                                <th className="px-3 py-2">Telefone</th>
+                                                <th className="px-3 py-2">Atualização</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {(selectedSeriesClassForStudents?.enrollments || []).length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={2} className="px-6 py-12 text-center font-medium text-slate-400">
-                                                        Nenhum aluno ativo vinculado a esta turma.
+                                            {classStudentsData?.students.map((student) => (
+                                                <tr key={student.id} className="bg-white">
+                                                    <td className="px-3 py-3 font-semibold text-slate-700">{student.name}</td>
+                                                    <td className="px-3 py-3 text-slate-500">{student.cpf || '-'}</td>
+                                                    <td className="px-3 py-3 text-slate-500">{student.email || '-'}</td>
+                                                    <td className="px-3 py-3 text-slate-500">{formatPhoneNumber(student.phone) || '-'}</td>
+                                                    <td className="px-3 py-3 text-slate-500">
+                                                        {student.updatedAt ? new Date(student.updatedAt).toLocaleDateString('pt-BR') : '-'}
                                                     </td>
                                                 </tr>
-                                            ) : (
-                                                (selectedSeriesClassForStudents?.enrollments || []).map((enrollment) => {
-                                                    const studentMonthlyFee = enrollment.student?.monthlyFee;
-                                                    const fallbackMonthlyFee = selectedSeriesClassForStudents?.class?.defaultMonthlyFee;
-                                                    const effectiveMonthlyFee = typeof studentMonthlyFee === 'number'
-                                                        ? studentMonthlyFee
-                                                        : typeof fallbackMonthlyFee === 'number'
-                                                            ? fallbackMonthlyFee
-                                                            : null;
-                                                    return (
-                                                        <tr key={enrollment.id} className="hover:bg-slate-50">
-                                                            <td className="px-6 py-4 font-semibold text-slate-800">
-                                                                {enrollment.student?.name || 'Aluno não informado'}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-right text-sm font-medium text-slate-600">
-                                                                {canViewStudentFinancialData && typeof effectiveMonthlyFee === 'number'
-                                                                    ? `R$ ${formatMoneyValue(effectiveMonthlyFee)}`
-                                                                    : canViewStudentFinancialData
-                                                                        ? '---'
-                                                                        : 'Dado sensível'}
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })
-                                            )}
+                                            ))}
                                         </tbody>
-                                        <tfoot>
-                                            <tr className="border-t border-slate-200 bg-slate-50">
-                                                <td className="px-6 py-4 text-sm font-bold text-slate-700">Total de alunos</td>
-                                                <td className="px-6 py-4 text-right text-sm font-bold text-slate-700">
-                                                    {selectedSeriesClassForStudents?.studentCount ?? selectedSeriesClassForStudents?._count?.enrollments ?? 0}
-                                                </td>
-                                            </tr>
-                                            <tr className="border-t border-slate-200 bg-slate-50">
-                                                <td className="px-6 py-4 text-sm font-bold text-slate-700">Total das mensalidades</td>
-                                                <td className="px-6 py-4 text-right text-sm font-bold text-slate-700">
-                                                    {canViewStudentFinancialData && typeof selectedSeriesClassForStudents?.totalMonthlyFee === 'number'
-                                                        ? `R$ ${formatMoneyValue(selectedSeriesClassForStudents.totalMonthlyFee)}`
-                                                        : 'Dado sensível'}
-                                                </td>
-                                            </tr>
-                                        </tfoot>
                                     </table>
                                 </div>
                             )}
                         </div>
-
-                        <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-6 py-4 text-right">
+                        <div className="dashboard-band-footer flex items-center justify-between border-t px-6 py-3 gap-4">
                             <button
                                 type="button"
-                                onClick={() => { setSelectedSeriesClassForStudents(null); setStudentsModalError(null); }}
-                                className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-bold text-slate-600 transition-colors hover:bg-white"
+                                onClick={closeClassStudentsModal}
+                                className="rounded-xl border border-rose-500 bg-rose-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-600"
                             >
                                 Fechar
                             </button>
+                            <div className="text-xs font-semibold text-slate-600">
+                                Total de alunos: {classStudentsData?.students.length ?? 0}
+                            </div>
+                            <ScreenNameCopy screenId={TURMAS_STUDENTS_MODAL_SCREEN_ID} />
                         </div>
                     </div>
                 </div>

@@ -7,6 +7,7 @@
     "build": "nest build",
     "backfill:people": "ts-node scripts/backfill-people.ts",
     "format": "prettier --write \"src/**/*.ts\"",
+    "test:attendance-notifications": "npm run build && node test/attendance-notifications.test.cjs",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",

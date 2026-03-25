@@ -1,27 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
-import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
-import {
-    buildGridAggregateSummaries,
-    getAllGridColumnKeys,
-    getDefaultVisibleGridColumnKeys,
-    loadGridColumnConfig,
-    type ConfigurableGridColumn,
-    type GridColumnAggregations,
-    writeGridColumnConfig,
-} from '@/app/lib/grid-column-config-utils';
+import { type ConfigurableGridColumn } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
@@ -32,6 +21,12 @@ type SchoolYearSummary = {
     id: string;
     year: number;
     isActive?: boolean;
+};
+
+type CurrentTenant = {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
 };
 
 type SeriesSummary = {
@@ -74,6 +69,53 @@ type LessonCalendarRecord = {
         class?: ClassSummary | null;
     } | null;
     periods: LessonCalendarPeriodRecord[];
+};
+
+type AnnualLessonEvent = {
+    id: string;
+    date: string;
+    eventType: string;
+    eventTypeLabel: string;
+    title: string;
+    description?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
+};
+
+type AnnualCalendarLessonItem = {
+    id: string;
+    lessonCalendarId: string;
+    date: string;
+    dayOfWeek: string;
+    startTime: string;
+    endTime: string;
+    schoolYearId?: string | null;
+    schoolYearLabel?: string | null;
+    seriesClassId?: string | null;
+    seriesClassLabel: string;
+    subjectName: string;
+    teacherName: string;
+    events: AnnualLessonEvent[];
+    classScheduleItemId?: string | null;
+    teacherSubjectId?: string | null;
+};
+
+type AnnualStandaloneEvent = {
+    id: string;
+    date: string;
+    eventType: string;
+    eventTypeLabel: string;
+    title: string;
+    description?: string | null;
+    startTime?: string | null;
+    endTime?: string | null;
+    isStandaloneNotice: boolean;
+    schoolYearId?: string | null;
+    schoolYearLabel?: string | null;
+    seriesClassId?: string | null;
+    seriesClassLabel: string;
+    subjectName: string;
+    teacherName: string;
 };
 
 type WeeklySourceItem = {
@@ -167,13 +209,6 @@ const GRID_EXPORT_COLUMNS: GridColumnDefinition<LessonCalendarRecord, AnnualExpo
     GRID_COLUMNS,
 );
 
-const GRID_COLUMN_KEYS = getAllGridColumnKeys(GRID_COLUMNS);
-const DEFAULT_VISIBLE_GRID_COLUMNS = getDefaultVisibleGridColumnKeys(GRID_COLUMNS);
-
-function getGridConfigStorageKey(tenantId: string | null) {
-    return `dashboard:grade-anual:grid-config:${tenantId || 'default'}`;
-}
-
 function getGridExportConfigStorageKey(tenantId: string | null) {
     return `dashboard:grade-anual:export-config:${tenantId || 'default'}`;
 }
@@ -195,6 +230,13 @@ function getApiErrorMessage(payload: unknown, fallback: string) {
         if (typeof message === 'string' && message.trim()) return message;
     }
     return fallback;
+}
+
+function getNetworkErrorMessage(error: unknown, endpointLabel: string, fallback: string) {
+    if (error instanceof TypeError) {
+        return `${fallback} Endpoint: ${endpointLabel}. Verifique se a API está acessível em ${API_BASE_URL}.`;
+    }
+    return error instanceof Error ? error.message : fallback;
 }
 
 function getSeriesClassLabel(seriesClass?: SeriesClassSummary | LessonCalendarRecord['seriesClass'] | WeeklySourceResponse['seriesClass'] | null) {
@@ -229,15 +271,99 @@ function getDayLabel(value: string) {
     }
 }
 
+function formatDateTime(value?: string | null) {
+    if (!value) return 'Ainda não sincronizado';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Ainda não sincronizado';
+    return new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    }).format(parsed);
+}
+
+function parseDateOnly(value: string) {
+    const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
+    return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function formatDateOnly(value: Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getMonthBeforeDayLabel(value: string) {
+    return new Intl.DateTimeFormat('pt-BR', { month: 'short', day: '2-digit' })
+        .format(parseDateOnly(value))
+        .replace('.', '')
+        .toUpperCase();
+}
+
+function getFullDateLabel(value: string) {
+    return new Intl.DateTimeFormat('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+    }).format(parseDateOnly(value));
+}
+
+function getYearMonthLabel(year: string, month: string) {
+    const parsedYear = Number.parseInt(year, 10);
+    const parsedMonth = Number.parseInt(month, 10);
+    if (!parsedYear || !parsedMonth) return '';
+    return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(parsedYear, parsedMonth - 1, 1));
+}
+
+function getMonthGridDays(year: string, month: string) {
+    if (!year || !month) return [];
+    const firstDay = new Date(Number.parseInt(year, 10), Number.parseInt(month, 10) - 1, 1);
+    const lastDay = new Date(Number.parseInt(year, 10), Number.parseInt(month, 10), 0);
+    const start = new Date(firstDay);
+    const startOffset = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - startOffset);
+
+    const end = new Date(lastDay);
+    const endOffset = 6 - ((end.getDay() + 6) % 7);
+    end.setDate(end.getDate() + endOffset);
+
+    const days: string[] = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+        days.push(formatDateOnly(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+}
+
+const WEEKDAY_LABELS = ['SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.', 'DOM.'];
+
 export default function GradeAnualPage() {
+    const calendarEventsRequestRef = useRef(0);
     const [records, setRecords] = useState<LessonCalendarRecord[]>([]);
     const [schoolYears, setSchoolYears] = useState<SchoolYearSummary[]>([]);
     const [seriesClasses, setSeriesClasses] = useState<SeriesClassSummary[]>([]);
+    const [tenant, setTenant] = useState<CurrentTenant | null>(null);
+    const [calendarLessonItems, setCalendarLessonItems] = useState<AnnualCalendarLessonItem[]>([]);
+    const [standaloneCalendarEvents, setStandaloneCalendarEvents] = useState<AnnualStandaloneEvent[]>([]);
+    const [teacherSubjectOptions, setTeacherSubjectOptions] = useState<{ id: string; label: string }[]>([]);
+    const [editingLesson, setEditingLesson] = useState<AnnualCalendarLessonItem | null>(null);
+    const [lessonEditTeacherSubjectId, setLessonEditTeacherSubjectId] = useState('');
+    const [isSavingLessonEdit, setIsSavingLessonEdit] = useState(false);
+    const [lessonEditError, setLessonEditError] = useState<string | null>(null);
     const [formData, setFormData] = useState<FormState>({ ...EMPTY_FORM, periods: buildDefaultPeriods() });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [weeklySource, setWeeklySource] = useState<WeeklySourceResponse | null>(null);
     const [isLoadingWeeklySource, setIsLoadingWeeklySource] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedYear, setSelectedYear] = useState('');
+    const [selectedMonth, setSelectedMonth] = useState('');
+    const [selectedDate, setSelectedDate] = useState('');
+    const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'YESTERDAY' | 'TOMORROW' | 'WEEK' | null>(null);
+    const [weekRange, setWeekRange] = useState<{ start: string; end: string } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
@@ -246,15 +372,7 @@ export default function GradeAnualPage() {
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
-    const [sortState, setSortState] = useState<GridSortState<AnnualColumnKey>>(DEFAULT_SORT);
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
-    const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
-    const [isGridConfigReady, setIsGridConfigReady] = useState(false);
-    const [columnOrder, setColumnOrder] = useState<AnnualColumnKey[]>(GRID_COLUMN_KEYS);
-    const [hiddenColumns, setHiddenColumns] = useState<AnnualColumnKey[]>(
-        GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_GRID_COLUMNS.includes(key)),
-    );
-    const [columnAggregations, setColumnAggregations] = useState<GridColumnAggregations<AnnualColumnKey>>({});
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [exportFormat, setExportFormat] = useState<GridExportFormat>('excel');
     const [exportColumns, setExportColumns] = useState<Record<AnnualExportColumnKey, boolean>>(buildDefaultExportColumns(GRID_EXPORT_COLUMNS));
@@ -263,6 +381,7 @@ export default function GradeAnualPage() {
     const [isProcessingAnnualToggle, setIsProcessingAnnualToggle] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const GRADE_ANNUAL_MODAL_LABEL = 'PRINCIPAL_GRADE_ANUAL_MODAL';
+    const LESSON_EDIT_MODAL_LABEL = 'PRINCIPAL_GRADE_ANUAL_MODAL_ALTERAR_AULA';
 
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, [
         'VIEW_LESSON_CALENDARS',
@@ -272,19 +391,7 @@ export default function GradeAnualPage() {
     ]);
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_LESSON_CALENDARS');
 
-    const orderedGridColumns = useMemo(
-        () => columnOrder
-            .map((key) => GRID_COLUMNS.find((column) => column.key === key))
-            .filter((column): column is ConfigurableGridColumn<LessonCalendarRecord, AnnualColumnKey> => !!column),
-        [columnOrder],
-    );
-    const visibleGridColumns = useMemo(
-        () => orderedGridColumns.filter((column) => !hiddenColumns.includes(column.key)),
-        [hiddenColumns, orderedGridColumns],
-    );
-
     const filteredRecords = useMemo(() => {
-        const term = searchTerm.trim().toUpperCase();
         return records.filter((record) => {
             const isActive = !record.canceledAt;
             const matchesStatus =
@@ -293,33 +400,129 @@ export default function GradeAnualPage() {
                     : statusFilter === 'ACTIVE'
                         ? isActive
                         : !isActive;
-            const matchesSearch =
-                !term
-                || [
-                    String(record.schoolYear?.year || ''),
-                    getSeriesClassLabel(record.seriesClass),
-                    String(record.classPeriodsCount),
-                    String(record.intervalPeriodsCount),
-                    String(record.generatedItemsCount),
-                    record.classPeriodsLabel || '',
-                    record.intervalPeriodsLabel || '',
-                ].some((value) => value.toUpperCase().includes(term));
+            const matchesYear = !selectedYear || String(record.schoolYear?.year || '') === selectedYear;
 
-            return matchesStatus && matchesSearch;
+            return matchesStatus && matchesYear;
         });
-    }, [records, searchTerm, statusFilter]);
+    }, [records, selectedYear, statusFilter]);
 
     const sortedRecords = useMemo(
-        () => sortGridRows(filteredRecords, GRID_COLUMNS, sortState),
-        [filteredRecords, sortState],
-    );
-    const aggregateSummaries = useMemo(
-        () => buildGridAggregateSummaries(sortedRecords, visibleGridColumns, columnAggregations),
-        [columnAggregations, sortedRecords, visibleGridColumns],
+        () => sortGridRows(filteredRecords, GRID_COLUMNS, DEFAULT_SORT),
+        [filteredRecords],
     );
 
     const hasWeeklySource = (weeklySource?.items.length || 0) > 0;
     const hasClassPeriod = formData.periods.some((period) => period.periodType === 'AULA');
+    const availableYears = useMemo(() => {
+        const years = Array.from(new Set(schoolYears.map((item) => String(item.year)))).sort((left, right) => Number(right) - Number(left));
+        if (years.length) return years;
+        if (selectedYear) return [selectedYear];
+        return [String(new Date().getFullYear())];
+    }, [schoolYears, selectedYear]);
+    const availableMonths = useMemo(
+        () => Array.from({ length: 12 }, (_, index) => {
+            const value = String(index + 1).padStart(2, '0');
+            return { value, label: getYearMonthLabel(selectedYear, value) };
+        }),
+        [selectedYear],
+    );
+    const monthGridDays = useMemo(() => getMonthGridDays(selectedYear, selectedMonth), [selectedMonth, selectedYear]);
+    const visibleCalendarDays = useMemo(() => {
+        if (weekRange) {
+            return monthGridDays.filter((day) => day >= weekRange.start && day <= weekRange.end);
+        }
+        if (dateShortcut && dateShortcut !== 'WEEK') {
+            return monthGridDays.filter((day) => day === selectedDate);
+        }
+        return monthGridDays;
+    }, [dateShortcut, monthGridDays, selectedDate, weekRange]);
+    const visibleDaySet = useMemo(() => new Set(visibleCalendarDays), [visibleCalendarDays]);
+    const lessonItemsByDate = useMemo(() => {
+        const map = new Map<string, AnnualCalendarLessonItem[]>();
+        calendarLessonItems.forEach((item) => {
+            const current = map.get(item.date) || [];
+            current.push(item);
+            map.set(item.date, current);
+        });
+        map.forEach((items, dateKey) => {
+            items.sort((left, right) => `${left.startTime}`.localeCompare(`${right.startTime}`));
+            map.set(dateKey, items);
+        });
+        return map;
+    }, [calendarLessonItems]);
+    const filteredLessonItems = useMemo(
+        () => calendarLessonItems.filter((item) => visibleDaySet.has(item.date)),
+        [calendarLessonItems, visibleDaySet],
+    );
+    const standaloneEventsByDate = useMemo(() => {
+        const map = new Map<string, AnnualStandaloneEvent[]>();
+        standaloneCalendarEvents.forEach((event) => {
+            const current = map.get(event.date) || [];
+            current.push(event);
+            map.set(event.date, current);
+        });
+        return map;
+    }, [standaloneCalendarEvents]);
+    const filteredStandaloneEvents = useMemo(
+        () => standaloneCalendarEvents.filter((event) => visibleDaySet.has(event.date)),
+        [standaloneCalendarEvents, visibleDaySet],
+    );
+    const selectedDayLessonItems = useMemo(
+        () => lessonItemsByDate.get(selectedDate) || [],
+        [lessonItemsByDate, selectedDate],
+    );
+    const selectedDayStandaloneEvents = useMemo(
+        () => standaloneEventsByDate.get(selectedDate) || [],
+        [selectedDate, standaloneEventsByDate],
+    );
+    const selectedDayRecordSummaries = useMemo(() => {
+        const uniqueRecordIds = Array.from(new Set(selectedDayLessonItems.map((entry) => entry.lessonCalendarId)));
+        return uniqueRecordIds
+            .map((recordId) => sortedRecords.find((record) => record.id === recordId))
+            .filter((record): record is LessonCalendarRecord => !!record);
+    }, [selectedDayLessonItems, sortedRecords]);
+    const totalRecordsInMonth = useMemo(() => {
+        const ids = new Set<string>();
+        filteredLessonItems.forEach((entry) => {
+            ids.add(entry.lessonCalendarId);
+        });
+        return ids.size;
+    }, [filteredLessonItems]);
+    const totalDaysWithEntries = useMemo(() => {
+        const days = new Set<string>();
+        filteredLessonItems.forEach((entry) => days.add(entry.date));
+        filteredStandaloneEvents.forEach((event) => days.add(event.date));
+        return days.size;
+    }, [filteredLessonItems, filteredStandaloneEvents]);
+
+    const buildWeekRange = (reference: Date) => {
+        const start = new Date(reference);
+        start.setDate(reference.getDate() - ((reference.getDay() + 6) % 7));
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        return { start: formatDateOnly(start), end: formatDateOnly(end) };
+    };
+
+    const applyDateShortcut = (shortcut: 'TODAY' | 'YESTERDAY' | 'TOMORROW' | 'WEEK') => {
+        const base = new Date();
+        const target = new Date(base);
+        let nextWeekRange: { start: string; end: string } | null = null;
+
+        if (shortcut === 'YESTERDAY') target.setDate(base.getDate() - 1);
+        if (shortcut === 'TOMORROW') target.setDate(base.getDate() + 1);
+        if (shortcut === 'WEEK') {
+            nextWeekRange = buildWeekRange(base);
+        }
+
+        const year = String(target.getFullYear());
+        const month = String(target.getMonth() + 1).padStart(2, '0');
+
+        setDateShortcut(shortcut);
+        setWeekRange(nextWeekRange);
+        setSelectedYear(year);
+        setSelectedMonth(month);
+        setSelectedDate(formatDateOnly(target));
+    };
 
     const loadBaseData = async () => {
         try {
@@ -333,31 +536,49 @@ export default function GradeAnualPage() {
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
 
-            const [recordsResponse, schoolYearsResponse, seriesClassesResponse] = await Promise.all([
-                fetch(`${API_BASE_URL}/lesson-calendars`, {
+            const lessonCalendarsUrl = `${API_BASE_URL}/lesson-calendars`;
+            const schoolYearsUrl = `${API_BASE_URL}/school-years`;
+            const seriesClassesUrl = `${API_BASE_URL}/series-classes`;
+            const currentTenantUrl = `${API_BASE_URL}/tenants/current`;
+            const [recordsResponse, schoolYearsResponse, seriesClassesResponse, tenantResponse] = await Promise.all([
+                fetch(lessonCalendarsUrl, {
                     headers: { Authorization: `Bearer ${token}` },
+                }).catch((error) => {
+                    throw new Error(getNetworkErrorMessage(error, lessonCalendarsUrl, 'Não foi possível carregar as grades anuais.'));
                 }),
-                fetch(`${API_BASE_URL}/school-years`, {
+                fetch(schoolYearsUrl, {
                     headers: { Authorization: `Bearer ${token}` },
+                }).catch((error) => {
+                    throw new Error(getNetworkErrorMessage(error, schoolYearsUrl, 'Não foi possível carregar os anos letivos.'));
                 }),
-                fetch(`${API_BASE_URL}/series-classes`, {
+                fetch(seriesClassesUrl, {
                     headers: { Authorization: `Bearer ${token}` },
+                }).catch((error) => {
+                    throw new Error(getNetworkErrorMessage(error, seriesClassesUrl, 'Não foi possível carregar as turmas.'));
+                }),
+                fetch(currentTenantUrl, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }).catch((error) => {
+                    throw new Error(getNetworkErrorMessage(error, currentTenantUrl, 'Não foi possível carregar a escola logada.'));
                 }),
             ]);
 
-            const [recordsData, schoolYearsData, seriesClassesData] = await Promise.all([
+            const [recordsData, schoolYearsData, seriesClassesData, tenantData] = await Promise.all([
                 recordsResponse.json().catch(() => null),
                 schoolYearsResponse.json().catch(() => null),
                 seriesClassesResponse.json().catch(() => null),
+                tenantResponse.json().catch(() => null),
             ]);
 
             if (!recordsResponse.ok) throw new Error(getApiErrorMessage(recordsData, 'Não foi possível carregar as grades anuais.'));
             if (!schoolYearsResponse.ok) throw new Error(getApiErrorMessage(schoolYearsData, 'Não foi possível carregar os anos letivos.'));
             if (!seriesClassesResponse.ok) throw new Error(getApiErrorMessage(seriesClassesData, 'Não foi possível carregar as turmas.'));
+            if (!tenantResponse.ok) throw new Error(getApiErrorMessage(tenantData, 'Não foi possível carregar a escola logada.'));
 
             setRecords(Array.isArray(recordsData) ? recordsData : []);
             setSchoolYears(Array.isArray(schoolYearsData) ? schoolYearsData : []);
             setSeriesClasses(normalizeSeriesClassOptions(seriesClassesData));
+            setTenant(tenantData as CurrentTenant);
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar a grade anual.');
         } finally {
@@ -370,24 +591,99 @@ export default function GradeAnualPage() {
     }, []);
 
     useEffect(() => {
-        let isMounted = true;
-        setIsGridConfigReady(false);
-        void loadGridColumnConfig(getGridConfigStorageKey(currentTenantId), GRID_COLUMN_KEYS, DEFAULT_VISIBLE_GRID_COLUMNS).then((config) => {
-            if (!isMounted) return;
-            setColumnOrder(config.order);
-            setHiddenColumns(config.hidden);
-            setColumnAggregations(config.aggregations);
-            setIsGridConfigReady(true);
-        });
-        return () => {
-            isMounted = false;
-        };
-    }, [currentTenantId]);
+        const currentYearValue = String(new Date().getFullYear());
+        const activeYearValue = schoolYears.find((item) => item.isActive)?.year;
+        const nextYear = availableYears.includes(currentYearValue)
+            ? currentYearValue
+            : activeYearValue
+                ? String(activeYearValue)
+                : availableYears[0] || '';
+
+        if (!selectedYear && nextYear) {
+            setSelectedYear(nextYear);
+        }
+    }, [availableYears, schoolYears, selectedYear]);
 
     useEffect(() => {
-        if (!isGridConfigReady) return;
-        writeGridColumnConfig(getGridConfigStorageKey(currentTenantId), GRID_COLUMN_KEYS, columnOrder, hiddenColumns, columnAggregations);
-    }, [columnAggregations, columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
+        if (!selectedYear) return;
+        if (!selectedMonth) {
+            const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+            setSelectedMonth(currentMonth);
+        }
+    }, [selectedMonth, selectedYear]);
+
+    useEffect(() => {
+        if (!selectedYear || !selectedMonth) return;
+        const currentDate = formatDateOnly(new Date());
+        const defaultDate = currentDate.startsWith(`${selectedYear}-${selectedMonth}`)
+            ? currentDate
+            : `${selectedYear}-${selectedMonth}-01`;
+
+        if (!selectedDate || !selectedDate.startsWith(`${selectedYear}-${selectedMonth}`)) {
+            setSelectedDate(defaultDate);
+        }
+    }, [selectedDate, selectedMonth, selectedYear]);
+
+    const loadCalendarEvents = async (requestId = calendarEventsRequestRef.current) => {
+        try {
+            const { token } = getDashboardAuthContext();
+            if (!token || !selectedYear || !selectedMonth) return;
+
+            const referenceDate = `${selectedYear}-${selectedMonth}-01`;
+            const calendarEventsUrl = `${API_BASE_URL}/lesson-calendars/school-calendar-events?referenceDate=${referenceDate}`;
+            const response = await fetch(calendarEventsUrl, {
+                headers: { Authorization: `Bearer ${token}` },
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, calendarEventsUrl, 'Não foi possível carregar aulas e eventos do calendário anual.'));
+            });
+            if (requestId !== calendarEventsRequestRef.current) return;
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível carregar aulas e eventos do calendário anual.'));
+            if (requestId !== calendarEventsRequestRef.current) return;
+            setCalendarLessonItems(Array.isArray(data?.lessonItems) ? data.lessonItems : []);
+            setStandaloneCalendarEvents(Array.isArray(data?.standaloneEvents) ? data.standaloneEvents : []);
+        } catch (error) {
+            if (requestId !== calendarEventsRequestRef.current) return;
+            setCalendarLessonItems([]);
+            setStandaloneCalendarEvents([]);
+            setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar aulas e eventos do calendário anual.');
+        }
+    };
+
+    useEffect(() => {
+        calendarEventsRequestRef.current += 1;
+        const requestId = calendarEventsRequestRef.current;
+        void loadCalendarEvents(requestId);
+    }, [selectedMonth, selectedYear]);
+
+    useEffect(() => {
+        const loadTeacherSubjects = async () => {
+            try {
+                const { token } = getDashboardAuthContext();
+                if (!token) throw new Error('Token não encontrado, faça login novamente.');
+                const teacherSubjectsUrl = `${API_BASE_URL}/teacher-subjects`;
+                const response = await fetch(teacherSubjectsUrl, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }).catch((error) => {
+                    throw new Error(getNetworkErrorMessage(error, teacherSubjectsUrl, 'Não foi possível carregar os vínculos professor x matéria.'));
+                });
+                const data = await response.json().catch(() => null);
+                if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível carregar os vínculos professor x matéria.'));
+                if (Array.isArray(data)) {
+                    setTeacherSubjectOptions(
+                        data.map((item) => ({
+                            id: item.id,
+                            label: `${item.subject?.name || 'Matéria'} • ${item.teacher?.name || 'Professor'}`,
+                        })),
+                    );
+                }
+            } catch (error) {
+                setTeacherSubjectOptions([]);
+            }
+        };
+
+        void loadTeacherSubjects();
+    }, []);
 
     const normalizePeriodDate = (value: string) => (value ? new Date(`${value}T00:00:00`) : null);
 
@@ -454,8 +750,11 @@ export default function GradeAnualPage() {
                 seriesClassId,
             });
 
-            const response = await fetch(`${API_BASE_URL}/lesson-calendars/weekly-source?${query.toString()}`, {
+            const weeklySourceUrl = `${API_BASE_URL}/lesson-calendars/weekly-source?${query.toString()}`;
+            const response = await fetch(weeklySourceUrl, {
                 headers: { Authorization: `Bearer ${token}` },
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, weeklySourceUrl, 'Não foi possível buscar novamente a grade semanal.'));
             });
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível buscar novamente a grade semanal.'));
@@ -474,8 +773,11 @@ export default function GradeAnualPage() {
             const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, faça login novamente.');
 
-            const response = await fetch(`${API_BASE_URL}/lesson-calendars/${record.id}`, {
+            const lessonCalendarUrl = `${API_BASE_URL}/lesson-calendars/${record.id}`;
+            const response = await fetch(lessonCalendarUrl, {
                 headers: { Authorization: `Bearer ${token}` },
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, lessonCalendarUrl, 'Não foi possível carregar a grade anual para edição.'));
             });
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível carregar a grade anual para edição.'));
@@ -520,10 +822,13 @@ export default function GradeAnualPage() {
             const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, faça login novamente.');
 
-            const response = await fetch(`${API_BASE_URL}/lesson-calendars/${annualStatusToggleRecord.id}/status`, {
+            const toggleStatusUrl = `${API_BASE_URL}/lesson-calendars/${annualStatusToggleRecord.id}/status`;
+            const response = await fetch(toggleStatusUrl, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify({ active: willActivate }),
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, toggleStatusUrl, willActivate ? 'Não foi possível ativar a grade anual.' : 'Não foi possível inativar a grade anual.'));
             });
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, willActivate ? 'Não foi possível ativar a grade anual.' : 'Não foi possível inativar a grade anual.'));
@@ -543,9 +848,12 @@ export default function GradeAnualPage() {
             const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, faça login novamente.');
 
-            const response = await fetch(`${API_BASE_URL}/lesson-calendars/${record.id}/refresh-weekly-source`, {
+            const refreshUrl = `${API_BASE_URL}/lesson-calendars/${record.id}/refresh-weekly-source`;
+            const response = await fetch(refreshUrl, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, refreshUrl, 'Não foi possível atualizar a grade anual.'));
             });
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível atualizar a grade anual.'));
@@ -608,25 +916,25 @@ export default function GradeAnualPage() {
             }
             validatePeriodsNoOverlap(formData.periods);
 
-            const response = await fetch(
-                editingId ? `${API_BASE_URL}/lesson-calendars/${editingId}` : `${API_BASE_URL}/lesson-calendars`,
-                {
-                    method: editingId ? 'PATCH' : 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        schoolYearId: formData.schoolYearId,
-                        seriesClassId: formData.seriesClassId,
-                        periods: formData.periods.map((period) => ({
-                            periodType: period.periodType,
-                            startDate: period.startDate,
-                            endDate: period.endDate,
-                        })),
-                    }),
+            const saveUrl = editingId ? `${API_BASE_URL}/lesson-calendars/${editingId}` : `${API_BASE_URL}/lesson-calendars`;
+            const response = await fetch(saveUrl, {
+                method: editingId ? 'PATCH' : 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
                 },
-            );
+                body: JSON.stringify({
+                    schoolYearId: formData.schoolYearId,
+                    seriesClassId: formData.seriesClassId,
+                    periods: formData.periods.map((period) => ({
+                        periodType: period.periodType,
+                        startDate: period.startDate,
+                        endDate: period.endDate,
+                    })),
+                }),
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, saveUrl, 'Não foi possível salvar a grade anual.'));
+            });
 
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível salvar a grade anual.'));
@@ -639,13 +947,6 @@ export default function GradeAnualPage() {
         } finally {
             setIsSaving(false);
         }
-    };
-
-    const toggleSort = (column: AnnualColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
     };
 
     const toggleExportColumn = (column: AnnualExportColumnKey) => {
@@ -661,45 +962,47 @@ export default function GradeAnualPage() {
         );
     };
 
-    const toggleGridColumnVisibility = (columnKey: AnnualColumnKey) => {
-        const isHidden = hiddenColumns.includes(columnKey);
-        const visibleCount = GRID_COLUMN_KEYS.length - hiddenColumns.length;
-        if (!isHidden && visibleCount === 1) {
-            setErrorStatus('Pelo menos uma coluna precisa continuar visível no grid.');
-            return;
+    const openLessonEdit = (lesson: AnnualCalendarLessonItem) => {
+        setLessonEditError(null);
+        setEditingLesson(lesson);
+        setLessonEditTeacherSubjectId(lesson.teacherSubjectId || '');
+    };
+
+    const closeLessonEdit = () => {
+        if (isSavingLessonEdit) return;
+        setEditingLesson(null);
+    };
+
+    const saveLessonEdit = async () => {
+        if (!editingLesson?.id) return;
+        try {
+            setIsSavingLessonEdit(true);
+            setLessonEditError(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado, faça login novamente.');
+            const payload = {
+                teacherSubjectId: lessonEditTeacherSubjectId || null,
+            };
+            const lessonCalendarItemUrl = `${API_BASE_URL}/lesson-calendars/items/${editingLesson.id}`;
+            const response = await fetch(lessonCalendarItemUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(payload),
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, lessonCalendarItemUrl, 'Não foi possível atualizar a matéria/professor desta aula.'));
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível atualizar a matéria/professor desta aula.'));
+            closeLessonEdit();
+            await loadCalendarEvents();
+        } catch (error) {
+            setLessonEditError(error instanceof Error ? error.message : 'Não foi possível salvar a alteração.');
+        } finally {
+            setIsSavingLessonEdit(false);
         }
-        setHiddenColumns((current) => (isHidden ? current.filter((item) => item !== columnKey) : [...current, columnKey]));
-    };
-
-    const moveGridColumn = (columnKey: AnnualColumnKey, direction: 'up' | 'down') => {
-        setColumnOrder((current) => {
-            const currentIndex = current.indexOf(columnKey);
-            if (currentIndex === -1) return current;
-            const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-            if (nextIndex < 0 || nextIndex >= current.length) return current;
-            const nextOrder = [...current];
-            const [removed] = nextOrder.splice(currentIndex, 1);
-            nextOrder.splice(nextIndex, 0, removed);
-            return nextOrder;
-        });
-    };
-
-    const resetGridColumns = () => {
-        setColumnOrder(GRID_COLUMN_KEYS);
-        setHiddenColumns(GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_GRID_COLUMNS.includes(key)));
-        setColumnAggregations({});
-    };
-
-    const handleColumnAggregationChange = (columnKey: AnnualColumnKey, aggregateType: 'sum' | 'avg' | 'min' | 'max' | 'count' | null) => {
-        setColumnAggregations((current) => {
-            const next = { ...current };
-            if (aggregateType) {
-                next[columnKey] = aggregateType;
-            } else {
-                delete next[columnKey];
-            }
-            return next;
-        });
     };
 
     const renderInfoButton = (record: LessonCalendarRecord) => (
@@ -731,35 +1034,6 @@ export default function GradeAnualPage() {
         />
     );
 
-    const renderGridCell = (record: LessonCalendarRecord, columnKey: AnnualColumnKey) => {
-        const tone = record.canceledAt ? 'text-rose-700' : 'text-slate-600';
-        const emphasis = record.canceledAt ? 'text-rose-800' : 'text-slate-800';
-
-        if (columnKey === 'schoolYear') return <td key={columnKey} className={`px-6 py-4 text-sm font-semibold ${emphasis}`}>{record.schoolYear?.year || '---'}</td>;
-        if (columnKey === 'seriesClass') {
-            return (
-                <td key={columnKey} className="px-6 py-4">
-                    <div className={`flex items-center gap-2 font-semibold ${emphasis}`}>
-                        <span>{record.seriesClass?.class?.name || '---'}</span>
-                        <RecordStatusIndicator active={!record.canceledAt} />
-                    </div>
-                    <div className={`text-[13px] ${record.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>{record.seriesClass?.series?.name || 'Sem série'}</div>
-                </td>
-            );
-        }
-        if (columnKey === 'classPeriodsCount') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{record.classPeriodsCount}</td>;
-        if (columnKey === 'intervalPeriodsCount') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{record.intervalPeriodsCount}</td>;
-        if (columnKey === 'generatedItemsCount') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{record.generatedItemsCount}</td>;
-        if (columnKey === 'recordStatus') {
-            return (
-                <td key={columnKey} className="px-6 py-4 text-center">
-                    <RecordStatusIndicator active={!record.canceledAt} />
-                </td>
-            );
-        }
-        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>---</td>;
-    };
-
     if (!isLoading && !canView) {
         return (
             <DashboardAccessDenied
@@ -771,131 +1045,482 @@ export default function GradeAnualPage() {
 
     return (
         <div className="w-full space-y-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-[#153a6a]">Grade anual</h1>
-                    <p className="mt-1 font-medium text-slate-500">Monte o calendário anual da turma a partir da grade semanal e dos intervalos de férias.</p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => setIsExportModalOpen(true)}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        Exportar
-                    </button>
-                    {canManage ? (
-                        <button
-                            type="button"
-                            onClick={openCreateModal}
-                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all active:scale-95 hover:bg-blue-500"
-                        >
-                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Nova Grade Anual
-                        </button>
-                    ) : null}
-                </div>
-            </div>
-
             {errorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{errorStatus}</div> : null}
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="dashboard-band border-b px-6 py-4">
-                    <div className="relative w-full max-w-sm">
-                        <input
-                            value={searchTerm}
-                            onChange={(event) => setSearchTerm(event.target.value)}
-                            placeholder="Buscar por turma, ano letivo ou faixas do calendário..."
-                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                        <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+            <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+                <div className="bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.18),_transparent_45%),linear-gradient(135deg,#eff6ff_0%,#ffffff_42%,#f8fafc_100%)] px-8 py-8">
+                    <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex items-center gap-5">
+                            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
+                                {tenant?.logoUrl ? (
+                                    <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-3" />
+                                ) : (
+                                    <span className="text-lg font-black tracking-[0.25em] text-[#153a6a]">
+                                        {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                    </span>
+                                )}
+                            </div>
+                            <div>
+                                <div className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">Grade Anual</div>
+                                <h1 className="mt-2 text-3xl font-extrabold text-[#153a6a]">{tenant?.name || 'Visão geral da escola'}</h1>
+                                <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500">
+                                    Acompanhe toda a grade anual da escola em cards, com visão geral por turma, períodos cadastrados e total de aulas geradas, usando o mesmo padrão visual do calendário de aulas.
+                                </p>
+                                <div className="mt-4">
+                                    <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL" className="mt-0 text-[11px]" />
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
-                        <thead>
-                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
-                                {visibleGridColumns.map((column) => (
-                                    <th key={column.key} className="px-6 py-4">
-                                        <GridSortableHeader
-                                            label={column.label}
-                                            isActive={sortState.column === column.key}
-                                            direction={sortState.direction}
-                                            onClick={() => toggleSort(column.key)}
-                                        />
-                                    </th>
-                                ))}
-                                <th className="px-6 py-4 text-right">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan={visibleGridColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando grades anuais...</td>
-                                </tr>
+
+                <div className="px-8 py-6">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex flex-wrap gap-3">
+                            <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                Ano
+                                <select
+                                    value={selectedYear}
+                                    onChange={(event) => {
+                                        setDateShortcut(null);
+                                        setWeekRange(null);
+                                        setSelectedYear(event.target.value);
+                                    }}
+                                    className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                >
+                                    {availableYears.map((year) => (
+                                        <option key={year} value={year}>{year}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                Mês
+                                <select
+                                    value={selectedMonth}
+                                    onChange={(event) => {
+                                        setDateShortcut(null);
+                                        setWeekRange(null);
+                                        setSelectedMonth(event.target.value);
+                                    }}
+                                    className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                    disabled={!selectedYear}
+                                >
+                                    {availableMonths.map((option) => (
+                                        <option key={`${selectedYear}-${option.value}`} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { key: 'TODAY', label: 'Hoje' },
+                                    { key: 'WEEK', label: 'Semana' },
+                                    { key: 'YESTERDAY', label: 'Ontem' },
+                                    { key: 'TOMORROW', label: 'Amanhã' },
+                                ].map((shortcut) => {
+                                    const active = dateShortcut === shortcut.key;
+                                    return (
+                                        <button
+                                            key={shortcut.key}
+                                            type="button"
+                                            onClick={() => applyDateShortcut(shortcut.key as 'TODAY' | 'YESTERDAY' | 'TOMORROW' | 'WEEK')}
+                                            className={`rounded-full border px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${active ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
+                                        >
+                                            {shortcut.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { value: 'ACTIVE', label: 'Ativas' },
+                                    { value: 'ALL', label: 'Todas' },
+                                    { value: 'INACTIVE', label: 'Inativas' },
+                                ].map((option) => {
+                                    const active = statusFilter === option.value;
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => setStatusFilter(option.value as GridStatusFilterValue)}
+                                            className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${active ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsExportModalOpen(true)}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+                            >
+                                Exportar
+                            </button>
+                            {canManage ? (
+                                <button
+                                    type="button"
+                                    onClick={openCreateModal}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+                                >
+                                    Nova grade anual
+                                </button>
                             ) : null}
-                            {!isLoading && sortedRecords.length === 0 ? (
-                                <tr>
-                                    <td colSpan={visibleGridColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhuma grade anual cadastrada.</td>
-                                </tr>
-                            ) : null}
-                            {!isLoading && sortedRecords.map((record) => (
-                                <tr key={record.id} className={record.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                    {visibleGridColumns.map((column) => renderGridCell(record, column.key))}
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {renderInfoButton(record)}
-                                            {canManage ? (
-                                                <>
-                                                    <GridRowActionIconButton title="Editar grade anual" onClick={() => void handleEdit(record)} tone="blue">
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                        </svg>
-                                                    </GridRowActionIconButton>
-                                                    <GridRowActionIconButton title="Buscar novamente grade semanal" onClick={() => void handleRefreshGeneratedCalendar(record)} tone="emerald">
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                        </svg>
-                                                    </GridRowActionIconButton>
-                                                    <GridRowActionIconButton title={record.canceledAt ? 'Ativar grade anual' : 'Inativar grade anual'} onClick={() => void openAnnualStatusModal(record)} tone={record.canceledAt ? 'emerald' : 'rose'}>
-                                                        {record.canceledAt ? (
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                            </svg>
-                                                        ) : (
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                            </svg>
-                                                        )}
-                                                    </GridRowActionIconButton>
-                                                </>
-                                            ) : (
-                                                <span className="self-center text-xs font-semibold uppercase tracking-wide text-slate-300">Somente leitura</span>
-                                            )}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Turmas no período</div>
+                            <div className="mt-2 text-2xl font-extrabold text-slate-800">{totalRecordsInMonth}</div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Dias com registro</div>
+                            <div className="mt-2 text-2xl font-extrabold text-slate-800">{totalDaysWithEntries}</div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Dia selecionado</div>
+                            <div className="mt-2 text-base font-extrabold capitalize text-slate-800">{selectedDate ? getFullDateLabel(selectedDate) : 'Selecione uma data'}</div>
+                            <div className="mt-1 text-sm font-medium text-slate-500">{selectedDayLessonItems.length + selectedDayStandaloneEvents.length} item(ns) nesta data</div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                        {isLoading ? (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                Carregando visão anual da escola...
+                            </div>
+                        ) : null}
+
+                        {!isLoading && sortedRecords.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                Nenhuma grade anual cadastrada para o ano e status selecionados.
+                            </div>
+                        ) : null}
+
+                        {!isLoading && sortedRecords.length > 0 ? (
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-7 gap-3">
+                                    {WEEKDAY_LABELS.map((label) => (
+                                        <div key={label} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
+                                            {label}
                                         </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                                    ))}
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <div className="grid min-w-[1180px] grid-cols-7 gap-3 xl:min-w-0">
+                                        {visibleCalendarDays.map((day) => {
+                                            const dayLessonItems = lessonItemsByDate.get(day) || [];
+                                            const dayStandaloneEvents = standaloneEventsByDate.get(day) || [];
+                                            const isCurrentMonth = day.startsWith(`${selectedYear}-${selectedMonth}`);
+                                            const isSelected = day === selectedDate;
+                                            const provaEvents = dayLessonItems.flatMap((item) => item.events).filter((event) => event.eventType === 'PROVA');
+                                            const extraEvents = [
+                                                ...dayStandaloneEvents,
+                                                ...dayLessonItems.flatMap((item) => item.events
+                                                    .filter((event) => event.eventType !== 'PROVA')
+                                                    .map((event) => ({
+                                                        ...event,
+                                                        seriesClassLabel: item.seriesClassLabel,
+                                                        subjectName: item.subjectName,
+                                                    }))),
+                                            ];
+                                            const featuredExtraEvent = extraEvents[0] || null;
+
+                                            return (
+                                                <div
+                                                    key={day}
+                                                    className={`flex min-h-[210px] flex-col rounded-[24px] border p-3 text-left transition ${
+                                                        isSelected
+                                                            ? 'border-blue-300 bg-[#f3f8ff] shadow-sm ring-2 ring-blue-100'
+                                                            : isCurrentMonth
+                                                                ? 'border-slate-200 bg-white hover:border-blue-200'
+                                                                : 'border-slate-200 bg-slate-100/70 text-slate-400 hover:border-blue-200'
+                                                    }`}
+                                                >
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setDateShortcut(null);
+                                                                setWeekRange(null);
+                                                                setSelectedDate(day);
+                                                            }}
+                                                            className="flex items-center justify-between rounded-xl text-left outline-none transition hover:opacity-90"
+                                                        >
+                                                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                                                            {getMonthBeforeDayLabel(day)}
+                                                        </span>
+                                                        <div className="flex flex-wrap items-center justify-end gap-1">
+                                                            {dayLessonItems.length ? (
+                                                                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                                                                    {dayLessonItems.length} aula(s)
+                                                                </span>
+                                                            ) : null}
+                                                            {dayStandaloneEvents.length ? (
+                                                                <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700">
+                                                                    {dayStandaloneEvents.length} evento(s)
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                    </button>
+
+                                                    {dayLessonItems.length > 0 ? (
+                                                        <div className="mt-2 inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                                            {dayLessonItems.length} horário(s) da escola
+                                                        </div>
+                                                    ) : null}
+
+                                                    {featuredExtraEvent ? (
+                                                        <div className="mt-2 rounded-[18px] border border-red-300 bg-red-50 px-3 py-3 shadow-sm">
+                                                            <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
+                                                                EVENTO EXTRA
+                                                            </div>
+                                                            <div className="mt-2 text-xs font-extrabold uppercase text-slate-800">
+                                                                {featuredExtraEvent.title || featuredExtraEvent.eventTypeLabel}
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] font-medium uppercase text-slate-500">
+                                                                {featuredExtraEvent.seriesClassLabel}
+                                                            </div>
+                                                            <div className="text-[11px] font-medium uppercase text-slate-500">
+                                                                {featuredExtraEvent.subjectName}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+
+                                                    <div className="mt-3 flex flex-1 flex-col gap-2">
+                                                        {dayLessonItems.slice(0, 3).map((entry) => {
+                                                            const hasProva = entry.events.some((event) => event.eventType === 'PROVA');
+                                                            const extraEvent = entry.events.find((event) => event.eventType !== 'PROVA');
+
+                                                            return (
+                                                                <div
+                                                                    key={entry.id}
+                                                                    role="button"
+                                                                tabIndex={0}
+                                                                onClick={() => {
+                                                                    setDateShortcut(null);
+                                                                    setWeekRange(null);
+                                                                    setSelectedDate(day);
+                                                                }}
+                                                                onKeyDown={(event) => {
+                                                                    if (event.key === 'Enter' || event.key === ' ') {
+                                                                        event.preventDefault();
+                                                                        setDateShortcut(null);
+                                                                        setWeekRange(null);
+                                                                        setSelectedDate(day);
+                                                                    }
+                                                                }}
+                                                                    className="rounded-2xl border border-blue-200 bg-[#eef5ff] text-blue-800 px-3 py-3 text-left shadow-sm transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-white"
+                                                                >
+                                                                    {hasProva ? (
+                                                                        <span className="mb-2 inline-flex rounded-full bg-red-600 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white">
+                                                                            * DIA DE PROVA
+                                                                        </span>
+                                                                    ) : null}
+                                                                    <div className="text-[11px] font-black uppercase tracking-[0.18em]">
+                                                                        {entry.startTime} - {entry.endTime}
+                                                                    </div>
+                                                                    <div className="mt-2 text-xs font-extrabold uppercase">
+                                                                        {entry.subjectName}
+                                                                    </div>
+                                                                    <div className="mt-1 text-[11px] font-semibold uppercase">
+                                                                        {entry.teacherName}
+                                                                    </div>
+                                                                    <div className="mt-1 text-[11px] font-medium uppercase">
+                                                                        {entry.seriesClassLabel}
+                                                                    </div>
+                                                                    {extraEvent ? (
+                                                                        <div className="mt-2 text-[11px] font-semibold uppercase">
+                                                                            {extraEvent.title || extraEvent.eventTypeLabel}
+                                                                        </div>
+                                                                    ) : null}
+                                                                    <div className="mt-3">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => openLessonEdit(entry)}
+                                                                            className="inline-flex w-full justify-center rounded-full bg-blue-600 px-3 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-blue-500 disabled:bg-slate-300 disabled:text-slate-500"
+                                                                        >
+                                                                            Alterar aula
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {dayLessonItems.length > 3 ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setDateShortcut(null);
+                                                                    setWeekRange(null);
+                                                                    setSelectedDate(day);
+                                                                }}
+                                                                className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-blue-700"
+                                                            >
+                                                                +{dayLessonItems.length - 3} horário(s)
+                                                            </button>
+                                                        ) : null}
+                                                        {!dayLessonItems.length && !featuredExtraEvent && !provaEvents.length ? (
+                                                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                                Sem turmas nesse dia
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+
+                    {!isLoading && sortedRecords.length > 0 ? (
+                        <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Registros do dia</div>
+                                    <h2 className="mt-2 text-xl font-extrabold capitalize text-slate-800">{selectedDate ? getFullDateLabel(selectedDate) : 'Selecione uma data'}</h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">
+                                        Visão geral da escola sem filtro por professor, mostrando todas as turmas com lançamento nessa data.
+                                    </p>
+                                </div>
+                                <span className="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
+                                    {selectedDayRecordSummaries.length} turma(s)
+                                </span>
+                            </div>
+
+                            {selectedDayStandaloneEvents.length > 0 ? (
+                                <div className="mb-5 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                    {selectedDayStandaloneEvents.map((event) => (
+                                        <div key={event.id} className="rounded-[20px] border border-red-300 bg-red-50 px-4 py-3 shadow-sm">
+                                            <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
+                                                EVENTO EXTRA
+                                            </div>
+                                            <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">
+                                                {event.title || event.eventTypeLabel}
+                                            </div>
+                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-500">
+                                                {event.seriesClassLabel}
+                                            </div>
+                                            <div className="text-xs font-semibold uppercase text-slate-500">
+                                                {event.subjectName}
+                                            </div>
+                                            {event.description ? (
+                                                <div className="mt-2 text-xs font-medium text-slate-600">
+                                                    {event.description}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
+                            {selectedDayRecordSummaries.length > 0 && (
+                                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+                                    {selectedDayRecordSummaries.map((record) => (
+                                        <article
+                                            key={`${record.id}-${selectedDate}`}
+                                            className={`rounded-[28px] border p-5 shadow-sm transition ${record.canceledAt ? 'border-rose-200 bg-rose-50/70' : 'border-slate-200 bg-white hover:border-blue-200'}`}
+                                        >
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div>
+                                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
+                                                        Ano letivo {record.schoolYear?.year || '---'}
+                                                    </div>
+                                                    <h3 className="mt-2 text-xl font-extrabold text-slate-800">
+                                                        {record.seriesClass?.series?.name || 'SEM SÉRIE'} - {record.seriesClass?.class?.name || 'SEM TURMA'}
+                                                    </h3>
+                                                    <p className="mt-2 text-sm font-medium text-slate-500">
+                                                        Última sincronização da grade semanal: {formatDateTime(record.lastWeeklySyncAt)}
+                                                    </p>
+                                                </div>
+                                                <RecordStatusIndicator active={!record.canceledAt} />
+                                            </div>
+
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                                {selectedDayLessonItems
+                                                    .filter((entry) => entry.lessonCalendarId === record.id)
+                                                    .slice(0, 3)
+                                                    .map((entry) => (
+                                                        <span
+                                                            key={`${record.id}-${entry.id}`}
+                                                            className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${entry.events.some((event) => event.eventType === 'PROVA') ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}
+                                                        >
+                                                            {entry.startTime} - {entry.endTime} • {entry.subjectName}
+                                                        </span>
+                                                    ))}
+                                            </div>
+
+                                            <div className="mt-5 grid grid-cols-3 gap-3">
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Aula</div>
+                                                    <div className="mt-2 text-xl font-extrabold text-slate-800">{record.classPeriodsCount}</div>
+                                                </div>
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Intervalo</div>
+                                                    <div className="mt-2 text-xl font-extrabold text-slate-800">{record.intervalPeriodsCount}</div>
+                                                </div>
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Geradas</div>
+                                                    <div className="mt-2 text-xl font-extrabold text-slate-800">{record.generatedItemsCount}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-5 space-y-3">
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Períodos de aula</div>
+                                                    <div className="mt-2 text-sm font-semibold text-slate-700">{record.classPeriodsLabel || 'Não informado'}</div>
+                                                </div>
+                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Intervalos / férias</div>
+                                                    <div className="mt-2 text-sm font-semibold text-slate-700">{record.intervalPeriodsLabel || 'Sem intervalos'}</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-5 flex items-center justify-between gap-3">
+                                                {renderInfoButton(record)}
+                                                {canManage ? (
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <GridRowActionIconButton title="Editar grade anual" onClick={() => void handleEdit(record)} tone="blue">
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                            </svg>
+                                                        </GridRowActionIconButton>
+                                                        <GridRowActionIconButton title="Buscar novamente grade semanal" onClick={() => void handleRefreshGeneratedCalendar(record)} tone="emerald">
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                            </svg>
+                                                        </GridRowActionIconButton>
+                                                        <GridRowActionIconButton title={record.canceledAt ? 'Ativar grade anual' : 'Inativar grade anual'} onClick={() => void openAnnualStatusModal(record)} tone={record.canceledAt ? 'emerald' : 'rose'}>
+                                                            {record.canceledAt ? (
+                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                                </svg>
+                                                            ) : (
+                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                                </svg>
+                                                            )}
+                                                        </GridRowActionIconButton>
+                                                    </div>
+                                                ) : (
+                                                    <span className="self-center text-xs font-semibold uppercase tracking-wide text-slate-300">Somente leitura</span>
+                                                )}
+                                            </div>
+                                        </article>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
                 </div>
-                <GridFooterControls
-                    key={`annual-footer-${sortedRecords.length}`}
-                    recordsCount={Number(sortedRecords.length)}
-                    onOpenColumns={() => setIsGridConfigOpen(true)}
-                    statusFilter={statusFilter}
-                    onStatusFilterChange={setStatusFilter}
-                    activeLabel="Mostrar somente grades anuais ativas"
-                    allLabel="Mostrar grades anuais ativas e inativas"
-                    inactiveLabel="Mostrar somente grades anuais inativas"
-                    aggregateSummaries={aggregateSummaries}
-                />
             </section>
 
             {isModalOpen ? (
@@ -1095,25 +1720,77 @@ export default function GradeAnualPage() {
                 </div>
             ) : null}
 
-            <GridColumnConfigModal
-                isOpen={isGridConfigOpen}
-                title="Configurar colunas do grid"
-                description="Reordene, oculte ou inclua colunas do cadastro de grade anual nesta tela."
-                columns={GRID_COLUMNS.map((column) => ({
-                    key: column.key,
-                    label: column.label,
-                    visibleByDefault: column.visibleByDefault,
-                    aggregateOptions: column.aggregateOptions,
-                }))}
-                orderedColumns={columnOrder}
-                hiddenColumns={hiddenColumns}
-                selectedAggregations={columnAggregations}
-                onToggleColumnVisibility={toggleGridColumnVisibility}
-                onMoveColumn={moveGridColumn}
-                onAggregationChange={handleColumnAggregationChange}
-                onReset={resetGridColumns}
-                onClose={() => setIsGridConfigOpen(false)}
-            />
+            {editingLesson ? (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-4">
+                    <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                            <div>
+                                <h2 className="text-xl font-bold text-[#153a6a]">Alterar matéria e professor</h2>
+                                <p className="mt-1 text-sm text-slate-500">
+                                    Horário e turma não mudam; apenas o vínculo professor + matéria é atualizado.
+                                </p>
+                            </div>
+                            <button onClick={closeLessonEdit} className="text-slate-400 hover:text-red-500">
+                                <svg className="h-6 w-6" viewBox="0 0 24 24" stroke="currentColor" fill="none">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="space-y-4 px-6 py-6">
+                            {lessonEditError ? (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                                    {lessonEditError}
+                                </div>
+                            ) : null}
+                            <div className="text-sm font-semibold text-slate-500">
+                                {editingLesson?.startTime} - {editingLesson?.endTime} • {editingLesson?.seriesClassLabel}
+                            </div>
+                            <label className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
+                                Matéria e professor
+                                <select
+                                    value={lessonEditTeacherSubjectId}
+                                    onChange={(event) => setLessonEditTeacherSubjectId(event.target.value)}
+                                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
+                                >
+                                    <option value="">Selecione um vínculo ativo</option>
+                                    {teacherSubjectOptions.map((option) => (
+                                        <option key={option.id} value={option.id}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <p className="text-xs font-medium text-slate-500">
+                                Apenas o professor + matéria muda; turma e horários são imutáveis nesta tela.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={closeLessonEdit}
+                                disabled={isSavingLessonEdit}
+                                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow hover:bg-rose-500 disabled:bg-rose-300"
+                                style={{ minWidth: '110px' }}
+                            >
+                                Fechar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={saveLessonEdit}
+                                disabled={isSavingLessonEdit || !lessonEditTeacherSubjectId}
+                                className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                            >
+                                {isSavingLessonEdit ? 'Salvando...' : 'Salvar alteração'}
+                            </button>
+                        </div>
+                        <div className="flex justify-end px-6 pb-4">
+                            <div className="w-full max-w-sm">
+                                <ScreenNameCopy screenId={LESSON_EDIT_MODAL_LABEL} label="NOME DA TELA" className="mt-0 justify-end" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             <StatusConfirmationModal
                 isOpen={Boolean(annualStatusToggleRecord && annualStatusToggleAction)}
@@ -1173,4 +1850,5 @@ export default function GradeAnualPage() {
         </div>
     );
 }
+
 

@@ -143,3 +143,552 @@ Expected '</', got 'jsx text'
  GET /principal/calendario-aulas 200 in 12ms (compile: 3ms, render: 9ms)
 ✓ Compiled in 76ms
 ✓ Compiled in 40ms
+ GET / 200 in 46ms (compile: 23ms, render: 23ms)
+ GET /principal 200 in 20ms (compile: 7ms, render: 13ms)
+ GET / 200 in 11ms (compile: 3ms, render: 9ms)
+ GET /principal 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /principal/calendario-aulas 200 in 103ms (compile: 87ms, render: 16ms)
+✓ Compiled in 69ms
+✓ Compiled in 40ms
+✓ Compiled in 39ms
+✓ Compiled in 40ms
+✓ Compiled in 43ms
+✓ Compiled in 41ms
+✓ Compiled in 42ms
+✓ Compiled in 83ms
+✓ Compiled in 84ms
+✓ Compiled in 76ms
+✓ Compiled in 37ms
+✓ Compiled in 44ms
+ GET / 200 in 33ms (compile: 2ms, render: 31ms)
+ GET /principal 200 in 106ms (compile: 81ms, render: 25ms)
+ GET /principal/calendario-aulas 200 in 66ms (compile: 48ms, render: 17ms)
+ GET / 200 in 9ms (compile: 1684µs, render: 7ms)
+ GET /principal 200 in 12ms (compile: 1576µs, render: 10ms)
+ GET /principal/grade-anual 200 in 257ms (compile: 240ms, render: 17ms)
+ GET /principal/turmas 200 in 193ms (compile: 181ms, render: 12ms)
+ GET /principal/alunos 200 in 216ms (compile: 205ms, render: 11ms)
+ GET /principal/grade-horaria 200 in 201ms (compile: 189ms, render: 12ms)
+ GET /principal/series 200 in 228ms (compile: 214ms, render: 14ms)
+✓ Compiled in 41ms
+✓ Compiled in 42ms
+✓ Compiled in 44ms
+✓ Compiled in 48ms
+✓ Compiled in 41ms
+✓ Compiled in 84ms
+✓ Compiled in 49ms
+✓ Compiled in 36ms
+✓ Compiled in 38ms
+✓ Compiled in 41ms
+✓ Compiled in 41ms
+✓ Compiled in 75ms
+✓ Compiled in 39ms
+✓ Compiled in 42ms
+✓ Compiled in 35ms
+✓ Compiled in 44ms
+✓ Compiled in 36ms
+✓ Compiled in 39ms
+✓ Compiled in 38ms
+✓ Compiled in 48ms
+✓ Compiled in 35ms
+✓ Compiled in 39ms
+✓ Compiled in 44ms
+✓ Compiled in 38ms
+✓ Compiled in 36ms
+ GET /principal/series 200 in 306ms (compile: 219ms, render: 87ms)
+✓ Compiled in 42ms
+ GET /principal/series 200 in 292ms (compile: 209ms, render: 83ms)
+✓ Compiled in 44ms
+✓ Compiled in 42ms
+✓ Compiled in 75ms
+✓ Compiled in 38ms
+ GET / 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /principal 200 in 15ms (compile: 2ms, render: 13ms)
+ GET /principal/calendario-aulas 200 in 17ms (compile: 4ms, render: 13ms)
+ GET / 200 in 8ms (compile: 1549µs, render: 7ms)
+ GET /principal 200 in 13ms (compile: 1546µs, render: 11ms)
+ GET /principal/grade-horaria 200 in 214ms (compile: 198ms, render: 16ms)
+ GET /principal/series 200 in 193ms (compile: 177ms, render: 16ms)
+ GET /principal/turmas 200 in 135ms (compile: 126ms, render: 9ms)
+ GET /principal/series 200 in 142ms (compile: 133ms, render: 9ms)
+ GET /principal/turmas 200 in 135ms (compile: 127ms, render: 8ms)
+ GET /principal/series 200 in 195ms (compile: 182ms, render: 13ms)
+✓ Compiled in 48ms
+✓ Compiled in 38ms
+✓ Compiled in 43ms
+✓ Compiled in 45ms
+✓ Compiled in 41ms
+✓ Compiled in 37ms
+✓ Compiled in 46ms
+✓ Compiled in 40ms
+✓ Compiled in 35ms
+ GET /principal/turmas 200 in 247ms (compile: 232ms, render: 15ms)
+ GET /principal/grade-horaria 200 in 134ms (compile: 125ms, render: 8ms)
+ GET /principal/grade-anual 200 in 136ms (compile: 125ms, render: 11ms)
+ GET / 200 in 12ms (compile: 1800µs, render: 11ms)
+ GET /principal 200 in 13ms (compile: 1719µs, render: 11ms)
+ GET /principal/calendario-aulas 200 in 14ms (compile: 1613µs, render: 12ms)
+✓ Compiled in 83ms
+✓ Compiled in 44ms
+✓ Compiled in 49ms
+✓ Compiled in 42ms
+✓ Compiled in 45ms
+✓ Compiled in 44ms
+✓ Compiled in 44ms
+✓ Compiled in 44ms
+✓ Compiled in 46ms
+✓ Compiled in 41ms
+✓ Compiled in 42ms
+✓ Compiled in 42ms
+✓ Compiled in 39ms
+✓ Compiled in 45ms
+✓ Compiled in 37ms
+✓ Compiled in 42ms
+✓ Compiled in 46ms
+ GET /principal/calendario-aulas 200 in 77ms (compile: 58ms, render: 19ms)
+✓ Compiled in 46ms
+ GET /principal/calendario-aulas 200 in 151ms (compile: 70ms, render: 81ms)
+ GET /principal/calendario-aulas 200 in 10ms (compile: 1808µs, render: 9ms)
+ GET /principal/lancar-notas 200 in 212ms (compile: 201ms, render: 11ms)
+ GET / 200 in 12ms (compile: 2ms, render: 10ms)
+ GET /principal 200 in 12ms (compile: 1859µs, render: 10ms)
+ GET /principal/calendario-aulas 200 in 16ms (compile: 3ms, render: 13ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 2ms, render: 10ms)
+ GET /principal 200 in 10ms (compile: 1514µs, render: 9ms)
+ GET /principal/calendario-aulas 200 in 14ms (compile: 1677µs, render: 12ms)
+ GET /principal/calendario-aulas 200 in 10ms (compile: 1543µs, render: 9ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 1949µs, render: 10ms)
+ GET /principal 200 in 10ms (compile: 1566µs, render: 8ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 1918µs, render: 10ms)
+ GET /principal 200 in 9ms (compile: 1519µs, render: 8ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 1909µs, render: 10ms)
+ GET /principal/lancar-notas 200 in 10ms (compile: 1580µs, render: 9ms)
+ GET /principal/calendario-aulas 200 in 13ms (compile: 1656µs, render: 11ms)
+✓ Compiled in 37ms
+✓ Compiled in 41ms
+ GET /principal/calendario-aulas 200 in 80ms (compile: 61ms, render: 19ms)
+✓ Compiled in 45ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 43ms
+⨯ ReferenceError: teacherName is not defined
+    at CalendarioAulasPage (src\app\principal\calendario-aulas\page.tsx:1096:94)
+  1094 |                             <div>
+  1095 |                                 <div className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">Calendário Aulas</div>
+> 1096 |                                 <h1 className="mt-2 text-3xl font-extrabold text-[#153a6a]">{teacherName || 'Professor'}</h1>
+       |                                                                                              ^
+  1097 |                                 <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500">
+  1098 |                                     Visualize sua grade anual em calendário expandido, com horários reais da aula, eventos lançados e navegação por mês, semana ou dia.
+  1099 |                                 </p> {
+  digest: '884184319'
+}
+ GET /principal/calendario-aulas 500 in 177ms (compile: 67ms, render: 110ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 44ms
+ GET /principal/calendario-aulas 200 in 127ms (compile: 56ms, render: 70ms)
+ GET / 200 in 15ms (compile: 4ms, render: 12ms)
+ GET /principal 200 in 12ms (compile: 1592µs, render: 11ms)
+ GET /principal/grade-anual 200 in 144ms (compile: 132ms, render: 13ms)
+ GET /principal/grade-horaria 200 in 136ms (compile: 127ms, render: 9ms)
+ GET /principal/grade-anual 200 in 172ms (compile: 155ms, render: 17ms)
+ GET /principal 200 in 10ms (compile: 1594µs, render: 8ms)
+ GET /principal/grade 200 in 198ms (compile: 182ms, render: 16ms)
+ GET /principal/grade-horaria 200 in 134ms (compile: 124ms, render: 10ms)
+ GET /principal/grade-anual 200 in 138ms (compile: 127ms, render: 11ms)
+ GET /principal/professores 200 in 210ms (compile: 193ms, render: 17ms)
+ GET /principal/grade 200 in 127ms (compile: 119ms, render: 8ms)
+ GET /principal 200 in 10ms (compile: 1552µs, render: 8ms)
+ GET /principal/dashboard 200 in 49ms (compile: 39ms, render: 10ms)
+ GET /principal/dashboard/resumo-professor-aulas 200 in 48ms (compile: 38ms, render: 10ms)
+ GET /principal/dashboard/resumo-por-periodo 200 in 49ms (compile: 38ms, render: 11ms)
+ GET /principal/dashboard/resumo-por-turma 200 in 54ms (compile: 41ms, render: 14ms)
+ GET /principal 200 in 10ms (compile: 1641µs, render: 8ms)
+ GET /principal/grade-anual 200 in 191ms (compile: 181ms, render: 10ms)
+ GET /principal/grade 200 in 135ms (compile: 124ms, render: 11ms)
+ GET /principal/grade-horaria 200 in 134ms (compile: 125ms, render: 9ms)
+ GET /principal/grade-anual 200 in 127ms (compile: 118ms, render: 8ms)
+ GET / 200 in 11ms (compile: 1663µs, render: 9ms)
+ GET /principal 200 in 10ms (compile: 1545µs, render: 8ms)
+ GET /principal/calendario-aulas 200 in 14ms (compile: 1771µs, render: 13ms)
+ GET /principal 200 in 9ms (compile: 1503µs, render: 7ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 1696µs, render: 11ms)
+ GET /principal 200 in 14ms (compile: 2ms, render: 11ms)
+ GET /principal/calendario-aulas 200 in 11ms (compile: 3ms, render: 9ms)
+✓ Compiled in 45ms
+✓ Compiled in 40ms
+✓ Compiled in 41ms
+✓ Compiled in 44ms
+ GET /principal/calendario-aulas 200 in 87ms (compile: 64ms, render: 23ms)
+ GET /principal/lancar-notas 200 in 12ms (compile: 1710µs, render: 10ms)
+ GET /principal/calendario-aulas 200 in 11ms (compile: 1697µs, render: 10ms)
+ GET /principal/calendario-aulas 200 in 74ms (compile: 1707µs, render: 72ms)
+✓ Compiled in 47ms
+ GET /principal/lancar-notas 200 in 12ms (compile: 3ms, render: 10ms)
+ GET /principal/calendario-aulas 200 in 73ms (compile: 54ms, render: 18ms)
+ GET /principal/lancar-notas 200 in 11ms (compile: 1751µs, render: 10ms)
+ GET /principal/calendario-aulas 200 in 12ms (compile: 2ms, render: 10ms)
+✓ Compiled in 42ms
+✓ Compiled in 76ms
+✓ Compiled in 46ms
+ GET /principal/calendario-aulas 200 in 82ms (compile: 61ms, render: 20ms)
+✓ Compiled in 50ms
+✓ Compiled in 46ms
+✓ Compiled in 44ms
+✓ Compiled in 40ms
+✓ Compiled in 40ms
+✓ Compiled in 47ms
+ GET /principal/calendario-aulas 200 in 79ms (compile: 60ms, render: 18ms)
+✓ Compiled in 44ms
+✓ Compiled in 42ms
+✓ Compiled in 49ms
+✓ Compiled in 42ms
+✓ Compiled in 45ms
+✓ Compiled in 39ms
+✓ Compiled in 46ms
+✓ Compiled in 41ms
+✓ Compiled in 43ms
+✓ Compiled in 81ms
+✓ Compiled in 47ms
+✓ Compiled in 41ms
+ GET /principal/calendario-aulas 200 in 137ms (compile: 60ms, render: 77ms)
+✓ Compiled in 41ms
+✓ Compiled in 75ms
+✓ Compiled in 44ms
+ GET /principal/lancar-notas 200 in 16ms (compile: 4ms, render: 11ms)
+ GET /principal/calendario-aulas 200 in 74ms (compile: 60ms, render: 14ms)
+✓ Compiled in 43ms
+✓ Compiled in 44ms
+✓ Compiled in 43ms
+✓ Compiled in 40ms
+✓ Compiled in 43ms
+✓ Compiled in 40ms
+✓ Compiled in 42ms
+✓ Compiled in 41ms
+ GET /principal/lancar-notas 200 in 12ms (compile: 1847µs, render: 10ms)
+ GET /principal/lancar-notas 200 in 10ms (compile: 1692µs, render: 9ms)
+ GET /principal/calendario-aulas 200 in 74ms (compile: 59ms, render: 16ms)
+ GET /principal/notificacoes 200 in 99ms (compile: 66ms, render: 32ms)
+ GET /principal/calendario-aulas 200 in 16ms (compile: 3ms, render: 12ms)
+ GET / 200 in 15ms (compile: 2ms, render: 12ms)
+ GET /principal 200 in 14ms (compile: 2ms, render: 12ms)
+ GET /principal/grade-anual 200 in 135ms (compile: 123ms, render: 13ms)
+ GET /principal/grade-horaria 200 in 193ms (compile: 183ms, render: 10ms)
+ GET /principal/grade 200 in 136ms (compile: 124ms, render: 12ms)
+ GET /principal/grade-horaria 200 in 133ms (compile: 121ms, render: 12ms)
+✓ Compiled in 52ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:383:63)
+  381 |     const [editingId, setEditingId] = useState<string | null>(null);
+  382 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 383 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  384 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  385 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  386 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '189811280'
+}
+✓ Compiled in 37ms
+ GET /principal/grade-horaria 500 in 320ms (compile: 214ms, render: 106ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '3848017180'
+}
+✓ Compiled in 42ms
+ GET /principal/grade-horaria 500 in 285ms (compile: 198ms, render: 87ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '3848017180'
+}
+✓ Compiled in 42ms
+ GET /principal/grade-horaria 500 in 278ms (compile: 183ms, render: 95ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '3848017180'
+}
+✓ Compiled in 40ms
+ GET /principal/grade-horaria 500 in 311ms (compile: 220ms, render: 91ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '3848017180'
+}
+✓ Compiled in 49ms
+ GET /principal/grade-horaria 500 in 280ms (compile: 191ms, render: 90ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 38ms
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '3848017180'
+}
+ GET /principal/grade-horaria 500 in 302ms (compile: 196ms, render: 106ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 80ms
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '3848017180'
+}
+ GET /principal/grade-horaria 500 in 316ms (compile: 203ms, render: 112ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 87ms
+⨯ ReferenceError: DEFAULT_SORT is not defined
+    at GradeHorariaPlanejadaPage (src\app\principal\grade-horaria\page.tsx:328:63)
+  326 |     const [editingId, setEditingId] = useState<string | null>(null);
+  327 |     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+> 328 |     const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
+      |                                                               ^
+  329 |     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+  330 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  331 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false); {
+  digest: '723293113'
+}
+ GET /principal/grade-horaria 500 in 332ms (compile: 247ms, render: 85ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 42ms
+ GET /principal/grade-horaria 200 in 288ms (compile: 226ms, render: 61ms)
+✓ Compiled in 45ms
+✓ Compiled in 43ms
+✓ Compiled in 40ms
+✓ Compiled in 44ms
+✓ Compiled in 39ms
+✓ Compiled in 77ms
+✓ Compiled in 41ms
+✓ Compiled in 43ms
+✓ Compiled in 47ms
+ GET /principal/grade-horaria 200 in 266ms (compile: 246ms, render: 21ms)
+✓ Compiled in 41ms
+✓ Compiled in 43ms
+ GET /principal/grade-horaria 200 in 235ms (compile: 217ms, render: 18ms)
+✓ Compiled in 43ms
+✓ Compiled in 39ms
+✓ Compiled in 41ms
+ GET /principal/grade-horaria 200 in 240ms (compile: 188ms, render: 52ms)
+✓ Compiled in 45ms
+✓ Compiled in 37ms
+✓ Compiled in 42ms
+✓ Compiled in 41ms
+✓ Compiled in 37ms
+✓ Compiled in 43ms
+ GET /principal/grade-anual 200 in 136ms (compile: 125ms, render: 11ms)
+ GET /principal/grade-horaria 200 in 222ms (compile: 206ms, render: 16ms)
+✓ Compiled in 42ms
+ GET / 200 in 12ms (compile: 1980µs, render: 10ms)
+ GET /principal 200 in 12ms (compile: 2ms, render: 9ms)
+ GET /principal/calendario-aulas 200 in 18ms (compile: 6ms, render: 12ms)
+ GET / 200 in 12ms (compile: 1489µs, render: 10ms)
+ GET /principal 200 in 10ms (compile: 1515µs, render: 8ms)
+ GET /principal/grade-anual 200 in 133ms (compile: 124ms, render: 9ms)
+✓ Compiled in 45ms
+⨯ ReferenceError: getAllGridColumnKeys is not defined
+    at module evaluation (src\app\principal\grade-anual\page.tsx:158:26)
+  156 | );
+  157 |
+> 158 | const GRID_COLUMN_KEYS = getAllGridColumnKeys(GRID_COLUMNS);
+      |                          ^
+  159 | const DEFAULT_VISIBLE_GRID_COLUMNS = getDefaultVisibleGridColumnKeys(GRID_COLUMNS);
+  160 |
+  161 | function getGridConfigStorageKey(tenantId: string | null) { {
+  digest: '3895356734'
+}
+ GET /principal/grade-anual 500 in 452ms (compile: 184ms, render: 268ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⚠ Fast Refresh had to perform a full reload when ./src/app/principal/grade-anual/page.tsx changed. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: GRID_COLUMN_KEYS is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:240:71)
+  238 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  239 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false);
+> 240 |     const [columnOrder, setColumnOrder] = useState<AnnualColumnKey[]>(GRID_COLUMN_KEYS);
+      |                                                                       ^
+  241 |     const [hiddenColumns, setHiddenColumns] = useState<AnnualColumnKey[]>(
+  242 |         GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_GRID_COLUMNS.includes(key)),
+  243 |     ); {
+  digest: '99715263'
+}
+✓ Compiled in 37ms
+⨯ ReferenceError: GRID_COLUMN_KEYS is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:240:71)
+  238 |     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+  239 |     const [isGridConfigReady, setIsGridConfigReady] = useState(false);
+> 240 |     const [columnOrder, setColumnOrder] = useState<AnnualColumnKey[]>(GRID_COLUMN_KEYS);
+      |                                                                       ^
+  241 |     const [hiddenColumns, setHiddenColumns] = useState<AnnualColumnKey[]>(
+  242 |         GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_GRID_COLUMNS.includes(key)),
+  243 |     ); {
+  digest: '99715263'
+}
+ GET /principal/grade-anual 500 in 182ms (compile: 134ms, render: 49ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 39ms
+⨯ ReferenceError: columnOrder is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:260:10)
+  258 |             .map((key) => GRID_COLUMNS.find((column) => column.key === key))
+  259 |             .filter((column): column is ConfigurableGridColumn<LessonCalendarRecord, AnnualColumnKey> => !!column),
+> 260 |         [columnOrder],
+      |          ^
+  261 |     );
+  262 |     const visibleGridColumns = useMemo(
+  263 |         () => orderedGridColumns.filter((column) => !hiddenColumns.includes(column.key)), {
+  digest: '2820605517'
+}
+ GET /principal/grade-anual 500 in 250ms (compile: 187ms, render: 63ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 37ms
+⨯ ReferenceError: columnAggregations is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:356:9)
+  354 |         if (!isGridConfigReady) return;
+  355 |         writeGridColumnConfig(getGridConfigStorageKey(currentTenantId), GRID_COLUMN_KEYS, columnOrder, hiddenColumns, columnAggregations);
+> 356 |     }, [columnAggregations, columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
+      |         ^
+  357 |
+  358 |     const normalizePeriodDate = (value: string) => (value ? new Date(`${value}T00:00:00`) : null);
+  359 | {
+  digest: '224656316'
+}
+ GET /principal/grade-anual 500 in 249ms (compile: 183ms, render: 66ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 42ms
+⨯ ReferenceError: visibleGridColumns is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:776:34)
+  774 |                         <thead>
+  775 |                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+> 776 |                                 {visibleGridColumns.map((column) => (
+      |                                  ^
+  777 |                                     <th key={column.key} className="px-6 py-4">
+  778 |                                         <GridSortableHeader
+  779 |                                             label={column.label} {
+  digest: '1224654438'
+}
+ GET /principal/grade-anual 500 in 261ms (compile: 186ms, render: 75ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 42ms
+⨯ ReferenceError: visibleGridColumns is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:699:34)
+  697 |                         <thead>
+  698 |                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+> 699 |                                 {visibleGridColumns.map((column) => (
+      |                                  ^
+  700 |                                     <th key={column.key} className="px-6 py-4">
+  701 |                                         <GridSortableHeader
+  702 |                                             label={column.label} {
+  digest: '520045002'
+}
+ GET /principal/grade-anual 500 in 254ms (compile: 186ms, render: 68ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 40ms
+⨯ ReferenceError: visibleGridColumns is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:724:34)
+  722 |                         <thead>
+  723 |                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+> 724 |                                 {visibleGridColumns.map((column) => (
+      |                                  ^
+  725 |                                     <th key={column.key} className="px-6 py-4">
+  726 |                                         <GridSortableHeader
+  727 |                                             label={column.label} {
+  digest: '3345246601'
+}
+ GET /principal/grade-anual 500 in 248ms (compile: 184ms, render: 64ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 86ms
+⨯ ReferenceError: GridColumnConfigModal is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:1105:14)
+  1103 |             ) : null}
+  1104 |
+> 1105 |             <GridColumnConfigModal
+       |              ^
+  1106 |                 isOpen={isGridConfigOpen}
+  1107 |                 title="Configurar colunas do grid"
+  1108 |                 description="Reordene, oculte ou inclua colunas do cadastro de grade anual nesta tela." {
+  digest: '2800998077'
+}
+ GET /principal/grade-anual 500 in 251ms (compile: 180ms, render: 71ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 38ms
+ GET /principal/grade-anual 200 in 296ms (compile: 243ms, render: 53ms)
+✓ Compiled in 42ms
+✓ Compiled in 38ms
+ GET / 200 in 19ms (compile: 4ms, render: 16ms)
+ GET /principal 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /principal/calendario-aulas 200 in 20ms (compile: 4ms, render: 16ms)
+ GET / 200 in 11ms (compile: 1669µs, render: 10ms)
+ GET /principal 200 in 14ms (compile: 1583µs, render: 12ms)
+ GET /principal/grade-anual 200 in 266ms (compile: 247ms, render: 19ms)
+✓ Compiled in 45ms
+✓ Compiled in 47ms
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+⨯ ReferenceError: searchTerm is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:857:40)
+  855 |                         <div className="relative w-full max-w-xl">
+  856 |                             <input
+> 857 |                                 value={searchTerm}
+      |                                        ^
+  858 |                                 onChange={(event) => setSearchTerm(event.target.value)}
+  859 |                                 placeholder="Buscar por turma, ano letivo ou períodos cadastrados..."
+  860 |                                 className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" {
+  digest: '107708407'
+}
+✓ Compiled in 44ms
+ GET /principal/grade-anual 500 in 306ms (compile: 221ms, render: 85ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 41ms
+⨯ ReferenceError: searchTerm is not defined
+    at GradeAnualPage (src\app\principal\grade-anual\page.tsx:893:40)
+  891 |                         <div className="relative w-full max-w-xl">
+  892 |                             <input
+> 893 |                                 value={searchTerm}
+      |                                        ^
+  894 |                                 onChange={(event) => setSearchTerm(event.target.value)}
+  895 |                                 placeholder="Buscar por turma, ano letivo ou períodos cadastrados..."
+  896 |                                 className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" {
+  digest: '107708407'
+}
+ GET /principal/grade-anual 500 in 297ms (compile: 221ms, render: 77ms)
+⚠ Fast Refresh had to perform a full reload due to a runtime error.
+✓ Compiled in 85ms
+ GET /principal/grade-anual 200 in 301ms (compile: 217ms, render: 84ms)
+✓ Compiled in 42ms
+^C^C

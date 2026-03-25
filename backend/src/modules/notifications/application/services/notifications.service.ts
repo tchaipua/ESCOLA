@@ -83,6 +83,35 @@ type AssessmentGradeNotificationPayload = {
   }>;
 };
 
+type AttendanceNotificationPayload = {
+  attendance: {
+    lessonCalendarItemId: string;
+    notifyStudents: boolean;
+    notifyGuardians: boolean;
+  };
+  lessonItem: {
+    id: string;
+    lessonDate: Date;
+    startTime: string;
+    endTime: string;
+    schoolYearId: string;
+    seriesClassId: string;
+    teacherSubject: {
+      subject?: { name?: string | null } | null;
+      teacher?: { name?: string | null } | null;
+    };
+    seriesClass: {
+      series?: { name?: string | null } | null;
+      class?: { name?: string | null } | null;
+    };
+  };
+  attendanceStudents: Array<{
+    studentId: string;
+    status: string;
+    notes?: string | null;
+  }>;
+};
+
 @Injectable()
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -437,6 +466,37 @@ export class NotificationsService {
     );
   }
 
+  private buildAttendanceNotificationTitle(status: string) {
+    return this.normalizeText(`CHAMADA REGISTRADA: ${status}`);
+  }
+
+  private buildAttendanceNotificationMessage(args: {
+    payload: AttendanceNotificationPayload;
+    recipientType: RecipientType;
+    studentName: string;
+    status: string;
+    notes?: string | null;
+  }) {
+    const { payload, recipientType, studentName, status, notes } = args;
+    const seriesName =
+      payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE";
+    const className =
+      payload.lessonItem.seriesClass?.class?.name || "SEM TURMA";
+    const subjectName =
+      payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
+    const teacherName =
+      payload.lessonItem.teacherSubject?.teacher?.name || "PROFESSOR";
+    const studentLabel =
+      recipientType === "STUDENT"
+        ? "SUA PRESENÇA FOI REGISTRADA"
+        : `A PRESENÇA DE ${studentName} FOI REGISTRADA`;
+    const notesLabel = notes ? ` OBSERVAÇÃO: ${notes}.` : "";
+
+    return this.normalizeText(
+      `${studentLabel} COMO ${status} EM ${subjectName} NO DIA ${this.formatDate(payload.lessonItem.lessonDate)} DAS ${payload.lessonItem.startTime} ÀS ${payload.lessonItem.endTime} PARA ${seriesName} - ${className}. PROFESSOR RESPONSÁVEL: ${teacherName}.${notesLabel}`,
+    );
+  }
+
   private async sendAssessmentGradeEmails(
     recipients: NotificationRecipient[],
     payload: AssessmentGradeNotificationPayload,
@@ -605,6 +665,147 @@ export class NotificationsService {
     return {
       notificationsCreated: recipients.length,
       emailSent,
+    };
+  }
+
+  async dispatchAttendanceNotifications(
+    payload: AttendanceNotificationPayload,
+  ) {
+    const validStudentIds = payload.attendanceStudents.map((student) => student.studentId);
+    if (validStudentIds.length === 0) {
+      return { notificationsCreated: 0 };
+    }
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        schoolYearId: payload.lessonItem.schoolYearId,
+        seriesClassId: payload.lessonItem.seriesClassId,
+        studentId: { in: validStudentIds },
+        status: "ATIVO",
+        canceledAt: null,
+        student: {
+          canceledAt: null,
+        },
+      },
+      include: {
+        student: {
+          include: {
+            guardians: {
+              where: {
+                canceledAt: null,
+                guardian: {
+                  canceledAt: null,
+                },
+              },
+              include: {
+                guardian: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const attendanceByStudent = new Map(
+      payload.attendanceStudents.map((student) => [student.studentId, student]),
+    );
+
+    const notificationsToCreate: Array<{
+      tenantId: string;
+      recipientType: RecipientType;
+      recipientId: string;
+      category: string;
+      title: string;
+      message: string;
+      actionUrl: string;
+      sourceType: string;
+      sourceId: string;
+      metadata: string;
+      createdBy: string;
+      updatedBy: string;
+    }> = [];
+
+    for (const enrollment of enrollments) {
+      const attendance = attendanceByStudent.get(enrollment.student.id);
+      if (!attendance) continue;
+
+      if (payload.attendance.notifyStudents) {
+        notificationsToCreate.push({
+          tenantId: this.tenantId(),
+          recipientType: "STUDENT",
+          recipientId: enrollment.student.id,
+          category: "CHAMADA",
+          title: this.buildAttendanceNotificationTitle(attendance.status),
+          message: this.buildAttendanceNotificationMessage({
+            payload,
+            recipientType: "STUDENT",
+            studentName: enrollment.student.name,
+            status: attendance.status,
+            notes: attendance.notes,
+          }),
+          actionUrl: "/dashboard/notificacoes",
+          sourceType: "LESSON_ATTENDANCE",
+          sourceId: payload.attendance.lessonCalendarItemId,
+          metadata: JSON.stringify({
+            lessonCalendarItemId: payload.lessonItem.id,
+            schoolYearId: payload.lessonItem.schoolYearId,
+            seriesClassId: payload.lessonItem.seriesClassId,
+            studentId: enrollment.student.id,
+            status: attendance.status,
+            lessonDate: payload.lessonItem.lessonDate,
+          }),
+          createdBy: this.userId(),
+          updatedBy: this.userId(),
+        });
+      }
+
+      if (payload.attendance.notifyGuardians) {
+        for (const link of enrollment.student.guardians) {
+          if (!link.guardian) continue;
+
+          notificationsToCreate.push({
+            tenantId: this.tenantId(),
+            recipientType: "GUARDIAN",
+            recipientId: link.guardian.id,
+            category: "CHAMADA",
+            title: this.buildAttendanceNotificationTitle(attendance.status),
+            message: this.buildAttendanceNotificationMessage({
+              payload,
+              recipientType: "GUARDIAN",
+              studentName: enrollment.student.name,
+              status: attendance.status,
+              notes: attendance.notes,
+            }),
+            actionUrl: "/dashboard/notificacoes",
+            sourceType: "LESSON_ATTENDANCE",
+            sourceId: payload.attendance.lessonCalendarItemId,
+            metadata: JSON.stringify({
+              lessonCalendarItemId: payload.lessonItem.id,
+              schoolYearId: payload.lessonItem.schoolYearId,
+              seriesClassId: payload.lessonItem.seriesClassId,
+              studentId: enrollment.student.id,
+              guardianId: link.guardian.id,
+              status: attendance.status,
+              lessonDate: payload.lessonItem.lessonDate,
+            }),
+            createdBy: this.userId(),
+            updatedBy: this.userId(),
+          });
+        }
+      }
+    }
+
+    if (notificationsToCreate.length === 0) {
+      return { notificationsCreated: 0 };
+    }
+
+    await this.prisma.notification.createMany({
+      data: notificationsToCreate,
+    });
+
+    return {
+      notificationsCreated: notificationsToCreate.length,
     };
   }
 

@@ -9,15 +9,15 @@ import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import GridSortableHeader from '@/app/components/grid-sortable-header';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
-import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, type GridColumnDefinition, type GridExportFormat } from '@/app/lib/grid-export-utils';
+import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const SCHOOL_YEAR_START = 2025;
-const SCREEN_PROGRAM_NAME = 'PRINCIPAL_GRADE_HORARIA_SEMANAL_CARDS';
 const DAY_OPTIONS = [
     { value: 'SEGUNDA', label: 'Segunda-feira' },
     { value: 'TERCA', label: 'Terça-feira' },
@@ -136,8 +136,6 @@ type LastSelectionStorage = {
 type GridColumnKey = 'schoolYear' | 'seriesName' | 'className' | 'seriesClass' | 'dayOfWeek' | 'subject' | 'teacher' | 'startTime' | 'endTime' | 'recordStatus';
 type GridExportColumnKey = GridColumnKey;
 
-type ClipboardFeedback = 'idle' | 'success' | 'error';
-
 const EMPTY_FORM: FormState = {
     schoolYearId: '',
     seriesClassId: '',
@@ -233,6 +231,10 @@ const GRID_EXPORT_COLUMNS: GridColumnDefinition<ClassScheduleItemRecord, GridExp
 );
 const GRID_COLUMN_KEYS = getAllGridColumnKeys(GRID_COLUMNS);
 const DEFAULT_VISIBLE_GRID_COLUMNS = getDefaultVisibleGridColumnKeys(GRID_COLUMNS);
+const DEFAULT_SORT: GridSortState = {
+    column: 'schoolYear',
+    direction: 'desc',
+};
 
 function getGridConfigStorageKey(tenantId: string | null) {
     return `dashboard:grade-horaria:grid-config:${tenantId || 'default'}`;
@@ -319,12 +321,59 @@ function getSchoolYearPayload(year: number, isActive: boolean) {
     };
 }
 
-function resolveDefaultFilterSchoolYearId(years: SchoolYearSummary[]) {
-    const currentYear = new Date().getFullYear();
-    return years.find((item) => item.year === currentYear)?.id
-        || years.find((item) => item.isActive)?.id
-        || years[0]?.id
-        || '';
+function renderGridCell(item: ClassScheduleItemRecord, columnKey: GridColumnKey) {
+    const baseTextClass = item.canceledAt ? 'text-rose-700' : 'text-slate-600';
+    const emphasisClass = item.canceledAt ? 'text-rose-800' : 'text-slate-800';
+
+    if (columnKey === 'schoolYear') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-semibold ${emphasisClass}`}>{item.schoolYear?.year || '---'}</td>;
+    }
+
+    if (columnKey === 'seriesName') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{item.seriesClass?.series?.name || '---'}</td>;
+    }
+
+    if (columnKey === 'className') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{item.seriesClass?.class?.name || '---'}</td>;
+    }
+
+    if (columnKey === 'seriesClass') {
+        return (
+            <td key={columnKey} className="px-6 py-4">
+                <div className={`flex items-center gap-2 font-semibold ${emphasisClass}`}>
+                    <span>{item.seriesClass?.class?.name || '---'}</span>
+                    <RecordStatusIndicator active={!item.canceledAt} />
+                </div>
+                <div className={`text-[13px] ${item.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>{item.seriesClass?.series?.name || 'Sem série'}</div>
+            </td>
+        );
+    }
+
+    if (columnKey === 'dayOfWeek') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{getDayLabel(item.dayOfWeek)}</td>;
+    }
+
+    if (columnKey === 'subject') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{item.teacherSubject?.subject?.name || '---'}</td>;
+    }
+
+    if (columnKey === 'teacher') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{item.teacherSubject?.teacher?.name || '---'}</td>;
+    }
+
+    if (columnKey === 'startTime') {
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{item.startTime || '---'}</td>;
+    }
+
+    if (columnKey === 'recordStatus') {
+        return (
+            <td key={columnKey} className="px-6 py-4 text-center">
+                <RecordStatusIndicator active={!item.canceledAt} />
+            </td>
+        );
+    }
+
+    return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${baseTextClass}`}>{item.endTime || '---'}</td>;
 }
 
 export default function GradeHorariaPlanejadaPage() {
@@ -336,6 +385,7 @@ export default function GradeHorariaPlanejadaPage() {
     const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+    const [sortState, setSortState] = useState<GridSortState>(DEFAULT_SORT);
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
     const [isGridConfigReady, setIsGridConfigReady] = useState(false);
@@ -355,7 +405,6 @@ export default function GradeHorariaPlanejadaPage() {
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [modalErrorStatus, setModalErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
-    const [clipboardFeedback, setClipboardFeedback] = useState<ClipboardFeedback>('idle');
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
@@ -370,6 +419,15 @@ export default function GradeHorariaPlanejadaPage() {
         'VIEW_SCHEDULES',
     ]);
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_CLASS_SCHEDULES');
+    const orderedGridColumns = useMemo(
+        () => columnOrder.map((key) => GRID_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<ClassScheduleItemRecord, GridColumnKey> => !!column),
+        [columnOrder],
+    );
+    const visibleGridColumns = useMemo(
+        () => orderedGridColumns.filter((column) => !hiddenColumns.includes(column.key)),
+        [hiddenColumns, orderedGridColumns],
+    );
+
     const hasSchoolYearOptions = schoolYears.length > 0;
     const hasSeriesClassOptions = seriesClasses.length > 0;
     const hasTeacherSubjectOptions = teacherSubjects.length > 0;
@@ -419,17 +477,20 @@ export default function GradeHorariaPlanejadaPage() {
         [formData.subjectId, formData.teacherId, teacherSubjects],
     );
 
-    const sameDaySeriesTimeItems = useMemo(() => {
-        return items.filter((item) =>
-            item.id !== editingId
-            && item.schoolYear?.id === formData.schoolYearId
-            && item.seriesClass?.id === formData.seriesClassId
-            && item.dayOfWeek === formData.dayOfWeek,
-        );
-    }, [editingId, formData.dayOfWeek, formData.schoolYearId, formData.seriesClassId, items]);
-
     const duplicateTimeKeys = new Set(
-        sameDaySeriesTimeItems.map((item) => `${item.startTime}-${item.endTime}`),
+        items
+            .filter((item) =>
+                item.id !== editingId
+                && item.schoolYear?.id === formData.schoolYearId
+                && item.seriesClass?.id === formData.seriesClassId
+                && item.dayOfWeek === formData.dayOfWeek,
+            )
+            .filter((item) =>
+                selectedTeacherSubject
+                    ? item.teacherSubject?.id === selectedTeacherSubject.id
+                    : false,
+            )
+            .map((item) => `${item.startTime}-${item.endTime}`),
     );
     const availableSchedules = periodSchedules.filter((item) =>
         selectedPeriods.includes(item.period)
@@ -465,53 +526,25 @@ export default function GradeHorariaPlanejadaPage() {
     ]);
 
     const filteredItems = useMemo(() => {
-        const matchingItems = items
-            .filter((item) =>
-                (statusFilter === 'ALL' || (statusFilter === 'ACTIVE' ? !item.canceledAt : !!item.canceledAt))
-                && (!columnFilters.schoolYearId || item.schoolYear?.id === columnFilters.schoolYearId)
-                && (!columnFilters.seriesClassId || item.seriesClass?.id === columnFilters.seriesClassId)
-                && (!columnFilters.dayOfWeek || item.dayOfWeek === columnFilters.dayOfWeek)
-                && (!columnFilters.subjectId || item.teacherSubject?.subject?.id === columnFilters.subjectId)
-                && (!columnFilters.teacherId || item.teacherSubject?.teacher?.id === columnFilters.teacherId)
-                && (!columnFilters.startTime || item.startTime === columnFilters.startTime)
-                && (!columnFilters.endTime || item.endTime === columnFilters.endTime),
-            )
-            .slice()
-            .sort((left, right) => {
-                const dayDiff = (dayOrder[left.dayOfWeek] ?? 99) - (dayOrder[right.dayOfWeek] ?? 99);
-                if (dayDiff !== 0) return dayDiff;
-                return left.startTime.localeCompare(right.startTime);
-            });
+        const matchingItems = items.filter((item) =>
+            (statusFilter === 'ALL' || (statusFilter === 'ACTIVE' ? !item.canceledAt : !!item.canceledAt))
+            && 
+            (!columnFilters.schoolYearId || item.schoolYear?.id === columnFilters.schoolYearId)
+            && (!columnFilters.seriesClassId || item.seriesClass?.id === columnFilters.seriesClassId)
+            && (!columnFilters.dayOfWeek || item.dayOfWeek === columnFilters.dayOfWeek)
+            && (!columnFilters.subjectId || item.teacherSubject?.subject?.id === columnFilters.subjectId)
+            && (!columnFilters.teacherId || item.teacherSubject?.teacher?.id === columnFilters.teacherId)
+            && (!columnFilters.startTime || item.startTime === columnFilters.startTime)
+            && (!columnFilters.endTime || item.endTime === columnFilters.endTime),
+        );
 
-        return matchingItems;
-    }, [columnFilters, items, statusFilter]);
+        return sortGridRows(matchingItems, GRID_COLUMNS, sortState, (left, right) => {
+            const fallbackDayDiff = (dayOrder[left.dayOfWeek] ?? 99) - (dayOrder[right.dayOfWeek] ?? 99);
+            if (fallbackDayDiff !== 0) return fallbackDayDiff;
 
-    const hasYearSelection = Boolean(columnFilters.schoolYearId);
-    const hasSeriesSelection = Boolean(columnFilters.seriesClassId);
-    const shouldShowSchedule = hasYearSelection && hasSeriesSelection;
-
-    const scheduleItemsByDay = useMemo(() => {
-        const grouped = DAY_OPTIONS.reduce<Record<DayValue, ClassScheduleItemRecord[]>>((accumulator, option) => {
-            accumulator[option.value] = [];
-            return accumulator;
-        }, {} as Record<DayValue, ClassScheduleItemRecord[]>);
-
-        if (!shouldShowSchedule) {
-            return grouped;
-        }
-
-        filteredItems.forEach((item) => {
-            if (grouped[item.dayOfWeek]) {
-                grouped[item.dayOfWeek].push(item);
-            }
+            return left.startTime.localeCompare(right.startTime);
         });
-
-        Object.values(grouped).forEach((dayItems) => {
-            dayItems.sort((left, right) => left.startTime.localeCompare(right.startTime));
-        });
-
-        return grouped;
-    }, [filteredItems, shouldShowSchedule]);
+    }, [columnFilters, items, sortState, statusFilter]);
 
     const scheduleOptions = useMemo(() => {
         return availableSchedules
@@ -532,24 +565,7 @@ export default function GradeHorariaPlanejadaPage() {
             }));
     }, [availableSchedules]);
 
-    const conflictingScheduleItems = useMemo(() => {
-        if (!formData.startTime || !formData.endTime) return [];
-
-        return sameDaySeriesTimeItems
-            .filter((item) => item.startTime === formData.startTime && item.endTime === formData.endTime)
-            .slice()
-            .sort((left, right) => {
-                const subjectDiff = (left.teacherSubject?.subject?.name || '').localeCompare(right.teacherSubject?.subject?.name || '');
-                if (subjectDiff !== 0) return subjectDiff;
-                return (left.teacherSubject?.teacher?.name || '').localeCompare(right.teacherSubject?.teacher?.name || '');
-            });
-    }, [formData.endTime, formData.startTime, sameDaySeriesTimeItems]);
-
-    const conflictSummary = conflictingScheduleItems
-        .map((item) => `${item.startTime} às ${item.endTime} - ${item.teacherSubject?.subject?.name || 'SEM MATÉRIA'} / ${item.teacherSubject?.teacher?.name || 'SEM PROFESSOR'}`)
-        .join(' | ');
-
-    const hasSelectedTimeConflict = conflictingScheduleItems.length > 0;
+    const hasSelectedTimeConflict = !!formData.startTime && !!formData.endTime && duplicateTimeKeys.has(`${formData.startTime}-${formData.endTime}`);
     const hasInvalidTeacherSubjectSelection = !!formData.subjectId && !!formData.teacherId && !selectedTeacherSubject;
     const canSubmitForm =
         canManage
@@ -594,15 +610,6 @@ export default function GradeHorariaPlanejadaPage() {
             subjectId: isValidStoredPair ? validStoredSubject : '',
             teacherId: isValidStoredPair ? validStoredTeacher : '',
         };
-    };
-
-    const prepareCreationForm = (overrides: Partial<FormState> = {}) => {
-        setEditingId(null);
-        setModalErrorStatus(null);
-        setFormData({
-            ...resolveDefaultForm(currentTenantId, schoolYears, seriesClasses, teacherSubjects),
-            ...overrides,
-        });
     };
 
     const ensureOperationalSchoolYears = async (token: string, role: string | null, permissions: string[]) => {
@@ -726,10 +733,6 @@ export default function GradeHorariaPlanejadaPage() {
             setTeacherSubjects(Array.isArray(teacherSubjectsData) ? teacherSubjectsData : []);
             setSchedules(Array.isArray(schedulesData) ? schedulesData : []);
             setCurrentTenant(tenantData as CurrentTenant);
-            setColumnFilters((current) => ({
-                ...current,
-                schoolYearId: current.schoolYearId || resolveDefaultFilterSchoolYearId(yearList),
-            }));
 
             if (!editingId && !isModalOpen) {
                 setFormData(resolveDefaultForm(tenantId, yearList, seriesClassList, Array.isArray(teacherSubjectsData) ? teacherSubjectsData : []));
@@ -789,12 +792,21 @@ export default function GradeHorariaPlanejadaPage() {
     }, [formData.scheduleOption, scheduleOptions]);
 
     const resetForm = () => {
-        prepareCreationForm();
+        setEditingId(null);
+        setModalErrorStatus(null);
+        setFormData(resolveDefaultForm(currentTenantId, schoolYears, seriesClasses, teacherSubjects));
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
         resetForm();
+    };
+
+    const toggleSort = (column: GridColumnKey) => {
+        setSortState((current) => ({
+            column,
+            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
+        }));
     };
 
     const openExportModal = () => {
@@ -919,37 +931,11 @@ export default function GradeHorariaPlanejadaPage() {
         }
     };
 
-    const openCreateModal = (overrides: Partial<FormState> = {}) => {
+    const openCreateModal = () => {
         setErrorStatus(null);
-        prepareCreationForm(overrides);
+        resetForm();
         setIsModalOpen(true);
         focusScheduleField();
-    };
-
-    const openCreateForDay = (day: DayValue) => {
-        if (!columnFilters.schoolYearId || !columnFilters.seriesClassId) {
-            setErrorStatus('Selecione o ano letivo e a turma antes de cadastrar um lançamento.');
-            return;
-        }
-
-        openCreateModal({
-            schoolYearId: columnFilters.schoolYearId,
-            seriesClassId: columnFilters.seriesClassId,
-            dayOfWeek: day,
-        });
-    };
-
-    const handleCopyScreenProgramName = async () => {
-        try {
-            await navigator.clipboard.writeText(SCREEN_PROGRAM_NAME);
-            setClipboardFeedback('success');
-        } catch {
-            setClipboardFeedback('error');
-        }
-
-        window.setTimeout(() => {
-            setClipboardFeedback('idle');
-        }, 2200);
     };
 
     const handleSubjectChange = (subjectId: string) => {
@@ -1050,31 +1036,27 @@ export default function GradeHorariaPlanejadaPage() {
     const confirmScheduleStatusToggle = async () => {
         if (!scheduleStatusToggleTarget || !scheduleStatusToggleAction) return;
         const willActivate = scheduleStatusToggleAction === 'activate';
+        const summary = `${getSeriesClassLabel(scheduleStatusToggleTarget.seriesClass)} - ${getDayLabel(scheduleStatusToggleTarget.dayOfWeek)} - ${scheduleStatusToggleTarget.startTime}`;
 
         try {
             setIsProcessingScheduleToggle(true);
             const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
-            const response = willActivate
-                ? await fetch(`${API_BASE_URL}/class-schedule-items/${scheduleStatusToggleTarget.id}/status`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ active: true }),
-                })
-                : await fetch(`${API_BASE_URL}/class-schedule-items/${scheduleStatusToggleTarget.id}`, {
-                    method: 'DELETE',
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+            const response = await fetch(`${API_BASE_URL}/class-schedule-items/${scheduleStatusToggleTarget.id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ active: willActivate }),
+            });
             const data = await response.json().catch(() => null);
 
-            if (!response.ok) throw new Error(getApiErrorMessage(data, willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível excluir o lançamento da grade.'));
+            if (!response.ok) throw new Error(getApiErrorMessage(data, willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível inativar o lançamento da grade.'));
 
-            setSuccessStatus(data?.message || (willActivate ? 'Lançamento da grade ativado com sucesso.' : 'Lançamento da grade excluído com sucesso.'));
+            setSuccessStatus(data?.message || (willActivate ? 'Lançamento da grade ativado com sucesso.' : 'Lançamento da grade inativado com sucesso.'));
             await loadData();
             closeScheduleStatusModal(true);
         } catch (error) {
-            setErrorStatus(error instanceof Error ? error.message : (willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível excluir o lançamento da grade.'));
+            setErrorStatus(error instanceof Error ? error.message : (willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível inativar o lançamento da grade.'));
         } finally {
             setIsProcessingScheduleToggle(false);
         }
@@ -1098,8 +1080,8 @@ export default function GradeHorariaPlanejadaPage() {
             if (!formData.endTime) throw new Error(isIntervalSchedule ? 'Informe o horário final do intervalo.' : 'Selecione um horário válido da turma.');
             if (!isIntervalSchedule && !formData.subjectId) throw new Error('Selecione a matéria.');
             if (!isIntervalSchedule && !formData.teacherId) throw new Error('Selecione o professor.');
-            if (conflictingScheduleItems.length > 0) {
-                throw new Error(`Este horário já está lançado para a turma neste dia: ${conflictSummary}.`);
+            if (duplicateTimeKeys.has(`${formData.startTime}-${formData.endTime}`)) {
+                throw new Error('Já existe um lançamento igual para ano, turma, dia, matéria, professor e horário.');
             }
 
             if (!isIntervalSchedule && !selectedTeacherSubject) {
@@ -1156,18 +1138,6 @@ export default function GradeHorariaPlanejadaPage() {
                 <div>
                     <h1 className="text-3xl font-extrabold tracking-tight text-[#153a6a]">Grade horária</h1>
                     <p className="mt-1 font-medium text-slate-500">Monte a grade planejada da escola por ano letivo, turma, dia e aula.</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">
-                        <span>Programa: <span className="rounded-full bg-slate-100 px-3 py-1 font-bold tracking-wide text-slate-700">{SCREEN_PROGRAM_NAME}</span></span>
-                        <button
-                            type="button"
-                            onClick={handleCopyScreenProgramName}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                        >
-                            Copiar nome
-                        </button>
-                        {clipboardFeedback === 'success' ? <span className="text-emerald-600">Nome copiado.</span> : null}
-                        {clipboardFeedback === 'error' ? <span className="text-rose-600">Não foi possível copiar.</span> : null}
-                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
@@ -1178,6 +1148,17 @@ export default function GradeHorariaPlanejadaPage() {
                     >
                         Exportar
                     </button>
+                    {canManage ? (
+                        <button
+                            onClick={openCreateModal}
+                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all active:scale-95 hover:bg-blue-500"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Novo lançamento
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
@@ -1186,7 +1167,7 @@ export default function GradeHorariaPlanejadaPage() {
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band border-b px-6 py-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_1.4fr_1fr_1.2fr_1.2fr_0.8fr_0.8fr_auto]">
                         <select
                             value={columnFilters.schoolYearId}
                             onChange={(event) => setColumnFilters((current) => ({ ...current, schoolYearId: event.target.value }))}
@@ -1209,6 +1190,53 @@ export default function GradeHorariaPlanejadaPage() {
                             ))}
                         </select>
 
+                        <select
+                            value={columnFilters.dayOfWeek}
+                            onChange={(event) => setColumnFilters((current) => ({ ...current, dayOfWeek: event.target.value }))}
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        >
+                            <option value="">Dia</option>
+                            {DAY_OPTIONS.map((item) => (
+                                <option key={item.value} value={item.value}>{item.label}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={columnFilters.subjectId}
+                            onChange={(event) => setColumnFilters((current) => ({ ...current, subjectId: event.target.value }))}
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        >
+                            <option value="">Matéria</option>
+                            {allSubjects.map((item) => (
+                                <option key={item.id} value={item.id}>{item.name}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={columnFilters.teacherId}
+                            onChange={(event) => setColumnFilters((current) => ({ ...current, teacherId: event.target.value }))}
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        >
+                            <option value="">Professor</option>
+                            {allTeachers.map((item) => (
+                                <option key={item.id} value={item.id}>{item.name}</option>
+                            ))}
+                        </select>
+
+                        <input
+                            type="time"
+                            value={columnFilters.startTime}
+                            onChange={(event) => setColumnFilters((current) => ({ ...current, startTime: event.target.value }))}
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        />
+
+                        <input
+                            type="time"
+                            value={columnFilters.endTime}
+                            onChange={(event) => setColumnFilters((current) => ({ ...current, endTime: event.target.value }))}
+                            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                        />
+
                         <button
                             type="button"
                             onClick={() => setColumnFilters(EMPTY_COLUMN_FILTERS)}
@@ -1217,112 +1245,69 @@ export default function GradeHorariaPlanejadaPage() {
                             Limpar
                         </button>
                     </div>
-                    {!isLoading && (!hasSchoolYearOptions || !hasSeriesClassOptions || !hasTeacherSubjectOptions) ? (
-                        <div className="mt-4 flex flex-col gap-1 border-t border-amber-200/60 px-3 pt-4 text-sm font-medium text-amber-800">
-                            {!hasSchoolYearOptions ? 'Os anos letivos desta escola ainda estão sendo preparados.' : null}
-                            {!hasSeriesClassOptions ? ' Cadastre séries e turmas para liberar o combobox de turma.' : null}
-                            {!hasTeacherSubjectOptions ? ' Cadastre professores, matérias e o vínculo professor x matéria para liberar os demais comboboxes.' : null}
-                        </div>
-                    ) : null}
                 </div>
-                <div className="px-6 py-6">
-                    {isLoading ? (
-                        <div className="rounded-2xl border border-slate-200/70 bg-slate-50 px-4 py-12 text-center text-sm font-semibold text-slate-500">
-                            Carregando grade horária...
-                        </div>
-                    ) : !shouldShowSchedule ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-                            Selecione o ano letivo e a turma para visualizar a grade semanal planejada.
-                        </div>
-                    ) : filteredItems.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center text-sm font-semibold uppercase tracking-wide text-slate-400">
-                            Nenhum lançamento encontrado para esta combinação.
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
-                            {DAY_OPTIONS.map((day) => {
-                                const dayItems = scheduleItemsByDay[day.value];
-                                return (
-                                    <div key={day.value} className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
-                                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                                            <div className="flex items-center gap-2">
-                                                {canManage ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openCreateForDay(day.value)}
-                                                        className="rounded-2xl border border-blue-500/70 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700 shadow-sm shadow-blue-200/60 transition hover:bg-blue-100"
-                                                    >
-                                                        Novo lançamento
-                                                    </button>
-                                                ) : null}
-                                                <span className="text-sm font-semibold uppercase tracking-wide text-slate-800">{day.label}</span>
+                {!isLoading && (!hasSchoolYearOptions || !hasSeriesClassOptions || !hasTeacherSubjectOptions) ? (
+                    <div className="border-b border-amber-200 bg-amber-50 px-6 py-4 text-sm font-medium text-amber-800">
+                        {!hasSchoolYearOptions ? 'Os anos letivos desta escola ainda estão sendo preparados.' : null}
+                        {!hasSeriesClassOptions ? ' Cadastre séries e turmas para liberar o combobox de turma.' : null}
+                        {!hasTeacherSubjectOptions ? ' Cadastre professores, matérias e o vínculo professor x matéria para liberar os demais comboboxes.' : null}
+                    </div>
+                ) : null}
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left">
+                        <thead>
+                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                {visibleGridColumns.map((column) => (
+                                    <th key={column.key} className="px-6 py-4">
+                                        <GridSortableHeader
+                                            label={column.label}
+                                            isActive={sortState.column === column.key}
+                                            direction={sortState.direction}
+                                            onClick={() => toggleSort(column.key)}
+                                        />
+                                    </th>
+                                ))}
+                                <th className="px-6 py-4 text-right">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {isLoading ? <tr><td colSpan={visibleGridColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando grade horária...</td></tr> : null}
+                            {!isLoading && filteredItems.length === 0 ? <tr><td colSpan={visibleGridColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum lançamento de grade encontrado.</td></tr> : null}
+                            {!isLoading && filteredItems.map((item) => (
+                                <tr key={item.id} className={item.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
+                                    {visibleGridColumns.map((column) => renderGridCell(item, column.key))}
+                                    <td className="px-6 py-4 text-right">
+                                        {canManage ? (
+                                            <div className="flex justify-end gap-2">
+                                                {renderGridItemInfoButton(item)}
+                                                <GridRowActionIconButton title="Editar lançamento" onClick={() => handleEdit(item)} tone="blue">
+                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                    </svg>
+                                                </GridRowActionIconButton>
+                                                <GridRowActionIconButton title={item.canceledAt ? 'Ativar lançamento' : 'Inativar lançamento'} onClick={() => openScheduleStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'}>
+                                                    {item.canceledAt ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                        </svg>
+                                                    )}
+                                                </GridRowActionIconButton>
                                             </div>
-                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{dayItems.length} registro(s)</span>
-                                        </div>
-                                        <div className="flex flex-col gap-3 px-4 pb-4">
-                                            {dayItems.length === 0 ? (
-                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-3 py-4 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                                                    Sem lançamentos
-                                                </div>
-                                            ) : (
-                                                dayItems.map((item) => {
-                                                    const isIntervalItem = !item.teacherSubject;
-
-                                                    return (
-                                                    <article key={`${day.value}-${item.id}`} className={`space-y-3 rounded-2xl border p-3 shadow-sm ${isIntervalItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} ${item.canceledAt ? 'opacity-80' : ''}`}>
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div>
-                                                                <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">{item.startTime} às {item.endTime}</p>
-                                                            </div>
-                                                            <RecordStatusIndicator active={!item.canceledAt} />
-                                                        </div>
-                                                        <div className="space-y-0.5">
-                                                            {isIntervalItem ? (
-                                                                <div className="rounded-xl bg-emerald-500 px-3 py-2 text-center text-sm font-extrabold uppercase tracking-[0.2em] text-white">
-                                                                    INTERVALO
-                                                                </div>
-                                                            ) : (
-                                                                <>
-                                                                    <p className="text-sm font-bold text-[#153a6a]">{item.teacherSubject?.subject?.name || '---'}</p>
-                                                                    <p className="text-xs uppercase tracking-wide text-slate-500">{item.teacherSubject?.teacher?.name || '---'}</p>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            {renderGridItemInfoButton(item)}
-                                                            {canManage ? (
-                                                                <div className="flex flex-wrap items-center gap-1">
-                                                                    <GridRowActionIconButton title="Editar lançamento" onClick={() => handleEdit(item)} tone="blue">
-                                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                                        </svg>
-                                                                    </GridRowActionIconButton>
-                                                                    <GridRowActionIconButton title={item.canceledAt ? 'Ativar lançamento' : 'Excluir lançamento'} onClick={() => openScheduleStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'}>
-                                                                        {item.canceledAt ? (
-                                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                                            </svg>
-                                                                        ) : (
-                                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                                            </svg>
-                                                                        )}
-                                                                    </GridRowActionIconButton>
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-300">Somente leitura</span>
-                                                            )}
-                                                        </div>
-                                                    </article>
-                                                );
-                                                })
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                        ) : (
+                                            <div className="flex justify-end gap-2">
+                                                {renderGridItemInfoButton(item)}
+                                                <span className="self-center text-xs font-semibold uppercase tracking-wide text-slate-300">Somente leitura</span>
+                                            </div>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
                 <GridFooterControls
                     key={`grade-horaria-footer-${filteredItems.length}`}
@@ -1418,12 +1403,6 @@ export default function GradeHorariaPlanejadaPage() {
                                     <option value="INTERVALO">INTERVALO</option>
                                 </select>
 
-                                {formData.scheduleOption === 'INTERVALO' ? (
-                                    <div className="rounded-2xl border border-emerald-500 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700 shadow-sm">
-                                        INTERVALO
-                                    </div>
-                                ) : null}
-
                                 {isIntervalSchedule ? (
                                     <input
                                         type="time"
@@ -1471,7 +1450,7 @@ export default function GradeHorariaPlanejadaPage() {
 
                             {hasSelectedTimeConflict ? (
                                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-medium text-red-700">
-                                    Este horário já está ocupado para a mesma turma neste dia. Já lançado: <span className="font-bold">{conflictSummary}</span>.
+                                    Já existe um lançamento igual para ano, turma, dia, matéria, professor e horário. Escolha outro horário ou altere algum desses campos antes de salvar.
                                 </div>
                             ) : null}
 
@@ -1486,8 +1465,8 @@ export default function GradeHorariaPlanejadaPage() {
                             {formData.seriesClassId && formData.schoolYearId ? (
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
                                     {duplicateTimeKeys.size > 0
-                                        ? `Os horários já ocupados para esta turma e este dia deixam de aparecer no combobox. Total bloqueado: ${duplicateTimeKeys.size}.`
-                                        : 'Nenhum horário desta turma e deste dia está bloqueado até o momento.'}
+                                        ? `Somente os horários já cadastrados para esta combinação completa deixam de aparecer no combobox. Total bloqueado: ${duplicateTimeKeys.size}.`
+                                        : 'Nenhum horário desta combinação completa está bloqueado até o momento.'}
                                 </div>
                             ) : null}
 
@@ -1498,8 +1477,8 @@ export default function GradeHorariaPlanejadaPage() {
                                 </div>
                             ) : null}
 
-                            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-                                <button type="button" onClick={closeModal} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-100">Fechar</button>
+                            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+                                <button type="button" onClick={closeModal} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancelar</button>
                                 <button type="submit" disabled={!canSubmitForm} className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300">
                                     {isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar lançamento'}
                                 </button>
@@ -1526,16 +1505,14 @@ export default function GradeHorariaPlanejadaPage() {
                 isOpen={Boolean(scheduleStatusToggleTarget && scheduleStatusToggleAction)}
                 tenantId={currentTenantId}
                 actionType={scheduleStatusToggleAction || 'activate'}
-                title={scheduleStatusToggleAction === 'activate' ? 'Ativar lançamento' : 'Excluir lançamento'}
+                title={scheduleStatusToggleAction === 'activate' ? 'Ativar lançamento' : 'Inativar lançamento'}
                 itemLabel="Lançamento"
                 itemName={scheduleStatusToggleTarget ? `${getSeriesClassLabel(scheduleStatusToggleTarget.seriesClass)} - ${getDayLabel(scheduleStatusToggleTarget.dayOfWeek)} - ${scheduleStatusToggleTarget.startTime}` : ''}
                 description={scheduleStatusToggleAction === 'activate'
                     ? 'Ao ativar este lançamento da grade ele volta a ser considerado ativo e entra nas rotas de aula.'
-                    : 'Ao excluir este lançamento, ele será removido definitivamente desta grade horária.'}
-                hintText={scheduleStatusToggleAction === 'activate'
-                    ? 'A alteração fica registrada na trilha de auditoria da escola.'
-                    : 'A exclusão física só é permitida enquanto este lançamento ainda não estiver vinculado ao calendário anual.'}
-                confirmLabel={scheduleStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar exclusão'}
+                    : 'Ao inativar este lançamento, ele permanece no histórico, porém sai das rotinas ativas.'}
+                hintText="A alteração fica registrada na trilha de auditoria da escola."
+                confirmLabel={scheduleStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
                 onCancel={() => closeScheduleStatusModal(true)}
                 onConfirm={confirmScheduleStatusToggle}
                 isProcessing={isProcessingScheduleToggle}

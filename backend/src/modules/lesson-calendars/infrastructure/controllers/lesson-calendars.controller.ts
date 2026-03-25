@@ -12,7 +12,9 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { CreateLessonCalendarDto } from "../../application/dto/create-lesson-calendar.dto";
+import { FindSchoolCalendarEventsDto } from "../../application/dto/find-school-calendar-events.dto";
 import { LessonCalendarWeeklySourceQueryDto } from "../../application/dto/lesson-calendar-weekly-source-query.dto";
+import { UpdateLessonCalendarItemDto } from "../../application/dto/update-lesson-calendar-item.dto";
 import { UpdateLessonCalendarDto } from "../../application/dto/update-lesson-calendar.dto";
 import { LessonCalendarsService } from "../../application/services/lesson-calendars.service";
 import { SetRecordActiveDto } from "../../../../common/dto/set-record-active.dto";
@@ -47,6 +49,26 @@ export class LessonCalendarsController {
     return this.lessonCalendarsService.getWeeklySource(
       query.schoolYearId,
       query.seriesClassId,
+    );
+  }
+
+  @Get("school-calendar-events")
+  @Permissions("VIEW_LESSON_CALENDARS")
+  @ApiOperation({ summary: "Lista provas e eventos da escola para o calendário anual" })
+  findSchoolCalendarEvents(@Query() query: FindSchoolCalendarEventsDto) {
+    return this.lessonCalendarsService.findSchoolCalendarEvents(query.referenceDate);
+  }
+
+  @Patch("items/:lessonCalendarItemId")
+  @Permissions("MANAGE_LESSON_CALENDARS")
+  @ApiOperation({ summary: "Atualiza somente uma aula já gerada no calendário anual" })
+  updateLessonCalendarItem(
+    @Param("lessonCalendarItemId") lessonCalendarItemId: string,
+    @Body() updateDto: UpdateLessonCalendarItemDto,
+  ) {
+    return this.lessonCalendarsService.updateLessonCalendarItem(
+      lessonCalendarItemId,
+      updateDto,
     );
   }
 

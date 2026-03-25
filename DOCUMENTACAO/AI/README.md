@@ -67,6 +67,7 @@ Definir um pacote de arquivos de contexto para IA gerar codigo com menos prompts
 - `ACCESS_MATRIX.md`: matriz oficial de perfis e permissoes
 - `UI_PATTERNS.md`: padroes oficiais de layout e comportamento aprovados
 - `UI_PATTERN_CHANGELOG.md`: historico de evolucao dos padroes de UI
+- `PWA_NOTIFICATIONS_SPEC.md`: especificacao funcional do PWA de aluno/responsavel para notificacoes
 - `AGENTS.md`: instrucoes de agentes de IA para este projeto
 - `PROMPTS.md`: prompts reutilizaveis
 - `SYSTEM_IDENTITY.md`: identidade funcional do sistema

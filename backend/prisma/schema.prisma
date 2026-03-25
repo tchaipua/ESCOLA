@@ -86,6 +86,7 @@ model Tenant {
   lessonEvents LessonEvent[]
   lessonAssessments LessonAssessment[]
   lessonAssessmentGrades LessonAssessmentGrade[]
+  lessonAttendances LessonAttendance[]
   notifications Notification[]
   communicationCampaigns CommunicationCampaign[]
   userPreferences UserPreference[]
@@ -406,6 +407,7 @@ model Student {
   guardians   GuardianStudent[]
   enrollments Enrollment[]
   lessonAssessmentGrades LessonAssessmentGrade[]
+  lessonAttendances LessonAttendance[]
 
   @@index([tenantId])
   @@index([personId])
@@ -518,6 +520,7 @@ model Teacher {
   teacherSubjects TeacherSubject[]
   lessonEvents    LessonEvent[]
   lessonAssessments LessonAssessment[]
+  lessonAttendances LessonAttendance[]
 
   @@index([tenantId])
   @@index([personId])
@@ -734,6 +737,7 @@ model LessonCalendarItem {
   classScheduleItem ClassScheduleItem? @relation(fields: [classScheduleItemId], references: [id], onDelete: Restrict)
   lessonEvents LessonEvent[]
   lessonAssessments LessonAssessment[]
+  lessonAttendances LessonAttendance[]
 
   @@index([tenantId])
   @@index([lessonCalendarId])
@@ -844,6 +848,36 @@ model LessonAssessmentGrade {
   @@index([studentId])
   @@unique([lessonAssessmentId, studentId])
   @@map("lesson_assessment_grades")
+}
+
+model LessonAttendance {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  lessonCalendarItemId String
+  studentId          String
+  teacherId          String
+  status             String
+  recordedAt         DateTime @default(now())
+  notes              String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([lessonCalendarItemId])
+  @@index([studentId])
+  @@index([teacherId])
+  @@unique([lessonCalendarItemId, studentId])
+  @@map("lesson_attendances")
 }
 
 model Notification {

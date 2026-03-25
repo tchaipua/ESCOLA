@@ -1,0 +1,66 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.100.134:3000
+
+✓ Starting...
+✓ Ready in 753ms
+ GET / 200 in 676ms (compile: 557ms, render: 119ms)
+ GET /principal 200 in 59ms (compile: 37ms, render: 21ms)
+ GET /principal/grade-anual 200 in 290ms (compile: 278ms, render: 13ms)
+ GET / 200 in 17ms (compile: 3ms, render: 14ms)
+ GET /principal 200 in 14ms (compile: 2ms, render: 12ms)
+ GET /principal/calendario-aulas 200 in 40ms (compile: 27ms, render: 13ms)
+✓ Compiled in 62ms
+✓ Compiled in 55ms
+✓ Compiled in 78ms
+✓ Compiled in 50ms
+✓ Compiled in 91ms
+ GET / 200 in 12ms (compile: 3ms, render: 9ms)
+ GET /principal 200 in 12ms (compile: 1902µs, render: 10ms)
+ GET /principal/grade-anual 200 in 216ms (compile: 200ms, render: 16ms)
+✓ Compiled in 53ms
+✓ Compiled in 45ms
+✓ Compiled in 49ms
+ GET /principal/grade-anual 200 in 297ms (compile: 213ms, render: 83ms)
+✓ Compiled in 65ms
+ GET /principal/grade-anual 500 in 308ms (compile: 207ms, render: 101ms)
+✓ Compiled in 43ms
+ GET /principal/grade-anual 500 in 303ms (compile: 208ms, render: 95ms)
+✓ Compiled in 88ms
+ GET /principal/grade-anual 500 in 326ms (compile: 226ms, render: 100ms)
+✓ Compiled in 35ms
+ GET /principal/grade-anual 500 in 303ms (compile: 219ms, render: 84ms)
+✓ Compiled in 41ms
+ GET /principal/grade-anual 500 in 278ms (compile: 178ms, render: 100ms)
+✓ Compiled in 39ms
+ GET /principal/grade-anual 500 in 324ms (compile: 237ms, render: 87ms)
+✓ Compiled in 42ms
+ GET /principal/grade-anual 500 in 327ms (compile: 223ms, render: 104ms)
+ GET / 200 in 35ms (compile: 3ms, render: 33ms)
+ GET /principal 200 in 15ms (compile: 2ms, render: 13ms)
+ GET /principal/grade-anual 200 in 161ms (compile: 151ms, render: 10ms)
+✓ Compiled in 48ms
+ GET /principal/grade-anual 200 in 284ms (compile: 203ms, render: 80ms)
+✓ Compiled in 43ms
+✓ Compiled in 43ms
+✓ Compiled in 64ms
+✓ Compiled in 44ms
+✓ Compiled in 40ms
+✓ Compiled in 42ms
+✓ Compiled in 39ms
+✓ Compiled in 40ms
+✓ Compiled in 43ms
+✓ Compiled in 42ms
+✓ Compiled in 46ms
+✓ Compiled in 49ms
+✓ Compiled in 42ms
+✓ Compiled in 41ms
+✓ Compiled in 42ms
+✓ Compiled in 89ms
+✓ Compiled in 37ms
+✓ Compiled in 78ms
+✓ Compiled in 71ms

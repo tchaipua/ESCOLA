@@ -15,6 +15,13 @@ type CurrentTenant = {
     logoUrl?: string | null;
 };
 
+type TenantLogoBadgeProps = {
+    tenant: CurrentTenant | null;
+    wrapperClassName: string;
+    imageClassName: string;
+    fallbackClassName: string;
+};
+
 type LessonEvent = {
     id: string;
     eventType: string;
@@ -73,6 +80,43 @@ type LessonAssessmentPayload = {
     emailSent?: boolean;
 };
 
+type LessonAttendanceStudent = {
+    studentId: string;
+    enrollmentId: string;
+    studentName: string;
+    studentEmail?: string | null;
+    status?: 'PRESENTE' | 'FALTOU' | null;
+    notes?: string | null;
+    recordedAt?: string | null;
+};
+
+type LessonAttendancePayload = {
+    lessonItem: {
+        id: string;
+        lessonDate: string;
+        startTime: string;
+        endTime: string;
+        subjectName: string;
+        teacherName: string;
+        seriesName: string;
+        className: string;
+        shift?: string | null;
+    };
+    summary: {
+        totalStudents: number;
+        totalPresentes: number;
+        totalFaltou: number;
+    };
+    students: LessonAttendanceStudent[];
+    notificationsCreated?: number;
+};
+
+type AttendanceFeedbackState = {
+    notificationsCreated: number;
+    notifyStudents: boolean;
+    notifyGuardians: boolean;
+};
+
 type CalendarAgendaItem = {
     id: string;
     lessonDate: string;
@@ -89,7 +133,6 @@ type CalendarAgendaItem = {
     hasEvents: boolean;
     events: LessonEvent[];
     isStandaloneNotice?: boolean;
-    standaloneEventId?: string;
     schoolYearId?: string | null;
     seriesClassId?: string | null;
     teacherSubjectId?: string | null;
@@ -137,7 +180,6 @@ type StandaloneEventModalState = {
     mode: 'standalone';
     selectedDate: string;
     existingEvent: LessonEvent | null;
-    standaloneEventId?: string;
     targetKey: string;
 };
 
@@ -151,6 +193,12 @@ const EVENT_TYPE_OPTIONS = [
 ] as const;
 
 const WEEKDAY_LABELS = ['SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.', 'DOM.'];
+
+const VIEW_MODE_OPTIONS = [
+    { value: 'MONTH', label: 'Mês' },
+    { value: 'WEEK', label: 'Semana' },
+    { value: 'DAY', label: 'Dia' },
+] as const;
 
 const DEFAULT_EVENT_FORM: EventFormState = {
     title: '',
@@ -178,6 +226,18 @@ type AssessmentFormState = {
     }>;
 };
 
+type AttendanceFormState = {
+    notifyStudents: boolean;
+    notifyGuardians: boolean;
+    students: Array<{
+        studentId: string;
+        studentName: string;
+        studentEmail?: string | null;
+        status: 'PRESENTE' | 'FALTOU' | null;
+        notes: string;
+    }>;
+};
+
 const DEFAULT_ASSESSMENT_FORM: AssessmentFormState = {
     title: '',
     description: '',
@@ -185,6 +245,12 @@ const DEFAULT_ASSESSMENT_FORM: AssessmentFormState = {
     notifyStudents: true,
     notifyGuardians: true,
     notifyByEmail: true,
+    students: [],
+};
+
+const DEFAULT_ATTENDANCE_FORM: AttendanceFormState = {
+    notifyStudents: true,
+    notifyGuardians: true,
     students: [],
 };
 
@@ -208,6 +274,7 @@ function addDays(value: Date, amount: number) {
 
 function addMonths(value: Date, amount: number) {
     const next = new Date(value);
+    next.setDate(1);
     next.setMonth(next.getMonth() + amount);
     return next;
 }
@@ -244,18 +311,17 @@ function getFullDateLabel(value: string) {
     return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(parseDateOnly(value));
 }
 
-function getRangeLabel(view: CalendarViewMode, referenceDate: string, rangeStart: string, rangeEnd: string) {
-    if (view === 'DAY') return getFullDateLabel(referenceDate);
-    if (view === 'WEEK') {
-        const start = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(parseDateOnly(rangeStart));
-        const end = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parseDateOnly(rangeEnd));
-        return `${start} até ${end}`;
-    }
-    return getMonthLabel(referenceDate);
+function getYearMonthLabel(year: string, month: string) {
+    const parsedYear = Number.parseInt(year, 10);
+    const parsedMonth = Number.parseInt(month, 10);
+    const safeYear = Number.isNaN(parsedYear) ? new Date().getFullYear() : parsedYear;
+    const safeMonth = Number.isNaN(parsedMonth) ? 0 : parsedMonth - 1;
+    const date = new Date(safeYear, safeMonth, 1);
+    return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(date);
 }
 
-function getEventTone(eventType: string) {
-    return EVENT_TYPE_OPTIONS.find((option) => option.value === eventType)?.tone || 'bg-slate-100 text-slate-700 border-slate-200';
+function hasProvaScheduled(items: CalendarAgendaItem[]) {
+    return items.some((item) => item.events.some((event) => event.eventType === 'PROVA'));
 }
 
 function formatNumericInput(value?: number | null) {
@@ -280,6 +346,22 @@ function getLabelClasses(item: CalendarAgendaItem) {
     return 'inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-700';
 }
 
+function TenantLogoBadge({ tenant, wrapperClassName, imageClassName, fallbackClassName }: TenantLogoBadgeProps) {
+    return (
+        <div className={wrapperClassName}>
+            {tenant?.logoUrl ? (
+                // Tenant logos are configured dynamically per school and may come from arbitrary remote hosts.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={tenant.logoUrl} alt={`Logo de ${tenant.name}`} className={imageClassName} />
+            ) : (
+                <span className={fallbackClassName}>
+                    {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                </span>
+            )}
+        </div>
+    );
+}
+
 export default function CalendarioAulasPage() {
     const [tenant, setTenant] = useState<CurrentTenant | null>(null);
     const [viewMode, setViewMode] = useState<CalendarViewMode>('MONTH');
@@ -302,10 +384,25 @@ export default function CalendarioAulasPage() {
     const [assessmentForm, setAssessmentForm] = useState<AssessmentFormState>(DEFAULT_ASSESSMENT_FORM);
     const [assessmentLoading, setAssessmentLoading] = useState(false);
     const [assessmentSaving, setAssessmentSaving] = useState(false);
+    const [attendanceModal, setAttendanceModal] = useState<{
+        lessonItem: CalendarAgendaItem;
+        summary: LessonAttendancePayload['summary'];
+    } | null>(null);
+    const [attendanceForm, setAttendanceForm] = useState<AttendanceFormState>(DEFAULT_ATTENDANCE_FORM);
+    const [attendanceLoading, setAttendanceLoading] = useState(false);
+    const [attendanceSaving, setAttendanceSaving] = useState(false);
+    const [attendanceFeedback, setAttendanceFeedback] = useState<AttendanceFeedbackState | null>(null);
     const [confirmationDialog, setConfirmationDialog] = useState<{
         title: string;
         message: string;
     } | null>(null);
+    const today = new Date();
+    const [selectedYear, setSelectedYear] = useState<string>(String(today.getFullYear()));
+    const [selectedMonth, setSelectedMonth] = useState<string>(String(today.getMonth() + 1).padStart(2, '0'));
+    const teacherDisplayName = useMemo(() => {
+        if (!calendarData) return null;
+        return calendarData.items?.[0]?.teacherName || null;
+    }, [calendarData]);
 
     const loadCalendar = async (nextReferenceDate: string, nextViewMode: CalendarViewMode) => {
         try {
@@ -399,6 +496,13 @@ export default function CalendarioAulasPage() {
         }
     }, [assessmentModal]);
 
+    useEffect(() => {
+        if (!attendanceModal) {
+            setAttendanceForm(DEFAULT_ATTENDANCE_FORM);
+            setAttendanceFeedback(null);
+        }
+    }, [attendanceModal]);
+
     const itemsByDate = useMemo(() => {
         const grouped = new Map<string, CalendarAgendaItem[]>();
         (calendarData?.items || []).forEach((item) => {
@@ -441,15 +545,19 @@ export default function CalendarioAulasPage() {
     const availableStandaloneTargets = standaloneTargets.length ? standaloneTargets : fallbackStandaloneTargets;
 
     const selectedDayItems = useMemo(() => itemsByDate.get(selectedDate) || [], [itemsByDate, selectedDate]);
+    const selectedDayHasProva = useMemo(
+        () => hasProvaScheduled(selectedDayItems),
+        [selectedDayItems],
+    );
     const selectedStandaloneTarget = useMemo(() => {
         if (!modalState || modalState.mode !== 'standalone') return null;
         return availableStandaloneTargets.find((target) => target.key === modalState.targetKey) || null;
     }, [availableStandaloneTargets, modalState]);
 
-    const monthGridDays = useMemo(() => {
-        if (!calendarData) return [] as string[];
-        const start = parseDateOnly(calendarData.rangeStart);
-        const end = parseDateOnly(calendarData.rangeEnd);
+const monthGridDays = useMemo(() => {
+    if (!calendarData) return [] as string[];
+    const start = parseDateOnly(calendarData.rangeStart);
+    const end = parseDateOnly(calendarData.rangeEnd);
         const days: string[] = [];
         let cursor = new Date(start);
 
@@ -458,8 +566,128 @@ export default function CalendarioAulasPage() {
             cursor = addDays(cursor, 1);
         }
 
-        return days;
-    }, [calendarData]);
+    return days;
+}, [calendarData]);
+
+const availableYears = useMemo(() => {
+    if (!calendarData) return [String(new Date().getFullYear())];
+    const startYear = parseDateOnly(calendarData.rangeStart).getFullYear();
+    const endYear = parseDateOnly(calendarData.rangeEnd).getFullYear();
+    const years: string[] = [];
+    for (let year = startYear; year <= endYear; year += 1) {
+        years.push(String(year));
+    }
+    return years.length ? years : [String(new Date().getFullYear())];
+}, [calendarData]);
+
+const monthsForSelectedYear = useMemo(() => {
+    if (!selectedYear) return [];
+    return Array.from({ length: 12 }, (_, index) => {
+        const monthValue = String(index + 1).padStart(2, '0');
+        return {
+            value: monthValue,
+            label: getYearMonthLabel(selectedYear, monthValue),
+        };
+    });
+}, [selectedYear]);
+
+useEffect(() => {
+    if (!availableYears.length) return;
+
+    const referenceYear = referenceDate.split('-')[0] || '';
+    const candidateYear = referenceYear && availableYears.includes(referenceYear)
+        ? referenceYear
+        : availableYears[0];
+
+    if (candidateYear && candidateYear !== selectedYear) {
+        setSelectedYear(candidateYear);
+        const month = selectedMonth || referenceDate.split('-')[1] || '01';
+        const nextReference = `${candidateYear}-${month}-01`;
+        if (referenceDate !== nextReference) {
+            setReferenceDate(nextReference);
+        }
+    }
+}, [availableYears, referenceDate, selectedMonth, selectedYear]);
+
+useEffect(() => {
+    const referenceMonth = referenceDate.split('-')[1];
+    if (referenceMonth && referenceMonth !== selectedMonth) {
+        setSelectedMonth(referenceMonth);
+    }
+}, [referenceDate, selectedMonth]);
+
+const handleYearChange = (value: string) => {
+    setSelectedYear(value);
+    const month = selectedMonth || referenceDate.split('-')[1] || '01';
+    const nextReference = `${value}-${month}-01`;
+    if (referenceDate !== nextReference) {
+        setReferenceDate(nextReference);
+    }
+    setSelectedDate(nextReference);
+};
+
+const handleMonthChange = (value: string) => {
+    setSelectedMonth(value);
+    if (selectedYear) {
+        const nextReference = `${selectedYear}-${value}-01`;
+        if (referenceDate !== nextReference) {
+            setReferenceDate(nextReference);
+        }
+        setSelectedDate(nextReference);
+    }
+};
+
+    const currentPeriodLabel = useMemo(() => {
+        if (viewMode === 'MONTH') {
+            return getMonthLabel(referenceDate);
+        }
+
+        if (viewMode === 'WEEK') {
+            const rangeStart = calendarData?.rangeStart || formatDateOnly(startOfWeek(parseDateOnly(referenceDate)));
+            const rangeEnd = calendarData?.rangeEnd || formatDateOnly(addDays(parseDateOnly(rangeStart), 6));
+            return `${getDayPillLabel(rangeStart)} - ${getDayPillLabel(rangeEnd)}`;
+        }
+
+        return getFullDateLabel(selectedDate);
+    }, [calendarData, referenceDate, selectedDate, viewMode]);
+
+    const handleViewModeChange = (nextViewMode: CalendarViewMode) => {
+        if (nextViewMode === viewMode) return;
+
+        setViewMode(nextViewMode);
+
+        const anchorDate = nextViewMode === 'MONTH'
+            ? formatDateOnly(new Date(parseDateOnly(selectedDate).getFullYear(), parseDateOnly(selectedDate).getMonth(), 1))
+            : selectedDate;
+
+        if (referenceDate !== anchorDate) {
+            setReferenceDate(anchorDate);
+        }
+    };
+
+    const handleNavigatePeriod = (direction: -1 | 1) => {
+        const baseDate = parseDateOnly(referenceDate);
+        const nextDate = viewMode === 'MONTH'
+            ? addMonths(baseDate, direction)
+            : addDays(baseDate, viewMode === 'WEEK' ? direction * 7 : direction);
+        const nextReferenceDate = viewMode === 'MONTH'
+            ? formatDateOnly(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1))
+            : formatDateOnly(nextDate);
+
+        setReferenceDate(nextReferenceDate);
+        setSelectedDate(nextReferenceDate);
+    };
+
+    const handleGoToToday = () => {
+        const todayDate = new Date();
+        const todayKey = formatDateOnly(todayDate);
+        const nextReferenceDate = viewMode === 'MONTH'
+            ? formatDateOnly(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1))
+            : todayKey;
+
+        setReferenceDate(nextReferenceDate);
+        setSelectedDate(todayKey);
+    };
 
     const weekDays = useMemo(() => {
         const start = startOfWeek(parseDateOnly(selectedDate));
@@ -471,29 +699,6 @@ export default function CalendarioAulasPage() {
         if (modalState.mode === 'standalone') return 'Recado';
         return EVENT_TYPE_OPTIONS.find((option) => option.value === modalState.eventType)?.label || 'Evento';
     }, [modalState]);
-
-    const handleNavigate = (direction: 'prev' | 'next') => {
-        const factor = direction === 'prev' ? -1 : 1;
-        const baseDate = parseDateOnly(referenceDate);
-
-        if (viewMode === 'MONTH') {
-            const nextDate = formatDateOnly(addMonths(baseDate, factor));
-            setReferenceDate(nextDate);
-            setSelectedDate(nextDate);
-            return;
-        }
-
-        if (viewMode === 'WEEK') {
-            const nextDate = formatDateOnly(addDays(baseDate, factor * 7));
-            setReferenceDate(nextDate);
-            setSelectedDate(nextDate);
-            return;
-        }
-
-        const nextDate = formatDateOnly(addDays(baseDate, factor));
-        setReferenceDate(nextDate);
-        setSelectedDate(nextDate);
-    };
 
     const handleOpenEventModal = (lessonItem: CalendarAgendaItem, eventType: string) => {
         const existingEvent = lessonItem.events.find((event) => event.eventType === eventType) || null;
@@ -520,7 +725,6 @@ export default function CalendarioAulasPage() {
             mode: 'standalone',
             selectedDate: date,
             existingEvent: standaloneEvent,
-            standaloneEventId: standaloneEvent?.id || item?.standaloneEventId,
             targetKey: fallbackTarget,
         });
     };
@@ -567,6 +771,57 @@ export default function CalendarioAulasPage() {
             setErrorMessage(error instanceof Error ? error.message : 'Não foi possível carregar os alunos da avaliação.');
         } finally {
             setAssessmentLoading(false);
+        }
+    };
+
+    const handleOpenAttendanceModal = async (lessonItem: CalendarAgendaItem) => {
+        try {
+            setAttendanceModal({
+                lessonItem,
+                summary: {
+                    totalStudents: 0,
+                    totalPresentes: 0,
+                    totalFaltou: 0,
+                },
+            });
+            setAttendanceLoading(true);
+            setAttendanceFeedback(null);
+            setErrorMessage(null);
+            setStatusMessage(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Sessão não encontrada.');
+
+            const response = await fetch(`${API_BASE_URL}/lesson-attendances/by-lesson-item/${lessonItem.id}`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const data: LessonAttendancePayload | { message?: string } | null = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error((data as { message?: string } | null)?.message || 'Não foi possível carregar a chamada da aula.');
+            }
+
+            const payload = data as LessonAttendancePayload;
+            setAttendanceModal({
+                lessonItem,
+                summary: payload.summary,
+            });
+            setAttendanceForm({
+                notifyStudents: true,
+                notifyGuardians: true,
+                students: payload.students.map((student) => ({
+                    studentId: student.studentId,
+                    studentName: student.studentName,
+                    studentEmail: student.studentEmail,
+                    status: student.status || null,
+                    notes: student.notes || '',
+                })),
+            });
+            setActionPickerItem(null);
+        } catch (error) {
+            setAttendanceModal(null);
+            setErrorMessage(error instanceof Error ? error.message : 'Não foi possível carregar a chamada da aula.');
+        } finally {
+            setAttendanceLoading(false);
         }
     };
 
@@ -660,6 +915,89 @@ export default function CalendarioAulasPage() {
     const handleConfirmDialog = () => {
         setConfirmationDialog(null);
         setModalState(null);
+    };
+
+    const handleSaveAttendance = async () => {
+        if (!attendanceModal) return;
+
+        try {
+            setAttendanceSaving(true);
+            setErrorMessage(null);
+            setStatusMessage(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Sessão não encontrada.');
+
+            const attendances = attendanceForm.students
+                .filter((student) => student.status)
+                .map((student) => ({
+                    studentId: student.studentId,
+                    status: student.status,
+                    notes: student.notes,
+                }));
+
+            if (!attendances.length) {
+                throw new Error('Marque pelo menos um aluno como PRESENTE ou FALTOU.');
+            }
+
+            const response = await fetch(`${API_BASE_URL}/lesson-attendances/by-lesson-item/${attendanceModal.lessonItem.id}`, {
+                method: 'PUT',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    attendances,
+                    notifyStudents: attendanceForm.notifyStudents,
+                    notifyGuardians: attendanceForm.notifyGuardians,
+                }),
+            });
+
+            const data: LessonAttendancePayload | { message?: string } | null = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error((data as { message?: string } | null)?.message || 'Não foi possível salvar a chamada da aula.');
+            }
+
+            const payload = data as LessonAttendancePayload;
+            const nextNotifyStudents = attendanceForm.notifyStudents;
+            const nextNotifyGuardians = attendanceForm.notifyGuardians;
+            setAttendanceModal({
+                lessonItem: attendanceModal.lessonItem,
+                summary: payload.summary,
+            });
+            setAttendanceForm({
+                notifyStudents: nextNotifyStudents,
+                notifyGuardians: nextNotifyGuardians,
+                students: payload.students.map((student) => ({
+                    studentId: student.studentId,
+                    studentName: student.studentName,
+                    studentEmail: student.studentEmail,
+                    status: student.status || null,
+                    notes: student.notes || '',
+                })),
+            });
+            const notificationsCreated = payload.notificationsCreated || 0;
+            setAttendanceFeedback({
+                notificationsCreated,
+                notifyStudents: nextNotifyStudents,
+                notifyGuardians: nextNotifyGuardians,
+            });
+
+            const channels: string[] = [];
+            if (nextNotifyStudents) channels.push('alunos');
+            if (nextNotifyGuardians) channels.push('responsáveis');
+
+            setStatusMessage(
+                !channels.length
+                    ? 'Chamada da aula salva com sucesso, sem envio de notificação.'
+                    : notificationsCreated > 0
+                        ? `Chamada da aula salva com sucesso. ${notificationsCreated} aviso(s) criado(s) para ${channels.join(' e ')}.`
+                        : `Chamada da aula salva com sucesso. Nenhuma notificação foi criada para ${channels.join(' e ')}.`,
+            );
+        } catch (error) {
+            setErrorMessage(error instanceof Error ? error.message : 'Não foi possível salvar a chamada da aula.');
+        } finally {
+            setAttendanceSaving(false);
+        }
     };
 
     const handleRemoveEvent = async () => {
@@ -771,18 +1109,15 @@ export default function CalendarioAulasPage() {
                 <div className="bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.18),_transparent_45%),linear-gradient(135deg,#eff6ff_0%,#ffffff_42%,#f8fafc_100%)] px-8 py-8">
                     <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
                         <div className="flex items-center gap-5">
-                            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
-                                {tenant?.logoUrl ? (
-                                    <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-3" />
-                                ) : (
-                                    <span className="text-lg font-black tracking-[0.25em] text-[#153a6a]">
-                                        {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                    </span>
-                                )}
-                            </div>
+                            <TenantLogoBadge
+                                tenant={tenant}
+                                wrapperClassName="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.10)]"
+                                imageClassName="h-full w-full object-contain p-3"
+                                fallbackClassName="text-lg font-black tracking-[0.25em] text-[#153a6a]"
+                            />
                             <div>
-                                <div className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">Agenda expandida do professor</div>
-                                <h1 className="mt-2 text-3xl font-extrabold text-[#153a6a]">Calendário das minhas aulas</h1>
+                                <div className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">Calendário Aulas</div>
+                                <h1 className="mt-2 text-3xl font-extrabold text-[#153a6a]">{teacherDisplayName || 'Professor'}</h1>
                                 <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500">
                                     Visualize sua grade anual em calendário expandido, com horários reais da aula, eventos lançados e navegação por mês, semana ou dia.
                                 </p>
@@ -792,66 +1127,95 @@ export default function CalendarioAulasPage() {
                 </div>
                 <div className="px-8 py-6">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => handleNavigate('prev')}
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                            >
-                                Anterior
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const today = new Date().toISOString().slice(0, 10);
-                                    setReferenceDate(today);
-                                    setSelectedDate(today);
-                                }}
-                                className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
-                            >
-                                Hoje
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => handleNavigate('next')}
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                            >
-                                Próximo
-                            </button>
-
-                            {([
-                                { value: 'MONTH', label: 'Mês' },
-                                { value: 'WEEK', label: 'Semana' },
-                                { value: 'DAY', label: 'Dia' },
-                            ] as Array<{ value: CalendarViewMode; label: string }>).map((option) => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    onClick={() => setViewMode(option.value)}
-                                    className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${
-                                        viewMode === option.value
-                                            ? 'border-blue-300 bg-blue-50 text-blue-700 shadow-sm'
-                                            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
-                                    }`}
-                                >
-                                    {option.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3 text-right shadow-sm">
-                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Período em foco</div>
-                                <div className="mt-1 text-xl font-extrabold text-slate-800">
-                                    {calendarData ? getRangeLabel(viewMode, referenceDate, calendarData.rangeStart, calendarData.rangeEnd) : getMonthLabel(referenceDate)}
+                        <div className="flex flex-wrap items-end gap-3">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+                                <div className="flex flex-wrap gap-1">
+                                    {VIEW_MODE_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => handleViewModeChange(option.value)}
+                                            className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${
+                                                viewMode === option.value
+                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                    : 'text-slate-500 hover:bg-slate-100 hover:text-blue-700'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                        <Link
-                            href="/principal"
-                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
-                        >
-                            Voltar ao painel
-                        </Link>
+
+                            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                                <button
+                                    type="button"
+                                    onClick={() => handleNavigatePeriod(-1)}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+                                >
+                                    Anterior
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleGoToToday}
+                                    className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-700"
+                                >
+                                    Hoje
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleNavigatePeriod(1)}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+                                >
+                                    Próximo
+                                </button>
+                            </div>
+
+                            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 shadow-sm">
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">Período ativo</div>
+                                <div className="mt-1 text-sm font-bold text-blue-900">{currentPeriodLabel}</div>
+                            </div>
+
+                            {viewMode === 'MONTH' ? (
+                                <>
+                                    <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                        Ano
+                                        <select
+                                            value={selectedYear}
+                                            onChange={(event) => handleYearChange(event.target.value)}
+                                            className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                        >
+                                            {availableYears.map((year) => (
+                                                <option key={year} value={year}>{year}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                        Mês
+                                        <select
+                                            value={selectedMonth}
+                                            onChange={(event) => handleMonthChange(event.target.value)}
+                                            className="mt-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                            disabled={!monthsForSelectedYear.length}
+                                        >
+                                            {monthsForSelectedYear.map((option) => (
+                                                <option key={`${selectedYear}-${option.value}`} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                </>
+                            ) : null}
+                        </div>
+
+                        <div className="flex justify-end">
+                            <Link
+                                href="/principal"
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+                            >
+                                Voltar ao painel
+                            </Link>
                         </div>
                     </div>
 
@@ -868,6 +1232,12 @@ export default function CalendarioAulasPage() {
                             <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Dia selecionado</div>
                             <div className="mt-2 text-base font-extrabold text-slate-800">{getFullDateLabel(selectedDate)}</div>
                             <div className="mt-1 text-sm font-medium text-slate-500">{selectedDayItems.length} aula(s) nesta data</div>
+                            {selectedDayHasProva ? (
+                                <div className="mt-3 inline-flex w-full items-center justify-between rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-red-700">
+                                    <span>* DIA DE PROVA</span>
+                                    <strong className="text-[11px] font-black text-red-700">EVITE DUPLICAR</strong>
+                                </div>
+                            ) : null}
                         </div>
                     </div>
 
@@ -883,253 +1253,172 @@ export default function CalendarioAulasPage() {
                         </div>
                     ) : null}
 
-                    <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                        {loading ? (
-                            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center text-sm font-medium text-slate-500">
-                                Carregando calendário do professor...
-                            </div>
-                        ) : null}
-
-                        {!loading && viewMode === 'MONTH' ? (
-                            <div className="space-y-4">
-                                <div className="grid grid-cols-7 gap-3">
-                                    {WEEKDAY_LABELS.map((label) => (
-                                        <div key={label} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
-                                            {label}
-                                        </div>
-                                    ))}
+                    <div className="mt-6">
+                        <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                            {loading ? (
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                    Carregando calendário do professor...
                                 </div>
+                            ) : null}
 
-                                <div className="overflow-x-auto">
-                                    <div className="grid min-w-[1180px] grid-cols-7 gap-3 xl:min-w-0">
-                                        {monthGridDays.map((day) => {
-                                            const dayItems = itemsByDate.get(day) || [];
-                                            const isCurrentMonth = parseDateOnly(day).getMonth() === parseDateOnly(referenceDate).getMonth();
-                                            const isSelected = isSameDate(day, selectedDate);
+                            {!loading && viewMode === 'MONTH' ? (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-7 gap-3">
+                                        {WEEKDAY_LABELS.map((label) => (
+                                            <div key={label} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
+                                                {label}
+                                            </div>
+                                        ))}
+                                    </div>
 
-                                            return (
-                                                <div
-                                                    key={day}
-                                                    className={`flex min-h-[190px] flex-col rounded-[24px] border p-3 text-left transition ${
-                                                        isSelected
-                                                            ? 'border-blue-300 bg-blue-50 shadow-sm ring-2 ring-blue-100'
-                                                            : isCurrentMonth
-                                                                ? 'border-slate-200 bg-white hover:border-blue-200'
-                                                                : 'border-slate-200 bg-slate-100/70 text-slate-400 hover:border-blue-200'
-                                                    }`}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSelectedDate(day)}
-                                                        className="flex items-center justify-between rounded-xl text-left outline-none transition hover:opacity-90"
+                                    <div className="overflow-x-auto">
+                                        <div className="grid min-w-[1180px] grid-cols-7 gap-3 xl:min-w-0">
+                                            {monthGridDays.map((day) => {
+                                                const dayItems = itemsByDate.get(day) || [];
+                                                const isCurrentMonth = parseDateOnly(day).getMonth() === parseDateOnly(referenceDate).getMonth();
+                                                const isSelected = isSameDate(day, selectedDate);
+                                                const hasProvaToday = hasProvaScheduled(dayItems);
+
+                                                return (
+                                                    <div
+                                                        key={day}
+                                                        className={`flex min-h-[190px] flex-col rounded-[24px] border p-3 text-left transition ${
+                                                            isSelected
+                                                                ? 'border-blue-300 bg-blue-50 shadow-sm ring-2 ring-blue-100'
+                                                                : isCurrentMonth
+                                                                    ? 'border-slate-200 bg-white hover:border-blue-200'
+                                                                    : 'border-slate-200 bg-slate-100/70 text-slate-400 hover:border-blue-200'
+                                                        }`}
                                                     >
-                                                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
-                                                            {getMonthBeforeDayLabel(day)}
-                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedDate(day)}
+                                                            className="flex items-center justify-between rounded-xl text-left outline-none transition hover:opacity-90"
+                                                        >
+                                                            <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                                                                {getMonthBeforeDayLabel(day)}
+                                                            </span>
                                                         {dayItems.length ? (
                                                             <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
                                                                 {dayItems.length} aula(s)
                                                             </span>
                                                         ) : null}
                                                     </button>
+                                                    {hasProvaToday ? (
+                                                        <div className="mt-2 inline-flex items-center justify-center rounded-2xl border border-red-200 bg-red-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-700">
+                                                            * DIA DE PROVA
+                                                        </div>
+                                                    ) : null}
 
                                                     <div className="mt-3 flex flex-1 flex-col gap-2">
-                                                        {dayItems.slice(0, 4).map((item) => renderLessonChip(item, true))}
-                                                        {dayItems.length > 4 ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setSelectedDate(day)}
-                                                                className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.14em] text-slate-500 transition hover:border-blue-300 hover:text-blue-700"
-                                                            >
-                                                                +{dayItems.length - 4} aula(s)
-                                                            </button>
-                                                        ) : null}
-                                                        {!dayItems.length ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleOpenStandaloneNoticeModal(day)}
-                                                                className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50 px-3 py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-                                                            >
-                                                                Lançar aviso
-                                                            </button>
-                                                        ) : null}
+                                                            {dayItems.slice(0, 4).map((item) => renderLessonChip(item, true))}
+                                                            {dayItems.length > 4 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedDate(day)}
+                                                                    className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.14em] text-slate-500 transition hover:border-blue-300 hover:text-blue-700"
+                                                                >
+                                                                    +{dayItems.length - 4} aula(s)
+                                                                </button>
+                                                            ) : null}
+                                                            {!dayItems.length ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenStandaloneNoticeModal(day)}
+                                                            className="inline-flex items-center justify-center rounded-full border border-blue-600 bg-blue-600 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white shadow-sm transition hover:bg-blue-700 min-w-[120px]"
+                                                        >
+                                                            Lançar Aviso Extra
+                                                        </button>
+                                                            ) : null}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {!loading && viewMode === 'WEEK' ? (
+                                <div className="overflow-x-auto">
+                                    <div className="grid min-w-[1180px] grid-cols-7 gap-4 xl:min-w-0">
+                                        {weekDays.map((day) => {
+                                            const dayItems = itemsByDate.get(day) || [];
+                                            const isSelected = isSameDate(day, selectedDate);
+                                            const hasProvaThisDay = hasProvaScheduled(dayItems);
+                                            return (
+                                                <div
+                                                    key={day}
+                                                    className={`rounded-[24px] border p-4 ${isSelected ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white'}`}
+                                                >
+                                                    <button type="button" onClick={() => setSelectedDate(day)} className="w-full text-left">
+                                                        <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
+                                                            {getMonthBeforeDayLabel(day)} • {getDayPillLabel(day)}
+                                                        </div>
+                                                        <div className="mt-1 text-sm font-bold text-slate-500">
+                                                            {dayItems.length} aula(s)
+                                                        </div>
+                                                    </button>
+                                                    {hasProvaThisDay ? (
+                                                        <div className="mt-2 inline-flex items-center justify-center rounded-2xl border border-red-200 bg-red-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-700">
+                                                            * DIA DE PROVA
+                                                        </div>
+                                                    ) : null}
+
+                                                    <div className="mt-4 space-y-2">
+                                                        {dayItems.length ? (
+                                                            dayItems.map((item) => renderLessonChip(item, true))
+                                                        ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenStandaloneNoticeModal(day)}
+                                                    className="w-full rounded-full border border-blue-600 bg-blue-600 px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-blue-700"
+                                                >
+                                                    Lançar Aviso Extra
+                                                </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
                                         })}
                                     </div>
                                 </div>
-                            </div>
-                        ) : null}
+                            ) : null}
 
-                        {!loading && viewMode === 'WEEK' ? (
-                            <div className="overflow-x-auto">
-                                <div className="grid min-w-[1180px] grid-cols-7 gap-4 xl:min-w-0">
-                                    {weekDays.map((day) => {
-                                        const dayItems = itemsByDate.get(day) || [];
-                                        const isSelected = isSameDate(day, selectedDate);
-                                        return (
-                                            <div
-                                                key={day}
-                                                className={`rounded-[24px] border p-4 ${isSelected ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white'}`}
-                                            >
-                                                <button type="button" onClick={() => setSelectedDate(day)} className="w-full text-left">
-                                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
-                                                        {getMonthBeforeDayLabel(day)} • {getDayPillLabel(day)}
-                                                    </div>
-                                                    <div className="mt-1 text-sm font-bold text-slate-500">
-                                                        {dayItems.length} aula(s)
-                                                    </div>
-                                                </button>
-
-                                                <div className="mt-4 space-y-2">
-                                                    {dayItems.length ? (
-                                                        dayItems.map((item) => renderLessonChip(item, true))
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOpenStandaloneNoticeModal(day)}
-                                                            className="w-full rounded-2xl border border-dashed border-blue-200 bg-blue-50 px-3 py-5 text-center text-xs font-black uppercase tracking-[0.14em] text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-                                                        >
-                                                            Lançar aviso
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {!loading && viewMode === 'DAY' ? (
-                            <div className="rounded-[24px] border border-blue-100 bg-white px-5 py-4">
-                                <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Visão detalhada do dia</div>
-                                <div className="mt-2 text-2xl font-extrabold text-slate-800">{getFullDateLabel(selectedDate)}</div>
-                                <div className="mt-2 text-sm font-medium text-slate-500">
-                                    Clique em cada aula para lançar prova, trabalho, recado ou falta do professor.
-                                </div>
-                            </div>
-                        ) : null}
-                    </div>
-
-                    <div className="mt-6 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Dia selecionado</div>
-                                <div className="mt-1 text-xl font-extrabold text-slate-800">{getFullDateLabel(selectedDate)}</div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <div className="text-sm font-medium text-slate-500">
-                                    {selectedDayItems.length} aula(s) para tratar nesta data
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => handleOpenStandaloneNoticeModal(selectedDate)}
-                                    disabled={standaloneTargetsLoading || availableStandaloneTargets.length === 0}
-                                    className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    Lançar aviso sem aula
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="mt-5 space-y-4">
-                            {selectedDayItems.length ? (
-                                selectedDayItems.map((item) => (
-                                    <div key={item.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                                            <div>
-                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                                                    {item.displayTimeLabel || `${item.startTime} - ${item.endTime}`}
-                                                </div>
-                                                <div className="mt-2 text-xl font-extrabold text-slate-800">{item.subjectName}</div>
-                                                <div className="mt-2 text-sm font-medium text-slate-500">
-                                                    {item.seriesName} - {item.className}
-                                                    {item.shift ? ` • ${item.shift}` : ''}
-                                                </div>
-                                                <div className="mt-2 text-xs font-medium text-slate-500">
-                                                    {item.isStandaloneNotice
-                                                        ? 'Aviso lançado fora do horário de aula. Você pode editar o recado e reenviar a comunicação.'
-                                                        : 'Escolha prova, trabalho, recado ou falta. No modal você decide se dispara notificação interna, e-mail ou os dois.'}
-                                                </div>
-                                            </div>
-
-                                            <div className="flex flex-wrap gap-2">
-                                                {item.isStandaloneNotice ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleOpenStandaloneNoticeModal(item.lessonDate, item)}
-                                                        className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-blue-700 transition hover:bg-blue-100"
-                                                    >
-                                                        Editar recado
-                                                    </button>
-                                                ) : (
-                                                    EVENT_TYPE_OPTIONS.map((option) => {
-                                                        const hasEvent = item.events.some((event) => event.eventType === option.value);
-                                                        return (
-                                                            <button
-                                                                key={`${item.id}-${option.value}`}
-                                                                type="button"
-                                                                onClick={() => handleOpenEventModal(item, option.value)}
-                                                                className={`rounded-xl border px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] transition ${
-                                                                    hasEvent
-                                                                        ? option.tone
-                                                                        : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'
-                                                                }`}
-                                                            >
-                                                                {hasEvent ? `Editar ${option.label}` : option.label}
-                                                            </button>
-                                                        );
-                                                    })
-                                                )}
-                                            </div>
+                            {!loading && viewMode === 'DAY' ? (
+                                <div className="space-y-4">
+                                    <div className="rounded-[24px] border border-blue-100 bg-white px-5 py-4">
+                                        <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Visão detalhada do dia</div>
+                                        <div className="mt-2 text-2xl font-extrabold text-slate-800">{getFullDateLabel(selectedDate)}</div>
+                                        <div className="mt-2 text-sm font-medium text-slate-500">
+                                            Clique em cada aula para lançar prova, trabalho, recado ou falta do professor.
                                         </div>
-
-                                        {item.events.length ? (
-                                            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                                {item.events.map((event) => (
-                                                    <div key={event.id} className={`rounded-2xl border px-4 py-3 ${getEventTone(event.eventType)}`}>
-                                                        <div className="text-xs font-bold uppercase tracking-[0.15em]">{event.eventTypeLabel}</div>
-                                                        <div className="mt-2 text-sm font-extrabold">{event.title}</div>
-                                                        {event.description ? (
-                                                            <div className="mt-2 text-xs font-medium leading-5">{event.description}</div>
-                                                        ) : null}
-                                                        {!item.isStandaloneNotice && (event.eventType === 'PROVA' || event.eventType === 'TRABALHO') ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleOpenAssessmentModal(item, event)}
-                                                                className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
-                                                            >
-                                                                Lançar notas
-                                                            </button>
-                                                        ) : null}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm font-medium text-slate-500">
-                                                Nenhum evento lançado ainda para esta aula.
-                                            </div>
-                                        )}
                                     </div>
-                                ))
-                            ) : (
-                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm font-medium text-slate-500">
-                                    <div>Não há aulas para a data selecionada.</div>
-                                    <div className="mt-2">Você ainda pode lançar um aviso para esta data.</div>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleOpenStandaloneNoticeModal(selectedDate)}
-                                        disabled={standaloneTargetsLoading || availableStandaloneTargets.length === 0}
-                                        className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        Lançar aviso neste dia
-                                    </button>
+
+                                    {selectedDayItems.length ? (
+                                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                            {selectedDayItems.map((item) => renderLessonChip(item))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-[24px] border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
+                                            <div className="text-sm font-bold text-slate-700">Nenhuma aula encontrada nesta data.</div>
+                                            <div className="mt-2 text-sm font-medium text-slate-500">
+                                                Você ainda pode lançar um aviso extra para este dia.
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenStandaloneNoticeModal(selectedDate)}
+                                                className="mt-5 inline-flex rounded-full border border-blue-600 bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white transition hover:bg-blue-700"
+                                            >
+                                                Lançar Aviso Extra
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                     </div>
+
                 </div>
             </div>
             {modalState ? (
@@ -1138,15 +1427,12 @@ export default function CalendarioAulasPage() {
                         <div className="dashboard-band border-b px-6 py-5">
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                        {tenant?.logoUrl ? (
-                                            <img src={tenant.logoUrl} alt={`Logo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
-                                        ) : (
-                                            <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                                {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                            </span>
-                                        )}
-                                    </div>
+                                    <TenantLogoBadge
+                                        tenant={tenant}
+                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                                        imageClassName="h-full w-full object-contain p-1.5"
+                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
+                                    />
                                     <div>
                                         <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
                                             {modalState.mode === 'lesson'
@@ -1163,11 +1449,6 @@ export default function CalendarioAulasPage() {
                                                     ? `${selectedStandaloneTarget.subjectName} • ${selectedStandaloneTarget.seriesName} - ${selectedStandaloneTarget.className}${selectedStandaloneTarget.shift ? ` • ${selectedStandaloneTarget.shift}` : ''}`
                                                     : 'Selecione a turma e a disciplina do aviso avulso.'}
                                         </p>
-                                        <ScreenNameCopy
-                                            screenId={modalState.mode === 'standalone' ? 'PRINCIPAL_CALENDARIO_AULAS_STANDALONE' : 'PRINCIPAL_CALENDARIO_AULAS'}
-                                            label="Tela"
-                                            className="text-[9px]"
-                                        />
                                     </div>
                                 </div>
                                 <button
@@ -1195,16 +1476,23 @@ export default function CalendarioAulasPage() {
                                                             : current
                                                     ))
                                                 }
+                                                disabled={!availableStandaloneTargets.length}
                                                 className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
                                             >
-                                                {availableStandaloneTargets.map((target) => (
-                                                    <option key={target.key} value={target.key}>
-                                                        {target.label}
-                                                    </option>
-                                                ))}
+                                                {availableStandaloneTargets.length ? (
+                                                    availableStandaloneTargets.map((target) => (
+                                                        <option key={target.key} value={target.key}>
+                                                            {target.label}
+                                                        </option>
+                                                    ))
+                                                ) : (
+                                                    <option value="">Nenhuma turma/disciplina disponível</option>
+                                                )}
                                             </select>
                                             <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-xs font-medium leading-5 text-blue-700">
-                                                Use este recado para comunicar algo mesmo quando não existir aula lançada no dia selecionado.
+                                                {standaloneTargetsLoading
+                                                    ? 'Atualizando a lista de turmas e disciplinas para aviso avulso...'
+                                                    : 'Use este recado para comunicar algo mesmo quando não existir aula lançada no dia selecionado.'}
                                             </div>
                                         </>
                                     ) : null}
@@ -1337,15 +1625,12 @@ export default function CalendarioAulasPage() {
                         <div className="dashboard-band border-b px-6 py-5">
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                        {tenant?.logoUrl ? (
-                                            <img src={tenant.logoUrl} alt={`Logo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
-                                        ) : (
-                                            <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                                {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                            </span>
-                                        )}
-                                    </div>
+                                    <TenantLogoBadge
+                                        tenant={tenant}
+                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                                        imageClassName="h-full w-full object-contain p-1.5"
+                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
+                                    />
                                     <div>
                                         <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
                                             {actionPickerItem.dateLabel} • {actionPickerItem.startTime} - {actionPickerItem.endTime}
@@ -1370,6 +1655,24 @@ export default function CalendarioAulasPage() {
                         <div className="px-6 py-6">
                             <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm font-medium text-blue-700">
                                 Clique na ação desejada. O próximo passo abre o lançamento da aula com opção de enviar <strong>notificação interna</strong>, <strong>e-mail</strong> ou <strong>os dois</strong>.
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-base font-extrabold text-emerald-900">Chamada da aula</div>
+                                        <div className="mt-1 text-xs font-medium leading-5 text-emerald-700">
+                                            Liste os alunos desta aula e marque quem está <strong>PRESENTE</strong> ou <strong>FALTOU</strong>.
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenAttendanceModal(actionPickerItem)}
+                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-emerald-700"
+                                    >
+                                        Fazer chamada
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1438,21 +1741,262 @@ export default function CalendarioAulasPage() {
                 </div>
             ) : null}
 
+            {attendanceModal ? (
+                <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
+                        <div className="dashboard-band border-b px-6 py-5">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="flex items-center gap-4">
+                                    <TenantLogoBadge
+                                        tenant={tenant}
+                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                                        imageClassName="h-full w-full object-contain p-1.5"
+                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
+                                    />
+                                    <div>
+                                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
+                                            {attendanceModal.lessonItem.dateLabel} • {attendanceModal.lessonItem.startTime} - {attendanceModal.lessonItem.endTime}
+                                        </div>
+                                        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">Chamada da aula</h2>
+                                        <p className="mt-2 text-sm font-medium text-slate-500">
+                                            {attendanceModal.lessonItem.subjectName} • {attendanceModal.lessonItem.seriesName} - {attendanceModal.lessonItem.className}
+                                            {attendanceModal.lessonItem.shift ? ` • ${attendanceModal.lessonItem.shift}` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setAttendanceModal(null)}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
+                                >
+                                    Fechar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="max-h-[72vh] overflow-y-auto px-6 py-6">
+                            {attendanceLoading ? (
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                    Carregando alunos da aula...
+                                </div>
+                            ) : (
+                                <div className="space-y-5">
+                                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Alunos na aula</div>
+                                            <div className="mt-2 text-2xl font-extrabold text-slate-800">{attendanceModal.summary.totalStudents}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Presentes</div>
+                                            <div className="mt-2 text-2xl font-extrabold text-emerald-800">
+                                                {attendanceForm.students.filter((student) => student.status === 'PRESENTE').length}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+                                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-red-700">Faltou</div>
+                                            <div className="mt-2 text-2xl font-extrabold text-red-800">
+                                                {attendanceForm.students.filter((student) => student.status === 'FALTOU').length}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
+                                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Envio opcional</div>
+                                        <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                                            <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={attendanceForm.notifyStudents}
+                                                    onChange={(event) =>
+                                                        setAttendanceForm((current) => ({
+                                                            ...current,
+                                                            notifyStudents: event.target.checked,
+                                                        }))
+                                                    }
+                                                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                                />
+                                                Notificar Alunos
+                                            </label>
+                                            <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={attendanceForm.notifyGuardians}
+                                                    onChange={(event) =>
+                                                        setAttendanceForm((current) => ({
+                                                            ...current,
+                                                            notifyGuardians: event.target.checked,
+                                                        }))
+                                                    }
+                                                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                                />
+                                                Notificar Responsáveis
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {attendanceFeedback ? (
+                                        <div className={`rounded-2xl border px-4 py-4 ${
+                                            attendanceFeedback.notificationsCreated > 0
+                                                ? 'border-emerald-200 bg-emerald-50'
+                                                : 'border-slate-200 bg-slate-50'
+                                        }`}>
+                                            <div className={`text-xs font-bold uppercase tracking-[0.18em] ${
+                                                attendanceFeedback.notificationsCreated > 0
+                                                    ? 'text-emerald-700'
+                                                    : 'text-slate-600'
+                                            }`}>
+                                                {attendanceFeedback.notificationsCreated > 0 ? 'Notificação enviada' : 'Status da notificação'}
+                                            </div>
+                                            <div className={`mt-2 text-sm font-semibold ${
+                                                attendanceFeedback.notificationsCreated > 0
+                                                    ? 'text-emerald-900'
+                                                    : 'text-slate-700'
+                                            }`}>
+                                                {!attendanceFeedback.notifyStudents && !attendanceFeedback.notifyGuardians
+                                                    ? 'A chamada foi salva sem disparo de notificação, porque os dois canais ficaram desmarcados.'
+                                                    : attendanceFeedback.notificationsCreated > 0
+                                                        ? `${attendanceFeedback.notificationsCreated} aviso(s) foram gerados com sucesso para os destinatários marcados nesta chamada.`
+                                                        : 'A chamada foi salva, mas nenhum aviso foi gerado para os destinatários marcados.'}
+                                            </div>
+                                            <div className="mt-2 text-xs font-medium text-slate-500">
+                                                {attendanceFeedback.notifyStudents ? 'ALUNO ATIVADO' : 'ALUNO DESATIVADO'} • {attendanceFeedback.notifyGuardians ? 'RESPONSÁVEIS ATIVADOS' : 'RESPONSÁVEIS DESATIVADOS'}
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                                        <div className="dashboard-band border-b px-5 py-4">
+                                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Lista da chamada</div>
+                                                    <div className="mt-1 text-lg font-extrabold text-slate-800">{attendanceForm.students.length} aluno(s)</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="max-h-[44vh] overflow-y-auto px-1 py-4">
+                                            <table className="min-w-full text-sm">
+                                                <thead>
+                                                    <tr className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                                                        <th className="px-3 py-2 text-left">Aluno</th>
+                                                        <th className="px-3 py-2 text-left">Presente</th>
+                                                        <th className="px-3 py-2 text-left">Faltou</th>
+                                                        <th className="px-3 py-2 text-left">Observação</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {attendanceForm.students.map((student, index) => (
+                                                        <tr key={student.studentId} className="bg-white even:bg-slate-50">
+                                                            <td className="px-3 py-2">
+                                                                <div className="text-sm font-semibold text-slate-800">{student.studentName}</div>
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setAttendanceForm((current) => ({
+                                                                            ...current,
+                                                                            students: current.students.map((item, itemIndex) =>
+                                                                                itemIndex === index ? { ...item, status: 'PRESENTE' } : item,
+                                                                            ),
+                                                                        }))
+                                                                    }
+                                                                    className={`w-full rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                                                                        student.status === 'PRESENTE'
+                                                                            ? 'border-emerald-300 bg-emerald-600 text-white'
+                                                                            : 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
+                                                                    }`}
+                                                                >
+                                                                    Presente
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setAttendanceForm((current) => ({
+                                                                            ...current,
+                                                                            students: current.students.map((item, itemIndex) =>
+                                                                                itemIndex === index ? { ...item, status: 'FALTOU' } : item,
+                                                                            ),
+                                                                        }))
+                                                                    }
+                                                                    className={`w-full rounded-xl border px-3 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                                                                        student.status === 'FALTOU'
+                                                                            ? 'border-red-300 bg-red-600 text-white'
+                                                                            : 'border-red-200 bg-white text-red-700 hover:bg-red-50'
+                                                                    }`}
+                                                                >
+                                                                    Faltou
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={student.notes}
+                                                                    onChange={(event) =>
+                                                                        setAttendanceForm((current) => ({
+                                                                            ...current,
+                                                                            students: current.students.map((item, itemIndex) =>
+                                                                                itemIndex === index ? { ...item, notes: event.target.value } : item,
+                                                                            ),
+                                                                        }))
+                                                                    }
+                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                                                    placeholder="Opcional"
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="dashboard-band-footer border-t px-6 py-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <ScreenNameCopy
+                                    screenId="PRINCIPAL_CALENDARIO_AULAS_CHAMADA"
+                                    label="Tela"
+                                    className="mt-0 text-[11px]"
+                                />
+                                <div className="flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAttendanceModal(null)}
+                                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveAttendance}
+                                        disabled={attendanceSaving || attendanceLoading}
+                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+                                    >
+                                        {attendanceSaving ? 'Salvando chamada...' : 'Salvar chamada'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             {assessmentModal ? (
                 <div className="fixed inset-0 z-[86] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
                         <div className="dashboard-band border-b px-6 py-5">
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                        {tenant?.logoUrl ? (
-                                            <img src={tenant.logoUrl} alt={`Logo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
-                                        ) : (
-                                            <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                                {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                            </span>
-                                        )}
-                                    </div>
+                                    <TenantLogoBadge
+                                        tenant={tenant}
+                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+                                        imageClassName="h-full w-full object-contain p-1.5"
+                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
+                                    />
                                     <div>
                                         <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
                                             {assessmentModal.lessonItem.dateLabel} • {assessmentModal.lessonItem.startTime} - {assessmentModal.lessonItem.endTime}
@@ -1653,3 +2197,6 @@ export default function CalendarioAulasPage() {
         </div>
     );
 }
+
+
+

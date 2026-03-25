@@ -635,6 +635,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <span>(16) 99999-1978</span>
                             </a>
                         </span>
+                        {/* padrão: exibimos o identificador da tela e o botão de copiar no rodapé */}
                         <ScreenNameCopy
                             screenId={screenContextLabel}
                             className="flex-1 justify-end text-right text-[11px]"

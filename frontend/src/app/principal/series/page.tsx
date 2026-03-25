@@ -22,6 +22,7 @@ import {
     writeGridColumnConfig,
 } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 
@@ -31,6 +32,35 @@ type SeriesRecord = {
     code?: string | null;
     sortOrder?: number | null;
     canceledAt?: string | null;
+    studentCount?: number | null;
+};
+
+type SeriesStudent = {
+    id: string;
+    name: string;
+    cpf: string | null;
+    email: string | null;
+    phone: string | null;
+    street: string | null;
+    number: string | null;
+    city: string | null;
+    state: string | null;
+    neighborhood: string | null;
+    zipCode: string | null;
+    updatedAt: string | null;
+    photoUrl: string | null;
+};
+
+const formatPhoneNumber = (value?: string | null) => {
+    if (!value) return '';
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 11) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+    if (digits.length === 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return value;
 };
 
 const EMPTY_FORM = {
@@ -39,7 +69,7 @@ const EMPTY_FORM = {
     sortOrder: '',
 };
 
-type SeriesColumnKey = 'name' | 'code' | 'sortOrder' | 'recordStatus';
+type SeriesColumnKey = 'name' | 'code' | 'sortOrder' | 'studentCount';
 type SeriesExportColumnKey = SeriesColumnKey;
 
 const SERIES_COLUMNS: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>[] = [
@@ -54,7 +84,12 @@ const SERIES_COLUMNS: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>[] = 
         aggregateOptions: ['sum', 'avg', 'min', 'max', 'count'],
         getAggregateValue: (row) => row.sortOrder ?? null,
     },
-    { key: 'recordStatus', label: 'Status do cadastro', getValue: (row) => row.canceledAt ? 'INATIVO' : 'ATIVO', visibleByDefault: false },
+    {
+        key: 'studentCount',
+        label: 'Total Alunos',
+        getValue: (row) => row.studentCount !== undefined ? String(row.studentCount) : '---',
+        visibleByDefault: true,
+    },
 ];
 const SERIES_EXPORT_COLUMNS: GridColumnDefinition<SeriesRecord, SeriesExportColumnKey>[] = buildExportColumnsFromGridColumns(
     SERIES_COLUMNS,
@@ -74,6 +109,7 @@ const DEFAULT_SORT: GridSortState<SeriesColumnKey> = {
     column: 'name',
     direction: 'asc',
 };
+const SERIES_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STUDENTS_MODAL';
 
 export default function SeriesPage() {
     const [series, setSeries] = useState<SeriesRecord[]>([]);
@@ -103,6 +139,11 @@ export default function SeriesPage() {
     const [seriesStatusToggleTarget, setSeriesStatusToggleTarget] = useState<SeriesRecord | null>(null);
     const [seriesStatusToggleAction, setSeriesStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingSeriesToggle, setIsProcessingSeriesToggle] = useState(false);
+    const [seriesStudentCounts, setSeriesStudentCounts] = useState<Record<string, number>>({});
+    const [seriesStudentsModalOpen, setSeriesStudentsModalOpen] = useState(false);
+    const [seriesStudentsLoading, setSeriesStudentsLoading] = useState(false);
+    const [seriesStudentsError, setSeriesStudentsError] = useState<string | null>(null);
+    const [seriesStudentsData, setSeriesStudentsData] = useState<{ seriesName: string; students: SeriesStudent[] } | null>(null);
 
     const canView = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SERIES');
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SERIES');
@@ -114,7 +155,12 @@ export default function SeriesPage() {
         () => orderedSeriesColumns.filter((column) => !hiddenColumns.includes(column.key)),
         [hiddenColumns, orderedSeriesColumns],
     );
-    const filteredSeries = series.filter((item) => {
+    const seriesWithCounts = useMemo(
+        () => series.map((item) => ({ ...item, studentCount: seriesStudentCounts[item.id] ?? null })),
+        [series, seriesStudentCounts],
+    );
+
+    const filteredSeries = seriesWithCounts.filter((item) => {
         const term = searchTerm.trim().toUpperCase();
         const isActive = !item.canceledAt;
         const matchesStatus =
@@ -160,6 +206,42 @@ export default function SeriesPage() {
         }
     };
 
+    const loadSeriesStudentCounts = async (list: SeriesRecord[]) => {
+        if (!list.length) {
+            setSeriesStudentCounts({});
+            return;
+        }
+
+        try {
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado.');
+
+                        const responses = await Promise.all(
+                            list.map((item) =>
+                                fetch(`${API_BASE_URL}/series-classes/series/${item.id}/students`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                }).then(async (response) => {
+                                    const data = await response.json().catch(() => null);
+                                    if (!response.ok) {
+                                        throw new Error(data?.message || 'Erro ao carregar alunos da série.');
+                                    }
+                                    const students = Array.isArray(data.students) ? data.students : [];
+                                    const uniqueCount = new Set(students.map((student: SeriesStudent) => student.id)).size;
+                                    return { seriesId: item.id, count: uniqueCount };
+                                }),
+                            ),
+                        );
+
+            const counts: Record<string, number> = {};
+            responses.forEach((item) => {
+                counts[item.seriesId] = item.count;
+            });
+            setSeriesStudentCounts(counts);
+        } catch {
+            setSeriesStudentCounts({});
+        }
+    };
+
     useEffect(() => { void loadSeries(); }, []);
 
     useEffect(() => {
@@ -181,6 +263,14 @@ export default function SeriesPage() {
         if (!isGridConfigReady) return;
         writeGridColumnConfig(getSeriesGridConfigStorageKey(currentTenantId), SERIES_COLUMN_KEYS, columnOrder, hiddenColumns, columnAggregations);
     }, [columnAggregations, columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
+
+    useEffect(() => {
+        if (!series.length) {
+            setSeriesStudentCounts({});
+            return;
+        }
+        void loadSeriesStudentCounts(series);
+    }, [series]);
 
     if (!isLoading && !canView) {
         return (
@@ -286,6 +376,41 @@ export default function SeriesPage() {
         }
     };
 
+    const handleShowSeriesStudents = async (item: SeriesRecord) => {
+        setSeriesStudentsModalOpen(true);
+        setSeriesStudentsLoading(true);
+        setSeriesStudentsError(null);
+        setSeriesStudentsData(null);
+        try {
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
+
+            const response = await fetch(`${API_BASE_URL}/series-classes/series/${item.id}/students`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(data?.message || 'Não foi possível carregar os alunos desta série.');
+
+            setSeriesStudentsData({
+                seriesName: data.seriesName || item.name,
+                students: Array.isArray(data.students) ? data.students.map((student: SeriesStudent) => ({
+                    ...student,
+                    updatedAt: student.updatedAt ? student.updatedAt : null,
+                })) : [],
+            });
+        } catch (error) {
+            setSeriesStudentsError(error instanceof Error ? error.message : 'Não foi possível carregar os alunos da série.');
+        } finally {
+            setSeriesStudentsLoading(false);
+        }
+    };
+
+    const closeSeriesStudentsModal = () => {
+        setSeriesStudentsModalOpen(false);
+        setSeriesStudentsData(null);
+        setSeriesStudentsError(null);
+    };
+
     const toggleSort = (column: SeriesColumnKey) => {
         setSortState((current) => ({
             column,
@@ -385,10 +510,10 @@ export default function SeriesPage() {
             );
         }
         if (columnKey === 'code') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${item.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>{item.code || '---'}</td>;
-        if (columnKey === 'recordStatus') {
+        if (columnKey === 'studentCount') {
             return (
-                <td key={columnKey} className="px-6 py-4 text-center">
-                    <RecordStatusIndicator active={!item.canceledAt} />
+                <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${item.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
+                    {item.studentCount ?? 0}
                 </td>
             );
         }
@@ -463,6 +588,13 @@ export default function SeriesPage() {
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex justify-end gap-2">
                                             {renderSeriesInfoButton(item)}
+                                            <GridRowActionIconButton title="Ver alunos da série" onClick={() => handleShowSeriesStudents(item)} tone="slate">
+                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                    <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
+                                                </svg>
+                                            </GridRowActionIconButton>
                                             <GridRowActionIconButton title="Editar série" onClick={() => handleEdit(item)} tone="blue">
                                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -518,6 +650,74 @@ export default function SeriesPage() {
                 onReset={resetGridColumns}
                 onClose={() => setIsGridConfigOpen(false)}
             />
+
+            {seriesStudentsModalOpen ? (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-4xl overflow-hidden rounded-[32px] bg-white shadow-2xl">
+                        <div className="dashboard-band border-b px-6 py-5">
+                            <div>
+                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Alunos da série</div>
+                                <h3 className="mt-1 text-2xl font-black text-slate-800">{seriesStudentsData?.seriesName || 'Série'}</h3>
+                            </div>
+                        </div>
+                        <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+                            {seriesStudentsLoading ? (
+                                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                    Carregando alunos da série...
+                                </div>
+                            ) : seriesStudentsError ? (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-12 text-center text-sm font-medium text-red-700">
+                                    {seriesStudentsError}
+                                </div>
+                            ) : seriesStudentsData && seriesStudentsData.students.length === 0 ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-12 text-center text-sm font-medium text-slate-500">
+                                    Nenhum aluno encontrado para esta série.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead>
+                                            <tr className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                                                <th className="px-3 py-2">Aluno</th>
+                                                <th className="px-3 py-2">CPF</th>
+                                                <th className="px-3 py-2">E-mail</th>
+                                                <th className="px-3 py-2">Telefone</th>
+                                                <th className="px-3 py-2">Atualização</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {seriesStudentsData?.students.map((student) => (
+                                                <tr key={student.id} className="bg-white">
+                                                    <td className="px-3 py-3 font-semibold text-slate-700">{student.name}</td>
+                                                    <td className="px-3 py-3 text-slate-500">{student.cpf || '-'}</td>
+                                                    <td className="px-3 py-3 text-slate-500">{student.email || '-'}</td>
+                                                    <td className="px-3 py-3 text-slate-500">{formatPhoneNumber(student.phone) || '-'}</td>
+                                                    <td className="px-3 py-3 text-slate-500">
+                                                        {student.updatedAt ? new Date(student.updatedAt).toLocaleDateString('pt-BR') : '-'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                        <div className="dashboard-band-footer flex items-center justify-between border-t px-6 py-3 gap-4">
+                            <button
+                                type="button"
+                                onClick={closeSeriesStudentsModal}
+                                className="rounded-xl border border-rose-500 bg-rose-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-600"
+                            >
+                                Fechar
+                            </button>
+                            <div className="text-xs font-semibold text-slate-600">
+                                Total de alunos: {seriesStudentsData?.students.length ?? 0}
+                            </div>
+                            <ScreenNameCopy screenId={SERIES_STUDENTS_MODAL_SCREEN_ID} />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             <StatusConfirmationModal
                 isOpen={Boolean(seriesStatusToggleTarget && seriesStatusToggleAction)}

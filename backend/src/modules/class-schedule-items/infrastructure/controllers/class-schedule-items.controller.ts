@@ -82,7 +82,7 @@ export class ClassScheduleItemsController {
 
   @Delete(":id")
   @Permissions("MANAGE_CLASS_SCHEDULES")
-  @ApiOperation({ summary: "Desativa um lançamento da grade horária" })
+  @ApiOperation({ summary: "Exclui fisicamente um lançamento da grade horária" })
   remove(@Param("id") id: string) {
     return this.classScheduleItemsService.remove(id);
   }

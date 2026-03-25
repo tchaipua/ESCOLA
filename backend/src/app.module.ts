@@ -23,6 +23,7 @@ import { GlobalSettingsModule } from "./modules/global-settings/global-settings.
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { LessonEventsModule } from "./modules/lesson-events/lesson-events.module";
 import { LessonAssessmentsModule } from "./modules/lesson-assessments/lesson-assessments.module";
+import { LessonAttendancesModule } from "./modules/lesson-attendances/lesson-attendances.module";
 import { CommunicationsModule } from "./modules/communications/communications.module";
 import { PeopleModule } from "./modules/people/people.module";
 
@@ -57,6 +58,7 @@ import { TenantMiddleware } from "./common/tenant/tenant.middleware";
     NotificationsModule,
     LessonEventsModule,
     LessonAssessmentsModule,
+    LessonAttendancesModule,
     CommunicationsModule,
   ],
   providers: [
