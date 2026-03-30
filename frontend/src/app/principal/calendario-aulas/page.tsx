@@ -109,6 +109,7 @@ type LessonAttendancePayload = {
     };
     students: LessonAttendanceStudent[];
     notificationsCreated?: number;
+    preparedNextLessonItemId?: string | null;
 };
 
 type AttendanceFeedbackState = {
@@ -254,6 +255,8 @@ const DEFAULT_ATTENDANCE_FORM: AttendanceFormState = {
     students: [],
 };
 
+const TODAY_DATE_KEY = new Date().toISOString().slice(0, 10);
+
 function parseDateOnly(value: string) {
     const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
     return new Date(year, (month || 1) - 1, day || 1);
@@ -270,6 +273,10 @@ function addDays(value: Date, amount: number) {
     const next = new Date(value);
     next.setDate(next.getDate() + amount);
     return next;
+}
+
+function canManageAttendance(lessonDate: string) {
+    return lessonDate <= TODAY_DATE_KEY;
 }
 
 function addMonths(value: Date, amount: number) {
@@ -388,11 +395,13 @@ export default function CalendarioAulasPage() {
         lessonItem: CalendarAgendaItem;
         summary: LessonAttendancePayload['summary'];
     } | null>(null);
+    const [completedAttendanceLessonIds, setCompletedAttendanceLessonIds] = useState<string[]>([]);
     const [attendanceForm, setAttendanceForm] = useState<AttendanceFormState>(DEFAULT_ATTENDANCE_FORM);
     const [attendanceLoading, setAttendanceLoading] = useState(false);
     const [attendanceSaving, setAttendanceSaving] = useState(false);
     const [attendanceFeedback, setAttendanceFeedback] = useState<AttendanceFeedbackState | null>(null);
     const [confirmationDialog, setConfirmationDialog] = useState<{
+        kind: 'event' | 'attendance';
         title: string;
         message: string;
     } | null>(null);
@@ -775,6 +784,12 @@ const handleMonthChange = (value: string) => {
     };
 
     const handleOpenAttendanceModal = async (lessonItem: CalendarAgendaItem) => {
+        if (!canManageAttendance(lessonItem.lessonDate)) {
+            setErrorMessage('Não é permitido fazer chamada para aulas com data maior que hoje.');
+            setActionPickerItem(null);
+            return;
+        }
+
         try {
             setAttendanceModal({
                 lessonItem,
@@ -898,6 +913,7 @@ const handleMonthChange = (value: string) => {
 
             if (!currentState.existingEvent) {
                 setConfirmationDialog({
+                    kind: 'event',
                     title: eventTitleLabel,
                     message: `Clique em confirmar para fechar a tela e ver "${eventTitleLabel}" na sua agenda.`,
                 });
@@ -913,7 +929,14 @@ const handleMonthChange = (value: string) => {
     };
 
     const handleConfirmDialog = () => {
+        const kind = confirmationDialog?.kind;
         setConfirmationDialog(null);
+        if (kind === 'attendance') {
+            setAttendanceModal(null);
+            setActionPickerItem(null);
+            return;
+        }
+
         setModalState(null);
     };
 
@@ -958,6 +981,13 @@ const handleMonthChange = (value: string) => {
             }
 
             const payload = data as LessonAttendancePayload;
+            setCompletedAttendanceLessonIds((current) => (
+                Array.from(new Set([
+                    ...current,
+                    attendanceModal.lessonItem.id,
+                    ...(payload.preparedNextLessonItemId ? [payload.preparedNextLessonItemId] : []),
+                ]))
+            ));
             const nextNotifyStudents = attendanceForm.notifyStudents;
             const nextNotifyGuardians = attendanceForm.notifyGuardians;
             setAttendanceModal({
@@ -993,6 +1023,11 @@ const handleMonthChange = (value: string) => {
                         ? `Chamada da aula salva com sucesso. ${notificationsCreated} aviso(s) criado(s) para ${channels.join(' e ')}.`
                         : `Chamada da aula salva com sucesso. Nenhuma notificação foi criada para ${channels.join(' e ')}.`,
             );
+            setConfirmationDialog({
+                kind: 'attendance',
+                title: 'Chamada gravada com sucesso',
+                message: 'Clique em confirmar para fechar esta tela e voltar para a tela anterior.',
+            });
         } catch (error) {
             setErrorMessage(error instanceof Error ? error.message : 'Não foi possível salvar a chamada da aula.');
         } finally {
@@ -1096,7 +1131,31 @@ const handleMonthChange = (value: string) => {
             <div className="font-black uppercase tracking-[0.08em] text-slate-700">
                 <span className={getLabelClasses(item)}>{item.displayTimeLabel || `${item.startTime} - ${item.endTime}`}</span>
             </div>
-            <div className="mt-1 font-bold text-slate-800">{item.subjectName}</div>
+            <div className="mt-1 flex items-center gap-2">
+                <div className="font-bold text-slate-800">{item.subjectName}</div>
+                {canManageAttendance(item.lessonDate) ? (
+                    completedAttendanceLessonIds.includes(item.id) ? (
+                        <span
+                            title="Chamada já realizada nesta aula"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm"
+                        >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M20 6 9 17l-5-5" />
+                            </svg>
+                        </span>
+                    ) : (
+                        <span
+                            title="AGUARDANDO CHAMADA"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-600 shadow-sm"
+                        >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" />
+                                <path d="M12 7v5l3 2" />
+                            </svg>
+                        </span>
+                    )
+                ) : null}
+            </div>
             <div className="mt-1 truncate font-medium text-slate-500">
                 {item.seriesName} - {item.className}
             </div>
@@ -1668,7 +1727,9 @@ const handleMonthChange = (value: string) => {
                                     <button
                                         type="button"
                                         onClick={() => handleOpenAttendanceModal(actionPickerItem)}
-                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-emerald-700"
+                                        disabled={!canManageAttendance(actionPickerItem.lessonDate)}
+                                        title={!canManageAttendance(actionPickerItem.lessonDate) ? 'Chamada disponível somente até a data de hoje' : undefined}
+                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                                     >
                                         Fazer chamada
                                     </button>
@@ -1720,8 +1781,16 @@ const handleMonthChange = (value: string) => {
 
                         <div className="dashboard-band-footer border-t px-6 py-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="text-sm font-medium text-slate-500">
-                                    {actionPickerItem.events.length} evento(s) já lançado(s) nesta aula.
+                                <div className="flex flex-col gap-2">
+                                    <div className="text-sm font-medium text-slate-500">
+                                        {actionPickerItem.events.length} evento(s) já lançado(s) nesta aula.
+                                    </div>
+                                    <ScreenNameCopy
+                                        screenId="PRINCIPAL_CALENDARIO_AULAS_ACAO"
+                                        label="Tela"
+                                        className="mt-0 text-[11px]"
+                                        disableMargin
+                                    />
                                 </div>
                                 <div className="flex gap-3">
                                     <button
@@ -1976,11 +2045,27 @@ const handleMonthChange = (value: string) => {
                                         disabled={attendanceSaving || attendanceLoading}
                                         className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
                                     >
-                                        {attendanceSaving ? 'Salvando chamada...' : 'Salvar chamada'}
+                                        {attendanceSaving ? 'Finalizando chamada...' : 'Finalizar chamada'}
                                     </button>
                                 </div>
                             </div>
                         </div>
+                        {confirmationDialog?.kind === 'attendance' ? (
+                            <div className="absolute inset-0 z-[96] flex items-center justify-center bg-slate-900/50">
+                                <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-2xl">
+                                    <div className="text-xs font-black uppercase tracking-[0.25em] text-emerald-600">Sucesso</div>
+                                    <h3 className="mt-3 text-2xl font-extrabold text-slate-800">{confirmationDialog.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-500">{confirmationDialog.message}</p>
+                                    <button
+                                        type="button"
+                                        onClick={handleConfirmDialog}
+                                        className="mt-6 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-black uppercase tracking-[0.15em] text-white transition hover:bg-emerald-700"
+                                    >
+                                        Confirmar
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             ) : null}
@@ -2019,23 +2104,23 @@ const handleMonthChange = (value: string) => {
                             </div>
                         </div>
 
-                        <div className="max-h-[72vh] overflow-y-auto px-6 py-6">
+                        <div className="max-h-[78vh] overflow-y-auto px-5 py-4">
                             {assessmentLoading ? (
                                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center text-sm font-medium text-slate-500">
                                     Carregando alunos da avaliação...
                                 </div>
                             ) : (
-                                <div className="space-y-5">
-                                    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                                 <div>
                                                     <label className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Título da avaliação</label>
                                                     <input
                                                         type="text"
                                                         value={assessmentForm.title}
                                                         onChange={(event) => setAssessmentForm((current) => ({ ...current, title: event.target.value }))}
-                                                        className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                                        className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
                                                         placeholder="Ex.: PROVA BIMESTRAL"
                                                     />
                                                 </div>
@@ -2046,24 +2131,24 @@ const handleMonthChange = (value: string) => {
                                                         inputMode="decimal"
                                                         value={assessmentForm.maxScore}
                                                         onChange={(event) => setAssessmentForm((current) => ({ ...current, maxScore: event.target.value }))}
-                                                        className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
-                                                        placeholder="Ex.: 10 ou 8,5"
+                                                        className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                                        placeholder="Ex.: 10 ou 8,75"
                                                     />
                                                 </div>
                                             </div>
-                                            <label className="mt-5 block text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Observação da avaliação</label>
+                                            <label className="mt-4 block text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Observação da avaliação</label>
                                             <textarea
                                                 value={assessmentForm.description}
                                                 onChange={(event) => setAssessmentForm((current) => ({ ...current, description: event.target.value }))}
-                                                rows={4}
-                                                className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                                rows={2}
+                                                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
                                                 placeholder="Ex.: conteúdo cobrado, recuperação, observações para a turma."
                                             />
                                         </div>
 
-                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                                             <div className="text-xs font-bold uppercase tracking-[0.15em] text-slate-500">Entrega das notas</div>
-                                            <div className="mt-4 space-y-3">
+                                            <div className="mt-3 space-y-2.5">
                                                 {[
                                                     { key: 'notifyStudents', label: 'Avisar alunos' },
                                                     { key: 'notifyGuardians', label: 'Avisar responsáveis' },
@@ -2080,7 +2165,7 @@ const handleMonthChange = (value: string) => {
                                                                     [option.key]: !active,
                                                                 }))
                                                             }
-                                                            className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
+                                                            className={`flex w-full items-center justify-between rounded-2xl border px-4 py-2.5 text-left transition ${
                                                                 active
                                                                     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                                                     : 'border-red-200 bg-red-50 text-red-600'
@@ -2095,33 +2180,27 @@ const handleMonthChange = (value: string) => {
                                                 })}
                                             </div>
 
-                                            <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm font-medium text-blue-700">
-                                                A turma é localizada automaticamente pela grade anual da aula. Ao salvar, o sistema envia notificação interna e/ou e-mail conforme os canais selecionados.
-                                            </div>
                                         </div>
                                     </div>
 
                                     <div className="rounded-[28px] border border-slate-200 bg-white shadow-sm">
-                                        <div className="dashboard-band border-b px-5 py-4">
+                                        <div className="dashboard-band border-b px-5 py-3">
                                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                                 <div>
                                                     <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Alunos da avaliação</div>
-                                                    <div className="mt-1 text-lg font-extrabold text-slate-800">{assessmentForm.students.length} aluno(s) encontrado(s)</div>
+                                                    <div className="mt-1 text-base font-extrabold text-slate-800">{assessmentForm.students.length} aluno(s) encontrado(s)</div>
                                                 </div>
-                                                <div className="text-sm font-medium text-slate-500">
-                                                    Informe nota com decimal, por exemplo <strong>8,5</strong>.
+                                                <div className="text-xs font-medium text-slate-500">
+                                                    Informe nota com até 2 casas decimais, por exemplo <strong>8,75</strong>.
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="max-h-[42vh] overflow-y-auto px-5 py-5">
+                                        <div className="max-h-[52vh] overflow-y-auto px-5 py-4">
                                             <div className="space-y-3">
                                                 {assessmentForm.students.map((student, index) => (
                                                     <div key={student.studentId} className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1.3fr_0.6fr_1fr]">
                                                         <div>
                                                             <div className="text-base font-extrabold text-slate-800">{student.studentName}</div>
-                                                            <div className="mt-1 text-xs font-medium text-slate-500">
-                                                                {student.studentEmail || 'Aluno sem e-mail informado'} • {student.guardiansCount} responsável(is)
-                                                            </div>
                                                         </div>
                                                         <div>
                                                             <label className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Nota</label>
@@ -2138,7 +2217,7 @@ const handleMonthChange = (value: string) => {
                                                                     }))
                                                                 }
                                                                 className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
-                                                                placeholder="Ex.: 8,5"
+                                                                placeholder="Ex.: 8,75"
                                                             />
                                                         </div>
                                                         <div>
@@ -2167,9 +2246,9 @@ const handleMonthChange = (value: string) => {
                             )}
                         </div>
 
-                        <div className="dashboard-band-footer border-t px-6 py-4">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="text-sm font-medium text-slate-500">
+                        <div className="dashboard-band-footer border-t px-5 py-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="text-xs font-medium text-slate-500">
                                     Salve as notas para disponibilizar a avaliação aos alunos da turma e aos responsáveis definidos.
                                 </div>
                                 <div className="flex gap-3">
@@ -2189,6 +2268,13 @@ const handleMonthChange = (value: string) => {
                                         {assessmentSaving ? 'Salvando notas...' : 'Salvar notas'}
                                     </button>
                                 </div>
+                            </div>
+                            <div className="mt-2 flex justify-end">
+                                <ScreenNameCopy
+                                    screenId="PRINCIPAL_CALENDARIO_AULAS_LANCAMENTO_NOTAS_PROVA"
+                                    label="Tela"
+                                    disableMargin
+                                />
                             </div>
                         </div>
                     </div>

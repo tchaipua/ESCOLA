@@ -6,6 +6,8 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateTenantDto } from "../dto/create-tenant.dto";
+import { PurgeTenantDto } from "../dto/purge-tenant.dto";
+import { PurgeTenantDeletionSummary } from "../dto/purge-tenant-response.dto";
 import { UpdateTenantDto } from "../dto/update-tenant.dto";
 import * as bcrypt from "bcrypt";
 import {
@@ -65,11 +67,7 @@ export class TenantsService {
       isMaster: true,
     };
 
-    return new Promise<T>((resolve, reject) => {
-      tenantContext.run(context, () => {
-        void operation().then(resolve).catch(reject);
-      });
-    });
+    return tenantContext.run(context, () => operation());
   }
 
   private parseBoolean(value: unknown, defaultValue: boolean): boolean {
@@ -342,17 +340,6 @@ export class TenantsService {
       }
     }
 
-    const existingAdmin = await this.prisma.user.findFirst({
-      where: { email: createTenantDto.adminEmail },
-      include: { tenant: true },
-    });
-
-    if (existingAdmin) {
-      throw new ConflictException(
-        `E R R O ! ! !\nEmail Já Utilizado\n${existingAdmin.tenant.name}`,
-      );
-    }
-
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(
       createTenantDto.adminPassword,
@@ -417,19 +404,32 @@ export class TenantsService {
       return { tenant: newTenant, admin: newAdmin };
     });
 
-    await this.sharedProfilesService.syncSharedPasswordByEmail(
-      result.admin.tenantId,
-      result.admin.email,
-      hashedPassword,
-      { kind: "USER", id: result.admin.id },
-      this.masterAuditUser,
-    );
+    await this.runAsMasterTenantContext(result.admin.tenantId, async () => {
+      await this.sharedProfilesService.syncSharedPasswordByEmail(
+        result.admin.tenantId,
+        result.admin.email,
+        hashedPassword,
+        { kind: "USER", id: result.admin.id },
+        this.masterAuditUser,
+      );
+
+      await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
+        result.admin.tenantId,
+        {
+          name: result.admin.name,
+          email: result.admin.email,
+          password: hashedPassword,
+        },
+        this.masterAuditUser,
+      );
+    });
 
     return result;
   }
 
   async findAll() {
     const tenants = await this.prisma.tenant.findMany({
+      where: { canceledAt: null },
       include: {
         users: {
           where: { role: "ADMIN" },
@@ -1404,6 +1404,270 @@ export class TenantsService {
 
     return { message: "Usuário de acesso desativado com sucesso." };
   }
+
+  async removeTenant(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException("Escola não encontrada.");
+    }
+
+    if (tenant.canceledAt) {
+      throw new ConflictException("Escola já está cancelada.");
+    }
+
+    return this.runAsMasterTenantContext(tenantId, async () => {
+      const now = new Date();
+      const auditPayload = {
+        canceledAt: now,
+        canceledBy: this.masterAuditUser,
+        updatedBy: this.masterAuditUser,
+      };
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.userPreference.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.guardianStudent.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.guardian.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.student.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.person.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.teacher.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.user.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.schoolYear.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx["class"].updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.series.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.seriesClass.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.enrollment.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.subject.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.teacherSubject.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.teacherSubjectRateHistory.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.schedule.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.classScheduleItem.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonCalendarPeriod.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonCalendar.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonCalendarItem.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonEvent.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonAssessment.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonAssessmentGrade.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.lessonAttendance.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.notification.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+        await tx.communicationCampaign.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
+
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: auditPayload,
+        });
+      });
+
+      return {
+        message: `Escola '${tenant.name}' e dependências canceladas.`,
+        tenantId,
+      };
+    });
+  }
+
+  async purgeTenantPermanently(
+    tenantId: string,
+    purgeTenantDto: PurgeTenantDto,
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, name: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException("Escola não encontrada.");
+    }
+
+    const confirmationTenantId = String(
+      purgeTenantDto.confirmationTenantId || "",
+    ).trim();
+    const confirmationPhrase = String(
+      purgeTenantDto.confirmationPhrase || "",
+    ).trim();
+
+    if (confirmationTenantId !== tenant.id) {
+      throw new BadRequestException(
+        "Confirmação inválida. Digite exatamente o ID da escola para autorizar a exclusão definitiva.",
+      );
+    }
+
+    if (confirmationPhrase !== "EXCLUIR DEFINITIVAMENTE") {
+      throw new BadRequestException(
+        "Confirmação inválida. Digite exatamente EXCLUIR DEFINITIVAMENTE para autorizar a exclusão definitiva.",
+      );
+    }
+
+    return this.runAsMasterTenantContext(tenantId, async () => {
+      const deleted = await this.prisma.$transaction(async (tx) => {
+        const deletionSummary: PurgeTenantDeletionSummary = {
+          userPreferences: (
+            await tx.userPreference.deleteMany({ where: { tenantId } })
+          ).count,
+          notifications: (
+            await tx.notification.deleteMany({ where: { tenantId } })
+          ).count,
+          communicationCampaigns: (
+            await tx.communicationCampaign.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonAssessmentGrades: (
+            await tx.lessonAssessmentGrade.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonAttendances: (
+            await tx.lessonAttendance.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonAssessments: (
+            await tx.lessonAssessment.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonEvents: (
+            await tx.lessonEvent.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonCalendarItems: (
+            await tx.lessonCalendarItem.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonCalendarPeriods: (
+            await tx.lessonCalendarPeriod.deleteMany({ where: { tenantId } })
+          ).count,
+          classScheduleItems: (
+            await tx.classScheduleItem.deleteMany({ where: { tenantId } })
+          ).count,
+          lessonCalendars: (
+            await tx.lessonCalendar.deleteMany({ where: { tenantId } })
+          ).count,
+          teacherSubjectRateHistories: (
+            await tx.teacherSubjectRateHistory.deleteMany({ where: { tenantId } })
+          ).count,
+          teacherSubjects: (
+            await tx.teacherSubject.deleteMany({ where: { tenantId } })
+          ).count,
+          enrollments: (
+            await tx.enrollment.deleteMany({ where: { tenantId } })
+          ).count,
+          guardianStudents: (
+            await tx.guardianStudent.deleteMany({ where: { tenantId } })
+          ).count,
+          guardians: (await tx.guardian.deleteMany({ where: { tenantId } }))
+            .count,
+          students: (await tx.student.deleteMany({ where: { tenantId } })).count,
+          teachers: (await tx.teacher.deleteMany({ where: { tenantId } })).count,
+          people: (await tx.person.deleteMany({ where: { tenantId } })).count,
+          users: (await tx.user.deleteMany({ where: { tenantId } })).count,
+          subjects: (await tx.subject.deleteMany({ where: { tenantId } })).count,
+          schedules: (await tx.schedule.deleteMany({ where: { tenantId } }))
+            .count,
+          seriesClasses: (
+            await tx.seriesClass.deleteMany({ where: { tenantId } })
+          ).count,
+          classes: (await tx["class"].deleteMany({ where: { tenantId } })).count,
+          series: (await tx.series.deleteMany({ where: { tenantId } })).count,
+          schoolYears: (
+            await tx.schoolYear.deleteMany({ where: { tenantId } })
+          ).count,
+          tenants: 0,
+        };
+
+        await tx.tenant.delete({
+          where: { id: tenantId },
+        });
+
+        deletionSummary.tenants = 1;
+
+        return deletionSummary;
+      });
+
+      const deletedTotal = Object.values(deleted).reduce(
+        (total, current) => total + current,
+        0,
+      );
+
+      return {
+        message: `Escola '${tenant.name}' excluída definitivamente com ${deletedTotal} registro(s) removido(s).`,
+        tenantId,
+        deleted,
+        deletedTotal,
+      };
+    });
+  }
+
   async update(id: string, updateTenantDto: UpdateTenantDto) {
     if (updateTenantDto.email)
       updateTenantDto.email = updateTenantDto.email.toUpperCase();
@@ -1446,10 +1710,25 @@ export class TenantsService {
       hashedPassword = await bcrypt.hash(updateTenantDto.adminPassword, salt);
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const adminsToSync: Array<{
+      userId: string;
+      tenantId: string;
+      email: string;
+    }> = [];
+    let finalAdminEmailForPassword: string | undefined;
+    let adminProfileSyncPayload:
+      | {
+          name?: string | null;
+          email?: string | null;
+          password?: string | null;
+        }
+      | null = null;
+
+    const updatedTenant = await this.prisma.$transaction(async (tx) => {
       let adminUser:
         | {
             id: string;
+            name: string;
             email: string;
           }
         | null
@@ -1507,6 +1786,11 @@ export class TenantsService {
         adminUser = await tx.user.findFirst({
           where: { tenantId: id, role: "ADMIN" },
           orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
         });
 
         if (adminUser) {
@@ -1515,7 +1799,12 @@ export class TenantsService {
             updateTenantDto.adminEmail !== adminUser.email
           ) {
             const emailDupe = await tx.user.findFirst({
-              where: { email: updateTenantDto.adminEmail },
+              where: {
+                tenantId: id,
+                email: updateTenantDto.adminEmail,
+                canceledAt: null,
+                id: { not: adminUser.id },
+              },
               include: { tenant: true },
             });
             if (emailDupe)
@@ -1529,25 +1818,80 @@ export class TenantsService {
             data: {
               name: updateTenantDto.adminName || undefined,
               email: updateTenantDto.adminEmail || undefined,
-              password: hashedPassword || undefined,
               updatedBy: this.masterAuditUser,
             },
           });
+
+          finalAdminEmailForPassword =
+            updateTenantDto.adminEmail || adminUser.email;
+          adminProfileSyncPayload = {
+            name: updateTenantDto.adminName || adminUser.name,
+            email: updateTenantDto.adminEmail || adminUser.email,
+            password: hashedPassword,
+          };
         }
       }
 
-      if (adminUser && hashedPassword) {
-        await this.sharedProfilesService.syncSharedPasswordByEmail(
-          id,
-          updateTenantDto.adminEmail || adminUser.email,
-          hashedPassword,
-          { kind: "USER", id: adminUser.id },
-          this.masterAuditUser,
+      if (hashedPassword && finalAdminEmailForPassword) {
+        const adminEmailForPassword = finalAdminEmailForPassword;
+        const matchingAdmins = await tx.user.findMany({
+          where: {
+            email: adminEmailForPassword,
+            role: "ADMIN",
+            canceledAt: null,
+          },
+          select: { id: true, tenantId: true },
+        });
+
+        await Promise.all(
+          matchingAdmins.map((admin) =>
+            tx.user.update({
+              where: { id: admin.id },
+              data: {
+                password: hashedPassword,
+                updatedBy: this.masterAuditUser,
+              },
+            }),
+          ),
+        );
+
+        adminsToSync.push(
+          ...matchingAdmins.map((admin) => ({
+            userId: admin.id,
+            tenantId: admin.tenantId,
+            email: adminEmailForPassword,
+          })),
         );
       }
 
       return updatedTenant;
     });
+
+    if (hashedPassword && adminsToSync.length > 0) {
+      for (const admin of adminsToSync) {
+        await this.runAsMasterTenantContext(admin.tenantId, async () => {
+          await this.sharedProfilesService.syncSharedPasswordByEmail(
+            admin.tenantId,
+            admin.email,
+            hashedPassword,
+            { kind: "USER", id: admin.userId },
+            this.masterAuditUser,
+          );
+        });
+      }
+    }
+
+    if (adminProfileSyncPayload) {
+      await this.runAsMasterTenantContext(id, async () => {
+        await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
+          id,
+          adminProfileSyncPayload!,
+          this.masterAuditUser,
+        );
+      });
+    }
+
+    return updatedTenant;
   }
 
   private async findEmailUsageRecord(

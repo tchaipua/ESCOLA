@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
+import { decodeDashboardToken, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function LoginPage() {
     setRememberMe(getRememberPreference());
     const storedToken = getStoredToken();
     if (storedToken) {
-      router.replace('/principal');
+      router.replace(getHomeRouteForRole(decodeDashboardToken(storedToken)?.role || null));
     }
   }, [router]);
 
@@ -104,7 +105,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push('/principal');
+      router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
 
     } catch (err: any) {
       const errorMsg = err.message || 'Erro de conexão com o servidor.';
@@ -145,9 +146,10 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push('/principal');
+      router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
     } catch (err: any) {
       setErrorStatus({ message: err.message || 'Erro ao selecionar escola' });
+    } finally {
       setLoading(false);
     }
   };
@@ -181,9 +183,10 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push('/principal');
+      router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
     } catch (err: any) {
       setErrorStatus({ message: err.message || 'Erro ao selecionar o tipo de acesso.' });
+    } finally {
       setLoading(false);
     }
   };

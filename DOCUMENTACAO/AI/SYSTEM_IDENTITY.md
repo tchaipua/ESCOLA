@@ -19,7 +19,7 @@ Oferecer uma plataforma unica para operacao escolar completa (academico, comunic
 
 - Seguranca por design
 - Multi-tenant sem excecoes
-- Integridade historica (sem delete fisico)
+- Integridade historica (sem delete fisico), com unica excecao operacional para purge fisico irreversivel de escola inteira pelo MSINFOR ADMIN master
 - Rastreabilidade completa de alteracoes
 - Simplicidade operacional para usuarios nao tecnicos
 
@@ -49,6 +49,12 @@ Oferecer uma plataforma unica para operacao escolar completa (academico, comunic
 - `canceledAt` define cancelamento logico
 - Campos de auditoria sao obrigatorios
 - Textos em uppercase, exceto senha
+
+## Excecao operacional controlada
+
+- Existe um fluxo master exclusivo no MSINFOR ADMIN para exclusao fisica definitiva de uma escola e todas as suas dependencias
+- Esse fluxo e irreversivel, exige chave master e confirmacao explicita do `tenantId`
+- Fora desse fluxo, continua valendo a regra de cancelamento logico com preservacao historica
 
 ## Integracoes oficiais
 

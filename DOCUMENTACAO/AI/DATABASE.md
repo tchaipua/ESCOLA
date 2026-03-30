@@ -7,7 +7,7 @@ Documentar o modelo atual de dados com foco nas regras obrigatorias do projeto.
 ## Regras globais obrigatorias
 
 - Todo dado de negocio pertence a um `tenantId`
-- Nao existe delete fisico em negocio
+- Nao existe delete fisico em negocio, exceto no purge fisico definitivo de tenant acionado pelo MSINFOR ADMIN master
 - Toda mutacao precisa de auditoria
 - Textos ficam em uppercase, exceto senha
 - Isolamento total entre escolas
@@ -146,6 +146,12 @@ Cancelamento logico continua obrigatorio.
 - desativar papel nao remove a pessoa
 - desativar pessoa nao deve apagar historico de papel
 - relacoes historicas continuam preservadas
+
+## Excecao de purge fisico de tenant
+
+- O backend possui um fluxo master exclusivo para excluir fisicamente uma escola e todos os registros associados por `tenantId`
+- Esse fluxo existe somente para administracao de softhouse e nao deve ser reutilizado em modulos operacionais
+- O purge remove tambem os registros historicos daquele tenant e por isso exige confirmacao explicita do `tenantId`
 
 ## Observacao sobre legado
 

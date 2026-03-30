@@ -87,3 +87,12 @@ Para cada decisao, registrar:
 - Impacto: reduz falhas de entendimento entre negocio e implementacao, melhora cobertura de busca por nome/CPF/email e evita regressao de escopo em telas administrativas
 - Alternativas consideradas: limitar busca apenas ao modulo atual (ex.: somente professores); consultar somente `people` sem considerar tabelas operacionais e usuarios administrativos
 - Status: aceita
+
+## DEC-0009
+
+- Data: 2026-03-30
+- Contexto: operacao de softhouse passou a exigir exclusao definitiva de uma escola inteira com todas as dependencias, apenas a partir da tela master de administracao
+- Decisao: criar um fluxo exclusivo de purge fisico irreversivel para tenant no MSINFOR ADMIN, separado do endpoint de cancelamento logico e protegido por chave master + confirmacao explicita do `tenantId`
+- Impacto: viabiliza limpeza definitiva de escolas implantadas por engano ou descartadas, mas abre uma excecao controlada a politica historica de soft delete
+- Alternativas consideradas: manter apenas cancelamento logico; apagar manualmente no banco; permitir delete fisico em modulos comuns
+- Status: aceita

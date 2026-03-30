@@ -1,9 +1,20 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import PwaBootstrap from "@/app/components/pwa-bootstrap";
 
 export const metadata: Metadata = {
   title: "MSINFOR | Gestao Escolar",
-  description: "Portal administrativo do sistema de gestao escolar.",
+  description: "PWA e portal do sistema de gestao escolar.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "MSINFOR PWA",
+  },
+};
+
+export const viewport = {
+  themeColor: "#1d4ed8",
 };
 
 export default function RootLayout({
@@ -13,7 +24,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <PwaBootstrap />
+        {children}
+      </body>
     </html>
   );
 }

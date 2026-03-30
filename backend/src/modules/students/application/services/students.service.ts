@@ -130,6 +130,21 @@ export class StudentsService {
     };
   }
 
+  private formatDateOnly(value?: Date | null) {
+    return value ? new Date(value).toISOString().slice(0, 10) : null;
+  }
+
+  private calculatePercentage(value: number, total: number) {
+    if (!total) return 0;
+    return Number(((value / total) * 100).toFixed(2));
+  }
+
+  private calculateAverage(values: number[]) {
+    if (!values.length) return 0;
+    const total = values.reduce((accumulator, current) => accumulator + current, 0);
+    return Number((total / values.length).toFixed(2));
+  }
+
   private async findStudentEntity(id: string) {
     const student = await this.prisma.student.findFirst({
       where: {
@@ -334,6 +349,326 @@ export class StudentsService {
     }
 
     return sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser);
+  }
+
+  async findMyPwaSummary(
+    userId: string,
+    tenantId: string,
+    currentUser?: ICurrentUser,
+  ) {
+    const student = await this.prisma.student.findFirst({
+      where: {
+        id: userId,
+        tenantId,
+        canceledAt: null,
+      },
+      include: {
+        guardians: {
+          where: {
+            canceledAt: null,
+          },
+          include: {
+            guardian: true,
+          },
+        },
+        enrollments: {
+          where: { canceledAt: null },
+          include: {
+            schoolYear: true,
+            seriesClass: {
+              include: {
+                series: true,
+                class: true,
+              },
+            },
+          },
+          orderBy: [{ schoolYear: { year: "desc" } }, { createdAt: "desc" }],
+        },
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundException("Aluno não encontrado para esta escola.");
+    }
+
+    const currentEnrollment =
+      student.enrollments.find((enrollment) => enrollment.status === "ATIVO") ||
+      student.enrollments[0] ||
+      null;
+
+    const [attendanceHistory, assessmentGrades] = await Promise.all([
+      this.prisma.lessonAttendance.findMany({
+        where: {
+          tenantId,
+          studentId: userId,
+          canceledAt: null,
+          lessonCalendarItem: {
+            canceledAt: null,
+          },
+        },
+        include: {
+          lessonCalendarItem: {
+            include: {
+              schoolYear: true,
+              seriesClass: {
+                include: {
+                  series: true,
+                  class: true,
+                },
+              },
+              teacherSubject: {
+                include: {
+                  subject: true,
+                  teacher: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ recordedAt: "desc" }, { createdAt: "desc" }],
+      }),
+      this.prisma.lessonAssessmentGrade.findMany({
+        where: {
+          tenantId,
+          studentId: userId,
+          canceledAt: null,
+          lessonAssessment: {
+            canceledAt: null,
+            lessonCalendarItem: {
+              canceledAt: null,
+            },
+          },
+        },
+        include: {
+          lessonAssessment: {
+            include: {
+              lessonEvent: true,
+              lessonCalendarItem: {
+                include: {
+                  schoolYear: true,
+                  seriesClass: {
+                    include: {
+                      series: true,
+                      class: true,
+                    },
+                  },
+                  teacherSubject: {
+                    include: {
+                      subject: true,
+                      teacher: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ releasedAt: "desc" }, { createdAt: "desc" }],
+      }),
+    ]);
+
+    const attendanceBySubject = new Map<
+      string,
+      {
+        subjectId: string | null;
+        subjectName: string;
+        totalLessons: number;
+        totalPresent: number;
+        totalAbsent: number;
+        lastRecordedAt: string | null;
+      }
+    >();
+
+    const attendanceHistoryItems = attendanceHistory.map((attendance) => {
+      const lessonItem = attendance.lessonCalendarItem;
+      const subjectId = lessonItem.teacherSubject?.subject?.id || null;
+      const subjectName =
+        lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
+      const subjectKey = `${subjectId || subjectName}:${subjectName}`;
+      const currentSubject =
+        attendanceBySubject.get(subjectKey) || {
+          subjectId,
+          subjectName,
+          totalLessons: 0,
+          totalPresent: 0,
+          totalAbsent: 0,
+          lastRecordedAt: null,
+        };
+
+      currentSubject.totalLessons += 1;
+      if (attendance.status === "PRESENTE") {
+        currentSubject.totalPresent += 1;
+      } else {
+        currentSubject.totalAbsent += 1;
+      }
+      currentSubject.lastRecordedAt =
+        this.formatDateOnly(attendance.recordedAt) || currentSubject.lastRecordedAt;
+      attendanceBySubject.set(subjectKey, currentSubject);
+
+      return {
+        id: attendance.id,
+        status: attendance.status,
+        notes: attendance.notes,
+        recordedAt: attendance.recordedAt,
+        lessonDate: lessonItem.lessonDate,
+        subjectName,
+        teacherName:
+          lessonItem.teacherSubject?.teacher?.name || "PROFESSOR",
+        schoolYear:
+          lessonItem.schoolYear?.year !== undefined &&
+          lessonItem.schoolYear?.year !== null
+            ? lessonItem.schoolYear.year
+            : null,
+        seriesName: lessonItem.seriesClass?.series?.name || "SEM SÉRIE",
+        className: lessonItem.seriesClass?.class?.name || "SEM TURMA",
+        startTime: lessonItem.startTime,
+        endTime: lessonItem.endTime,
+      };
+    });
+
+    const attendanceTotalLessons = attendanceHistory.length;
+    const attendanceTotalPresent = attendanceHistory.filter(
+      (attendance) => attendance.status === "PRESENTE",
+    ).length;
+    const attendanceTotalAbsent = attendanceHistory.filter(
+      (attendance) => attendance.status === "FALTOU",
+    ).length;
+
+    const gradesBySubject = new Map<
+      string,
+      {
+        subjectId: string | null;
+        subjectName: string;
+        teacherName: string;
+        scores: number[];
+        latestReleasedAt: Date | null;
+        assessments: Array<{
+          id: string;
+          title: string;
+          assessmentType: string;
+          score: number | null;
+          maxScore: number | null;
+          remarks: string | null;
+          releasedAt: Date | null;
+          lessonDate: Date | null;
+          schoolYear: number | null;
+        }>;
+      }
+    >();
+
+    assessmentGrades.forEach((grade) => {
+      const assessment = grade.lessonAssessment;
+      const lessonItem = assessment.lessonCalendarItem;
+      const subjectId = lessonItem?.teacherSubject?.subject?.id || null;
+      const subjectName =
+        lessonItem?.teacherSubject?.subject?.name || "DISCIPLINA";
+      const teacherName =
+        lessonItem?.teacherSubject?.teacher?.name || "PROFESSOR";
+      const subjectKey = `${subjectId || subjectName}:${subjectName}`;
+      const currentSubject =
+        gradesBySubject.get(subjectKey) || {
+          subjectId,
+          subjectName,
+          teacherName,
+          scores: [],
+          latestReleasedAt: null,
+          assessments: [],
+        };
+
+      if (typeof grade.score === "number") {
+        currentSubject.scores.push(grade.score);
+      }
+
+      if (
+        grade.releasedAt &&
+        (!currentSubject.latestReleasedAt ||
+          grade.releasedAt.getTime() > currentSubject.latestReleasedAt.getTime())
+      ) {
+        currentSubject.latestReleasedAt = grade.releasedAt;
+      }
+
+      currentSubject.assessments.push({
+        id: grade.id,
+        title: assessment.title,
+        assessmentType: assessment.assessmentType,
+        score: grade.score,
+        maxScore: assessment.maxScore,
+        remarks: grade.remarks,
+        releasedAt: grade.releasedAt,
+        lessonDate: lessonItem?.lessonDate || null,
+        schoolYear:
+          lessonItem?.schoolYear?.year !== undefined &&
+          lessonItem?.schoolYear?.year !== null
+            ? lessonItem.schoolYear.year
+            : null,
+      });
+      gradesBySubject.set(subjectKey, currentSubject);
+    });
+
+    const releasedScores = assessmentGrades
+      .map((grade) => grade.score)
+      .filter((score): score is number => typeof score === "number");
+
+    return {
+      student: sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser),
+      currentEnrollment: currentEnrollment
+        ? {
+            id: currentEnrollment.id,
+            status: currentEnrollment.status,
+            schoolYearId: currentEnrollment.schoolYearId,
+            schoolYear: currentEnrollment.schoolYear?.year || null,
+            seriesName:
+              currentEnrollment.seriesClass?.series?.name || "SEM SÉRIE",
+            className:
+              currentEnrollment.seriesClass?.class?.name || "SEM TURMA",
+            shift: currentEnrollment.seriesClass?.class?.shift || null,
+          }
+        : null,
+      attendance: {
+        totalLessons: attendanceTotalLessons,
+        totalPresent: attendanceTotalPresent,
+        totalAbsent: attendanceTotalAbsent,
+        overallFrequency: this.calculatePercentage(
+          attendanceTotalPresent,
+          attendanceTotalLessons,
+        ),
+        bySubject: Array.from(attendanceBySubject.values())
+          .map((subject) => ({
+            ...subject,
+            frequency: this.calculatePercentage(
+              subject.totalPresent,
+              subject.totalLessons,
+            ),
+          }))
+          .sort((left, right) => right.frequency - left.frequency),
+        history: attendanceHistoryItems,
+      },
+      grades: {
+        totalReleasedGrades: releasedScores.length,
+        overallAverage: this.calculateAverage(releasedScores),
+        bySubject: Array.from(gradesBySubject.values())
+          .map((subject) => ({
+            subjectId: subject.subjectId,
+            subjectName: subject.subjectName,
+            teacherName: subject.teacherName,
+            averageScore: this.calculateAverage(subject.scores),
+            totalReleasedGrades: subject.scores.length,
+            latestReleasedAt: subject.latestReleasedAt,
+            assessments: subject.assessments.sort((left, right) => {
+              const rightDate = right.releasedAt || right.lessonDate || new Date(0);
+              const leftDate = left.releasedAt || left.lessonDate || new Date(0);
+              return rightDate.getTime() - leftDate.getTime();
+            }),
+          }))
+          .sort((left, right) => {
+            if (right.averageScore !== left.averageScore) {
+              return right.averageScore - left.averageScore;
+            }
+            return left.subjectName.localeCompare(right.subjectName);
+          }),
+      },
+      syncedAt: new Date().toISOString(),
+    };
   }
 
   async update(id: string, updateDto: UpdateStudentDto, currentUser?: ICurrentUser) {

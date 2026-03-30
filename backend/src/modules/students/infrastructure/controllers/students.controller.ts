@@ -58,6 +58,20 @@ export class StudentsController {
     );
   }
 
+  @Get("me/pwa-summary")
+  @Roles("ALUNO")
+  @Permissions("VIEW_OWN_PROFILE", "VIEW_STUDENT_ACADEMIC_DATA")
+  @ApiOperation({
+    summary: "Retorna o resumo acadêmico e operacional do aluno para o PWA",
+  })
+  findMyPwaSummary(@CurrentUser() currentUser: ICurrentUser) {
+    return this.studentsService.findMyPwaSummary(
+      currentUser.userId,
+      currentUser.tenantId,
+      currentUser,
+    );
+  }
+
   @Get(":id")
   @Permissions("VIEW_STUDENTS")
   @ApiOperation({ summary: "Puxa o Prontuário Específico de um Aluno" })

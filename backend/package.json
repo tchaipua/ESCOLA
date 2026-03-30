@@ -6,6 +6,8 @@
   "scripts": {
     "build": "nest build",
     "backfill:people": "ts-node scripts/backfill-people.ts",
+    "qa:tcha-smoke": "ts-node scripts/tcha-general-smoke.ts",
+    "qa:tcha-grade-visibility": "ts-node scripts/tcha-grade-visibility-smoke.ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "test:attendance-notifications": "npm run build && node test/attendance-notifications.test.cjs",
     "start": "nest start",

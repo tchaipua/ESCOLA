@@ -1,0 +1,110 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.100.134:3000
+
+✓ Starting...
+✓ Ready in 1060ms
+ GET /msinfor-admin 200 in 1083ms (compile: 967ms, render: 116ms)
+ GET /manifest.webmanifest 200 in 60ms (compile: 50ms, render: 10ms)
+ GET / 200 in 156ms (compile: 19ms, render: 137ms)
+ GET /aluno 200 in 112ms (compile: 25ms, render: 87ms)
+ GET /professor 200 in 113ms (compile: 54ms, render: 59ms)
+ GET /manifest.webmanifest 200 in 6ms (compile: 2ms, render: 4ms)
+ GET /responsavel 200 in 50ms (compile: 24ms, render: 26ms)
+ GET /msinfor-admin 200 in 208ms (compile: 186ms, render: 21ms)
+ GET /msinfor-admin 200 in 207ms (compile: 186ms, render: 21ms)
+✓ Compiled in 49ms
+✓ Compiled in 62ms
+✓ Compiled in 44ms
+✓ Compiled in 49ms
+✓ Compiled in 110ms
+✓ Compiled in 38ms
+✓ Compiled in 85ms
+✓ Compiled in 47ms
+ GET /msinfor-admin 200 in 290ms (compile: 217ms, render: 72ms)
+✓ Compiled in 43ms
+✓ Compiled in 49ms
+✓ Compiled in 43ms
+✓ Compiled in 84ms
+ GET /msinfor-admin 200 in 250ms (compile: 190ms, render: 60ms)
+ GET /msinfor-admin 200 in 168ms (compile: 150ms, render: 18ms)
+✓ Compiled in 53ms
+✓ Compiled in 48ms
+✓ Compiled in 47ms
+✓ Compiled in 45ms
+✓ Compiled in 37ms
+✓ Compiled in 80ms
+✓ Compiled in 83ms
+✓ Compiled in 42ms
+✓ Compiled in 51ms
+✓ Compiled in 54ms
+✓ Compiled in 78ms
+✓ Compiled in 52ms
+ GET /msinfor-admin 200 in 269ms (compile: 203ms, render: 66ms)
+ GET /msinfor-admin 200 in 147ms (compile: 125ms, render: 21ms)
+ GET /msinfor-admin 200 in 143ms (compile: 124ms, render: 19ms)
+ GET /msinfor-admin 200 in 164ms (compile: 146ms, render: 19ms)
+✓ Compiled in 43ms
+✓ Compiled in 50ms
+✓ Compiled in 87ms
+✓ Compiled in 58ms
+✓ Compiled in 91ms
+✓ Compiled in 73ms
+✓ Compiled in 87ms
+✓ Compiled in 87ms
+✓ Compiled in 81ms
+✓ Compiled in 44ms
+✓ Compiled in 56ms
+✓ Compiled in 59ms
+✓ Compiled in 77ms
+✓ Compiled in 80ms
+✓ Compiled in 88ms
+✓ Compiled in 57ms
+✓ Compiled in 64ms
+✓ Compiled in 58ms
+✓ Compiled in 59ms
+✓ Compiled in 50ms
+✓ Compiled in 45ms
+✓ Compiled in 46ms
+✓ Compiled in 37ms
+✓ Compiled in 41ms
+✓ Compiled in 46ms
+ GET / 200 in 123ms (compile: 59ms, render: 64ms)
+ GET /msinfor-admin 200 in 262ms (compile: 198ms, render: 64ms)
+✓ Compiled in 62ms
+✓ Compiled in 45ms
+✓ Compiled in 44ms
+✓ Compiled in 46ms
+✓ Compiled in 44ms
+✓ Compiled in 46ms
+✓ Compiled in 45ms
+✓ Compiled in 40ms
+✓ Compiled in 45ms
+✓ Compiled in 43ms
+✓ Compiled in 47ms
+✓ Compiled in 40ms
+✓ Compiled in 45ms
+ GET /msinfor-admin 200 in 311ms (compile: 246ms, render: 65ms)
+✓ Compiled in 55ms
+ GET /msinfor-admin 200 in 282ms (compile: 214ms, render: 68ms)
+ GET /msinfor-admin 200 in 171ms (compile: 150ms, render: 20ms)
+✓ Compiled in 51ms
+✓ Compiled in 58ms
+ GET /msinfor-admin 200 in 257ms (compile: 197ms, render: 60ms)
+✓ Compiled in 44ms
+✓ Compiled in 33ms
+ GET /msinfor-admin 200 in 282ms (compile: 217ms, render: 65ms)
+✓ Compiled in 63ms
+✓ Compiled in 57ms
+ GET / 200 in 36ms (compile: 3ms, render: 34ms)
+ GET /principal 200 in 59ms (compile: 42ms, render: 16ms)
+ GET /msinfor-admin 200 in 257ms (compile: 197ms, render: 60ms)
+ GET / 200 in 22ms (compile: 1876µs, render: 21ms)
+✓ Compiled in 36ms
+ GET /principal 200 in 120ms (compile: 49ms, render: 71ms)
+ GET / 200 in 26ms (compile: 2ms, render: 24ms)
+[?25h

@@ -908,4 +908,35 @@ export class NotificationsService {
       },
     });
   }
+
+  async markBatchAsRead(ids: string[], currentUser: ICurrentUser) {
+    const { recipientId, recipientType } = this.getRecipientForCurrentUser(currentUser);
+    const uniqueIds = Array.from(
+      new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)),
+    );
+
+    if (uniqueIds.length === 0) {
+      return { updatedCount: 0 };
+    }
+
+    const result = await this.prisma.notification.updateMany({
+      where: {
+        id: { in: uniqueIds },
+        tenantId: currentUser.tenantId,
+        recipientType,
+        recipientId,
+        canceledAt: null,
+        readAt: null,
+      },
+      data: {
+        readAt: new Date(),
+        readBy: currentUser.userId,
+        updatedBy: currentUser.userId,
+      },
+    });
+
+    return {
+      updatedCount: result.count,
+    };
+  }
 }

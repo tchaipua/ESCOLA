@@ -23,7 +23,7 @@ Plataforma SaaS de gestao escolar multi-tenant com 5 frentes:
 
 - Modelo multi-tenant obrigatorio por `schoolId`
 - Isolamento total de dados entre escolas
-- Sem delete fisico, somente cancelamento logico (`canceledAt`)
+- Sem delete fisico, somente cancelamento logico (`canceledAt`), exceto no purge fisico irreversivel de tenant acionado pelo MSINFOR ADMIN master
 - Auditoria total em inclusao, alteracao e cancelamento
 - Todos os textos em UPPERCASE (exceto senha)
 - Login validado por `VIEWUSUARIOS`
@@ -88,6 +88,7 @@ Objetivo:
 - Cadastro de escolas com EC + DB
 - Campo de logotipo da escola
 - Listagem com busca por nome
+- Purge fisico definitivo de escola e dependencias apenas no fluxo master com confirmacao reforcada
 - Criacao automatica de dois usuarios iniciais por escola:
   - `ADMIN` / `Admin001`
   - `MSINFOR` / `Mabelu2011`

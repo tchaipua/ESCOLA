@@ -372,6 +372,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
+            href: '/principal/historico-notas',
+            label: 'Histórico notas',
+            allowWhen: currentRole === 'PROFESSOR',
+            icon: (
+                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17h6M9 13h6M9 9h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                </svg>
+            ),
+        },
+        {
             href: '/principal/professores',
             label: 'Professores',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']),

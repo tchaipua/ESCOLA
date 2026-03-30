@@ -1,6 +1,6 @@
 'use client';
 
-import { type ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
@@ -8,6 +8,7 @@ import { MSINFOR_MASTER_SESSION_KEY } from '@/app/lib/auth-storage';
 import { readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import GlobalSettingsModal, { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsForm, type GeneralSettingsTab } from './components/global-settings-modal';
@@ -80,6 +81,16 @@ const DEFAULT_EMAIL_USAGE_SORT: GridSortState<EmailUsageColumnKey> = {
     direction: 'desc',
 };
 
+const buildSchoolListLabel = (names: string[]) => {
+    if (!names.length) return '';
+    if (names.length === 1) return names[0];
+    return `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
+};
+
+const EDIT_SCHOOL_SCREEN_ID = 'MSINFOR_ADMIN_EDITAR_ESCOLA_CLIENTE';
+const LIST_SCREEN_ID = 'MSINFOR_ADMIN_UNIDADES_ATIVAS';
+const PURGE_SCHOOL_SCREEN_ID = 'MSINFOR_ADMIN_EXCLUSAO_DEFINITIVA_ESCOLA';
+
 function getTenantGridConfigStorageKey() {
     return 'msinfor-admin:tenants:grid-config';
 }
@@ -105,7 +116,7 @@ export default function MsinforAdminPage() {
     const [masterPassword, setMasterPassword] = useState('');
     const [loginError, setLoginError] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState(1);
+    const [activeTab, setActiveTab] = useState(0);
     const [editingTenantId, setEditingTenantId] = useState<string | null>(null);
     const [emailQuery, setEmailQuery] = useState('');
     const [emailUsageResults, setEmailUsageResults] = useState<EmailUsageRecord[]>([]);
@@ -113,6 +124,10 @@ export default function MsinforAdminPage() {
     const [emailUsageError, setEmailUsageError] = useState<string | null>(null);
     const [emailUsageSuccess, setEmailUsageSuccess] = useState<string | null>(null);
     const [emailUsageSearched, setEmailUsageSearched] = useState(false);
+    const [adminPasswordEqualityNote, setAdminPasswordEqualityNote] = useState<string | null>(null);
+    const [adminEmailCheckError, setAdminEmailCheckError] = useState<string | null>(null);
+    const [adminEmailChecking, setAdminEmailChecking] = useState(false);
+    const adminEmailLastCheckedRef = useRef('');
     const [editingEmailUsage, setEditingEmailUsage] = useState<any | null>(null);
     const [replacementEmail, setReplacementEmail] = useState('');
     const [emailUpdateLoading, setEmailUpdateLoading] = useState(false);
@@ -136,6 +151,13 @@ export default function MsinforAdminPage() {
     const [isEmailUsageGridConfigOpen, setIsEmailUsageGridConfigOpen] = useState(false);
     const [isTenantGridConfigReady, setIsTenantGridConfigReady] = useState(false);
     const [isEmailUsageGridConfigReady, setIsEmailUsageGridConfigReady] = useState(false);
+    const [tenantToDelete, setTenantToDelete] = useState<TenantRecord | null>(null);
+    const [deletePassword, setDeletePassword] = useState('');
+    const [deleteConfirmationTenantId, setDeleteConfirmationTenantId] = useState('');
+    const [deleteConfirmationPhrase, setDeleteConfirmationPhrase] = useState('');
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
     const [tenantColumnOrder, setTenantColumnOrder] = useState<TenantColumnKey[]>(TENANT_COLUMN_KEYS);
     const [tenantHiddenColumns, setTenantHiddenColumns] = useState<TenantColumnKey[]>(
         TENANT_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TENANT_COLUMNS.includes(key)),
@@ -571,6 +593,75 @@ export default function MsinforAdminPage() {
         await fetchEmailUsage();
     };
 
+    const checkAdminEmailPasswordRequirement = useCallback(
+        async (email?: string) => {
+            const normalizedEmail = (email || '').trim().toUpperCase();
+            if (!normalizedEmail || !isMasterLogged) {
+                setAdminPasswordEqualityNote(null);
+                setAdminEmailCheckError(null);
+                adminEmailLastCheckedRef.current = '';
+                return;
+            }
+
+            if (adminEmailLastCheckedRef.current === normalizedEmail) {
+                return;
+            }
+
+            setAdminEmailChecking(true);
+            setAdminEmailCheckError(null);
+
+            try {
+                const response = await fetch(`http://localhost:3001/api/v1/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
+                    headers: { 'x-msinfor-master-pass': getMasterPassForRequest() },
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data?.message || 'Não foi possível verificar o uso desse e-mail.');
+                }
+
+                const usages = Array.isArray(data) ? data : [];
+                const crossTenantMatches = usages.filter(
+                    (usage: any) =>
+                        usage.tenantId &&
+                        (editingTenantId ? usage.tenantId !== editingTenantId : true),
+                );
+
+                if (crossTenantMatches.length > 0) {
+                    const otherSchools = Array.from(
+                        new Set(
+                            crossTenantMatches
+                                .map((usage: any) => usage.tenantName)
+                                .filter((name: string | undefined): name is string => !!name),
+                        ),
+                    );
+                    const formattedList = buildSchoolListLabel(otherSchools);
+                    const label =
+                        otherSchools.length > 1
+                            ? "essas escolas"
+                            : otherSchools.length === 1
+                                ? "esta escola"
+                                : "outras escolas";
+                    const detailList = otherSchools.length ? formattedList : "outras escolas";
+                    setAdminPasswordEqualityNote(
+                        `Esse e-mail já está vinculado ${label} ${detailList}. A senha precisa ser a mesma em todas elas.`,
+                    );
+                } else {
+                    setAdminPasswordEqualityNote(null);
+                }
+
+                adminEmailLastCheckedRef.current = normalizedEmail;
+            } catch (err: any) {
+                setAdminPasswordEqualityNote(null);
+                setAdminEmailCheckError(err?.message || 'Não foi possível verificar o uso desse e-mail.');
+                adminEmailLastCheckedRef.current = '';
+            } finally {
+                setAdminEmailChecking(false);
+            }
+        },
+        [editingTenantId, getMasterPassForRequest, isMasterLogged],
+    );
+
     const openEmailUsageEditor = (usage: any) => {
         setEditingEmailUsage(usage);
         setReplacementEmail((usage.currentEmail || '').toUpperCase());
@@ -713,10 +804,80 @@ export default function MsinforAdminPage() {
             if (errorMsg.includes('adminPassword should not be empty') || errorMsg.includes('mínimo 6 caracteres')) {
                 errorMsg = 'A senha deve ter no mínimo 6 caracteres';
             }
+
+            const normalizedError = errorMsg.toLowerCase();
+            const isSharedPasswordError =
+                normalizedError.includes('senha precisa ser a mesma') ||
+                normalizedError.includes('senha compartilhada') ||
+                normalizedError.includes('senha informada é diferente');
+
+            if (isSharedPasswordError) {
+                setAdminEmailCheckError(errorMsg);
+                return;
+            }
+
             setSaveError(errorMsg);
             setTimeout(() => setSaveError(null), 5000);
         }
     };
+
+    const handleConfirmDelete = useCallback(async () => {
+        if (!tenantToDelete) return;
+
+        const normalizedTenantId = deleteConfirmationTenantId.trim();
+        const normalizedPhrase = deleteConfirmationPhrase.trim().toUpperCase();
+        const normalizedPassword = deletePassword.trim();
+
+        if (!normalizedPassword) {
+            setDeleteError('Informe a Chave de Acesso Admin para continuar.');
+            return;
+        }
+
+        if (normalizedTenantId !== tenantToDelete.id) {
+            setDeleteError('Digite exatamente o ID da escola para liberar a exclusão definitiva.');
+            return;
+        }
+
+        if (normalizedPhrase !== 'EXCLUIR DEFINITIVAMENTE') {
+            setDeleteError('Digite exatamente a frase EXCLUIR DEFINITIVAMENTE para continuar.');
+            return;
+        }
+
+        setDeleteLoading(true);
+        setDeleteError(null);
+        setDeleteSuccess(null);
+
+        try {
+            const response = await fetch(`http://localhost:3001/api/v1/tenants/${tenantToDelete.id}/purge`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-msinfor-master-pass": normalizedPassword,
+                },
+                body: JSON.stringify({
+                    confirmationTenantId: normalizedTenantId,
+                    confirmationPhrase: normalizedPhrase,
+                }),
+            });
+            const data = await response.json().catch(() => null);
+
+            if (!response.ok) {
+                throw new Error(data?.message || "Falha ao excluir definitivamente a escola.");
+            }
+
+            setTenantToDelete(null);
+            setDeletePassword("");
+            setDeleteConfirmationTenantId("");
+            setDeleteConfirmationPhrase("");
+            setDeleteError(null);
+            setDeleteSuccess(data?.message || "Escola excluída definitivamente com sucesso.");
+            await fetchEscolas();
+        } catch (err: any) {
+            setDeleteError(err?.message || "Erro ao excluir definitivamente a escola.");
+        } finally {
+            setDeleteLoading(false);
+        }
+    }, [tenantToDelete, deletePassword, deleteConfirmationPhrase, deleteConfirmationTenantId, fetchEscolas]);
 
     const handleEdit = (escola: any) => {
         setEditingTenantId(escola.id);
@@ -747,14 +908,19 @@ export default function MsinforAdminPage() {
             smtpPassword: escola.smtpPassword ?? ''
         });
 
-        setActiveTab(1);
+        adminEmailLastCheckedRef.current = '';
+        setAdminPasswordEqualityNote(null);
+        setAdminEmailCheckError(null);
+        void checkAdminEmailPasswordRequirement(admin.email || '');
+
+        setActiveTab(0);
         setIsModalOpen(true);
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
         setEditingTenantId(null);
-        setActiveTab(1);
+        setActiveTab(0);
         setFormData({
             name: '', document: '', logoUrl: '', adminName: '', adminEmail: '', adminPassword: '',
             rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
@@ -765,6 +931,10 @@ export default function MsinforAdminPage() {
             smtpEmail: '', smtpPassword: ''
         });
         setLogoError(null);
+        setAdminPasswordEqualityNote(null);
+        setAdminEmailCheckError(null);
+        setAdminEmailChecking(false);
+        adminEmailLastCheckedRef.current = '';
     };
 
     const updateGeneralSettingsField = <K extends keyof GeneralSettingsForm>(field: K, value: GeneralSettingsForm[K]) => {
@@ -1064,7 +1234,7 @@ export default function MsinforAdminPage() {
             </header>
 
             {/* Conteúdo */}
-            <main className="flex-1 p-8 max-w-7xl w-full mx-auto">
+            <main className="flex-1 p-8 max-w-7xl w-full mx-auto relative">
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800">Unidades de Ensino Ativas</h2>
@@ -1100,6 +1270,13 @@ export default function MsinforAdminPage() {
                     <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 mb-6 font-medium text-sm flex items-center gap-3">
                         <span className="w-6 h-6 bg-red-200 text-red-700 rounded-full flex items-center justify-center font-bold">!</span>
                         {errorStatus}
+                    </div>
+                )}
+
+                {deleteSuccess && (
+                    <div className="bg-emerald-50 text-emerald-700 p-4 rounded-xl border border-emerald-100 mb-6 font-medium text-sm flex items-center gap-3">
+                        <span className="w-6 h-6 bg-emerald-200 text-emerald-700 rounded-full flex items-center justify-center font-bold">✓</span>
+                        {deleteSuccess}
                     </div>
                 )}
 
@@ -1190,7 +1367,6 @@ export default function MsinforAdminPage() {
                                     </button>
                                 </div>
                             </div>
-
                             {emailUsageResults.length > 0 ? (
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
@@ -1310,6 +1486,22 @@ export default function MsinforAdminPage() {
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                     </svg>
                                                 </GridRowActionIconButton>
+                                                <GridRowActionIconButton
+                                                    title="Excluir definitivamente escola e dependências"
+                                                    tone="rose"
+                                                    onClick={() => {
+                                                        setTenantToDelete(escola);
+                                                        setDeletePassword('');
+                                                        setDeleteConfirmationTenantId('');
+                                                        setDeleteConfirmationPhrase('');
+                                                        setDeleteError(null);
+                                                        setDeleteSuccess(null);
+                                                    }}
+                                                >
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 7L6 7M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M9 11v6m6-6v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12" />
+                                                    </svg>
+                                                </GridRowActionIconButton>
                                             </div>
                                         </td>
                                     </tr>
@@ -1318,7 +1510,126 @@ export default function MsinforAdminPage() {
                         </tbody>
                     </table>
                 </div>
+                <div className="mt-4 flex justify-end">
+                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-xl backdrop-blur-md">
+                        <ScreenNameCopy screenId={LIST_SCREEN_ID} label="Tela" className="mt-0" disableMargin />
+                    </div>
+                </div>
             </main>
+
+            {tenantToDelete && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-100">
+                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
+                            <h3 className="text-lg font-bold text-slate-800">Excluir Definitivamente Escola e Dependências</h3>
+                            <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider">{PURGE_SCHOOL_SCREEN_ID}</p>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                                <p className="text-sm font-bold text-rose-700">{tenantToDelete.name}</p>
+                                <p className="mt-1 text-[11px] font-mono text-rose-500">{tenantToDelete.id}</p>
+                            </div>
+                            <p className="text-sm text-slate-600">
+                                Esta ação apagará fisicamente a escola e todos os registros associados no banco de dados.
+                                O processo é irreversível e não manterá histórico operacional dentro das tabelas removidas.
+                            </p>
+                            <p className="text-xs text-slate-500 uppercase tracking-wide">
+                                Informe a <strong>Chave de Acesso Admin</strong>, digite exatamente o <strong>ID da escola</strong> e a frase <strong>EXCLUIR DEFINITIVAMENTE</strong> para liberar a exclusão definitiva.
+                            </p>
+                            <div>
+                                <label className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500">Confirmar ID da Escola</label>
+                                <input
+                                    type="text"
+                                    value={deleteConfirmationTenantId}
+                                    onChange={(event) => setDeleteConfirmationTenantId(event.target.value)}
+                                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-rose-500 focus:bg-white transition"
+                                    placeholder={tenantToDelete.id}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500">Frase de Segurança</label>
+                                <input
+                                    type="text"
+                                    value={deleteConfirmationPhrase}
+                                    onChange={(event) => setDeleteConfirmationPhrase(event.target.value.toUpperCase())}
+                                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 outline-none focus:border-rose-500 focus:bg-white transition"
+                                    placeholder="EXCLUIR DEFINITIVAMENTE"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[0.65rem] font-semibold uppercase tracking-[0.3em] text-slate-500">Chave de Acesso Admin</label>
+                                <input
+                                    type="password"
+                                    autoFocus
+                                    value={deletePassword}
+                                    onChange={(event) => setDeletePassword(event.target.value)}
+                                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold uppercase tracking-[0.15em] text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                    placeholder="Digite a senha padrão MSINFOR"
+                                />
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                                O botão confirma a ação e mostra o motivo do bloqueio caso algum campo obrigatório esteja incorreto.
+                            </p>
+                        </div>
+                        <div className="border-t border-slate-100 px-6 py-4">
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTenantToDelete(null);
+                                        setDeletePassword('');
+                                        setDeleteConfirmationTenantId('');
+                                        setDeleteConfirmationPhrase('');
+                                        setDeleteError(null);
+                                    }}
+                                    className="px-4 py-2 rounded-xl font-semibold text-sm uppercase tracking-[0.3em] text-slate-500 border border-slate-200 hover:bg-slate-100 transition"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmDelete}
+                                    disabled={deleteLoading}
+                                    className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-sm uppercase tracking-[0.3em] hover:bg-rose-700 disabled:bg-rose-400 transition flex items-center gap-2"
+                                >
+                                    {deleteLoading && (
+                                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
+                                    )}
+                                    Excluir Definitivamente
+                                </button>
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                                <ScreenNameCopy screenId={PURGE_SCHOOL_SCREEN_ID} label="Tela" className="mt-0 justify-end" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deleteError && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-2xl">
+                        <div className="bg-rose-50 px-6 py-5 text-center">
+                            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 shadow-sm">
+                                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-800">Bloqueio na Exclusão</h3>
+                            <p className="mt-2 text-sm font-medium leading-relaxed text-slate-600">{deleteError}</p>
+                        </div>
+                        <div className="border-t border-slate-100 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteError(null)}
+                                className="w-full rounded-xl bg-slate-800 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-700"
+                            >
+                                Fechar Aviso
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {editingEmailUsage && (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4 animate-in fade-in">
@@ -1519,34 +1830,63 @@ export default function MsinforAdminPage() {
                         </div>
 
                         {/* NAVEGAÇÃO DE ABAS */}
-                        <div className="flex border-b border-slate-200 bg-slate-50/50 px-6 pt-4 gap-2">
-                            <button type="button" onClick={() => setActiveTab(1)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}>
-                                1. DADOS BÁSICOS (DB)
+                        <div className="flex border-b border-slate-200 bg-slate-50/50 px-6 pt-4 gap-3 flex-wrap items-end">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab(0)}
+                                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 0 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                            >
+                                LOGOTIPO
                             </button>
-                            <button type="button" onClick={() => setActiveTab(2)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}>
-                                2. ENDEREÇO (EC)
-                            </button>
-                            <button type="button" onClick={() => setActiveTab(3)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}>
-                                3. DADOS FINANCEIROS
-                            </button>
-                            <button type="button" onClick={() => setActiveTab(4)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}>
-                                4. ADMINISTRADOR
-                            </button>
-                            <button type="button" onClick={() => setActiveTab(5)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}>
-                                5. SISTEMA DE E-MAILS
-                            </button>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab(1)}
+                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                >
+                                    1. DADOS BÁSICOS (DB)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab(2)}
+                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                >
+                                    2. ENDEREÇO (EC)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab(3)}
+                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                >
+                                    3. DADOS FINANCEIROS
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab(4)}
+                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                >
+                                    4. ADMINISTRADOR
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab(5)}
+                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                                >
+                                    5. SISTEMA DE E-MAILS
+                                </button>
+                            </div>
                         </div>
 
                         <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 p-6">
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 min-h-[300px]">
 
-                                {activeTab === 1 && (
+                                {activeTab === 0 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Identificação Jurídica da Instituição</h4>
-                                        <div className="mb-5 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5">
-                                            <div className="grid gap-5 md:grid-cols-[180px_1fr] md:items-center">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Identidade Visual da Escola</h4>
+                                        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5">
+                                            <div className="grid gap-5 md:grid-cols-[220px_1fr] md:items-center">
                                                 <div className="flex flex-col items-center gap-3">
-                                                    <div className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-indigo-200 bg-white shadow-sm">
+                                                    <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-indigo-200 bg-white shadow-sm">
                                                         {formData.logoUrl ? (
                                                             <img src={formData.logoUrl} alt="Logotipo da escola" className="h-full w-full object-contain" />
                                                         ) : (
@@ -1584,6 +1924,12 @@ export default function MsinforAdminPage() {
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 1 && (
+                                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Identificação Jurídica da Instituição</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                             <div className="lg:col-span-3">
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Nome da Instituição *</label>
@@ -1746,7 +2092,32 @@ export default function MsinforAdminPage() {
                                             </div>
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail Corporativo de Acesso *</label>
-                                                <input type="email" required value={formData.adminEmail} onChange={e => setFormData({ ...formData, adminEmail: e.target.value.toUpperCase() })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" />
+                                                <input
+                                                    type="email"
+                                                    required
+                                                    value={formData.adminEmail}
+                                                    onChange={(event) => {
+                                                        const nextValue = event.target.value.toUpperCase();
+                                                        setFormData({ ...formData, adminEmail: nextValue });
+                                                        adminEmailLastCheckedRef.current = '';
+                                                        setAdminPasswordEqualityNote(null);
+                                                        setAdminEmailCheckError(null);
+                                                    }}
+                                                    onBlur={() => void checkAdminEmailPasswordRequirement(formData.adminEmail)}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                                />
+                                                {adminEmailChecking && (
+                                                    <p className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.4em] text-slate-500">
+                                                        <span className="h-3 w-3 animate-spin rounded-full border border-slate-300 border-t-slate-600" />
+                                                        VERIFICANDO E-MAIL...
+                                                    </p>
+                                                )}
+                                                {adminPasswordEqualityNote && (
+                                                    <p className="mt-1 text-xs font-semibold text-amber-600">{adminPasswordEqualityNote}</p>
+                                                )}
+                                                {adminEmailCheckError && (
+                                                    <p className="mt-1 text-xs font-semibold text-rose-500">{adminEmailCheckError}</p>
+                                                )}
                                             </div>
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">
@@ -1757,7 +2128,7 @@ export default function MsinforAdminPage() {
                                         </div>
 
                                         <div className="mt-8 flex justify-end gap-3 pt-5 border-t border-slate-100">
-                                            <button type="button" onClick={() => setActiveTab(5)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95">
+                                            <button type="button" onClick={() => setActiveTab(6)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95">
                                                 Avançar para Sistema de E-mails →
                                             </button>
                                         </div>
@@ -1838,14 +2209,24 @@ export default function MsinforAdminPage() {
                                 )}
                             </div>
                             {/* Botoes de Navegação das Abas genéricas */}
-                            {(activeTab !== 4 && activeTab !== 5) && (
-                                <div className="mt-5 flex justify-end gap-3 max-w-4xl pt-2">
-                                    <button type="button" onClick={closeModal} className="px-6 py-3 text-slate-400 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar</button>
-                                    <button type="button" onClick={() => setActiveTab(activeTab + 1)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95">
-                                        Próxima Etapa →
-                                    </button>
+                            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 max-w-4xl pt-2">
+                                <div className="flex flex-1 min-w-0 items-center gap-3 flex-wrap">
+                                    <ScreenNameCopy
+                                        screenId={EDIT_SCHOOL_SCREEN_ID}
+                                        label="Tela"
+                                        disableMargin
+                                        className="w-full justify-start"
+                                    />
                                 </div>
-                            )}
+                                {(activeTab < 4) && (
+                                    <div className="flex gap-3 flex-wrap">
+                                        <button type="button" onClick={closeModal} className="px-6 py-3 text-slate-400 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar</button>
+                                        <button type="button" onClick={() => setActiveTab(activeTab + 1)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95">
+                                            Próxima Etapa →
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
 
                         </form>
                     </div>

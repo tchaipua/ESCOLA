@@ -10,9 +10,15 @@ type ScreenNameCopyProps = {
   screenId: string;
   label?: string;
   className?: string;
+  disableMargin?: boolean;
 };
 
-export default function ScreenNameCopy({ screenId, label = 'Tela', className = '' }: ScreenNameCopyProps) {
+export default function ScreenNameCopy({
+  screenId,
+  label = 'Tela',
+  className = '',
+  disableMargin = false,
+}: ScreenNameCopyProps) {
   const [status, setStatus] = useState<CopyStatus>('idle');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,7 +58,8 @@ export default function ScreenNameCopy({ screenId, label = 'Tela', className = '
   const statusMessage = status === 'copied' ? 'COPIADO' : status === 'error' ? 'FALHA' : null;
 
   const containerClasses = [
-    'mt-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400',
+    disableMargin ? '' : 'mt-3',
+    'flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400',
     className,
   ]
     .filter(Boolean)

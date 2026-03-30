@@ -58,6 +58,21 @@ export class GuardiansController {
     );
   }
 
+  @Get("me/pwa-summary")
+  @Roles("RESPONSAVEL")
+  @Permissions("VIEW_OWN_PROFILE", "VIEW_STUDENT_ACADEMIC_DATA")
+  @ApiOperation({
+    summary:
+      "Retorna o resumo do responsável e dos alunos vinculados para o PWA",
+  })
+  findMyPwaSummary(@CurrentUser() currentUser: ICurrentUser) {
+    return this.guardiansService.findMyPwaSummary(
+      currentUser.userId,
+      currentUser.tenantId,
+      currentUser,
+    );
+  }
+
   @Get(":id")
   @Permissions("VIEW_GUARDIANS")
   @ApiOperation({ summary: "Resgata Ficha Cadastral de um Responsável" })

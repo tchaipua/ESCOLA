@@ -21,12 +21,14 @@ import {
   canViewGuardianAccessData,
   sanitizeGuardianSummaryForViewer,
 } from "../../../../common/auth/entity-visibility";
+import { StudentsService } from "../../../students/application/services/students.service";
 
 @Injectable()
 export class GuardiansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
+    private readonly studentsService: StudentsService,
   ) {}
 
   private normalizeDocument(value?: string | null): string {
@@ -300,6 +302,59 @@ export class GuardiansService {
       this.mapGuardianAccess(guardian),
       currentUser,
     );
+  }
+
+  async findMyPwaSummary(
+    userId: string,
+    tenantId: string,
+    currentUser?: ICurrentUser,
+  ) {
+    const guardian = await this.prisma.guardian.findFirst({
+      where: {
+        id: userId,
+        tenantId,
+        canceledAt: null,
+      },
+      include: {
+        students: {
+          where: { canceledAt: null },
+          include: {
+            student: true,
+          },
+          orderBy: [{ student: { name: "asc" } }],
+        },
+      },
+    });
+
+    if (!guardian) {
+      throw new NotFoundException(
+        "Responsável não encontrado para esta escola.",
+      );
+    }
+
+    const studentSummaries = await Promise.all(
+      guardian.students
+        .filter((link) => !!link.student && !link.student.canceledAt)
+        .map(async (link) => ({
+          id: link.id,
+          kinship: link.kinship,
+          kinshipDescription: link.kinshipDescription,
+          student: await this.studentsService.findMyPwaSummary(
+            link.studentId,
+            tenantId,
+            currentUser,
+          ),
+        })),
+    );
+
+    return {
+      guardian: sanitizeGuardianSummaryForViewer(
+        this.mapGuardianAccess(guardian),
+        currentUser,
+      ),
+      students: studentSummaries,
+      syncedAt: new Date().toISOString(),
+    };
   }
 
   async update(id: string, updateDto: UpdateGuardianDto, currentUser?: ICurrentUser) {

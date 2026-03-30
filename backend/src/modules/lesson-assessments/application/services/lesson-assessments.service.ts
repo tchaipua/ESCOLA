@@ -10,6 +10,7 @@ import {
   UpsertLessonAssessmentDto,
 } from "../dto/upsert-lesson-assessment.dto";
 import { ListMyTeacherAssessmentsDto } from "../dto/list-my-teacher-assessments.dto";
+import { ListTeacherGradeHistoryDto } from "../dto/list-teacher-grade-history.dto";
 
 @Injectable()
 export class LessonAssessmentsService {
@@ -30,13 +31,25 @@ export class LessonAssessmentsService {
     return String(value || "").trim().toUpperCase();
   }
 
+  private formatShiftLabel(value?: string | null) {
+    if (!value) return null;
+    return this.normalizeText(value).replace(/_/g, " ");
+  }
+
   private parseDecimal(value?: string | null) {
     const normalized = String(value || "").trim();
     if (!normalized) return null;
+    const decimalPattern = /^\d+(?:[.,]\d{1,2})?$/;
+    if (!decimalPattern.test(normalized)) {
+      throw new BadRequestException(
+        "Informe um valor numérico válido com até 2 casas decimais. Exemplo: 8,75",
+      );
+    }
+
     const parsed = Number.parseFloat(normalized.replace(",", "."));
     if (!Number.isFinite(parsed)) {
       throw new BadRequestException(
-        "Informe um valor numérico válido. Exemplo: 8,5",
+        "Informe um valor numérico válido com até 2 casas decimais. Exemplo: 8,75",
       );
     }
     return parsed;
@@ -228,6 +241,281 @@ export class LessonAssessmentsService {
     };
   }
 
+  async findTeacherGradeHistory(query: ListTeacherGradeHistoryDto) {
+    const teacherLessonItems = await this.prisma.lessonCalendarItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        canceledAt: null,
+        teacherSubject: {
+          is: {
+            tenantId: this.tenantId(),
+            teacherId: this.userId(),
+            canceledAt: null,
+          },
+        },
+        seriesClass: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+          },
+        },
+        schoolYear: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+          },
+        },
+      },
+      include: {
+        schoolYear: true,
+        teacherSubject: {
+          include: {
+            subject: true,
+          },
+        },
+        seriesClass: {
+          include: {
+            series: true,
+            class: true,
+          },
+        },
+      },
+      orderBy: [
+        { schoolYear: { year: "desc" } },
+        { lessonDate: "asc" },
+        { startTime: "asc" },
+      ],
+    });
+
+    const schoolYears = Array.from(
+      new Map(
+        teacherLessonItems.map((item) => [
+          item.schoolYearId,
+          {
+            id: item.schoolYearId,
+            year: item.schoolYear.year,
+            label: String(item.schoolYear.year),
+            isActive: item.schoolYear.isActive,
+          },
+        ]),
+      ).values(),
+    ).sort((left, right) => right.year - left.year);
+
+    const selectedSchoolYearId =
+      query.schoolYearId ||
+      schoolYears.find((item) => item.isActive)?.id ||
+      schoolYears[0]?.id ||
+      null;
+
+    const lessonItemsByYear = selectedSchoolYearId
+      ? teacherLessonItems.filter((item) => item.schoolYearId === selectedSchoolYearId)
+      : teacherLessonItems;
+
+    const teacherSubjects = Array.from(
+      new Map(
+        lessonItemsByYear.map((item) => [
+          item.teacherSubjectId,
+          {
+            id: item.teacherSubjectId,
+            subjectName: item.teacherSubject.subject.name,
+            label: item.teacherSubject.subject.name,
+          },
+        ]),
+      ).values(),
+    ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+
+    const selectedTeacherSubjectId =
+      query.teacherSubjectId ||
+      teacherSubjects[0]?.id ||
+      null;
+
+    const lessonItemsByYearAndSubject =
+      selectedTeacherSubjectId
+        ? lessonItemsByYear.filter(
+            (item) => item.teacherSubjectId === selectedTeacherSubjectId,
+          )
+        : lessonItemsByYear;
+
+    const seriesClasses = Array.from(
+      new Map(
+        lessonItemsByYearAndSubject.map((item) => [
+          item.seriesClassId,
+          {
+            id: item.seriesClassId,
+            seriesName: item.seriesClass.series.name,
+            className: item.seriesClass.class.name,
+            shift: item.seriesClass.class.shift,
+            label: `${item.seriesClass.series.name} - ${item.seriesClass.class.name}${
+              item.seriesClass.class.shift
+                ? ` - ${this.formatShiftLabel(item.seriesClass.class.shift)}`
+                : ""
+            }`,
+          },
+        ]),
+      ).values(),
+    ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
+
+    const selectedSeriesClassId =
+      query.seriesClassId ||
+      seriesClasses[0]?.id ||
+      null;
+
+    if (
+      !selectedSchoolYearId ||
+      !selectedTeacherSubjectId ||
+      !selectedSeriesClassId
+    ) {
+      return {
+        filters: {
+          schoolYears,
+          teacherSubjects,
+          seriesClasses,
+        },
+        selectedFilters: {
+          schoolYearId: selectedSchoolYearId,
+          teacherSubjectId: selectedTeacherSubjectId,
+          seriesClassId: selectedSeriesClassId,
+        },
+        header: null,
+        assessments: [],
+        students: [],
+        summary: {
+          totalAssessments: 0,
+          totalStudents: 0,
+        },
+      };
+    }
+
+    const selectedLessonItem = lessonItemsByYearAndSubject.find(
+      (item) => item.seriesClassId === selectedSeriesClassId,
+    );
+
+    const assessmentEvents = await this.prisma.lessonEvent.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        teacherId: this.userId(),
+        eventType: "PROVA",
+        canceledAt: null,
+        lessonCalendarItem: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+            schoolYearId: selectedSchoolYearId,
+            teacherSubjectId: selectedTeacherSubjectId,
+            seriesClassId: selectedSeriesClassId,
+          },
+        },
+      },
+      include: {
+        lessonCalendarItem: true,
+        assessment: {
+          include: {
+            grades: {
+              where: {
+                canceledAt: null,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [
+        { lessonCalendarItem: { lessonDate: "asc" } },
+        { lessonCalendarItem: { startTime: "asc" } },
+      ],
+    });
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        schoolYearId: selectedSchoolYearId,
+        seriesClassId: selectedSeriesClassId,
+        status: "ATIVO",
+        canceledAt: null,
+        student: {
+          canceledAt: null,
+        },
+      },
+      include: {
+        student: true,
+      },
+      orderBy: [{ student: { name: "asc" } }],
+    });
+
+    const assessments = assessmentEvents.map((event) => ({
+      lessonEventId: event.id,
+      lessonAssessmentId: event.assessment?.id || null,
+      title: event.assessment?.title || event.title,
+      lessonDate: event.lessonCalendarItem?.lessonDate || null,
+      startTime: event.lessonCalendarItem?.startTime || null,
+      endTime: event.lessonCalendarItem?.endTime || null,
+      maxScore: event.assessment?.maxScore ?? null,
+    }));
+
+    const students = enrollments.map((enrollment) => {
+      const scores = assessments.map((assessment) => {
+        const event = assessmentEvents.find(
+          (item) => item.id === assessment.lessonEventId,
+        );
+        const grade = event?.assessment?.grades.find(
+          (item) => item.studentId === enrollment.studentId,
+        );
+
+        return {
+          lessonEventId: assessment.lessonEventId,
+          score: grade?.score ?? null,
+          remarks: grade?.remarks ?? null,
+        };
+      });
+
+      const scoredValues = scores
+        .map((item) => item.score)
+        .filter((value): value is number => value !== null);
+
+      const averageScore = scoredValues.length
+        ? scoredValues.reduce((sum, value) => sum + value, 0) / scoredValues.length
+        : null;
+
+      return {
+        studentId: enrollment.studentId,
+        studentName: enrollment.student.name,
+        scores,
+        averageScore,
+      };
+    });
+
+    return {
+      filters: {
+        schoolYears,
+        teacherSubjects,
+        seriesClasses,
+      },
+      selectedFilters: {
+        schoolYearId: selectedSchoolYearId,
+        teacherSubjectId: selectedTeacherSubjectId,
+        seriesClassId: selectedSeriesClassId,
+      },
+      header: selectedLessonItem
+        ? {
+            schoolYearLabel:
+              schoolYears.find((item) => item.id === selectedSchoolYearId)?.label ||
+              "",
+            subjectName:
+              teacherSubjects.find((item) => item.id === selectedTeacherSubjectId)
+                ?.subjectName || "",
+            seriesClassLabel:
+              seriesClasses.find((item) => item.id === selectedSeriesClassId)?.label ||
+              "",
+          }
+        : null,
+      assessments,
+      students,
+      summary: {
+        totalAssessments: assessments.length,
+        totalStudents: students.length,
+      },
+    };
+  }
+
   private async findActiveStudentsForLessonEvent(lessonEvent: Awaited<ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>>) {
     const lessonItem = this.requireLessonCalendarItem(lessonEvent);
     return this.prisma.enrollment.findMany({
@@ -396,6 +684,13 @@ export class LessonAssessmentsService {
               updatedBy: this.userId(),
             },
           });
+      const persistedAssessmentId = currentAssessment?.id || assessment.id;
+
+      if (!persistedAssessmentId) {
+        throw new BadRequestException(
+          "Nao foi possivel identificar a avaliacao para persistir as notas.",
+        );
+      }
 
       for (const grade of normalizedGrades) {
         const existingGrade = currentAssessment?.grades.find(
@@ -416,7 +711,7 @@ export class LessonAssessmentsService {
           await tx.lessonAssessmentGrade.create({
             data: {
               tenantId: this.tenantId(),
-              lessonAssessmentId: assessment.id,
+              lessonAssessmentId: persistedAssessmentId,
               studentId: grade.studentId,
               score: grade.score,
               remarks: grade.remarks,

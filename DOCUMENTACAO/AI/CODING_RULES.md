@@ -8,7 +8,7 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 
 - Toda entidade de dominio tem `schoolId`.
 - Toda query filtra por `schoolId`.
-- Nao existe delete fisico em dados de negocio.
+- Nao existe delete fisico em dados de negocio, exceto no endpoint master exclusivo de purge definitivo de tenant.
 - Auditoria obrigatoria em mutacoes.
 - Texto em uppercase, exceto senha.
 - Login via `VIEWUSUARIOS`.
@@ -22,6 +22,7 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 - Centralizar erros com filtro global.
 - Usar transacao para operacoes multi-tabela.
 - Repositories devem aplicar tenant scope implicitamente.
+- Purge fisico de tenant deve ficar isolado em fluxo master dedicado, com confirmacao reforcada e ordem explicita de exclusao por dependencia.
 
 ## Frontend (Next.js + TypeScript)
 
@@ -54,6 +55,10 @@ Toda mutacao deve registrar:
 - quem fez (`*_by`)
 - quando fez (`*_at`)
 - antes/depois quando necessario em log de auditoria
+
+Excecao documentada:
+
+- no purge fisico definitivo de tenant, o proprio historico do tenant e removido junto com os dados; nesse caso a protecao obrigatoria passa a ser confirmacao reforcada, rota exclusiva e uso restrito ao MSINFOR ADMIN master
 
 ## Padroes de codigo
 

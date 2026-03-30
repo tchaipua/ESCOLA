@@ -56,3 +56,21 @@ Toda entrega deve informar:
 ## Handoff entre IAs
 
 Ao trocar de Gemini para Codex (ou vice-versa), preencher `DOCUMENTACAO/AI/HANDOFF_GEMINI_TO_CODEX.md` e anexar no primeiro prompt da nova sessao.
+
+## Preferencias do usuario desta base
+
+- Responder sempre em portugues.
+- Mostrar o minimo de detalhes possiveis sobre o que esta sendo feito, exceto quando isso for importante para o usuario.
+- Tentar resolver tudo de forma autonoma, evitando pedir confirmacao quando houver caminho seguro e razoavel.
+- Ao finalizar uma solicitacao, encerrar a resposta com `# ===> TERMINEI <===`.
+
+## Regra de protecao para telas aprovadas
+
+- Telas, componentes e fluxos visuais ja aprovados pelo usuario nao devem ser redesenhados, refatorados visualmente ou reorganizados sem solicitacao explicita.
+- Em manutencoes de tela, alterar somente o problema pedido, preservando layout, espacamento, estrutura, componentes, textos, cores e comportamento ja aprovados.
+- Antes de propor qualquer mudanca estrutural ou visual ampla, considerar isso bloqueado por padrao.
+- Se a correcao exigir impacto visual inevitavel, aplicar a menor mudanca possivel e deixar claro o risco no retorno final.
+- Regra soberana de UI: nenhum modelo, incluindo Codex, GPT-5.4, GPT-5.1, mini ou qualquer troca futura de agente, pode alterar layout aprovado sem permissao explicita do usuario no prompt atual.
+- Em caso de duvida entre corrigir bug e mexer no visual, a prioridade obrigatoria e corrigir sem alterar layout.
+- Ao receber pedido funcional em tela aprovada, assumir por padrao: manter a interface exatamente como esta e modificar apenas logica, dados, validacao ou elementos explicitamente solicitados.
+- Esta regra deve ser preservada em qualquer handoff entre IAs e deve ser repetida como restricao ativa no inicio de nova sessao quando houver troca de modelo.

@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -13,6 +14,7 @@ import {
 } from "../../../../common/decorators/current-user.decorator";
 import { NotificationsService } from "../../application/services/notifications.service";
 import { ListMyNotificationsDto } from "../../application/dto/list-my-notifications.dto";
+import { MarkNotificationsReadDto } from "../../application/dto/mark-notifications-read.dto";
 
 @ApiBearerAuth()
 @ApiTags("Notificações")
@@ -48,5 +50,17 @@ export class NotificationsController {
   @ApiOperation({ summary: "Marca todas as notificações como lidas" })
   markAllAsRead(@CurrentUser() currentUser: ICurrentUser) {
     return this.notificationsService.markAllAsRead(currentUser);
+  }
+
+  @Post("my/read-batch")
+  @ApiOperation({ summary: "Marca em lote notificações específicas como lidas" })
+  markBatchAsRead(
+    @Body() markNotificationsReadDto: MarkNotificationsReadDto,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationsService.markBatchAsRead(
+      markNotificationsReadDto.ids,
+      currentUser,
+    );
   }
 }

@@ -14,6 +14,7 @@ import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { Request } from "express";
 import { TenantsService } from "../../application/services/tenants.service";
 import { CreateTenantDto } from "../../application/dto/create-tenant.dto";
+import { PurgeTenantDto } from "../../application/dto/purge-tenant.dto";
 import { UpdateTenantDto } from "../../application/dto/update-tenant.dto";
 import { Public } from "../../../../common/decorators/public.decorator";
 import { buildMasterPass } from "../../../../common/auth/master-auth";
@@ -222,5 +223,30 @@ export class TenantsController {
   ) {
     this.assertMasterPass(req);
     return this.tenantsService.update(id, updateTenantDto);
+  }
+
+  @Public()
+  @Delete(":id")
+  @ApiOperation({
+    summary: "Cancela uma escola (soft delete) e dependências",
+  })
+  async remove(@Req() req: Request, @Param("id") id: string) {
+    this.assertMasterPass(req);
+    return this.tenantsService.removeTenant(id);
+  }
+
+  @Public()
+  @Post(":id/purge")
+  @ApiOperation({
+    summary:
+      "Exclui fisicamente uma escola e todos os registros associados de forma irreversível",
+  })
+  async purge(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() purgeTenantDto: PurgeTenantDto,
+  ) {
+    this.assertMasterPass(req);
+    return this.tenantsService.purgeTenantPermanently(id, purgeTenantDto);
   }
 }

@@ -28,6 +28,23 @@ export class LessonAttendancesService {
     return normalized ? normalized.toUpperCase() : null;
   }
 
+  private startOfToday() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  }
+
+  private ensureAttendanceDateIsAllowed(lessonDate: Date) {
+    const lessonDay = new Date(lessonDate);
+    lessonDay.setHours(0, 0, 0, 0);
+
+    if (lessonDay.getTime() > this.startOfToday().getTime()) {
+      throw new BadRequestException(
+        "Não é permitido fazer chamada para aulas com data maior que hoje.",
+      );
+    }
+  }
+
   private async findLessonItemForTeacher(lessonCalendarItemId: string) {
     const lessonItem = await this.prisma.lessonCalendarItem.findFirst({
       where: {
@@ -98,6 +115,60 @@ export class LessonAttendancesService {
     });
   }
 
+  private async findNextConsecutiveLessonItem(
+    lessonItem: Awaited<
+      ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>
+    >,
+  ) {
+    const sameDayTeacherLessons = await this.prisma.lessonCalendarItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        lessonDate: lessonItem.lessonDate,
+        canceledAt: null,
+        teacherSubject: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+            teacherId: this.userId(),
+          },
+        },
+      },
+      select: {
+        id: true,
+        schoolYearId: true,
+        seriesClassId: true,
+        teacherSubjectId: true,
+        startTime: true,
+        endTime: true,
+      },
+      orderBy: [{ startTime: "asc" }, { endTime: "asc" }, { id: "asc" }],
+    });
+
+    const currentIndex = sameDayTeacherLessons.findIndex(
+      (item) => item.id === lessonItem.id,
+    );
+    if (currentIndex < 0 || currentIndex === sameDayTeacherLessons.length - 1) {
+      return null;
+    }
+
+    const nextLessonItem = sameDayTeacherLessons[currentIndex + 1];
+    if (!nextLessonItem) {
+      return null;
+    }
+
+    const isEquivalentConsecutiveLesson =
+      nextLessonItem.schoolYearId === lessonItem.schoolYearId &&
+      nextLessonItem.seriesClassId === lessonItem.seriesClassId &&
+      nextLessonItem.teacherSubjectId === lessonItem.teacherSubjectId &&
+      nextLessonItem.startTime === lessonItem.endTime;
+
+    if (!isEquivalentConsecutiveLesson) {
+      return null;
+    }
+
+    return nextLessonItem;
+  }
+
   private mapResponse(
     lessonItem: Awaited<ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>>,
     enrollments: Awaited<ReturnType<LessonAttendancesService["findActiveEnrollments"]>>,
@@ -158,10 +229,12 @@ export class LessonAttendancesService {
     dto: UpsertLessonAttendanceDto,
   ) {
     const lessonItem = await this.findLessonItemForTeacher(lessonCalendarItemId);
+    this.ensureAttendanceDateIsAllowed(lessonItem.lessonDate);
     const enrollments = await this.findActiveEnrollments(lessonItem);
     const validStudentIds = new Set(
       enrollments.map((enrollment) => enrollment.studentId),
     );
+    const nextLessonItem = await this.findNextConsecutiveLessonItem(lessonItem);
 
     for (const attendance of dto.attendances) {
       if (!validStudentIds.has(attendance.studentId)) {
@@ -171,9 +244,10 @@ export class LessonAttendancesService {
       }
     }
 
-    await this.prisma.$transaction(
-      dto.attendances.map((attendance) =>
-        this.prisma.lessonAttendance.upsert({
+    let preparedNextLessonItemId: string | null = null;
+    await this.prisma.$transaction(async (tx) => {
+      for (const attendance of dto.attendances) {
+        await tx.lessonAttendance.upsert({
           where: {
             lessonCalendarItemId_studentId: {
               lessonCalendarItemId,
@@ -199,9 +273,85 @@ export class LessonAttendancesService {
             createdBy: this.userId(),
             updatedBy: this.userId(),
           },
-        }),
-      ),
-    );
+        });
+      }
+
+      if (!nextLessonItem) {
+        return;
+      }
+
+      const existingNextAttendanceCount = await tx.lessonAttendance.count({
+        where: {
+          tenantId: this.tenantId(),
+          lessonCalendarItemId: nextLessonItem.id,
+          canceledAt: null,
+        },
+      });
+
+      if (existingNextAttendanceCount > 0) {
+        return;
+      }
+
+      const nextEnrollments = await tx.enrollment.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          schoolYearId: nextLessonItem.schoolYearId,
+          seriesClassId: nextLessonItem.seriesClassId,
+          status: "ATIVO",
+          canceledAt: null,
+          student: {
+            canceledAt: null,
+          },
+        },
+        select: {
+          studentId: true,
+        },
+      });
+
+      const nextStudentIds = new Set(
+        nextEnrollments.map((enrollment) => enrollment.studentId),
+      );
+
+      const copiedAttendances = dto.attendances.filter((attendance) =>
+        nextStudentIds.has(attendance.studentId),
+      );
+
+      if (!copiedAttendances.length) {
+        return;
+      }
+
+      for (const attendance of copiedAttendances) {
+        await tx.lessonAttendance.upsert({
+          where: {
+            lessonCalendarItemId_studentId: {
+              lessonCalendarItemId: nextLessonItem.id,
+              studentId: attendance.studentId,
+            },
+          },
+          update: {
+            status: attendance.status,
+            notes: this.normalizeText(attendance.notes),
+            recordedAt: new Date(),
+            updatedBy: this.userId(),
+            canceledAt: null,
+            canceledBy: null,
+          },
+          create: {
+            tenantId: this.tenantId(),
+            lessonCalendarItemId: nextLessonItem.id,
+            studentId: attendance.studentId,
+            teacherId: this.userId(),
+            status: attendance.status,
+            notes: this.normalizeText(attendance.notes),
+            recordedAt: new Date(),
+            createdBy: this.userId(),
+            updatedBy: this.userId(),
+          },
+        });
+      }
+
+      preparedNextLessonItemId = nextLessonItem.id;
+    });
 
     let notificationsCreated = 0;
     if (dto.notifyStudents || dto.notifyGuardians) {
@@ -241,6 +391,7 @@ export class LessonAttendancesService {
     return {
       ...this.mapResponse(refreshedLessonItem, refreshedEnrollments),
       notificationsCreated,
+      preparedNextLessonItemId,
     };
   }
 }

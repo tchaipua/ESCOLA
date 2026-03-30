@@ -174,3 +174,5 @@
  GET /principal/grade-horaria 200 in 123ms (compile: 111ms, render: 12ms)
  GET /principal/grade-anual 200 in 202ms (compile: 180ms, render: 23ms)
  GET /principal/grade-anual 200 in 133ms (compile: 121ms, render: 12ms)
+✓ Compiled in 99ms
+✓ Compiled in 34ms

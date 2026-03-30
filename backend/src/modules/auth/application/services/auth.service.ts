@@ -424,9 +424,7 @@ export class AuthService {
       throw new UnauthorizedException("Acesso negado para esta escola.");
     }
 
-    const selectableAccounts = accounts.filter(
-      (account) => account.tenantId === selectedTenantId,
-    );
+    const selectableAccounts = validUsersForTenant;
 
     if (!loginDto.accountId && !loginDto.accountType) {
       if (selectableAccounts.length > 1) {
