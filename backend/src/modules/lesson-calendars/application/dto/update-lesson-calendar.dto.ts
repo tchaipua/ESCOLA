@@ -53,7 +53,9 @@ export class UpdateLessonCalendarDto {
   @ApiPropertyOptional({ type: [UpdateLessonCalendarPeriodDto] })
   @IsOptional()
   @IsArray({ message: "Informe os períodos da grade anual." })
-  @ArrayMinSize(1, { message: "Adicione pelo menos um período na grade anual." })
+  @ArrayMinSize(1, {
+    message: "Adicione pelo menos um período na grade anual.",
+  })
   @ValidateNested({ each: true })
   @Type(() => UpdateLessonCalendarPeriodDto)
   periods?: UpdateLessonCalendarPeriodDto[];

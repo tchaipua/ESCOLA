@@ -18,21 +18,28 @@ export class LessonAssessmentsController {
 
   @Get("my-events")
   @Permissions("MANAGE_TEACHER_DAILY_AGENDA")
-  @ApiOperation({ summary: "Lista provas e trabalhos do professor para lançamento de notas" })
+  @ApiOperation({
+    summary: "Lista provas e trabalhos do professor para lançamento de notas",
+  })
   findMyTeacherAssessments(@Query() query: ListMyTeacherAssessmentsDto) {
     return this.lessonAssessmentsService.findMyTeacherAssessments(query);
   }
 
   @Get("history")
   @Permissions("MANAGE_TEACHER_DAILY_AGENDA")
-  @ApiOperation({ summary: "Consulta o histórico de notas por matéria, turma e ano letivo do professor" })
+  @ApiOperation({
+    summary:
+      "Consulta o histórico de notas por matéria, turma e ano letivo do professor",
+  })
   findTeacherGradeHistory(@Query() query: ListTeacherGradeHistoryDto) {
     return this.lessonAssessmentsService.findTeacherGradeHistory(query);
   }
 
   @Get("by-event/:lessonEventId")
   @Permissions("MANAGE_TEACHER_DAILY_AGENDA")
-  @ApiOperation({ summary: "Consulta a avaliação da aula e os alunos da turma" })
+  @ApiOperation({
+    summary: "Consulta a avaliação da aula e os alunos da turma",
+  })
   findByLessonEvent(@Param("lessonEventId") lessonEventId: string) {
     return this.lessonAssessmentsService.findByLessonEvent(lessonEventId);
   }
@@ -44,6 +51,9 @@ export class LessonAssessmentsController {
     @Param("lessonEventId") lessonEventId: string,
     @Body() dto: UpsertLessonAssessmentDto,
   ) {
-    return this.lessonAssessmentsService.upsertByLessonEvent(lessonEventId, dto);
+    return this.lessonAssessmentsService.upsertByLessonEvent(
+      lessonEventId,
+      dto,
+    );
   }
 }

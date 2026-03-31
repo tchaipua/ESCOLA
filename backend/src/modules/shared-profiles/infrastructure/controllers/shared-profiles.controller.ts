@@ -1,4 +1,10 @@
-import { Controller, Get, NotFoundException, Param, Query } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Query,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { SharedProfilesService } from "../../application/services/shared-profiles.service";
@@ -8,9 +14,7 @@ import { getTenantContext } from "../../../../common/tenant/tenant.context";
 @ApiTags("Dados Compartilhados por CPF")
 @Controller("shared-profiles")
 export class SharedProfilesController {
-  constructor(
-    private readonly sharedProfilesService: SharedProfilesService,
-  ) {}
+  constructor(private readonly sharedProfilesService: SharedProfilesService) {}
 
   @Get("cpf/:cpf")
   @Roles("ADMIN", "SECRETARIA", "COORDENACAO", "USER", "USUARIO_ESCOLA")

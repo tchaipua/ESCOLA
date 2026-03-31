@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../../prisma/prisma.service";
 
 type SharedProfileKind = "TEACHER" | "STUDENT" | "GUARDIAN";
@@ -174,6 +174,8 @@ type SharedNameSuggestion = {
   score: number;
 };
 
+const PROTECTED_PLACEHOLDER_NAME = "PESSOA SEM NOME";
+
 const SHARED_PROFILE_FIELDS = [
   "name",
   "birthDate",
@@ -211,6 +213,29 @@ export class SharedProfilesService {
     return normalized || "";
   }
 
+  private normalizeWritableName(value?: string | null) {
+    return String(value || "")
+      .trim()
+      .toUpperCase();
+  }
+
+  private isProtectedPlaceholderName(value?: string | null) {
+    return this.normalizeWritableName(value) === PROTECTED_PLACEHOLDER_NAME;
+  }
+
+  resolveWritableName(value?: string | null, fallback?: string | null) {
+    const candidate =
+      this.normalizeWritableName(value) || this.normalizeWritableName(fallback);
+
+    if (!candidate || candidate === PROTECTED_PLACEHOLDER_NAME) {
+      throw new BadRequestException(
+        "NOME INVÁLIDO. NÃO É PERMITIDO GRAVAR PESSOA SEM NOME.",
+      );
+    }
+
+    return candidate;
+  }
+
   private isBlank(value: unknown) {
     return (
       value === undefined ||
@@ -232,7 +257,11 @@ export class SharedProfilesService {
   private isSubsequence(query: string, candidate: string) {
     if (!query || !candidate) return false;
     let queryIndex = 0;
-    for (let candidateIndex = 0; candidateIndex < candidate.length; candidateIndex += 1) {
+    for (
+      let candidateIndex = 0;
+      candidateIndex < candidate.length;
+      candidateIndex += 1
+    ) {
       if (candidate[candidateIndex] === query[queryIndex]) {
         queryIndex += 1;
       }
@@ -254,13 +283,19 @@ export class SharedProfilesService {
 
     const queryTokens = normalizedQuery.split(" ").filter(Boolean);
     const nameTokens = normalizedName.split(" ").filter(Boolean);
-    const allQueryTokensIncluded = queryTokens.length > 0
-      && queryTokens.every((token) => nameTokens.some((nameToken) => nameToken.includes(token)));
+    const allQueryTokensIncluded =
+      queryTokens.length > 0 &&
+      queryTokens.every((token) =>
+        nameTokens.some((nameToken) => nameToken.includes(token)),
+      );
     if (allQueryTokensIncluded) return 90;
 
     const compactQuery = normalizedQuery.replace(/\s+/g, "");
     const compactName = normalizedName.replace(/\s+/g, "");
-    if (compactQuery.length >= 3 && this.isSubsequence(compactQuery, compactName)) {
+    if (
+      compactQuery.length >= 3 &&
+      this.isSubsequence(compactQuery, compactName)
+    ) {
       return 80;
     }
 
@@ -401,7 +436,9 @@ export class SharedProfilesService {
   }
 
   private getAdministrativeRoleLabel(role?: string | null) {
-    const normalizedRole = String(role || "").trim().toUpperCase();
+    const normalizedRole = String(role || "")
+      .trim()
+      .toUpperCase();
     if (!normalizedRole) return null;
 
     if (normalizedRole === "ADMIN") return "ADMINISTRADOR";
@@ -432,9 +469,7 @@ export class SharedProfilesService {
     return Array.from(
       new Set(
         users
-          .filter(
-            (user) => this.normalizeEmail(user.email) === normalizedEmail,
-          )
+          .filter((user) => this.normalizeEmail(user.email) === normalizedEmail)
           .map((user) => this.getAdministrativeRoleLabel(user.role))
           .filter((role): role is string => Boolean(role)),
       ),
@@ -485,9 +520,7 @@ export class SharedProfilesService {
         where: {
           tenantId,
           cpf: { not: null },
-          ...(exclude?.kind === "GUARDIAN"
-            ? { id: { not: exclude.id } }
-            : {}),
+          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
         },
         select: this.selectSharedFields(),
       }),
@@ -567,9 +600,7 @@ export class SharedProfilesService {
         where: {
           tenantId,
           email: { not: null },
-          ...(exclude?.kind === "GUARDIAN"
-            ? { id: { not: exclude.id } }
-            : {}),
+          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
         },
         select: {
           id: true,
@@ -657,18 +688,24 @@ export class SharedProfilesService {
 
     return {
       tenantId,
-      name: String(payload.name || "").trim() || "PESSOA SEM NOME",
+      name: this.resolveWritableName(
+        typeof payload.name === "string" ? payload.name : null,
+      ),
       birthDate: payload.birthDate instanceof Date ? payload.birthDate : null,
       rg: this.isBlank(payload.rg) ? null : String(payload.rg),
       cpf: this.isBlank(payload.cpf) ? null : String(payload.cpf),
       cpfDigits: normalizedCpf || null,
       cnpj: this.isBlank(payload.cnpj) ? null : String(payload.cnpj),
-      nickname: this.isBlank(payload.nickname) ? null : String(payload.nickname),
+      nickname: this.isBlank(payload.nickname)
+        ? null
+        : String(payload.nickname),
       corporateName: this.isBlank(payload.corporateName)
         ? null
         : String(payload.corporateName),
       phone: this.isBlank(payload.phone) ? null : String(payload.phone),
-      whatsapp: this.isBlank(payload.whatsapp) ? null : String(payload.whatsapp),
+      whatsapp: this.isBlank(payload.whatsapp)
+        ? null
+        : String(payload.whatsapp),
       cellphone1: this.isBlank(payload.cellphone1)
         ? null
         : String(payload.cellphone1),
@@ -676,7 +713,9 @@ export class SharedProfilesService {
         ? null
         : String(payload.cellphone2),
       email: normalizedEmail || null,
-      password: this.isBlank(payload.password) ? null : String(payload.password),
+      password: this.isBlank(payload.password)
+        ? null
+        : String(payload.password),
       resetPasswordToken: this.isBlank(payload.resetPasswordToken)
         ? null
         : String(payload.resetPasswordToken),
@@ -697,6 +736,41 @@ export class SharedProfilesService {
         : String(payload.complement),
       updatedBy: userId || undefined,
       createdBy: userId || undefined,
+    };
+  }
+
+  private buildPersonUpdateData(
+    tenantId: string,
+    payload: SharedProfilePayload,
+    userId?: string | null,
+  ) {
+    const nextData = this.buildPersonCreateData(tenantId, payload, userId);
+
+    return {
+      name: nextData.name,
+      birthDate: nextData.birthDate,
+      rg: nextData.rg,
+      cpf: nextData.cpf,
+      cpfDigits: nextData.cpfDigits,
+      cnpj: nextData.cnpj,
+      nickname: nextData.nickname,
+      corporateName: nextData.corporateName,
+      phone: nextData.phone,
+      whatsapp: nextData.whatsapp,
+      cellphone1: nextData.cellphone1,
+      cellphone2: nextData.cellphone2,
+      email: nextData.email,
+      password: nextData.password,
+      resetPasswordToken: nextData.resetPasswordToken,
+      resetPasswordExpires: nextData.resetPasswordExpires,
+      zipCode: nextData.zipCode,
+      street: nextData.street,
+      number: nextData.number,
+      city: nextData.city,
+      state: nextData.state,
+      neighborhood: nextData.neighborhood,
+      complement: nextData.complement,
+      updatedBy: userId || undefined,
     };
   }
 
@@ -734,61 +808,9 @@ export class SharedProfilesService {
       });
     }
 
-    const emailOwnedByOtherPerson =
-      Boolean(nextData.email) &&
-      Boolean(emailPerson) &&
-      emailPerson!.id !== basePerson.id;
-
-    const updateData = {
-      name: this.getMergedValue(nextData.name, basePerson.name) || "PESSOA SEM NOME",
-      birthDate: this.getMergedValue(nextData.birthDate, basePerson.birthDate),
-      rg: this.getMergedValue(nextData.rg, basePerson.rg),
-      cpf: this.getMergedValue(nextData.cpf, basePerson.cpf),
-      cpfDigits: this.getMergedValue(nextData.cpfDigits, basePerson.cpfDigits),
-      cnpj: this.getMergedValue(nextData.cnpj, basePerson.cnpj),
-      nickname: this.getMergedValue(nextData.nickname, basePerson.nickname),
-      corporateName: this.getMergedValue(
-        nextData.corporateName,
-        basePerson.corporateName,
-      ),
-      phone: this.getMergedValue(nextData.phone, basePerson.phone),
-      whatsapp: this.getMergedValue(nextData.whatsapp, basePerson.whatsapp),
-      cellphone1: this.getMergedValue(nextData.cellphone1, basePerson.cellphone1),
-      cellphone2: this.getMergedValue(nextData.cellphone2, basePerson.cellphone2),
-      email: emailOwnedByOtherPerson
-        ? basePerson.email ?? null
-        : this.getMergedValue(nextData.email, basePerson.email),
-      password: emailOwnedByOtherPerson
-        ? basePerson.password ?? null
-        : this.getMergedValue(nextData.password, basePerson.password),
-      resetPasswordToken: emailOwnedByOtherPerson
-        ? basePerson.resetPasswordToken ?? null
-        : this.getMergedValue(
-            nextData.resetPasswordToken,
-            basePerson.resetPasswordToken,
-          ),
-      resetPasswordExpires: emailOwnedByOtherPerson
-        ? basePerson.resetPasswordExpires ?? null
-        : this.getMergedValue(
-            nextData.resetPasswordExpires,
-            basePerson.resetPasswordExpires,
-          ),
-      zipCode: this.getMergedValue(nextData.zipCode, basePerson.zipCode),
-      street: this.getMergedValue(nextData.street, basePerson.street),
-      number: this.getMergedValue(nextData.number, basePerson.number),
-      city: this.getMergedValue(nextData.city, basePerson.city),
-      state: this.getMergedValue(nextData.state, basePerson.state),
-      neighborhood: this.getMergedValue(
-        nextData.neighborhood,
-        basePerson.neighborhood,
-      ),
-      complement: this.getMergedValue(nextData.complement, basePerson.complement),
-      updatedBy: userId || undefined,
-    };
-
     return this.prisma.person.update({
       where: { id: basePerson.id },
-      data: updateData,
+      data: this.buildPersonUpdateData(tenantId, payload, userId),
       select: this.selectPersonFields(),
     });
   }
@@ -799,48 +821,34 @@ export class SharedProfilesService {
     source?: { kind: SharedProfileKind; id: string },
   ) {
     const normalizedCpf = this.normalizeDocument(person.cpf);
-    const normalizedEmail = this.normalizeEmail(person.email);
+    if (!normalizedCpf) return [];
 
     const [teachers, students, guardians] = await Promise.all([
       this.prisma.teacher.findMany({
         where: {
           tenantId,
-          OR: [
-            { personId: person.id },
-            ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
-            { cpf: { not: null } },
-          ],
+          cpf: { not: null },
         },
         select: this.selectSharedFields(),
       }),
       this.prisma.student.findMany({
         where: {
           tenantId,
-          OR: [
-            { personId: person.id },
-            ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
-            { cpf: { not: null } },
-          ],
+          cpf: { not: null },
         },
         select: this.selectSharedFields(),
       }),
       this.prisma.guardian.findMany({
         where: {
           tenantId,
-          OR: [
-            { personId: person.id },
-            ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
-            { cpf: { not: null } },
-          ],
+          cpf: { not: null },
         },
         select: this.selectSharedFields(),
       }),
     ]);
 
     const predicate = (record: SharedProfileRecord) =>
-      record.personId === person.id ||
-      (normalizedEmail && this.normalizeEmail(record.email) === normalizedEmail) ||
-      (normalizedCpf && this.normalizeDocument(record.cpf) === normalizedCpf);
+      this.normalizeDocument(record.cpf) === normalizedCpf;
 
     return [
       ...teachers
@@ -853,8 +861,7 @@ export class SharedProfilesService {
         .filter(predicate)
         .map((record) => ({ kind: "GUARDIAN" as const, record })),
     ].filter(
-      ({ kind, record }) =>
-        !(source?.kind === kind && source.id === record.id),
+      ({ kind, record }) => !(source?.kind === kind && source.id === record.id),
     );
   }
 
@@ -864,7 +871,11 @@ export class SharedProfilesService {
     userId?: string | null,
     source?: { kind: SharedProfileKind; id: string },
   ) {
-    const matches = await this.collectRoleMatchesForPerson(tenantId, person, source);
+    const matches = await this.collectRoleMatchesForPerson(
+      tenantId,
+      person,
+      source,
+    );
     if (matches.length === 0) return;
 
     const updateData = this.buildSyncUpdateData(person, userId);
@@ -905,11 +916,12 @@ export class SharedProfilesService {
 
     const person = await this.findPersonByCpf(tenantId, normalizedCpf);
     if (person) {
-      const linkedRoles = await this.collectRoleMatchesForPerson(tenantId, person);
-      const administrativeRoles = await this.loadAdministrativeRoleLabelsByEmail(
+      const linkedRoles = await this.collectRoleMatchesForPerson(
         tenantId,
-        person.email,
+        person,
       );
+      const administrativeRoles =
+        await this.loadAdministrativeRoleLabelsByEmail(tenantId, person.email);
       const uniqueRoles = Array.from(
         new Set([
           ...linkedRoles.map((item) => this.getSourceRoleLabel(item.kind)),
@@ -953,20 +965,18 @@ export class SharedProfilesService {
     };
   }
 
-  async findSharedProfileByEmail(
-    tenantId: string,
-    email?: string | null,
-  ) {
+  async findSharedProfileByEmail(tenantId: string, email?: string | null) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return null;
 
     const person = await this.findPersonByEmail(tenantId, normalizedEmail);
     if (person) {
-      const linkedRoles = await this.collectRoleMatchesForPerson(tenantId, person);
-      const administrativeRoles = await this.loadAdministrativeRoleLabelsByEmail(
+      const linkedRoles = await this.collectRoleMatchesForPerson(
         tenantId,
-        person.email,
+        person,
       );
+      const administrativeRoles =
+        await this.loadAdministrativeRoleLabelsByEmail(tenantId, person.email);
       const uniqueRoles = Array.from(
         new Set([
           ...linkedRoles.map((item) => this.getSourceRoleLabel(item.kind)),
@@ -999,7 +1009,11 @@ export class SharedProfilesService {
     );
     const roleCandidates = [...administrativeRoles];
 
-    if (latest.kind === "TEACHER" || latest.kind === "STUDENT" || latest.kind === "GUARDIAN") {
+    if (
+      latest.kind === "TEACHER" ||
+      latest.kind === "STUDENT" ||
+      latest.kind === "GUARDIAN"
+    ) {
       roleCandidates.push(this.getSourceRoleLabel(latest.kind));
     }
 
@@ -1008,8 +1022,7 @@ export class SharedProfilesService {
       roles: Array.from(new Set(roleCandidates)),
       ...this.getSharedPayload(latest.record as SharedProfileRecord),
       birthDate:
-        "birthDate" in latest.record &&
-        latest.record.birthDate instanceof Date
+        "birthDate" in latest.record && latest.record.birthDate instanceof Date
           ? latest.record.birthDate.toISOString().split("T")[0]
           : null,
     };
@@ -1101,7 +1114,10 @@ export class SharedProfilesService {
 
     const suggestionsMap = new Map<string, SharedNameSuggestion>();
     const upsertSuggestion = (payload: Omit<SharedNameSuggestion, "score">) => {
-      const score = this.computeNameSimilarityScore(normalizedQuery, payload.name);
+      const score = this.computeNameSimilarityScore(
+        normalizedQuery,
+        payload.name,
+      );
       if (score <= 0) return;
 
       const normalizedEmail = this.normalizeEmail(payload.email);
@@ -1123,7 +1139,9 @@ export class SharedProfilesService {
         return;
       }
 
-      const mergedRoles = Array.from(new Set([...existing.roles, ...payload.roles]));
+      const mergedRoles = Array.from(
+        new Set([...existing.roles, ...payload.roles]),
+      );
       const shouldReplaceIdentity =
         score > existing.score ||
         payload.updatedAt.getTime() > existing.updatedAt.getTime();
@@ -1238,7 +1256,11 @@ export class SharedProfilesService {
       return person.password;
     }
 
-    const matches = await this.loadEmailMatches(tenantId, normalizedEmail, exclude);
+    const matches = await this.loadEmailMatches(
+      tenantId,
+      normalizedEmail,
+      exclude,
+    );
     const latest = matches
       .filter(({ record }) => !!record.password)
       .sort(
@@ -1375,6 +1397,13 @@ export class SharedProfilesService {
       if (!this.isBlank(payload[field])) continue;
       const incomingValue = profile[field];
       if (this.isBlank(incomingValue)) continue;
+      if (
+        field === "name" &&
+        typeof incomingValue === "string" &&
+        this.isProtectedPlaceholderName(incomingValue)
+      ) {
+        continue;
+      }
       mutablePayload[field] = incomingValue;
     }
 
@@ -1389,6 +1418,11 @@ export class SharedProfilesService {
     userId?: string | null,
     previousCpf?: string | null,
   ) {
+    const normalizedSourceCpf = this.normalizeDocument(sourceRecord.cpf);
+    if (!normalizedSourceCpf) {
+      return;
+    }
+
     const person = await this.upsertSharedPerson(
       tenantId,
       sourceRecord,

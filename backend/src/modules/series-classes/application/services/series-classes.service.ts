@@ -62,10 +62,7 @@ export class SeriesClassesService {
     };
   }
 
-  private async validateReferences(
-    seriesId: string,
-    classId: string,
-  ) {
+  private async validateReferences(seriesId: string, classId: string) {
     const [series, classEntity] = await Promise.all([
       this.prisma.series.findFirst({
         where: {
@@ -196,7 +193,8 @@ export class SeriesClassesService {
       },
     });
 
-    if (!link) throw new NotFoundException("Vínculo Série x Turma não encontrado.");
+    if (!link)
+      throw new NotFoundException("Vínculo Série x Turma não encontrado.");
     return this.mapSeriesClassForViewer(link, currentUser);
   }
 
@@ -222,16 +220,16 @@ export class SeriesClassesService {
         enrollments: {
           where: { canceledAt: null },
           include: {
-          student: {
-            select: {
-              id: true,
-              name: true,
-              cpf: true,
-              rg: true,
-              photoUrl: true,
-              phone: true,
-              whatsapp: true,
-              cellphone1: true,
+            student: {
+              select: {
+                id: true,
+                name: true,
+                cpf: true,
+                rg: true,
+                photoUrl: true,
+                phone: true,
+                whatsapp: true,
+                cellphone1: true,
                 cellphone2: true,
                 email: true,
                 street: true,
@@ -248,21 +246,24 @@ export class SeriesClassesService {
       },
     });
 
-    const studentsMap = new Map<string, {
-      id: string;
-      name: string;
-      cpf: string | null;
-      email: string | null;
-      phone: string | null;
-      street: string | null;
-      number: string | null;
-      city: string | null;
-      state: string | null;
-      neighborhood: string | null;
-      zipCode: string | null;
-      updatedAt: Date | null;
-      photoUrl: string | null;
-    }>();
+    const studentsMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        cpf: string | null;
+        email: string | null;
+        phone: string | null;
+        street: string | null;
+        number: string | null;
+        city: string | null;
+        state: string | null;
+        neighborhood: string | null;
+        zipCode: string | null;
+        updatedAt: Date | null;
+        photoUrl: string | null;
+      }
+    >();
 
     links.forEach((link) => {
       const sanitizedLink = this.mapSeriesClassForViewer(link, currentUser);
@@ -307,7 +308,10 @@ export class SeriesClassesService {
     };
   }
 
-  async findSeriesClassStudents(seriesClassId: string, currentUser?: ICurrentUser) {
+  async findSeriesClassStudents(
+    seriesClassId: string,
+    currentUser?: ICurrentUser,
+  ) {
     const link = await this.prisma.seriesClass.findFirst({
       where: {
         id: seriesClassId,
@@ -347,7 +351,9 @@ export class SeriesClassesService {
     });
 
     if (!link) {
-      throw new NotFoundException("Vínculo entre série e turma não encontrado.");
+      throw new NotFoundException(
+        "Vínculo entre série e turma não encontrado.",
+      );
     }
 
     const sanitizedLink = this.mapSeriesClassForViewer(link, currentUser);

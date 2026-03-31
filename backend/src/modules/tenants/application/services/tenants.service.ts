@@ -463,7 +463,9 @@ export class TenantsService {
     });
 
     if (!tenant) {
-      throw new NotFoundException("Escola não encontrada para o usuário logado.");
+      throw new NotFoundException(
+        "Escola não encontrada para o usuário logado.",
+      );
     }
 
     return tenant;
@@ -738,14 +740,18 @@ export class TenantsService {
   private normalizeAccessRole(
     role?: string | null,
   ): "ADMIN" | "SECRETARIA" | "COORDENACAO" {
-    const normalizedRole = String(role || "SECRETARIA").trim().toUpperCase();
+    const normalizedRole = String(role || "SECRETARIA")
+      .trim()
+      .toUpperCase();
     if (normalizedRole === "ADMIN") return "ADMIN";
     if (normalizedRole === "COORDENACAO") return "COORDENACAO";
     return "SECRETARIA";
   }
 
   private normalizeOptionalUpperText(value?: string | null) {
-    const normalized = String(value || "").trim().toUpperCase();
+    const normalized = String(value || "")
+      .trim()
+      .toUpperCase();
     return normalized || null;
   }
 
@@ -756,39 +762,40 @@ export class TenantsService {
     return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
   }
 
-  private mapAccessUser(record: {
-    id: string;
-    tenantId: string;
-    name: string;
-    email: string;
-    photoUrl?: string | null;
-    complementaryProfiles?: string | null;
-    role: string;
-    accessProfile?: string | null;
-    permissions?: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    canceledAt?: Date | null;
-  },
-  sharedPerson?: {
-    birthDate?: Date | null;
-    rg?: string | null;
-    cpf?: string | null;
-    cnpj?: string | null;
-    nickname?: string | null;
-    corporateName?: string | null;
-    phone?: string | null;
-    whatsapp?: string | null;
-    cellphone1?: string | null;
-    cellphone2?: string | null;
-    zipCode?: string | null;
-    street?: string | null;
-    number?: string | null;
-    city?: string | null;
-    state?: string | null;
-    neighborhood?: string | null;
-    complement?: string | null;
-  } | null,
+  private mapAccessUser(
+    record: {
+      id: string;
+      tenantId: string;
+      name: string;
+      email: string;
+      photoUrl?: string | null;
+      complementaryProfiles?: string | null;
+      role: string;
+      accessProfile?: string | null;
+      permissions?: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      canceledAt?: Date | null;
+    },
+    sharedPerson?: {
+      birthDate?: Date | null;
+      rg?: string | null;
+      cpf?: string | null;
+      cnpj?: string | null;
+      nickname?: string | null;
+      corporateName?: string | null;
+      phone?: string | null;
+      whatsapp?: string | null;
+      cellphone1?: string | null;
+      cellphone2?: string | null;
+      zipCode?: string | null;
+      street?: string | null;
+      number?: string | null;
+      city?: string | null;
+      state?: string | null;
+      neighborhood?: string | null;
+      complement?: string | null;
+    } | null,
   ) {
     return {
       id: record.id,
@@ -866,45 +873,50 @@ export class TenantsService {
     });
 
     const normalizedUserEmails = new Set(
-      users
-        .map((user) => this.normalizeEmail(user.email))
-        .filter(Boolean),
+      users.map((user) => this.normalizeEmail(user.email)).filter(Boolean),
     );
-    const sharedPeople = normalizedUserEmails.size > 0
-      ? await this.runAsMasterTenantContext(tenantId, () => this.prisma.person.findMany({
-          where: {
-            tenantId,
-            canceledAt: null,
-            email: { not: null },
-          },
-          select: {
-            email: true,
-            birthDate: true,
-            rg: true,
-            cpf: true,
-            cnpj: true,
-            nickname: true,
-            corporateName: true,
-            phone: true,
-            whatsapp: true,
-            cellphone1: true,
-            cellphone2: true,
-            zipCode: true,
-            street: true,
-            number: true,
-            city: true,
-            state: true,
-            neighborhood: true,
-            complement: true,
-            updatedAt: true,
-          },
-        }))
-      : [];
+    const sharedPeople =
+      normalizedUserEmails.size > 0
+        ? await this.runAsMasterTenantContext(tenantId, () =>
+            this.prisma.person.findMany({
+              where: {
+                tenantId,
+                canceledAt: null,
+                email: { not: null },
+              },
+              select: {
+                email: true,
+                birthDate: true,
+                rg: true,
+                cpf: true,
+                cnpj: true,
+                nickname: true,
+                corporateName: true,
+                phone: true,
+                whatsapp: true,
+                cellphone1: true,
+                cellphone2: true,
+                zipCode: true,
+                street: true,
+                number: true,
+                city: true,
+                state: true,
+                neighborhood: true,
+                complement: true,
+                updatedAt: true,
+              },
+            }),
+          )
+        : [];
 
     const sharedPersonByEmail = new Map(
       sharedPeople
-        .filter((person) => normalizedUserEmails.has(this.normalizeEmail(person.email)))
-        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+        .filter((person) =>
+          normalizedUserEmails.has(this.normalizeEmail(person.email)),
+        )
+        .sort(
+          (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
+        )
         .map((person) => [this.normalizeEmail(person.email), person] as const),
     );
 
@@ -972,7 +984,9 @@ export class TenantsService {
     const cpf = this.normalizeOptionalUpperText(payload.cpf);
     const cnpj = this.normalizeOptionalUpperText(payload.cnpj);
     const nickname = this.normalizeOptionalUpperText(payload.nickname);
-    const corporateName = this.normalizeOptionalUpperText(payload.corporateName);
+    const corporateName = this.normalizeOptionalUpperText(
+      payload.corporateName,
+    );
     const phone = this.normalizeOptionalUpperText(payload.phone);
     const whatsapp = this.normalizeOptionalUpperText(payload.whatsapp);
     const cellphone1 = this.normalizeOptionalUpperText(payload.cellphone1);
@@ -988,7 +1002,10 @@ export class TenantsService {
       role === "ADMIN"
         ? []
         : normalizeComplementaryAccessProfiles(payload.complementaryProfiles);
-    const accessProfile = normalizeAccessProfileCode(payload.accessProfile, role);
+    const accessProfile = normalizeAccessProfileCode(
+      payload.accessProfile,
+      role,
+    );
     const permissions = normalizePermissions(payload.permissions);
     const effectivePermissions =
       role === "ADMIN"
@@ -1040,7 +1057,10 @@ export class TenantsService {
             ? null
             : serializeComplementaryAccessProfiles(complementaryProfiles),
         role,
-        accessProfile: role === "ADMIN" ? getDefaultAccessProfileForRole(role) : accessProfile,
+        accessProfile:
+          role === "ADMIN"
+            ? getDefaultAccessProfileForRole(role)
+            : accessProfile,
         permissions:
           role === "ADMIN" ? null : serializePermissions(effectivePermissions),
         createdBy: this.masterAuditUser,
@@ -1175,13 +1195,17 @@ export class TenantsService {
     const complementaryProfiles =
       role === "ADMIN"
         ? []
-        : payload.complementaryProfiles !== undefined || payload.role !== undefined
+        : payload.complementaryProfiles !== undefined ||
+            payload.role !== undefined
           ? normalizeComplementaryAccessProfiles(payload.complementaryProfiles)
           : normalizeComplementaryAccessProfiles(user.complementaryProfiles);
     const accessProfile =
       payload.accessProfile !== undefined || payload.role !== undefined
         ? normalizeAccessProfileCode(payload.accessProfile, role)
-        : normalizeAccessProfileCode((user as { accessProfile?: string | null }).accessProfile, role);
+        : normalizeAccessProfileCode(
+            (user as { accessProfile?: string | null }).accessProfile,
+            role,
+          );
     const permissions = normalizePermissions(payload.permissions);
     const effectivePermissions =
       role === "ADMIN"
@@ -1614,34 +1638,38 @@ export class TenantsService {
             await tx.lessonCalendar.deleteMany({ where: { tenantId } })
           ).count,
           teacherSubjectRateHistories: (
-            await tx.teacherSubjectRateHistory.deleteMany({ where: { tenantId } })
+            await tx.teacherSubjectRateHistory.deleteMany({
+              where: { tenantId },
+            })
           ).count,
           teacherSubjects: (
             await tx.teacherSubject.deleteMany({ where: { tenantId } })
           ).count,
-          enrollments: (
-            await tx.enrollment.deleteMany({ where: { tenantId } })
-          ).count,
+          enrollments: (await tx.enrollment.deleteMany({ where: { tenantId } }))
+            .count,
           guardianStudents: (
             await tx.guardianStudent.deleteMany({ where: { tenantId } })
           ).count,
           guardians: (await tx.guardian.deleteMany({ where: { tenantId } }))
             .count,
-          students: (await tx.student.deleteMany({ where: { tenantId } })).count,
-          teachers: (await tx.teacher.deleteMany({ where: { tenantId } })).count,
+          students: (await tx.student.deleteMany({ where: { tenantId } }))
+            .count,
+          teachers: (await tx.teacher.deleteMany({ where: { tenantId } }))
+            .count,
           people: (await tx.person.deleteMany({ where: { tenantId } })).count,
           users: (await tx.user.deleteMany({ where: { tenantId } })).count,
-          subjects: (await tx.subject.deleteMany({ where: { tenantId } })).count,
+          subjects: (await tx.subject.deleteMany({ where: { tenantId } }))
+            .count,
           schedules: (await tx.schedule.deleteMany({ where: { tenantId } }))
             .count,
           seriesClasses: (
             await tx.seriesClass.deleteMany({ where: { tenantId } })
           ).count,
-          classes: (await tx["class"].deleteMany({ where: { tenantId } })).count,
+          classes: (await tx["class"].deleteMany({ where: { tenantId } }))
+            .count,
           series: (await tx.series.deleteMany({ where: { tenantId } })).count,
-          schoolYears: (
-            await tx.schoolYear.deleteMany({ where: { tenantId } })
-          ).count,
+          schoolYears: (await tx.schoolYear.deleteMany({ where: { tenantId } }))
+            .count,
           tenants: 0,
         };
 
@@ -1716,13 +1744,11 @@ export class TenantsService {
       email: string;
     }> = [];
     let finalAdminEmailForPassword: string | undefined;
-    let adminProfileSyncPayload:
-      | {
-          name?: string | null;
-          email?: string | null;
-          password?: string | null;
-        }
-      | null = null;
+    let adminProfileSyncPayload: {
+      name?: string | null;
+      email?: string | null;
+      password?: string | null;
+    } | null = null;
 
     const updatedTenant = await this.prisma.$transaction(async (tx) => {
       let adminUser:
@@ -1739,7 +1765,10 @@ export class TenantsService {
         data: {
           name: updateTenantDto.name,
           document: updateTenantDto.document,
-          logoUrl: Object.prototype.hasOwnProperty.call(updateTenantDto, "logoUrl")
+          logoUrl: Object.prototype.hasOwnProperty.call(
+            updateTenantDto,
+            "logoUrl",
+          )
             ? updateTenantDto.logoUrl?.trim() || null
             : undefined,
           rg: updateTenantDto.rg,

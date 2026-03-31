@@ -10,7 +10,10 @@ import {
 import { ApiProperty } from "@nestjs/swagger";
 
 export class CreateScheduleDto {
-  @ApiProperty({ description: "Período do horário", enum: ["MANHA", "TARDE", "NOITE"] })
+  @ApiProperty({
+    description: "Período do horário",
+    enum: ["MANHA", "TARDE", "NOITE"],
+  })
   @IsString()
   @IsIn(["MANHA", "TARDE", "NOITE"], {
     message: "Selecione um período válido: manhã, tarde ou noite.",
@@ -31,7 +34,10 @@ export class CreateScheduleDto {
   @ValidateIf((object) => Number(object.lessonNumber) !== 0)
   @IsString()
   @IsNotEmpty({ message: "Informe o horário inicial." })
-  @ValidateIf((_, value) => value !== undefined && value !== null && String(value).trim() !== "")
+  @ValidateIf(
+    (_, value) =>
+      value !== undefined && value !== null && String(value).trim() !== "",
+  )
   @Matches(/^([01]\d|2[0-3]):?([0-5]\d)$/, {
     message: "Informe o horário inicial no formato HH:mm.",
   })
@@ -44,7 +50,10 @@ export class CreateScheduleDto {
   @ValidateIf((object) => Number(object.lessonNumber) !== 0)
   @IsString()
   @IsNotEmpty({ message: "Informe o horário final." })
-  @ValidateIf((_, value) => value !== undefined && value !== null && String(value).trim() !== "")
+  @ValidateIf(
+    (_, value) =>
+      value !== undefined && value !== null && String(value).trim() !== "",
+  )
   @Matches(/^([01]\d|2[0-3]):?([0-5]\d)$/, {
     message: "Informe o horário final no formato HH:mm.",
   })

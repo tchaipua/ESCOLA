@@ -2,9 +2,7 @@ import { ExtractJwt, Strategy } from "passport-jwt";
 import { PassportStrategy } from "@nestjs/passport";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { PrismaService } from "../../../../prisma/prisma.service";
-import {
-  deserializePermissions,
-} from "../../../../common/auth/user-permissions";
+import { deserializePermissions } from "../../../../common/auth/user-permissions";
 import { resolveAccountPermissions } from "../../../../common/auth/access-profiles";
 import {
   MASTER_PERMISSIONS,
@@ -24,7 +22,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    if (payload?.isMaster && payload.userId === MASTER_USER_ID && payload.role === MASTER_ROLE) {
+    if (
+      payload?.isMaster &&
+      payload.userId === MASTER_USER_ID &&
+      payload.role === MASTER_ROLE
+    ) {
       return {
         userId: MASTER_USER_ID,
         tenantId:
@@ -67,7 +69,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tenantId: payload.tenantId,
           canceledAt: null,
         },
-        select: { id: true, tenantId: true, accessProfile: true, permissions: true },
+        select: {
+          id: true,
+          tenantId: true,
+          accessProfile: true,
+          permissions: true,
+        },
       }),
       this.prisma.student.findFirst({
         where: {
@@ -75,7 +82,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tenantId: payload.tenantId,
           canceledAt: null,
         },
-        select: { id: true, tenantId: true, accessProfile: true, permissions: true },
+        select: {
+          id: true,
+          tenantId: true,
+          accessProfile: true,
+          permissions: true,
+        },
       }),
       this.prisma.guardian.findFirst({
         where: {
@@ -83,7 +95,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tenantId: payload.tenantId,
           canceledAt: null,
         },
-        select: { id: true, tenantId: true, accessProfile: true, permissions: true },
+        select: {
+          id: true,
+          tenantId: true,
+          accessProfile: true,
+          permissions: true,
+        },
       }),
     ]);
 
@@ -100,16 +117,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       permissions: user
         ? resolveAccountPermissions({
             role: user.role,
-          accessProfile: user.accessProfile,
-          complementaryProfiles: user.complementaryProfiles,
-          permissions: user.permissions,
-        })
+            accessProfile: user.accessProfile,
+            complementaryProfiles: user.complementaryProfiles,
+            permissions: user.permissions,
+          })
         : resolveAccountPermissions({
             role: payload.role,
             accessProfile:
-              "accessProfile" in account ? (account as { accessProfile?: string | null }).accessProfile : null,
+              "accessProfile" in account
+                ? (account as { accessProfile?: string | null }).accessProfile
+                : null,
             permissions:
-              "permissions" in account ? (account as { permissions?: string | null }).permissions : payload.permissions,
+              "permissions" in account
+                ? (account as { permissions?: string | null }).permissions
+                : payload.permissions,
           }),
       isMaster: false,
     };

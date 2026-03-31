@@ -42,12 +42,17 @@ export class CreateTeacherDto {
   @IsOptional()
   password?: string;
 
-  @ApiPropertyOptional({ description: "Perfil de acesso pré-definido do professor" })
+  @ApiPropertyOptional({
+    description: "Perfil de acesso pré-definido do professor",
+  })
   @IsString()
   @IsOptional()
   accessProfile?: string;
 
-  @ApiPropertyOptional({ description: "Permissões específicas que sobrescrevem o perfil", type: [String] })
+  @ApiPropertyOptional({
+    description: "Permissões específicas que sobrescrevem o perfil",
+    type: [String],
+  })
   @IsArray()
   @ArrayUnique()
   @IsOptional()

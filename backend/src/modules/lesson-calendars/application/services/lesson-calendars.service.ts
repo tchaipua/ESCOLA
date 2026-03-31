@@ -128,7 +128,11 @@ export class LessonCalendarsService {
       Date.UTC(selectedDate.getUTCFullYear(), selectedDate.getUTCMonth(), 1),
     );
     const monthEnd = new Date(
-      Date.UTC(selectedDate.getUTCFullYear(), selectedDate.getUTCMonth() + 1, 0),
+      Date.UTC(
+        selectedDate.getUTCFullYear(),
+        selectedDate.getUTCMonth() + 1,
+        0,
+      ),
     );
 
     return {
@@ -173,16 +177,25 @@ export class LessonCalendarsService {
     return LessonCalendarsService.DAY_ORDER[date.getUTCDay()];
   }
 
-  private ensureValidDateRange(startDate: Date, endDate: Date, message: string) {
+  private ensureValidDateRange(
+    startDate: Date,
+    endDate: Date,
+    message: string,
+  ) {
     if (startDate.getTime() > endDate.getTime()) {
       throw new ConflictException(message);
     }
   }
 
-  private ensureNoOverlap(periods: NormalizedPeriod[], periodType: "AULA" | "INTERVALO") {
+  private ensureNoOverlap(
+    periods: NormalizedPeriod[],
+    periodType: "AULA" | "INTERVALO",
+  ) {
     const sameType = periods
       .filter((period) => period.periodType === periodType)
-      .sort((left, right) => left.startDate.getTime() - right.startDate.getTime());
+      .sort(
+        (left, right) => left.startDate.getTime() - right.startDate.getTime(),
+      );
 
     for (let index = 1; index < sameType.length; index += 1) {
       const previous = sameType[index - 1];
@@ -201,9 +214,9 @@ export class LessonCalendarsService {
     input: Array<{ periodType?: string; startDate?: string; endDate?: string }>,
   ): NormalizedPeriod[] {
     const normalized = input.map((period, index) => {
-      const periodType = String(period.periodType || "").trim().toUpperCase() as
-        | "AULA"
-        | "INTERVALO";
+      const periodType = String(period.periodType || "")
+        .trim()
+        .toUpperCase() as "AULA" | "INTERVALO";
       const startDate = this.parseDateOnly(String(period.startDate || ""));
       const endDate = this.parseDateOnly(String(period.endDate || ""));
 
@@ -230,7 +243,9 @@ export class LessonCalendarsService {
     this.ensureNoOverlap(normalized, "AULA");
     this.ensureNoOverlap(normalized, "INTERVALO");
 
-    const classPeriods = normalized.filter((period) => period.periodType === "AULA");
+    const classPeriods = normalized.filter(
+      (period) => period.periodType === "AULA",
+    );
     const intervalPeriods = normalized.filter(
       (period) => period.periodType === "INTERVALO",
     );
@@ -238,7 +253,8 @@ export class LessonCalendarsService {
     intervalPeriods.forEach((intervalPeriod) => {
       const isInsideClassPeriod = classPeriods.some(
         (classPeriod) =>
-          intervalPeriod.startDate.getTime() >= classPeriod.startDate.getTime() &&
+          intervalPeriod.startDate.getTime() >=
+            classPeriod.startDate.getTime() &&
           intervalPeriod.endDate.getTime() <= classPeriod.endDate.getTime(),
       );
 
@@ -256,7 +272,10 @@ export class LessonCalendarsService {
     });
   }
 
-  private async validateReferences(schoolYearId: string, seriesClassId: string) {
+  private async validateReferences(
+    schoolYearId: string,
+    seriesClassId: string,
+  ) {
     const [schoolYear, seriesClass] = await Promise.all([
       this.prisma.schoolYear.findFirst({
         where: {
@@ -450,8 +469,12 @@ export class LessonCalendarsService {
     periods: NormalizedPeriod[],
     weeklyItems: WeeklySourceItem[],
   ) {
-    const classPeriods = periods.filter((period) => period.periodType === "AULA");
-    const intervalPeriods = periods.filter((period) => period.periodType === "INTERVALO");
+    const classPeriods = periods.filter(
+      (period) => period.periodType === "AULA",
+    );
+    const intervalPeriods = periods.filter(
+      (period) => period.periodType === "INTERVALO",
+    );
     const itemPayloads: Array<{
       tenantId: string;
       lessonCalendarId: string;
@@ -510,9 +533,15 @@ export class LessonCalendarsService {
     return itemPayloads;
   }
 
-  private buildPeriodSummary(periods: Array<{ periodType: string; startDate: Date; endDate: Date }>) {
-    const classPeriods = periods.filter((period) => period.periodType === "AULA");
-    const intervalPeriods = periods.filter((period) => period.periodType === "INTERVALO");
+  private buildPeriodSummary(
+    periods: Array<{ periodType: string; startDate: Date; endDate: Date }>,
+  ) {
+    const classPeriods = periods.filter(
+      (period) => period.periodType === "AULA",
+    );
+    const intervalPeriods = periods.filter(
+      (period) => period.periodType === "INTERVALO",
+    );
 
     return {
       classPeriodsCount: classPeriods.length,
@@ -694,7 +723,8 @@ export class LessonCalendarsService {
   }
 
   async findSchoolCalendarEvents(referenceDate?: string) {
-    const { selectedDate, start, end } = this.buildCalendarMonthRange(referenceDate);
+    const { selectedDate, start, end } =
+      this.buildCalendarMonthRange(referenceDate);
 
     const [lessonItems, standaloneEvents] = await Promise.all([
       this.prisma.lessonCalendarItem.findMany({
@@ -765,7 +795,10 @@ export class LessonCalendarsService {
         id: event.id,
         date: this.formatDateOnly(item.lessonDate),
         eventType: event.eventType,
-        eventTypeLabel: event.eventType === "FALTA_PROFESSOR" ? "FALTA DO PROFESSOR" : event.eventType,
+        eventTypeLabel:
+          event.eventType === "FALTA_PROFESSOR"
+            ? "FALTA DO PROFESSOR"
+            : event.eventType,
         title: event.title,
         description: event.description,
         startTime: item.startTime,
@@ -777,7 +810,10 @@ export class LessonCalendarsService {
       id: event.id,
       date: this.formatDateOnly(event.eventDate || event.createdAt),
       eventType: event.eventType,
-      eventTypeLabel: event.eventType === "FALTA_PROFESSOR" ? "FALTA DO PROFESSOR" : event.eventType,
+      eventTypeLabel:
+        event.eventType === "FALTA_PROFESSOR"
+          ? "FALTA DO PROFESSOR"
+          : event.eventType,
       title: event.title,
       description: event.description,
       startTime: null,
@@ -798,12 +834,16 @@ export class LessonCalendarsService {
       lessonItems: mappedLessonItems.sort((left, right) => {
         const dateCompare = left.date.localeCompare(right.date);
         if (dateCompare !== 0) return dateCompare;
-        return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+        return `${left.startTime || ""}`.localeCompare(
+          `${right.startTime || ""}`,
+        );
       }),
       standaloneEvents: standaloneEventItems.sort((left, right) => {
         const dateCompare = left.date.localeCompare(right.date);
         if (dateCompare !== 0) return dateCompare;
-        return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+        return `${left.startTime || ""}`.localeCompare(
+          `${right.startTime || ""}`,
+        );
       }),
     };
   }
@@ -892,11 +932,17 @@ export class LessonCalendarsService {
           endDate: this.formatDateOnly(period.endDate),
         })),
     );
-    const { schoolYear } = await this.validateReferences(schoolYearId, seriesClassId);
+    const { schoolYear } = await this.validateReferences(
+      schoolYearId,
+      seriesClassId,
+    );
 
     this.ensurePeriodsWithinSchoolYear(periods, schoolYear);
     await this.ensureNoActiveCalendarConflict(schoolYearId, seriesClassId, id);
-    const weeklyItems = await this.loadWeeklySource(schoolYearId, seriesClassId);
+    const weeklyItems = await this.loadWeeklySource(
+      schoolYearId,
+      seriesClassId,
+    );
 
     await this.prisma.$transaction(async (tx) => {
       await tx.lessonCalendar.update({

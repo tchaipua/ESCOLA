@@ -98,7 +98,9 @@ export class PeopleService {
       const cleanZip = String(data.zipCode).replace(/\D/g, "");
       if (cleanZip.length < 8) return;
 
-      const response = await fetch(`https://viacep.com.br/ws/${cleanZip}/json/`);
+      const response = await fetch(
+        `https://viacep.com.br/ws/${cleanZip}/json/`,
+      );
       const viaCepData = await response.json();
       if (viaCepData.erro) return;
 
@@ -132,7 +134,10 @@ export class PeopleService {
     );
   }
 
-  private getRolePermissions(role: PersonRoleValue, roleRecord: LinkedRoleRecord) {
+  private getRolePermissions(
+    role: PersonRoleValue,
+    roleRecord: LinkedRoleRecord,
+  ) {
     return resolveAccountPermissions({
       role: this.getNormalizedRole(role),
       accessProfile: roleRecord.accessProfile,
@@ -173,7 +178,10 @@ export class PeopleService {
           )
         : null,
       this.getPrimaryRoleRecord(person.students)
-        ? this.mapRoleSummary("ALUNO", this.getPrimaryRoleRecord(person.students)!)
+        ? this.mapRoleSummary(
+            "ALUNO",
+            this.getPrimaryRoleRecord(person.students)!,
+          )
         : null,
       this.getPrimaryRoleRecord(person.guardians)
         ? this.mapRoleSummary(
@@ -222,7 +230,9 @@ export class PeopleService {
     payload: { cpf?: string | null; email?: string | null },
     excludePersonId?: string,
   ) {
-    const normalizedCpf = this.sharedProfilesService.normalizeDocument(payload.cpf);
+    const normalizedCpf = this.sharedProfilesService.normalizeDocument(
+      payload.cpf,
+    );
     if (normalizedCpf) {
       const personByCpf = await this.prisma.person.findFirst({
         where: {
@@ -240,7 +250,9 @@ export class PeopleService {
       }
     }
 
-    const normalizedEmail = this.sharedProfilesService.normalizeEmail(payload.email);
+    const normalizedEmail = this.sharedProfilesService.normalizeEmail(
+      payload.email,
+    );
     if (normalizedEmail) {
       const personByEmail = await this.prisma.person.findFirst({
         where: {
@@ -333,6 +345,10 @@ export class PeopleService {
   }
 
   private async syncAllLinkedRoles(person: PersonWithRoles) {
+    if (!this.sharedProfilesService.normalizeDocument(person.cpf)) {
+      return;
+    }
+
     const sharedData = {
       ...this.buildSharedRoleSnapshot(person),
       updatedBy: this.userId(),
@@ -354,7 +370,10 @@ export class PeopleService {
     ]);
   }
 
-  private async createRoleForPerson(person: PersonWithRoles, roleDto: PersonRoleDto) {
+  private async createRoleForPerson(
+    person: PersonWithRoles,
+    roleDto: PersonRoleDto,
+  ) {
     const accessProfile =
       this.getRoleAccessProfile(roleDto.role, roleDto.accessProfile) || null;
     const permissions = this.serializeRolePermissions(roleDto);
@@ -397,7 +416,10 @@ export class PeopleService {
     });
   }
 
-  private async upsertRolesForPerson(person: PersonWithRoles, roles?: PersonRoleDto[]) {
+  private async upsertRolesForPerson(
+    person: PersonWithRoles,
+    roles?: PersonRoleDto[],
+  ) {
     if (!roles || roles.length === 0) return;
 
     for (const roleDto of roles) {
@@ -409,8 +431,10 @@ export class PeopleService {
             where: { tenantId: this.tenantId(), personId: person.id },
             data: {
               accessProfile:
-                this.getRoleAccessProfile(roleDto.role, roleDto.accessProfile) ||
-                null,
+                this.getRoleAccessProfile(
+                  roleDto.role,
+                  roleDto.accessProfile,
+                ) || null,
               permissions: this.serializeRolePermissions(roleDto),
               updatedBy: this.userId(),
             },
@@ -426,8 +450,10 @@ export class PeopleService {
             where: { tenantId: this.tenantId(), personId: person.id },
             data: {
               accessProfile:
-                this.getRoleAccessProfile(roleDto.role, roleDto.accessProfile) ||
-                null,
+                this.getRoleAccessProfile(
+                  roleDto.role,
+                  roleDto.accessProfile,
+                ) || null,
               permissions: this.serializeRolePermissions(roleDto),
               updatedBy: this.userId(),
             },
@@ -443,8 +469,10 @@ export class PeopleService {
             where: { tenantId: this.tenantId(), personId: person.id },
             data: {
               accessProfile:
-                this.getRoleAccessProfile(roleDto.role, roleDto.accessProfile) ||
-                null,
+                this.getRoleAccessProfile(
+                  roleDto.role,
+                  roleDto.accessProfile,
+                ) || null,
               permissions: this.serializeRolePermissions(roleDto),
               updatedBy: this.userId(),
             },
@@ -469,14 +497,14 @@ export class PeopleService {
           },
           orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
         },
-       students: {
-         select: {
-           id: true,
-           canceledAt: true,
-           accessProfile: true,
-           permissions: true,
+        students: {
+          select: {
+            id: true,
+            canceledAt: true,
+            accessProfile: true,
+            permissions: true,
             photoUrl: true,
-         },
+          },
           orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
         },
         guardians: {
@@ -492,7 +520,9 @@ export class PeopleService {
       orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
     });
 
-    return people.map((person) => this.mapPersonResponse(person as PersonWithRoles));
+    return people.map((person) =>
+      this.mapPersonResponse(person as PersonWithRoles),
+    );
   }
 
   async findOne(id: string) {
@@ -503,8 +533,13 @@ export class PeopleService {
   async create(createDto: CreatePersonDto, currentUser?: ICurrentUser) {
     const mutableData = this.transformToUpperCase({ ...createDto });
     await this.fillAddressFromViaCep(mutableData);
+    mutableData.name = this.sharedProfilesService.resolveWritableName(
+      mutableData.name,
+    );
 
-    const normalizedEmail = this.sharedProfilesService.normalizeEmail(createDto.email);
+    const normalizedEmail = this.sharedProfilesService.normalizeEmail(
+      createDto.email,
+    );
     await this.ensureUniquePersonIdentity({
       cpf: createDto.cpf,
       email: normalizedEmail,
@@ -553,15 +588,28 @@ export class PeopleService {
     const reloadedPerson = await this.findPersonEntity(createdPerson.id);
     await this.syncAllLinkedRoles(reloadedPerson);
 
-    return this.mapPersonResponse(await this.findPersonEntity(createdPerson.id));
+    return this.mapPersonResponse(
+      await this.findPersonEntity(createdPerson.id),
+    );
   }
 
-  async update(id: string, updateDto: UpdatePersonDto, currentUser?: ICurrentUser) {
+  async update(
+    id: string,
+    updateDto: UpdatePersonDto,
+    currentUser?: ICurrentUser,
+  ) {
     const currentPerson = await this.findPersonEntity(id);
     const mutableData = this.transformToUpperCase({ ...updateDto });
     await this.fillAddressFromViaCep(mutableData);
+    mutableData.name = this.sharedProfilesService.resolveWritableName(
+      mutableData.name,
+      currentPerson.name,
+    );
 
-    const normalizedEmail = Object.prototype.hasOwnProperty.call(updateDto, "email")
+    const normalizedEmail = Object.prototype.hasOwnProperty.call(
+      updateDto,
+      "email",
+    )
       ? this.sharedProfilesService.normalizeEmail(updateDto.email)
       : currentPerson.email;
 
@@ -619,10 +667,16 @@ export class PeopleService {
         whatsapp: Object.prototype.hasOwnProperty.call(updateDto, "whatsapp")
           ? mutableData.whatsapp || null
           : undefined,
-        cellphone1: Object.prototype.hasOwnProperty.call(updateDto, "cellphone1")
+        cellphone1: Object.prototype.hasOwnProperty.call(
+          updateDto,
+          "cellphone1",
+        )
           ? mutableData.cellphone1 || null
           : undefined,
-        cellphone2: Object.prototype.hasOwnProperty.call(updateDto, "cellphone2")
+        cellphone2: Object.prototype.hasOwnProperty.call(
+          updateDto,
+          "cellphone2",
+        )
           ? mutableData.cellphone2 || null
           : undefined,
         email: Object.prototype.hasOwnProperty.call(updateDto, "email")
@@ -650,14 +704,20 @@ export class PeopleService {
         )
           ? mutableData.neighborhood || null
           : undefined,
-        complement: Object.prototype.hasOwnProperty.call(updateDto, "complement")
+        complement: Object.prototype.hasOwnProperty.call(
+          updateDto,
+          "complement",
+        )
           ? mutableData.complement || null
           : undefined,
         updatedBy: currentUser?.userId || this.userId(),
       },
     });
 
-    await this.upsertRolesForPerson(await this.findPersonEntity(id), updateDto.roles);
+    await this.upsertRolesForPerson(
+      await this.findPersonEntity(id),
+      updateDto.roles,
+    );
     const reloadedPerson = await this.findPersonEntity(id);
     await this.syncAllLinkedRoles(reloadedPerson);
 

@@ -118,6 +118,11 @@ type AttendanceFeedbackState = {
     notifyGuardians: boolean;
 };
 
+type ExpandedDayModalState = {
+    date: string;
+    items: CalendarAgendaItem[];
+};
+
 type CalendarAgendaItem = {
     id: string;
     lessonDate: string;
@@ -137,6 +142,7 @@ type CalendarAgendaItem = {
     schoolYearId?: string | null;
     seriesClassId?: string | null;
     teacherSubjectId?: string | null;
+    hasAttendance?: boolean;
 };
 
 type CalendarAgendaResponse = {
@@ -381,6 +387,7 @@ export default function CalendarioAulasPage() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [modalState, setModalState] = useState<EventModalState | null>(null);
     const [actionPickerItem, setActionPickerItem] = useState<CalendarAgendaItem | null>(null);
+    const [expandedDayModal, setExpandedDayModal] = useState<ExpandedDayModalState | null>(null);
     const [formState, setFormState] = useState<EventFormState>(DEFAULT_EVENT_FORM);
     const [standaloneTargets, setStandaloneTargets] = useState<StandaloneNoticeTarget[]>([]);
     const [standaloneTargetsLoading, setStandaloneTargetsLoading] = useState(false);
@@ -441,6 +448,14 @@ export default function CalendarioAulasPage() {
 
             setTenant(tenantData);
             setCalendarData(agendaData);
+            setCompletedAttendanceLessonIds((current) => (
+                Array.from(new Set([
+                    ...current,
+                    ...((agendaData?.items || [])
+                        .filter((item: CalendarAgendaItem) => item.hasAttendance)
+                        .map((item: CalendarAgendaItem) => item.id)),
+                ]))
+            ));
             setSelectedDate((current) => (
                 current >= agendaData.rangeStart && current <= agendaData.rangeEnd
                     ? current
@@ -735,6 +750,13 @@ const handleMonthChange = (value: string) => {
             selectedDate: date,
             existingEvent: standaloneEvent,
             targetKey: fallbackTarget,
+        });
+    };
+
+    const handleOpenExpandedDayModal = (date: string, items: CalendarAgendaItem[]) => {
+        setExpandedDayModal({
+            date,
+            items,
         });
     };
 
@@ -1134,7 +1156,7 @@ const handleMonthChange = (value: string) => {
             <div className="mt-1 flex items-center gap-2">
                 <div className="font-bold text-slate-800">{item.subjectName}</div>
                 {canManageAttendance(item.lessonDate) ? (
-                    completedAttendanceLessonIds.includes(item.id) ? (
+                    (item.hasAttendance || completedAttendanceLessonIds.includes(item.id)) ? (
                         <span
                             title="Chamada já realizada nesta aula"
                             className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-600 shadow-sm"
@@ -1374,7 +1396,7 @@ const handleMonthChange = (value: string) => {
                                                             {dayItems.length > 4 ? (
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => setSelectedDate(day)}
+                                                                    onClick={() => handleOpenExpandedDayModal(day, dayItems)}
                                                                     className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-left text-xs font-bold uppercase tracking-[0.14em] text-slate-500 transition hover:border-blue-300 hover:text-blue-700"
                                                                 >
                                                                     +{dayItems.length - 4} aula(s)
@@ -1678,6 +1700,58 @@ const handleMonthChange = (value: string) => {
                 </div>
             ) : null}
 
+            {expandedDayModal ? (
+                <div className="fixed inset-0 z-[86] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
+                        <div className="dashboard-band border-b px-6 py-5">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
+                                        Visão expandida do dia
+                                    </div>
+                                    <h2 className="mt-2 text-2xl font-extrabold text-slate-800">
+                                        {getFullDateLabel(expandedDayModal.date)}
+                                    </h2>
+                                    <p className="mt-2 text-sm font-medium text-slate-500">
+                                        {expandedDayModal.items.length} aula(s) exibida(s) neste dia.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setExpandedDayModal(null)}
+                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
+                                >
+                                    Fechar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+                            {expandedDayModal.items.length ? (
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    {expandedDayModal.items.map((item) => renderLessonChip(item))}
+                                </div>
+                            ) : (
+                                <div className="rounded-[24px] border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
+                                    <div className="text-sm font-bold text-slate-700">Nenhuma aula encontrada nesta data.</div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="border-t px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy
+                                    screenId="PRINCIPAL_CALENDARIO_AULAS_DIA_EXPANDIDO"
+                                    label="Tela"
+                                    className="text-[11px]"
+                                    disableMargin
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             {actionPickerItem ? (
                 <div className="fixed inset-0 z-[84] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-2xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-2xl">
@@ -1696,6 +1770,9 @@ const handleMonthChange = (value: string) => {
                                         </div>
                                         <h2 className="mt-2 text-2xl font-extrabold text-slate-800">{actionPickerItem.subjectName}</h2>
                                         <p className="mt-2 text-sm font-medium text-slate-500">
+                                            Professor: {actionPickerItem.teacherName}
+                                        </p>
+                                        <p className="mt-1 text-sm font-medium text-slate-500">
                                             {actionPickerItem.seriesName} - {actionPickerItem.className}
                                             {actionPickerItem.shift ? ` • ${actionPickerItem.shift}` : ''}
                                         </p>
@@ -1759,9 +1836,19 @@ const handleMonthChange = (value: string) => {
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOpenEventModal(actionPickerItem, option.value)}
-                                                    className="rounded-xl border border-white/70 bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                                                    className="rounded-xl border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-white transition hover:bg-emerald-700"
                                                 >
-                                                    {existingEvent ? 'Editar aviso' : 'Lançar aviso'}
+                                                    {existingEvent
+                                                        ? 'Editar aviso'
+                                                        : option.value === 'PROVA'
+                                                            ? 'Lançar Nova Prova'
+                                                            : option.value === 'TRABALHO'
+                                                                ? 'Lançar Novo Trabalho'
+                                                                : option.value === 'RECADO'
+                                                                    ? 'Lançar Novo Recado'
+                                                                    : option.value === 'FALTA_PROFESSOR'
+                                                                        ? 'Lançar Nova Falta'
+                                                                        : 'Lançar aviso'}
                                                 </button>
                                                 {existingEvent && (option.value === 'PROVA' || option.value === 'TRABALHO') ? (
                                                     <button

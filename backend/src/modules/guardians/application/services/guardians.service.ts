@@ -116,9 +116,9 @@ export class GuardiansService {
     return sanitizedDto;
   }
 
-  private mapGuardianAccess<T extends { accessProfile?: string | null; permissions?: string | null }>(
-    guardian: T,
-  ) {
+  private mapGuardianAccess<
+    T extends { accessProfile?: string | null; permissions?: string | null },
+  >(guardian: T) {
     return {
       ...guardian,
       accessProfile:
@@ -152,7 +152,10 @@ export class GuardiansService {
   }
 
   async create(createDto: CreateGuardianDto, currentUser?: ICurrentUser) {
-    const sanitizedDto = this.sanitizeGuardianMutationDto(createDto, currentUser);
+    const sanitizedDto = this.sanitizeGuardianMutationDto(
+      createDto,
+      currentUser,
+    );
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       getTenantContext()!.tenantId,
@@ -160,9 +163,14 @@ export class GuardiansService {
       "GUARDIAN",
     );
 
+    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+      sanitizedDto.name,
+    );
+
     await this.fillAddressFromViaCep(sanitizedDto);
 
-    if (sanitizedDto.email) sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (sanitizedDto.email)
+      sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     const tenantId = getTenantContext()!.tenantId;
     await this.assertUniqueGuardianCpf(tenantId, sanitizedDto.cpf);
@@ -183,7 +191,8 @@ export class GuardiansService {
       normalizeAccessProfileCode(sanitizedDto.accessProfile, "RESPONSAVEL") ||
       getDefaultAccessProfileForRole("RESPONSAVEL");
     const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) && sanitizedDto.permissions.length > 0
+      Array.isArray(sanitizedDto.permissions) &&
+      sanitizedDto.permissions.length > 0
         ? serializePermissions(sanitizedDto.permissions)
         : null;
 
@@ -357,9 +366,16 @@ export class GuardiansService {
     };
   }
 
-  async update(id: string, updateDto: UpdateGuardianDto, currentUser?: ICurrentUser) {
+  async update(
+    id: string,
+    updateDto: UpdateGuardianDto,
+    currentUser?: ICurrentUser,
+  ) {
     const currentGuardian = await this.findGuardianEntity(id);
-    const sanitizedDto = this.sanitizeGuardianMutationDto(updateDto, currentUser);
+    const sanitizedDto = this.sanitizeGuardianMutationDto(
+      updateDto,
+      currentUser,
+    );
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       getTenantContext()!.tenantId,
@@ -368,9 +384,15 @@ export class GuardiansService {
       id,
     );
 
+    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+      sanitizedDto.name,
+      currentGuardian.name,
+    );
+
     await this.fillAddressFromViaCep(sanitizedDto);
 
-    if (sanitizedDto.email) sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (sanitizedDto.email)
+      sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     if (
       sanitizedDto.cpf !== undefined &&
@@ -395,7 +417,8 @@ export class GuardiansService {
         "RESPONSAVEL",
       ) || getDefaultAccessProfileForRole("RESPONSAVEL");
     const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) && sanitizedDto.permissions.length > 0
+      Array.isArray(sanitizedDto.permissions) &&
+      sanitizedDto.permissions.length > 0
         ? serializePermissions(sanitizedDto.permissions)
         : Object.prototype.hasOwnProperty.call(sanitizedDto, "permissions")
           ? null

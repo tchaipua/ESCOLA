@@ -25,7 +25,9 @@ export class LessonEventsController {
   constructor(private readonly lessonEventsService: LessonEventsService) {}
 
   @Get("my-calendar")
-  @ApiOperation({ summary: "Consulta a agenda expandida do professor logado por período" })
+  @ApiOperation({
+    summary: "Consulta a agenda expandida do professor logado por período",
+  })
   findMyCalendar(@Query() query: FindMyTeacherCalendarDto) {
     return this.lessonEventsService.findMyCalendar(query);
   }
@@ -37,13 +39,18 @@ export class LessonEventsController {
   }
 
   @Get("standalone-targets")
-  @ApiOperation({ summary: "Lista turmas e disciplinas do professor para recados avulsos" })
+  @ApiOperation({
+    summary: "Lista turmas e disciplinas do professor para recados avulsos",
+  })
   findStandaloneTargets() {
     return this.lessonEventsService.findStandaloneTargets();
   }
 
   @Post()
-  @ApiOperation({ summary: "Lança prova, trabalho, recado ou falta sobre uma aula do professor" })
+  @ApiOperation({
+    summary:
+      "Lança prova, trabalho, recado ou falta sobre uma aula do professor",
+  })
   create(@Body() createDto: CreateLessonEventDto) {
     return this.lessonEventsService.create(createDto);
   }

@@ -20,7 +20,8 @@ export class LoginDto {
   tenantId?: string;
 
   @ApiProperty({
-    description: "ID do cadastro selecionado quando o e-mail possuir múltiplos acessos",
+    description:
+      "ID do cadastro selecionado quando o e-mail possuir múltiplos acessos",
     required: false,
   })
   @IsString()

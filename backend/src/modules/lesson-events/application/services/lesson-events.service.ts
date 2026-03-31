@@ -29,11 +29,17 @@ export class LessonEventsService {
   }
 
   private normalizeText(value: string) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+      .trim()
+      .toUpperCase();
   }
 
   private getEventTypeLabel(value: string) {
-    switch (String(value || "").trim().toUpperCase()) {
+    switch (
+      String(value || "")
+        .trim()
+        .toUpperCase()
+    ) {
       case "PROVA":
         return "PROVA";
       case "TRABALHO":
@@ -48,7 +54,11 @@ export class LessonEventsService {
   }
 
   private getDefaultTitle(eventType: string) {
-    switch (String(eventType || "").trim().toUpperCase()) {
+    switch (
+      String(eventType || "")
+        .trim()
+        .toUpperCase()
+    ) {
       case "PROVA":
         return "PROVA AGENDADA";
       case "TRABALHO":
@@ -92,7 +102,9 @@ export class LessonEventsService {
   }
 
   private normalizeCalendarView(value?: string) {
-    const normalized = String(value || "MONTH").trim().toUpperCase();
+    const normalized = String(value || "MONTH")
+      .trim()
+      .toUpperCase();
     if (normalized === "WEEK" || normalized === "DAY") {
       return normalized as "WEEK" | "DAY";
     }
@@ -154,7 +166,11 @@ export class LessonEventsService {
       Date.UTC(selectedDate.getUTCFullYear(), selectedDate.getUTCMonth(), 1),
     );
     const monthEnd = new Date(
-      Date.UTC(selectedDate.getUTCFullYear(), selectedDate.getUTCMonth() + 1, 0),
+      Date.UTC(
+        selectedDate.getUTCFullYear(),
+        selectedDate.getUTCMonth() + 1,
+        0,
+      ),
     );
 
     return {
@@ -169,7 +185,10 @@ export class LessonEventsService {
     return new Date(`${value}T00:00:00.000Z`);
   }
 
-  private formatDisplayTimeRange(startTime?: string | null, endTime?: string | null) {
+  private formatDisplayTimeRange(
+    startTime?: string | null,
+    endTime?: string | null,
+  ) {
     if (!startTime || !endTime) {
       return "SEM HORÁRIO";
     }
@@ -197,6 +216,7 @@ export class LessonEventsService {
       teacherSubjectId: item.teacherSubjectId,
       events: item.lessonEvents.map((event: any) => this.mapEvent(event)),
       hasEvents: item.lessonEvents.length > 0,
+      hasAttendance: item.lessonAttendances.length > 0,
       isStandaloneNotice: false,
     };
   }
@@ -272,6 +292,15 @@ export class LessonEventsService {
             canceledAt: null,
           },
           orderBy: [{ createdAt: "asc" }],
+        },
+        lessonAttendances: {
+          where: {
+            canceledAt: null,
+          },
+          select: {
+            id: true,
+          },
+          take: 1,
         },
       },
       orderBy: [{ lessonDate: "asc" }, { startTime: "asc" }],
@@ -452,8 +481,10 @@ export class LessonEventsService {
         endTime: event.lessonCalendarItem.endTime,
         schoolYearId: event.lessonCalendarItem.schoolYearId,
         seriesClassId: event.lessonCalendarItem.seriesClassId,
-        subjectName: event.lessonCalendarItem.teacherSubject?.subject?.name || null,
-        teacherName: event.lessonCalendarItem.teacherSubject?.teacher?.name || null,
+        subjectName:
+          event.lessonCalendarItem.teacherSubject?.subject?.name || null,
+        teacherName:
+          event.lessonCalendarItem.teacherSubject?.teacher?.name || null,
         shift: event.lessonCalendarItem.seriesClass?.class?.shift || null,
         teacherSubject: event.lessonCalendarItem.teacherSubject,
         seriesClass: event.lessonCalendarItem.seriesClass,
@@ -552,10 +583,7 @@ export class LessonEventsService {
           },
         },
       },
-      orderBy: [
-        { schoolYear: { year: "desc" } },
-        { lessonDate: "asc" },
-      ],
+      orderBy: [{ schoolYear: { year: "desc" } }, { lessonDate: "asc" }],
     });
 
     const uniqueTargets = new Map<string, any>();
@@ -594,7 +622,9 @@ export class LessonEventsService {
     ].sort((left, right) => {
       const dateCompare = left.lessonDate.localeCompare(right.lessonDate);
       if (dateCompare !== 0) return dateCompare;
-      return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+      return `${left.startTime || ""}`.localeCompare(
+        `${right.startTime || ""}`,
+      );
     });
 
     const grouped = new Map<string, any[]>();
@@ -641,7 +671,9 @@ export class LessonEventsService {
     ].sort((left, right) => {
       const dateCompare = left.lessonDate.localeCompare(right.lessonDate);
       if (dateCompare !== 0) return dateCompare;
-      return `${left.startTime || ""}`.localeCompare(`${right.startTime || ""}`);
+      return `${left.startTime || ""}`.localeCompare(
+        `${right.startTime || ""}`,
+      );
     });
     const dates = new Set(mappedItems.map((item) => item.lessonDate));
 
@@ -696,7 +728,10 @@ export class LessonEventsService {
     const dispatchResult =
       await this.notificationsService.dispatchLessonEventNotifications({
         lessonEvent,
-        lessonItem: this.buildStandaloneLessonContextFromTarget(target, eventDate),
+        lessonItem: this.buildStandaloneLessonContextFromTarget(
+          target,
+          eventDate,
+        ),
         action: "CREATE",
       });
 
@@ -793,7 +828,10 @@ export class LessonEventsService {
       );
     }
 
-    if (currentEvent.lessonCalendarItemId && nextEventType !== currentEvent.eventType) {
+    if (
+      currentEvent.lessonCalendarItemId &&
+      nextEventType !== currentEvent.eventType
+    ) {
       const conflict = await this.prisma.lessonEvent.findFirst({
         where: {
           tenantId: this.tenantId(),

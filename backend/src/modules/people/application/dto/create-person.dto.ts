@@ -116,7 +116,8 @@ export class CreatePersonDto {
   complement?: string;
 
   @ApiPropertyOptional({
-    description: "Papéis que esta pessoa já deve receber no momento do cadastro",
+    description:
+      "Papéis que esta pessoa já deve receber no momento do cadastro",
     type: [PersonRoleDto],
   })
   @IsArray()

@@ -17,7 +17,9 @@ export class LessonAttendancesController {
   @Get("by-lesson-item/:lessonCalendarItemId")
   @Permissions("MANAGE_TEACHER_DAILY_AGENDA")
   @ApiOperation({ summary: "Consulta a chamada da aula e os alunos da turma" })
-  findByLessonItem(@Param("lessonCalendarItemId") lessonCalendarItemId: string) {
+  findByLessonItem(
+    @Param("lessonCalendarItemId") lessonCalendarItemId: string,
+  ) {
     return this.lessonAttendancesService.findByLessonItem(lessonCalendarItemId);
   }
 

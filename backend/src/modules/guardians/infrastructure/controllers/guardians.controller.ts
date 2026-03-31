@@ -49,7 +49,9 @@ export class GuardiansController {
   @Get("me")
   @Roles("RESPONSAVEL")
   @Permissions("VIEW_OWN_PROFILE")
-  @ApiOperation({ summary: "Consulta o próprio cadastro do responsável logado" })
+  @ApiOperation({
+    summary: "Consulta o próprio cadastro do responsável logado",
+  })
   findMe(@CurrentUser() currentUser: ICurrentUser) {
     return this.guardiansService.findMe(
       currentUser.userId,

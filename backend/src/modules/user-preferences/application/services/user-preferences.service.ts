@@ -19,7 +19,9 @@ export class UserPreferencesService {
     });
 
     if (!preference) {
-      throw new NotFoundException("Preferência não encontrada para este usuário.");
+      throw new NotFoundException(
+        "Preferência não encontrada para este usuário.",
+      );
     }
 
     return {

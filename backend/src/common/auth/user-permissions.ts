@@ -190,7 +190,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<string, UserPermission[]> = {
 export function getDefaultPermissionsForRole(
   role?: string | null,
 ): UserPermission[] {
-  const normalizedRole = String(role || "").trim().toUpperCase();
+  const normalizedRole = String(role || "")
+    .trim()
+    .toUpperCase();
   return ROLE_DEFAULT_PERMISSIONS[normalizedRole]
     ? [...ROLE_DEFAULT_PERMISSIONS[normalizedRole]]
     : [];

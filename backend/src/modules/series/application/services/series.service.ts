@@ -13,7 +13,9 @@ export class SeriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private normalizeText(value?: string | null) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+      .trim()
+      .toUpperCase();
   }
 
   private async ensureUniqueSeries(name: string, seriesId?: string) {
@@ -54,7 +56,9 @@ export class SeriesService {
 
   async create(createDto: CreateSeriesDto) {
     const name = this.normalizeText(createDto.name);
-    const code = createDto.code ? this.normalizeText(createDto.code) : undefined;
+    const code = createDto.code
+      ? this.normalizeText(createDto.code)
+      : undefined;
     await this.ensureUniqueSeries(name);
     await this.ensureUniqueSortOrder(createDto.sortOrder);
 
@@ -115,9 +119,10 @@ export class SeriesService {
       where: { id },
       data: {
         name: updateDto.name ? nextName : undefined,
-        code: updateDto.code !== undefined
-          ? this.normalizeText(updateDto.code) || null
-          : undefined,
+        code:
+          updateDto.code !== undefined
+            ? this.normalizeText(updateDto.code) || null
+            : undefined,
         sortOrder: updateDto.sortOrder,
         updatedBy: getTenantContext()!.userId,
       },
@@ -183,7 +188,9 @@ export class SeriesService {
     });
 
     return {
-      message: active ? "Série ativada com sucesso." : "Série inativada com sucesso.",
+      message: active
+        ? "Série ativada com sucesso."
+        : "Série inativada com sucesso.",
       series: updatedSeries,
     };
   }

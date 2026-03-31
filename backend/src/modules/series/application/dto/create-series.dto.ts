@@ -9,7 +9,9 @@ import {
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateSeriesDto {
-  @ApiProperty({ description: "Nome da série. Ex: 1º ANO, 5º ANO, MATERNAL II" })
+  @ApiProperty({
+    description: "Nome da série. Ex: 1º ANO, 5º ANO, MATERNAL II",
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(80)

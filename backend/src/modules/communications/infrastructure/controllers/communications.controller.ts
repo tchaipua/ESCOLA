@@ -14,19 +14,25 @@ export class CommunicationsController {
   constructor(private readonly communicationsService: CommunicationsService) {}
 
   @Get("my-scope")
-  @ApiOperation({ summary: "Retorna o escopo de públicos permitido para o usuário logado" })
+  @ApiOperation({
+    summary: "Retorna o escopo de públicos permitido para o usuário logado",
+  })
   myScope(@CurrentUser() currentUser: ICurrentUser) {
     return this.communicationsService.getMyScope(currentUser);
   }
 
   @Get()
-  @ApiOperation({ summary: "Lista os comunicados enviados no escopo do usuário logado" })
+  @ApiOperation({
+    summary: "Lista os comunicados enviados no escopo do usuário logado",
+  })
   list(@CurrentUser() currentUser: ICurrentUser) {
     return this.communicationsService.list(currentUser);
   }
 
   @Post()
-  @ApiOperation({ summary: "Envia um comunicado por notificação interna e/ou e-mail" })
+  @ApiOperation({
+    summary: "Envia um comunicado por notificação interna e/ou e-mail",
+  })
   create(
     @CurrentUser() currentUser: ICurrentUser,
     @Body() createDto: CreateCommunicationCampaignDto,

@@ -1,14 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { clearStoredSession } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
+import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const CACHE_KEY = '@Escola-PWA-Teacher-Cache:v1';
 const ACTION_QUEUE_KEY = '@Escola-PWA-Teacher-Action-Queue:v1';
 const READ_QUEUE_KEY = '@Escola-PWA-Teacher-Read-Queue:v1';
+const SCREEN_NAME = 'PWA DOCENTE';
 
 type NotificationItem = {
     id: string;
@@ -170,10 +173,6 @@ function currentDate() {
     return new Date().toISOString().slice(0, 10);
 }
 
-function monthKey(value: string) {
-    return value.slice(0, 7);
-}
-
 export default function ProfessorPwaPage() {
     const router = useRouter();
     const [tenant, setTenant] = useState<TeacherPayload['tenant']>(null);
@@ -188,7 +187,7 @@ export default function ProfessorPwaPage() {
     const [selectedClass, setSelectedClass] = useState('');
     const [selectedLessonId, setSelectedLessonId] = useState('');
     const [selectedAssessmentId, setSelectedAssessmentId] = useState('');
-    const [activeTab, setActiveTab] = useState<'notificacoes' | 'chamada' | 'notas'>('chamada');
+    const [activeTab, setActiveTab] = useState<'notificacoes' | 'chamada' | 'notas' | 'agenda'>('chamada');
     const [attendanceNotifyStudents, setAttendanceNotifyStudents] = useState(false);
     const [attendanceNotifyGuardians, setAttendanceNotifyGuardians] = useState(true);
     const [gradeNotifyStudents, setGradeNotifyStudents] = useState(true);
@@ -201,6 +200,7 @@ export default function ProfessorPwaPage() {
     const [pendingActionCount, setPendingActionCount] = useState(0);
     const [pendingReadCount, setPendingReadCount] = useState(0);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
+    const [copiedScreenName, setCopiedScreenName] = useState(false);
     const snapshotRef = useRef<TeacherSnapshot>({
         tenant: null,
         teacher: null,
@@ -213,6 +213,16 @@ export default function ProfessorPwaPage() {
         selectedDate: currentDate(),
     });
     const hasMountedDateSyncRef = useRef(false);
+
+    const copyScreenNameToClipboard = useCallback(async () => {
+        try {
+            await navigator.clipboard.writeText(SCREEN_NAME);
+            setCopiedScreenName(true);
+            window.setTimeout(() => setCopiedScreenName(false), 1500);
+        } catch {
+            setErrorStatus('Nao foi possivel copiar o nome da tela.');
+        }
+    }, []);
 
     useEffect(() => {
         snapshotRef.current = {
@@ -529,7 +539,6 @@ export default function ProfessorPwaPage() {
         void syncBaseData(false, selectedDate);
     }, [selectedDate, syncBaseData]);
 
-    const unreadCount = notifications.filter((notification) => !notification.readAt).length;
     const lessonsForDate = useMemo(
         () => calendarItems.filter((item) => item.lessonDate === selectedDate),
         [calendarItems, selectedDate],
@@ -660,13 +669,32 @@ export default function ProfessorPwaPage() {
     return (
         <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(14,116,144,0.18),_transparent_35%),linear-gradient(180deg,#ecfeff_0%,#f8fafc_36%,#e2e8f0_100%)] px-4 py-5">
             <div className="mx-auto max-w-md space-y-4">
-                <section className="overflow-hidden rounded-[32px] border border-white/70 bg-white/90 shadow-[0_24px_70px_rgba(15,23,42,0.14)]">
+                <section className="relative overflow-hidden rounded-[32px] border border-white/70 bg-white/90 shadow-[0_24px_70px_rgba(15,23,42,0.14)]">
                     <div className="bg-[linear-gradient(135deg,#0f766e_0%,#0f172a_100%)] px-5 py-5 text-white">
                         <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <div className="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">PWA do professor</div>
-                                <h1 className="mt-1 text-xl font-extrabold">{teacher?.name || 'PROFESSOR'}</h1>
-                                <div className="mt-1 text-sm font-medium text-cyan-100">{tenant?.name || 'ESCOLA'}</div>
+                            <div className="flex items-start gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10">
+                                    {tenant?.logoUrl ? (
+                                        <Image
+                                            src={tenant.logoUrl}
+                                            alt={`Logo de ${tenant?.name || 'ESCOLA'}`}
+                                            width={48}
+                                            height={48}
+                                            className="h-full w-full object-contain p-2"
+                                        />
+                                    ) : (
+                                        <span className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">
+                                            {tenant?.name ? tenant.name.slice(0, 3).toUpperCase() : 'ESC'}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="pt-1">
+                                    <div className="text-sm font-medium text-cyan-100">{tenant?.name || 'ESCOLA'}</div>
+                                    <div className="mt-1 text-sm font-extrabold">
+                                        <span className="mr-2 text-cyan-100">PROFESSOR</span>
+                                        <span className="text-white">{teacher?.name || 'PROFESSOR'}</span>
+                                    </div>
+                                </div>
                             </div>
                             <button type="button" onClick={() => { clearStoredSession(); router.replace('/'); }} className="rounded-2xl border border-white/10 bg-white/10 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em]">Sair</button>
                         </div>
@@ -685,12 +713,40 @@ export default function ProfessorPwaPage() {
                         <div className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Ultima sincronizacao: {lastSyncAt ? fmtDate(lastSyncAt) : 'AGUARDANDO'}</div>
                         {errorStatus ? <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{errorStatus}</div> : null}
                     </div>
+
+                    <div className="mt-3 border-t border-slate-100 px-5 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-700">{SCREEN_NAME}</span>
+                            <button
+                                type="button"
+                                onClick={() => void copyScreenNameToClipboard()}
+                                aria-label="Copiar nome da tela"
+                                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition hover:border-cyan-300 hover:text-cyan-700"
+                            >
+                                {copiedScreenName ? (
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[2.2]" aria-hidden="true">
+                                        <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[2]" aria-hidden="true">
+                                        <rect x="9" y="9" width="10" height="10" rx="2" />
+                                        <path d="M7 15H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                 </section>
 
-                <section className="grid grid-cols-3 gap-2">
-                    {['notificacoes', 'chamada', 'notas'].map((tab) => (
-                        <button key={tab} type="button" onClick={() => setActiveTab(tab as 'notificacoes' | 'chamada' | 'notas')} className={`rounded-2xl px-3 py-3 text-sm font-black uppercase tracking-[0.14em] ${activeTab === tab ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white/80 text-slate-600'}`}>
-                            {tab}
+                <section className="grid grid-cols-2 gap-2">
+                    {[
+                        { key: 'notificacoes', label: 'notificações' },
+                        { key: 'chamada', label: 'chamada' },
+                        { key: 'notas', label: 'notas' },
+                        { key: 'agenda', label: 'agenda' },
+                    ].map((tab) => (
+                        <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key as 'notificacoes' | 'chamada' | 'notas' | 'agenda')} className={`rounded-2xl px-3 py-3 text-sm font-black uppercase tracking-[0.14em] ${activeTab === tab.key ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white/80 text-slate-600'}`}>
+                            {tab.label}
                         </button>
                     ))}
                 </section>
@@ -706,10 +762,18 @@ export default function ProfessorPwaPage() {
                                         <p className="mt-2 text-sm font-medium leading-6 text-slate-600">{notification.message}</p>
                                         <div className="mt-3 text-xs font-bold uppercase tracking-[0.14em] text-slate-400">{fmtDate(notification.createdAt)}</div>
                                     </div>
-                                    {!notification.readAt ? <button type="button" onClick={() => void markAsRead(notification.id)} className="rounded-2xl bg-cyan-700 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-white">Li</button> : <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-700">Lida</div>}
-                                </div>
-                            </article>
-                        )) : <div className="rounded-[28px] border border-dashed border-slate-300 bg-white/70 px-5 py-10 text-center text-sm font-semibold text-slate-500">Nenhuma notificacao encontrada.</div>}
+                                        {!notification.readAt ? (
+                                            <button type="button" onClick={() => void markAsRead(notification.id)} className="rounded-2xl bg-cyan-700 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-white">
+                                                Marcar como visualizada
+                                            </button>
+                                        ) : (
+                                            <button type="button" onClick={() => void markAsRead(notification.id)} className="rounded-2xl bg-emerald-600 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-white">
+                                                Visualizada
+                                            </button>
+                                        )}
+                                    </div>
+                                </article>
+                            )) : <div className="rounded-[28px] border border-dashed border-slate-300 bg-white/70 px-5 py-10 text-center text-sm font-semibold text-slate-500">Nenhuma notificacao encontrada.</div>}
                     </section>
                 ) : null}
 
@@ -812,6 +876,12 @@ export default function ProfessorPwaPage() {
                                 <button type="button" onClick={() => void saveAssessment()} className="mt-4 w-full rounded-2xl bg-cyan-700 px-4 py-3 text-sm font-bold text-white">Salvar notas</button>
                             </section>
                         ) : null}
+                    </section>
+                ) : null}
+
+                {activeTab === 'agenda' ? (
+                    <section className="space-y-3 rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                        <TeacherDailyAgendaPanel />
                     </section>
                 ) : null}
             </div>

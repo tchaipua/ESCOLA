@@ -35,10 +35,7 @@ export class ClassesService {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
-  private async ensureUniqueClass(
-    name: string,
-    classId?: string,
-  ) {
+  private async ensureUniqueClass(name: string, classId?: string) {
     const existing = await this.prisma.class.findFirst({
       where: {
         tenantId: getTenantContext()!.tenantId,

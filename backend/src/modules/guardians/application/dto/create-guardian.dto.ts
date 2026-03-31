@@ -51,12 +51,17 @@ export class CreateGuardianDto {
   @IsOptional()
   password?: string;
 
-  @ApiPropertyOptional({ description: "Perfil de acesso pré-definido do responsável" })
+  @ApiPropertyOptional({
+    description: "Perfil de acesso pré-definido do responsável",
+  })
   @IsString()
   @IsOptional()
   accessProfile?: string;
 
-  @ApiPropertyOptional({ description: "Permissões específicas que sobrescrevem o perfil", type: [String] })
+  @ApiPropertyOptional({
+    description: "Permissões específicas que sobrescrevem o perfil",
+    type: [String],
+  })
   @IsArray()
   @ArrayUnique()
   @IsOptional()

@@ -161,9 +161,7 @@ export class GlobalSettingsService {
   }
 
   private buildSchoolPathExample(settings: GlobalSettingsValue) {
-    const baseFolder = settings.s3BaseFolder
-      ? `${settings.s3BaseFolder}/`
-      : "";
+    const baseFolder = settings.s3BaseFolder ? `${settings.s3BaseFolder}/` : "";
     return `${baseFolder}escola/<ID_ESCOLA>`;
   }
 
@@ -177,7 +175,9 @@ export class GlobalSettingsService {
     }
 
     try {
-      const parsed = JSON.parse(record.settingValue) as Partial<GlobalSettingsValue>;
+      const parsed = JSON.parse(
+        record.settingValue,
+      ) as Partial<GlobalSettingsValue>;
       return this.mergeSettings(parsed);
     } catch {
       return DEFAULT_GENERAL_SETTINGS;

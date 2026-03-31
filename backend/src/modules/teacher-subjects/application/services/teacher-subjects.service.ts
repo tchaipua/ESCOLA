@@ -92,14 +92,15 @@ export class TeacherSubjectsService {
     fallbackRate: number | null | undefined,
   ) {
     const match = histories.find((history) => {
-      const startsOk = lessonDate.getTime() >= new Date(history.effectiveFrom).getTime();
+      const startsOk =
+        lessonDate.getTime() >= new Date(history.effectiveFrom).getTime();
       const endsOk =
         !history.effectiveTo ||
         lessonDate.getTime() <= new Date(history.effectiveTo).getTime();
       return startsOk && endsOk;
     });
 
-    return match ? match.hourlyRate ?? null : fallbackRate ?? null;
+    return match ? (match.hourlyRate ?? null) : (fallbackRate ?? null);
   }
 
   private async reapplyCalendarItemRatesFromDate(
@@ -217,10 +218,7 @@ export class TeacherSubjectsService {
         teacher: true,
         subject: true,
       },
-      orderBy: [
-        { subject: { name: "asc" } },
-        { teacher: { name: "asc" } },
-      ],
+      orderBy: [{ subject: { name: "asc" } }, { teacher: { name: "asc" } }],
     });
   }
 

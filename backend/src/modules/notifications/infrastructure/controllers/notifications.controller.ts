@@ -32,7 +32,9 @@ export class NotificationsController {
   }
 
   @Get("my/unread-summary")
-  @ApiOperation({ summary: "Resumo de notificações não lidas do usuário logado" })
+  @ApiOperation({
+    summary: "Resumo de notificações não lidas do usuário logado",
+  })
   unreadSummary(@CurrentUser() currentUser: ICurrentUser) {
     return this.notificationsService.getUnreadSummary(currentUser);
   }
@@ -46,6 +48,29 @@ export class NotificationsController {
     return this.notificationsService.markAsRead(id, currentUser);
   }
 
+  @Patch(":id/unread")
+  @ApiOperation({ summary: "Marca uma notificação como não lida" })
+  markAsUnread(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationsService.markAsUnread(id, currentUser);
+  }
+
+  @Patch(":id/remove-attendance")
+  @ApiOperation({
+    summary: "Exclui logicamente uma notificação de presença visualizada",
+  })
+  removeAttendanceNotification(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationsService.removeAttendanceNotification(
+      id,
+      currentUser,
+    );
+  }
+
   @Post("my/read-all")
   @ApiOperation({ summary: "Marca todas as notificações como lidas" })
   markAllAsRead(@CurrentUser() currentUser: ICurrentUser) {
@@ -53,7 +78,9 @@ export class NotificationsController {
   }
 
   @Post("my/read-batch")
-  @ApiOperation({ summary: "Marca em lote notificações específicas como lidas" })
+  @ApiOperation({
+    summary: "Marca em lote notificações específicas como lidas",
+  })
   markBatchAsRead(
     @Body() markNotificationsReadDto: MarkNotificationsReadDto,
     @CurrentUser() currentUser: ICurrentUser,

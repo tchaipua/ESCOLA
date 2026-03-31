@@ -36,9 +36,7 @@ export class SubjectsController {
   findAll(@Query("activeOnly") activeOnly?: string) {
     return this.subjectsService.findAll({
       activeOnly:
-        activeOnly === "1" ||
-        activeOnly === "true" ||
-        activeOnly === "TRUE",
+        activeOnly === "1" || activeOnly === "true" || activeOnly === "TRUE",
     });
   }
 

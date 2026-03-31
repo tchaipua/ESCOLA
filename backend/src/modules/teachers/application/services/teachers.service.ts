@@ -98,10 +98,9 @@ export class TeachersService {
     }
   }
 
-  private sanitizeTeacherMutationDto<T extends CreateTeacherDto | UpdateTeacherDto>(
-    dto: T,
-    viewer?: ICurrentUser | null,
-  ): T {
+  private sanitizeTeacherMutationDto<
+    T extends CreateTeacherDto | UpdateTeacherDto,
+  >(dto: T, viewer?: ICurrentUser | null): T {
     const sanitizedDto = { ...dto };
 
     if (!canViewTeacherAccessData(viewer)) {
@@ -114,9 +113,9 @@ export class TeachersService {
     return sanitizedDto;
   }
 
-  private mapTeacherAccess<T extends { accessProfile?: string | null; permissions?: string | null }>(
-    teacher: T,
-  ) {
+  private mapTeacherAccess<
+    T extends { accessProfile?: string | null; permissions?: string | null },
+  >(teacher: T) {
     return {
       ...teacher,
       accessProfile:
@@ -163,15 +162,23 @@ export class TeachersService {
   }
 
   async create(createDto: CreateTeacherDto, currentUser?: ICurrentUser) {
-    const sanitizedDto = this.sanitizeTeacherMutationDto(createDto, currentUser);
+    const sanitizedDto = this.sanitizeTeacherMutationDto(
+      createDto,
+      currentUser,
+    );
     const tenantId = getTenantContext()!.tenantId;
 
-    if (sanitizedDto.email) sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (sanitizedDto.email)
+      sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       tenantId,
       sanitizedDto,
       "TEACHER",
+    );
+
+    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+      sanitizedDto.name,
     );
 
     await this.assertUniqueTeacherCpf(tenantId, sanitizedDto.cpf);
@@ -198,17 +205,19 @@ export class TeachersService {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     } else if (sanitizedDto.email) {
-      hashedPassword = (await this.sharedProfilesService.findSharedPasswordByEmail(
-        getTenantContext()!.tenantId,
-        sanitizedDto.email,
-      )) || undefined;
+      hashedPassword =
+        (await this.sharedProfilesService.findSharedPasswordByEmail(
+          getTenantContext()!.tenantId,
+          sanitizedDto.email,
+        )) || undefined;
     }
 
     const accessProfile =
       normalizeAccessProfileCode(sanitizedDto.accessProfile, "PROFESSOR") ||
       getDefaultAccessProfileForRole("PROFESSOR");
     const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) && sanitizedDto.permissions.length > 0
+      Array.isArray(sanitizedDto.permissions) &&
+      sanitizedDto.permissions.length > 0
         ? serializePermissions(sanitizedDto.permissions)
         : null;
 
@@ -259,10 +268,7 @@ export class TeachersService {
       where: {
         tenantId: getTenantContext()!.tenantId,
       },
-      orderBy: [
-        { canceledAt: "asc" },
-        { name: "asc" },
-      ],
+      orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
       include: {
         teacherSubjects: {
           where: {
@@ -289,7 +295,10 @@ export class TeachersService {
 
   async findOne(id: string, currentUser?: ICurrentUser) {
     const teacher = await this.findTeacherEntity(id);
-    return sanitizeTeacherForViewer(this.mapTeacherAccess(teacher), currentUser);
+    return sanitizeTeacherForViewer(
+      this.mapTeacherAccess(teacher),
+      currentUser,
+    );
   }
 
   async findMe(userId: string, tenantId: string, currentUser?: ICurrentUser) {
@@ -319,20 +328,29 @@ export class TeachersService {
     });
 
     if (!teacher) {
-      throw new NotFoundException(
-        "Professor não encontrado para esta escola.",
-      );
+      throw new NotFoundException("Professor não encontrado para esta escola.");
     }
 
-    return sanitizeTeacherForViewer(this.mapTeacherAccess(teacher), currentUser);
+    return sanitizeTeacherForViewer(
+      this.mapTeacherAccess(teacher),
+      currentUser,
+    );
   }
 
-  async update(id: string, updateDto: UpdateTeacherDto, currentUser?: ICurrentUser) {
+  async update(
+    id: string,
+    updateDto: UpdateTeacherDto,
+    currentUser?: ICurrentUser,
+  ) {
     const teacher = await this.findTeacherEntity(id);
-    const sanitizedDto = this.sanitizeTeacherMutationDto(updateDto, currentUser);
+    const sanitizedDto = this.sanitizeTeacherMutationDto(
+      updateDto,
+      currentUser,
+    );
     const tenantId = getTenantContext()!.tenantId;
 
-    if (sanitizedDto.email) sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (sanitizedDto.email)
+      sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     if (sanitizedDto.email && sanitizedDto.email !== teacher.email) {
       const existing = await this.prisma.teacher.findFirst({
@@ -356,9 +374,15 @@ export class TeachersService {
       id,
     );
 
+    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+      sanitizedDto.name,
+      teacher.name,
+    );
+
     if (
       sanitizedDto.cpf &&
-      this.normalizeDocument(sanitizedDto.cpf) !== this.normalizeDocument(teacher.cpf)
+      this.normalizeDocument(sanitizedDto.cpf) !==
+        this.normalizeDocument(teacher.cpf)
     ) {
       await this.assertUniqueTeacherCpf(tenantId, sanitizedDto.cpf, id);
     }
@@ -377,7 +401,8 @@ export class TeachersService {
         "PROFESSOR",
       ) || getDefaultAccessProfileForRole("PROFESSOR");
     const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) && sanitizedDto.permissions.length > 0
+      Array.isArray(sanitizedDto.permissions) &&
+      sanitizedDto.permissions.length > 0
         ? serializePermissions(sanitizedDto.permissions)
         : Object.prototype.hasOwnProperty.call(sanitizedDto, "permissions")
           ? null

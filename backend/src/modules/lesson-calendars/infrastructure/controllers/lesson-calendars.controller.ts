@@ -44,7 +44,9 @@ export class LessonCalendarsController {
 
   @Get("weekly-source")
   @Permissions("VIEW_LESSON_CALENDARS")
-  @ApiOperation({ summary: "Busca novamente a grade semanal para montar a grade anual" })
+  @ApiOperation({
+    summary: "Busca novamente a grade semanal para montar a grade anual",
+  })
   getWeeklySource(@Query() query: LessonCalendarWeeklySourceQueryDto) {
     return this.lessonCalendarsService.getWeeklySource(
       query.schoolYearId,
@@ -54,14 +56,20 @@ export class LessonCalendarsController {
 
   @Get("school-calendar-events")
   @Permissions("VIEW_LESSON_CALENDARS")
-  @ApiOperation({ summary: "Lista provas e eventos da escola para o calendário anual" })
+  @ApiOperation({
+    summary: "Lista provas e eventos da escola para o calendário anual",
+  })
   findSchoolCalendarEvents(@Query() query: FindSchoolCalendarEventsDto) {
-    return this.lessonCalendarsService.findSchoolCalendarEvents(query.referenceDate);
+    return this.lessonCalendarsService.findSchoolCalendarEvents(
+      query.referenceDate,
+    );
   }
 
   @Patch("items/:lessonCalendarItemId")
   @Permissions("MANAGE_LESSON_CALENDARS")
-  @ApiOperation({ summary: "Atualiza somente uma aula já gerada no calendário anual" })
+  @ApiOperation({
+    summary: "Atualiza somente uma aula já gerada no calendário anual",
+  })
   updateLessonCalendarItem(
     @Param("lessonCalendarItemId") lessonCalendarItemId: string,
     @Body() updateDto: UpdateLessonCalendarItemDto,
@@ -88,7 +96,9 @@ export class LessonCalendarsController {
 
   @Post(":id/refresh-weekly-source")
   @Permissions("MANAGE_LESSON_CALENDARS")
-  @ApiOperation({ summary: "Busca novamente a grade semanal e regenera a grade anual" })
+  @ApiOperation({
+    summary: "Busca novamente a grade semanal e regenera a grade anual",
+  })
   refreshWeeklySource(@Param("id") id: string) {
     return this.lessonCalendarsService.refreshWeeklySource(id);
   }
@@ -100,7 +110,10 @@ export class LessonCalendarsController {
     @Param("id") id: string,
     @Body() setRecordActiveDto: SetRecordActiveDto,
   ) {
-    return this.lessonCalendarsService.setActiveStatus(id, setRecordActiveDto.active);
+    return this.lessonCalendarsService.setActiveStatus(
+      id,
+      setRecordActiveDto.active,
+    );
   }
 
   @Delete(":id")

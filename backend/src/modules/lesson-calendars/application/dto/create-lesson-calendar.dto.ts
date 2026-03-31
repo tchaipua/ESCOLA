@@ -50,7 +50,9 @@ export class CreateLessonCalendarDto {
 
   @ApiProperty({ type: [CreateLessonCalendarPeriodDto] })
   @IsArray({ message: "Informe os períodos da grade anual." })
-  @ArrayMinSize(1, { message: "Adicione pelo menos um período na grade anual." })
+  @ArrayMinSize(1, {
+    message: "Adicione pelo menos um período na grade anual.",
+  })
   @ValidateNested({ each: true })
   @Type(() => CreateLessonCalendarPeriodDto)
   periods!: CreateLessonCalendarPeriodDto[];

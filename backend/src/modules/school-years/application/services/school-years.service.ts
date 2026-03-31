@@ -86,7 +86,10 @@ export class SchoolYearsService {
   async update(id: string, updateDto: UpdateSchoolYearDto) {
     const currentYear = await this.findOne(id);
 
-    if (typeof updateDto.year === "number" && updateDto.year !== currentYear.year) {
+    if (
+      typeof updateDto.year === "number" &&
+      updateDto.year !== currentYear.year
+    ) {
       const conflict = await this.prisma.schoolYear.findFirst({
         where: {
           tenantId: this.tenantId(),

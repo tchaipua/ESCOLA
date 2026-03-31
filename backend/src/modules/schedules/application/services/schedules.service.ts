@@ -17,7 +17,9 @@ export class SchedulesService {
   }
 
   private normalizePeriod(period: string) {
-    return String(period || "").trim().toUpperCase();
+    return String(period || "")
+      .trim()
+      .toUpperCase();
   }
 
   private normalizeTime(value?: string | null) {
@@ -121,7 +123,8 @@ export class SchedulesService {
     const nextPeriod = updateDto.period
       ? this.normalizePeriod(updateDto.period)
       : currentSchedule.period;
-    const nextLessonNumber = updateDto.lessonNumber ?? currentSchedule.lessonNumber;
+    const nextLessonNumber =
+      updateDto.lessonNumber ?? currentSchedule.lessonNumber;
     const nextStartTime = this.isInterval(nextLessonNumber)
       ? ""
       : this.normalizeTime(updateDto.startTime ?? currentSchedule.startTime);

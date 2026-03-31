@@ -9,6 +9,7 @@ import GridFooterControls from '@/app/components/grid-footer-controls';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
@@ -1244,9 +1245,23 @@ export default function ResponsaveisPage() {
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
                         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-[#153a6a]">Alunos vinculados</h2>
-                                <p className="mt-1 text-sm font-medium text-slate-500">{selectedGuardianForStudents.name}</p>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {currentTenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">Alunos vinculados</h2>
+                                    <p className="mt-1 truncate text-sm font-medium text-slate-500">{selectedGuardianForStudents.name}</p>
+                                </div>
                             </div>
                             <button onClick={closeStudentsModal} className="text-slate-400 hover:text-red-500">×</button>
                         </div>
@@ -1270,6 +1285,11 @@ export default function ResponsaveisPage() {
                         </div>
                         <div className="border-t border-slate-100 bg-slate-50 px-6 py-4 text-right">
                             <button onClick={closeStudentsModal} className="rounded-xl bg-[#153a6a] px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-800">Fechar</button>
+                        </div>
+                        <div className="border-t border-slate-100 bg-white px-6 py-3">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy screenId="PRINCIPAL_RESPONSAVEIS_ALUNOS_VINCULADOS" disableMargin className="w-auto" />
+                            </div>
                         </div>
                     </div>
                 </div>

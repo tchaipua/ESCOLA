@@ -94,10 +94,9 @@ export class StudentsService {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
-  private sanitizeStudentMutationDto<T extends CreateStudentDto | UpdateStudentDto>(
-    dto: T,
-    viewer?: ICurrentUser | null,
-  ): T {
+  private sanitizeStudentMutationDto<
+    T extends CreateStudentDto | UpdateStudentDto,
+  >(dto: T, viewer?: ICurrentUser | null): T {
     const sanitizedDto = { ...dto };
 
     if (!canViewStudentFinancialData(viewer)) {
@@ -114,9 +113,9 @@ export class StudentsService {
     return sanitizedDto;
   }
 
-  private mapStudentAccess<T extends { accessProfile?: string | null; permissions?: string | null }>(
-    student: T,
-  ) {
+  private mapStudentAccess<
+    T extends { accessProfile?: string | null; permissions?: string | null },
+  >(student: T) {
     return {
       ...student,
       accessProfile:
@@ -141,8 +140,27 @@ export class StudentsService {
 
   private calculateAverage(values: number[]) {
     if (!values.length) return 0;
-    const total = values.reduce((accumulator, current) => accumulator + current, 0);
+    const total = values.reduce(
+      (accumulator, current) => accumulator + current,
+      0,
+    );
     return Number((total / values.length).toFixed(2));
+  }
+
+  private normalizeStudentDisplayName<
+    T extends {
+      name?: string | null;
+      person?: { name?: string | null } | null;
+    },
+  >(student: T) {
+    const currentName = String(student.name || "").trim();
+    if (currentName) return student;
+
+    const fallbackName = String(student.person?.name || "").trim();
+    return {
+      ...student,
+      name: fallbackName || "PESSOA SEM NOME",
+    };
   }
 
   private async findStudentEntity(id: string) {
@@ -155,6 +173,7 @@ export class StudentsService {
         guardians: {
           include: { guardian: true },
         },
+        person: true,
         enrollments: {
           where: { canceledAt: null },
           include: {
@@ -205,7 +224,10 @@ export class StudentsService {
   }
 
   async create(createDto: CreateStudentDto, currentUser?: ICurrentUser) {
-    const sanitizedDto = this.sanitizeStudentMutationDto(createDto, currentUser);
+    const sanitizedDto = this.sanitizeStudentMutationDto(
+      createDto,
+      currentUser,
+    );
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
@@ -213,12 +235,17 @@ export class StudentsService {
       "STUDENT",
     );
 
+    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+      sanitizedDto.name,
+    );
+
     await this.assertUniqueStudentCpf(this.tenantId(), sanitizedDto.cpf);
 
     // 1. Completa Endereços faltantes batendo na API Externa ViaCEP
     await this.fillAddressFromViaCep(sanitizedDto);
 
-    if (sanitizedDto.email) sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (sanitizedDto.email)
+      sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
@@ -235,7 +262,8 @@ export class StudentsService {
       normalizeAccessProfileCode(sanitizedDto.accessProfile, "ALUNO") ||
       getDefaultAccessProfileForRole("ALUNO");
     const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) && sanitizedDto.permissions.length > 0
+      Array.isArray(sanitizedDto.permissions) &&
+      sanitizedDto.permissions.length > 0
         ? serializePermissions(sanitizedDto.permissions)
         : null;
 
@@ -290,6 +318,7 @@ export class StudentsService {
         tenantId: this.tenantId(),
       }, // Aplica o Soft Delete
       include: {
+        person: true,
         enrollments: {
           where: { canceledAt: null },
           include: {
@@ -308,13 +337,19 @@ export class StudentsService {
     });
 
     return students.map((student) =>
-      sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser),
+      sanitizeStudentForViewer(
+        this.mapStudentAccess(this.normalizeStudentDisplayName(student)),
+        currentUser,
+      ),
     );
   }
 
   async findOne(id: string, currentUser?: ICurrentUser) {
     const student = await this.findStudentEntity(id);
-    return sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser);
+    return sanitizeStudentForViewer(
+      this.mapStudentAccess(this.normalizeStudentDisplayName(student)),
+      currentUser,
+    );
   }
 
   async findMe(userId: string, tenantId: string, currentUser?: ICurrentUser) {
@@ -325,6 +360,7 @@ export class StudentsService {
         canceledAt: null,
       },
       include: {
+        person: true,
         guardians: {
           include: { guardian: true },
         },
@@ -348,7 +384,10 @@ export class StudentsService {
       throw new NotFoundException("Aluno não encontrado para esta escola.");
     }
 
-    return sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser);
+    return sanitizeStudentForViewer(
+      this.mapStudentAccess(this.normalizeStudentDisplayName(student)),
+      currentUser,
+    );
   }
 
   async findMyPwaSummary(
@@ -485,15 +524,14 @@ export class StudentsService {
       const subjectName =
         lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
       const subjectKey = `${subjectId || subjectName}:${subjectName}`;
-      const currentSubject =
-        attendanceBySubject.get(subjectKey) || {
-          subjectId,
-          subjectName,
-          totalLessons: 0,
-          totalPresent: 0,
-          totalAbsent: 0,
-          lastRecordedAt: null,
-        };
+      const currentSubject = attendanceBySubject.get(subjectKey) || {
+        subjectId,
+        subjectName,
+        totalLessons: 0,
+        totalPresent: 0,
+        totalAbsent: 0,
+        lastRecordedAt: null,
+      };
 
       currentSubject.totalLessons += 1;
       if (attendance.status === "PRESENTE") {
@@ -502,7 +540,8 @@ export class StudentsService {
         currentSubject.totalAbsent += 1;
       }
       currentSubject.lastRecordedAt =
-        this.formatDateOnly(attendance.recordedAt) || currentSubject.lastRecordedAt;
+        this.formatDateOnly(attendance.recordedAt) ||
+        currentSubject.lastRecordedAt;
       attendanceBySubject.set(subjectKey, currentSubject);
 
       return {
@@ -512,8 +551,7 @@ export class StudentsService {
         recordedAt: attendance.recordedAt,
         lessonDate: lessonItem.lessonDate,
         subjectName,
-        teacherName:
-          lessonItem.teacherSubject?.teacher?.name || "PROFESSOR",
+        teacherName: lessonItem.teacherSubject?.teacher?.name || "PROFESSOR",
         schoolYear:
           lessonItem.schoolYear?.year !== undefined &&
           lessonItem.schoolYear?.year !== null
@@ -565,15 +603,14 @@ export class StudentsService {
       const teacherName =
         lessonItem?.teacherSubject?.teacher?.name || "PROFESSOR";
       const subjectKey = `${subjectId || subjectName}:${subjectName}`;
-      const currentSubject =
-        gradesBySubject.get(subjectKey) || {
-          subjectId,
-          subjectName,
-          teacherName,
-          scores: [],
-          latestReleasedAt: null,
-          assessments: [],
-        };
+      const currentSubject = gradesBySubject.get(subjectKey) || {
+        subjectId,
+        subjectName,
+        teacherName,
+        scores: [],
+        latestReleasedAt: null,
+        assessments: [],
+      };
 
       if (typeof grade.score === "number") {
         currentSubject.scores.push(grade.score);
@@ -582,7 +619,8 @@ export class StudentsService {
       if (
         grade.releasedAt &&
         (!currentSubject.latestReleasedAt ||
-          grade.releasedAt.getTime() > currentSubject.latestReleasedAt.getTime())
+          grade.releasedAt.getTime() >
+            currentSubject.latestReleasedAt.getTime())
       ) {
         currentSubject.latestReleasedAt = grade.releasedAt;
       }
@@ -610,7 +648,10 @@ export class StudentsService {
       .filter((score): score is number => typeof score === "number");
 
     return {
-      student: sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser),
+      student: sanitizeStudentForViewer(
+        this.mapStudentAccess(student),
+        currentUser,
+      ),
       currentEnrollment: currentEnrollment
         ? {
             id: currentEnrollment.id,
@@ -655,8 +696,10 @@ export class StudentsService {
             totalReleasedGrades: subject.scores.length,
             latestReleasedAt: subject.latestReleasedAt,
             assessments: subject.assessments.sort((left, right) => {
-              const rightDate = right.releasedAt || right.lessonDate || new Date(0);
-              const leftDate = left.releasedAt || left.lessonDate || new Date(0);
+              const rightDate =
+                right.releasedAt || right.lessonDate || new Date(0);
+              const leftDate =
+                left.releasedAt || left.lessonDate || new Date(0);
               return rightDate.getTime() - leftDate.getTime();
             }),
           }))
@@ -671,9 +714,16 @@ export class StudentsService {
     };
   }
 
-  async update(id: string, updateDto: UpdateStudentDto, currentUser?: ICurrentUser) {
+  async update(
+    id: string,
+    updateDto: UpdateStudentDto,
+    currentUser?: ICurrentUser,
+  ) {
     const currentStudent = await this.findStudentEntity(id);
-    const sanitizedDto = this.sanitizeStudentMutationDto(updateDto, currentUser);
+    const sanitizedDto = this.sanitizeStudentMutationDto(
+      updateDto,
+      currentUser,
+    );
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
@@ -693,7 +743,8 @@ export class StudentsService {
     // Autocompleta o endereço rebatendo no ViaCEP antes da atualização caso ele tenha mudado de CEP
     await this.fillAddressFromViaCep(sanitizedDto);
 
-    if (sanitizedDto.email) sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (sanitizedDto.email)
+      sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
@@ -706,11 +757,20 @@ export class StudentsService {
         "ALUNO",
       ) || getDefaultAccessProfileForRole("ALUNO");
     const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) && sanitizedDto.permissions.length > 0
+      Array.isArray(sanitizedDto.permissions) &&
+      sanitizedDto.permissions.length > 0
         ? serializePermissions(sanitizedDto.permissions)
         : Object.prototype.hasOwnProperty.call(sanitizedDto, "permissions")
           ? null
           : currentStudent.permissions;
+    const resolvedStudentName = this.sharedProfilesService.resolveWritableName(
+      sanitizedDto.name,
+      currentStudent.name || currentStudent.person?.name,
+    );
+    const shouldDetachBlankCpfPersonLink =
+      !this.normalizeDocument(sanitizedDto.cpf || currentStudent.cpf) &&
+      Boolean(currentStudent.personId) &&
+      !this.normalizeDocument(currentStudent.person?.cpf);
 
     const rawData = this.transformToUpperCase(sanitizedDto);
     delete rawData.password;
@@ -721,15 +781,20 @@ export class StudentsService {
       where: { id },
       data: {
         ...rawData,
+        name: resolvedStudentName,
         password: hashedPassword || undefined,
         accessProfile,
         permissions: explicitPermissions,
         photoUrl: Object.prototype.hasOwnProperty.call(sanitizedDto, "photoUrl")
           ? sanitizedDto.photoUrl?.trim() || null
           : undefined,
-        monthlyFee: Object.prototype.hasOwnProperty.call(sanitizedDto, "monthlyFee")
+        monthlyFee: Object.prototype.hasOwnProperty.call(
+          sanitizedDto,
+          "monthlyFee",
+        )
           ? this.normalizeMonthlyFee(sanitizedDto.monthlyFee)
           : undefined,
+        personId: shouldDetachBlankCpfPersonLink ? null : undefined,
         birthDate: sanitizedDto.birthDate
           ? new Date(sanitizedDto.birthDate)
           : undefined,
@@ -741,7 +806,10 @@ export class StudentsService {
       this.tenantId(),
       "STUDENT",
       updatedStudent.id,
-      updatedStudent,
+      {
+        ...updatedStudent,
+        name: resolvedStudentName,
+      },
       this.userId(),
       currentStudent.cpf,
     );
@@ -758,7 +826,13 @@ export class StudentsService {
     }
 
     return sanitizeStudentForViewer(
-      this.mapStudentAccess(updatedStudent),
+      this.mapStudentAccess(
+        this.normalizeStudentDisplayName({
+          ...updatedStudent,
+          name: resolvedStudentName,
+          person: currentStudent.person || null,
+        }),
+      ),
       currentUser,
     );
   }
@@ -935,7 +1009,9 @@ export class StudentsService {
     });
 
     return {
-      message: active ? "Aluno ativado com sucesso." : "Aluno inativado com sucesso.",
+      message: active
+        ? "Aluno ativado com sucesso."
+        : "Aluno inativado com sucesso.",
       student: this.mapStudentAccess(updatedStudent),
     };
   }

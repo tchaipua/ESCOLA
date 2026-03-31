@@ -37,7 +37,9 @@ export class ClassScheduleItemsService {
   }
 
   private normalizeDayOfWeek(value: string) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+      .trim()
+      .toUpperCase();
   }
 
   private normalizeTime(value: string) {
@@ -323,7 +325,9 @@ export class ClassScheduleItemsService {
   }
 
   async findMySchedule(userId: string, role: string) {
-    const normalizedRole = String(role || "").trim().toUpperCase();
+    const normalizedRole = String(role || "")
+      .trim()
+      .toUpperCase();
 
     if (normalizedRole === "PROFESSOR") {
       const items = await this.prisma.classScheduleItem.findMany({
@@ -546,10 +550,12 @@ export class ClassScheduleItemsService {
     const currentItem = await this.findOne(id);
     const schoolYearId = updateDto.schoolYearId || currentItem.schoolYearId;
     const seriesClassId = updateDto.seriesClassId || currentItem.seriesClassId;
-    const teacherSubjectId =
-      Object.prototype.hasOwnProperty.call(updateDto, "teacherSubjectId")
-        ? updateDto.teacherSubjectId?.trim() || null
-        : currentItem.teacherSubjectId;
+    const teacherSubjectId = Object.prototype.hasOwnProperty.call(
+      updateDto,
+      "teacherSubjectId",
+    )
+      ? updateDto.teacherSubjectId?.trim() || null
+      : currentItem.teacherSubjectId;
     const dayOfWeek = updateDto.dayOfWeek
       ? this.normalizeDayOfWeek(updateDto.dayOfWeek)
       : currentItem.dayOfWeek;
@@ -564,7 +570,11 @@ export class ClassScheduleItemsService {
       : this.todayDateOnly();
 
     this.ensureValidTimeRange(startTime, endTime);
-    await this.validateReferences(schoolYearId, seriesClassId, teacherSubjectId);
+    await this.validateReferences(
+      schoolYearId,
+      seriesClassId,
+      teacherSubjectId,
+    );
     await this.ensureNoExactDuplicate(
       schoolYearId,
       seriesClassId,

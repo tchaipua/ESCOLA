@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import * as nodemailer from "nodemailer";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
@@ -47,6 +44,10 @@ type NotificationRecipient = {
   recipientId: string;
   name: string;
   email?: string | null;
+  studentId?: string;
+  studentName?: string;
+  score?: number;
+  remarks?: string | null;
 };
 
 type AssessmentGradeNotificationPayload = {
@@ -125,7 +126,9 @@ export class NotificationsService {
   }
 
   private normalizeText(value: string) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+      .trim()
+      .toUpperCase();
   }
 
   private formatDate(value: Date) {
@@ -143,9 +146,10 @@ export class NotificationsService {
     }).format(value);
   }
 
-  private getRecipientForCurrentUser(
-    currentUser: ICurrentUser,
-  ): { recipientType: RecipientType; recipientId: string } {
+  private getRecipientForCurrentUser(currentUser: ICurrentUser): {
+    recipientType: RecipientType;
+    recipientId: string;
+  } {
     switch (currentUser.role) {
       case "PROFESSOR":
         return { recipientType: "TEACHER", recipientId: currentUser.userId };
@@ -159,7 +163,11 @@ export class NotificationsService {
   }
 
   private getEventTypeLabel(value: string) {
-    switch (String(value || "").trim().toUpperCase()) {
+    switch (
+      String(value || "")
+        .trim()
+        .toUpperCase()
+    ) {
       case "PROVA":
         return "PROVA";
       case "TRABALHO":
@@ -169,7 +177,9 @@ export class NotificationsService {
       case "FALTA_PROFESSOR":
         return "FALTA DO PROFESSOR";
       default:
-        return String(value || "EVENTO").trim().toUpperCase();
+        return String(value || "EVENTO")
+          .trim()
+          .toUpperCase();
     }
   }
 
@@ -203,7 +213,8 @@ export class NotificationsService {
   private buildNotificationMessage(payload: LessonEventNotificationPayload) {
     const seriesName =
       payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE";
-    const className = payload.lessonItem.seriesClass?.class?.name || "SEM TURMA";
+    const className =
+      payload.lessonItem.seriesClass?.class?.name || "SEM TURMA";
     const subjectName =
       payload.lessonItem.teacherSubject?.subject?.name ||
       payload.lessonItem.subjectName ||
@@ -289,7 +300,9 @@ export class NotificationsService {
   private async buildAssessmentRecipients(
     payload: AssessmentGradeNotificationPayload,
   ): Promise<NotificationRecipient[]> {
-    const validStudentIds = payload.gradedStudents.map((student) => student.studentId);
+    const validStudentIds = payload.gradedStudents.map(
+      (student) => student.studentId,
+    );
     if (validStudentIds.length === 0) {
       return [];
     }
@@ -327,12 +340,20 @@ export class NotificationsService {
 
     const recipients = new Map<string, NotificationRecipient>();
     for (const enrollment of enrollments) {
+      const grade = payload.gradedStudents.find(
+        (student) => student.studentId === enrollment.student.id,
+      );
+
       if (payload.assessment.notifyStudents) {
         recipients.set(`STUDENT:${enrollment.student.id}`, {
           recipientType: "STUDENT",
           recipientId: enrollment.student.id,
           name: enrollment.student.name,
           email: enrollment.student.email,
+          studentId: enrollment.student.id,
+          studentName: enrollment.student.name,
+          score: grade?.score,
+          remarks: grade?.remarks,
         });
       }
 
@@ -344,6 +365,10 @@ export class NotificationsService {
             recipientId: link.guardian.id,
             name: link.guardian.name,
             email: link.guardian.email,
+            studentId: enrollment.student.id,
+            studentName: enrollment.student.name,
+            score: grade?.score,
+            remarks: grade?.remarks,
           });
         }
       }
@@ -396,7 +421,7 @@ export class NotificationsService {
       `Tipo: ${this.getEventTypeLabel(payload.lessonEvent.eventType)}`,
       `Data: ${this.formatDate(payload.lessonItem.lessonDate)}`,
       `Horário: ${timeLabel}`,
-      `Turma: ${(payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE")} - ${(payload.lessonItem.seriesClass?.class?.name || "SEM TURMA")}`,
+      `Turma: ${payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE"} - ${payload.lessonItem.seriesClass?.class?.name || "SEM TURMA"}`,
       `Disciplina: ${subjectName}`,
       payload.lessonEvent.description
         ? `Detalhes: ${payload.lessonEvent.description}`
@@ -422,7 +447,7 @@ export class NotificationsService {
                 <p><strong>Tipo:</strong> ${this.getEventTypeLabel(payload.lessonEvent.eventType)}</p>
                 <p><strong>Data:</strong> ${this.formatDate(payload.lessonItem.lessonDate)}</p>
                 <p><strong>Horário:</strong> ${timeLabel}</p>
-                <p><strong>Turma:</strong> ${(payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE")} - ${(payload.lessonItem.seriesClass?.class?.name || "SEM TURMA")}</p>
+                <p><strong>Turma:</strong> ${payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE"} - ${payload.lessonItem.seriesClass?.class?.name || "SEM TURMA"}</p>
                 <p><strong>Disciplina:</strong> ${subjectName}</p>
                 ${
                   payload.lessonEvent.description
@@ -452,7 +477,8 @@ export class NotificationsService {
   ) {
     const seriesName =
       payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE";
-    const className = payload.lessonItem.seriesClass?.class?.name || "SEM TURMA";
+    const className =
+      payload.lessonItem.seriesClass?.class?.name || "SEM TURMA";
     const subjectName =
       payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
     const teacherName =
@@ -537,7 +563,9 @@ export class NotificationsService {
       recipients
         .filter((recipient) => recipient.email && recipient.email.trim())
         .map((recipient) => {
-          let studentGrade: { score: number; remarks?: string | null } | undefined;
+          let studentGrade:
+            | { score: number; remarks?: string | null }
+            | undefined;
           if (recipient.recipientType === "STUDENT") {
             studentGrade = scoreByStudent.get(recipient.recipientId);
           }
@@ -548,12 +576,14 @@ export class NotificationsService {
             `Tipo: ${payload.assessment.assessmentType}`,
             `Data da aula: ${this.formatDate(payload.lessonItem.lessonDate)}`,
             `Horário: ${payload.lessonItem.startTime} às ${payload.lessonItem.endTime}`,
-            `Turma: ${(payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE")} - ${(payload.lessonItem.seriesClass?.class?.name || "SEM TURMA")}`,
+            `Turma: ${payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE"} - ${payload.lessonItem.seriesClass?.class?.name || "SEM TURMA"}`,
             `Disciplina: ${payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA NÃO INFORMADA"}`,
             studentGrade
               ? `Nota lançada: ${this.formatScore(studentGrade.score)}${payload.assessment.maxScore ? ` / ${this.formatScore(payload.assessment.maxScore)}` : ""}`
               : "Entre no sistema para visualizar a nota do aluno.",
-            studentGrade?.remarks ? `Observação: ${studentGrade.remarks}` : null,
+            studentGrade?.remarks
+              ? `Observação: ${studentGrade.remarks}`
+              : null,
             "Acesse o sistema para mais detalhes.",
           ]
             .filter(Boolean)
@@ -572,7 +602,7 @@ export class NotificationsService {
                 <p><strong>Tipo:</strong> ${payload.assessment.assessmentType}</p>
                 <p><strong>Data da aula:</strong> ${this.formatDate(payload.lessonItem.lessonDate)}</p>
                 <p><strong>Horário:</strong> ${payload.lessonItem.startTime} às ${payload.lessonItem.endTime}</p>
-                <p><strong>Turma:</strong> ${(payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE")} - ${(payload.lessonItem.seriesClass?.class?.name || "SEM TURMA")}</p>
+                <p><strong>Turma:</strong> ${payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE"} - ${payload.lessonItem.seriesClass?.class?.name || "SEM TURMA"}</p>
                 <p><strong>Disciplina:</strong> ${payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA NÃO INFORMADA"}</p>
                 ${
                   studentGrade
@@ -594,7 +624,9 @@ export class NotificationsService {
     return true;
   }
 
-  async dispatchLessonEventNotifications(payload: LessonEventNotificationPayload) {
+  async dispatchLessonEventNotifications(
+    payload: LessonEventNotificationPayload,
+  ) {
     const recipients = await this.buildRecipients(payload);
     if (recipients.length === 0) {
       return { notificationsCreated: 0, emailSent: false };
@@ -654,6 +686,14 @@ export class NotificationsService {
           lessonCalendarItemId: payload.lessonItem.id,
           assessmentType: payload.assessment.assessmentType,
           lessonDate: payload.lessonItem.lessonDate,
+          assessmentTitle: payload.assessment.title,
+          subjectName: payload.lessonItem.teacherSubject?.subject?.name || null,
+          teacherName: payload.lessonItem.teacherSubject?.teacher?.name || null,
+          studentId: recipient.studentId || null,
+          studentName: recipient.studentName || null,
+          score: recipient.score ?? null,
+          remarks: recipient.remarks || null,
+          maxScore: payload.assessment.maxScore ?? null,
         }),
         createdBy: this.userId(),
         updatedBy: this.userId(),
@@ -671,7 +711,9 @@ export class NotificationsService {
   async dispatchAttendanceNotifications(
     payload: AttendanceNotificationPayload,
   ) {
-    const validStudentIds = payload.attendanceStudents.map((student) => student.studentId);
+    const validStudentIds = payload.attendanceStudents.map(
+      (student) => student.studentId,
+    );
     if (validStudentIds.length === 0) {
       return { notificationsCreated: 0 };
     }
@@ -813,8 +855,11 @@ export class NotificationsService {
     currentUser: ICurrentUser,
     query: ListMyNotificationsDto,
   ) {
-    const { recipientId, recipientType } = this.getRecipientForCurrentUser(currentUser);
-    const normalizedStatus = String(query.status || "ALL").trim().toUpperCase();
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
+    const normalizedStatus = String(query.status || "ALL")
+      .trim()
+      .toUpperCase();
 
     return this.prisma.notification.findMany({
       where: {
@@ -830,7 +875,8 @@ export class NotificationsService {
   }
 
   async getUnreadSummary(currentUser: ICurrentUser) {
-    const { recipientId, recipientType } = this.getRecipientForCurrentUser(currentUser);
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
 
     const [count, preview] = await Promise.all([
       this.prisma.notification.count({
@@ -864,7 +910,8 @@ export class NotificationsService {
   }
 
   async markAsRead(id: string, currentUser: ICurrentUser) {
-    const { recipientId, recipientType } = this.getRecipientForCurrentUser(currentUser);
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
 
     const notification = await this.prisma.notification.findFirst({
       where: {
@@ -890,8 +937,69 @@ export class NotificationsService {
     });
   }
 
+  async markAsUnread(id: string, currentUser: ICurrentUser) {
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
+
+    const notification = await this.prisma.notification.findFirst({
+      where: {
+        id,
+        tenantId: currentUser.tenantId,
+        recipientType,
+        recipientId,
+        canceledAt: null,
+      },
+    });
+
+    if (!notification) {
+      throw new NotFoundException("Notificação não encontrada.");
+    }
+
+    return this.prisma.notification.update({
+      where: { id },
+      data: {
+        readAt: null,
+        readBy: null,
+        updatedBy: currentUser.userId,
+      },
+    });
+  }
+
+  async removeAttendanceNotification(id: string, currentUser: ICurrentUser) {
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
+
+    const notification = await this.prisma.notification.findFirst({
+      where: {
+        id,
+        tenantId: currentUser.tenantId,
+        recipientType,
+        recipientId,
+        canceledAt: null,
+        category: "CHAMADA",
+        readAt: { not: null },
+      },
+    });
+
+    if (!notification) {
+      throw new NotFoundException(
+        "Somente notificações de presença visualizadas podem ser excluídas.",
+      );
+    }
+
+    return this.prisma.notification.update({
+      where: { id },
+      data: {
+        canceledAt: new Date(),
+        canceledBy: currentUser.userId,
+        updatedBy: currentUser.userId,
+      },
+    });
+  }
+
   async markAllAsRead(currentUser: ICurrentUser) {
-    const { recipientId, recipientType } = this.getRecipientForCurrentUser(currentUser);
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
 
     return this.prisma.notification.updateMany({
       where: {
@@ -910,7 +1018,8 @@ export class NotificationsService {
   }
 
   async markBatchAsRead(ids: string[], currentUser: ICurrentUser) {
-    const { recipientId, recipientType } = this.getRecipientForCurrentUser(currentUser);
+    const { recipientId, recipientType } =
+      this.getRecipientForCurrentUser(currentUser);
     const uniqueIds = Array.from(
       new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)),
     );

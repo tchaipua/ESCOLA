@@ -96,7 +96,11 @@ export class LessonAttendancesService {
     return lessonItem;
   }
 
-  private async findActiveEnrollments(lessonItem: Awaited<ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>>) {
+  private async findActiveEnrollments(
+    lessonItem: Awaited<
+      ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>
+    >,
+  ) {
     return this.prisma.enrollment.findMany({
       where: {
         tenantId: this.tenantId(),
@@ -120,29 +124,31 @@ export class LessonAttendancesService {
       ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>
     >,
   ) {
-    const sameDayTeacherLessons = await this.prisma.lessonCalendarItem.findMany({
-      where: {
-        tenantId: this.tenantId(),
-        lessonDate: lessonItem.lessonDate,
-        canceledAt: null,
-        teacherSubject: {
-          is: {
-            tenantId: this.tenantId(),
-            canceledAt: null,
-            teacherId: this.userId(),
+    const sameDayTeacherLessons = await this.prisma.lessonCalendarItem.findMany(
+      {
+        where: {
+          tenantId: this.tenantId(),
+          lessonDate: lessonItem.lessonDate,
+          canceledAt: null,
+          teacherSubject: {
+            is: {
+              tenantId: this.tenantId(),
+              canceledAt: null,
+              teacherId: this.userId(),
+            },
           },
         },
+        select: {
+          id: true,
+          schoolYearId: true,
+          seriesClassId: true,
+          teacherSubjectId: true,
+          startTime: true,
+          endTime: true,
+        },
+        orderBy: [{ startTime: "asc" }, { endTime: "asc" }, { id: "asc" }],
       },
-      select: {
-        id: true,
-        schoolYearId: true,
-        seriesClassId: true,
-        teacherSubjectId: true,
-        startTime: true,
-        endTime: true,
-      },
-      orderBy: [{ startTime: "asc" }, { endTime: "asc" }, { id: "asc" }],
-    });
+    );
 
     const currentIndex = sameDayTeacherLessons.findIndex(
       (item) => item.id === lessonItem.id,
@@ -170,8 +176,12 @@ export class LessonAttendancesService {
   }
 
   private mapResponse(
-    lessonItem: Awaited<ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>>,
-    enrollments: Awaited<ReturnType<LessonAttendancesService["findActiveEnrollments"]>>,
+    lessonItem: Awaited<
+      ReturnType<LessonAttendancesService["findLessonItemForTeacher"]>
+    >,
+    enrollments: Awaited<
+      ReturnType<LessonAttendancesService["findActiveEnrollments"]>
+    >,
   ) {
     const attendanceByStudent = new Map(
       lessonItem.lessonAttendances.map((attendance) => [
@@ -186,10 +196,8 @@ export class LessonAttendancesService {
         lessonDate: lessonItem.lessonDate,
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
-        subjectName:
-          lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
-        teacherName:
-          lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
+        subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
+        teacherName: lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         shift: lessonItem.seriesClass.class?.shift || null,
@@ -219,7 +227,8 @@ export class LessonAttendancesService {
   }
 
   async findByLessonItem(lessonCalendarItemId: string) {
-    const lessonItem = await this.findLessonItemForTeacher(lessonCalendarItemId);
+    const lessonItem =
+      await this.findLessonItemForTeacher(lessonCalendarItemId);
     const enrollments = await this.findActiveEnrollments(lessonItem);
     return this.mapResponse(lessonItem, enrollments);
   }
@@ -228,7 +237,8 @@ export class LessonAttendancesService {
     lessonCalendarItemId: string,
     dto: UpsertLessonAttendanceDto,
   ) {
-    const lessonItem = await this.findLessonItemForTeacher(lessonCalendarItemId);
+    const lessonItem =
+      await this.findLessonItemForTeacher(lessonCalendarItemId);
     this.ensureAttendanceDateIsAllowed(lessonItem.lessonDate);
     const enrollments = await this.findActiveEnrollments(lessonItem);
     const validStudentIds = new Set(
@@ -382,12 +392,10 @@ export class LessonAttendancesService {
       notificationsCreated = dispatchResult.notificationsCreated;
     }
 
-    const refreshedLessonItem = await this.findLessonItemForTeacher(
-      lessonCalendarItemId,
-    );
-    const refreshedEnrollments = await this.findActiveEnrollments(
-      refreshedLessonItem,
-    );
+    const refreshedLessonItem =
+      await this.findLessonItemForTeacher(lessonCalendarItemId);
+    const refreshedEnrollments =
+      await this.findActiveEnrollments(refreshedLessonItem);
     return {
       ...this.mapResponse(refreshedLessonItem, refreshedEnrollments),
       notificationsCreated,

@@ -18,7 +18,10 @@ import { PurgeTenantDto } from "../../application/dto/purge-tenant.dto";
 import { UpdateTenantDto } from "../../application/dto/update-tenant.dto";
 import { Public } from "../../../../common/decorators/public.decorator";
 import { buildMasterPass } from "../../../../common/auth/master-auth";
-import { CurrentUser, ICurrentUser } from "../../../../common/decorators/current-user.decorator";
+import {
+  CurrentUser,
+  ICurrentUser,
+} from "../../../../common/decorators/current-user.decorator";
 
 @ApiTags("Inquilinos (Onboarding)")
 @Controller("tenants")

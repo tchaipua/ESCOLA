@@ -24,7 +24,9 @@ export class SchedulesController {
 
   @Post()
   @Permissions("MANAGE_SCHEDULES")
-  @ApiOperation({ summary: "Cadastra um horário base por período e número da aula" })
+  @ApiOperation({
+    summary: "Cadastra um horário base por período e número da aula",
+  })
   create(@Body() createScheduleDto: CreateScheduleDto) {
     return this.schedulesService.create(createScheduleDto);
   }

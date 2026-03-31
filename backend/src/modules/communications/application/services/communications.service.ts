@@ -30,7 +30,9 @@ export class CommunicationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private normalizeText(value: string) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+      .trim()
+      .toUpperCase();
   }
 
   private getAllowedScope(currentUser: ICurrentUser): AllowedAudienceScope {
@@ -68,8 +70,7 @@ export class CommunicationsService {
         mode: "FINANCEIRO",
         allowedGroups: ["RESPONSAVEIS"],
         label: "FINANCEIRO",
-        description:
-          "Pode enviar somente para os responsáveis da escola.",
+        description: "Pode enviar somente para os responsáveis da escola.",
       };
     }
 
@@ -275,9 +276,8 @@ export class CommunicationsService {
       return Array.from(recipients.values());
     }
 
-    const seriesClassIds = await this.getTeacherAudienceSeriesClassIds(
-      currentUser,
-    );
+    const seriesClassIds =
+      await this.getTeacherAudienceSeriesClassIds(currentUser);
     if (seriesClassIds.length === 0) {
       return [];
     }
@@ -411,7 +411,11 @@ export class CommunicationsService {
     const uniqueRecipients = Array.from(
       new Set(
         params.recipients
-          .map((recipient) => String(recipient.email || "").trim().toLowerCase())
+          .map((recipient) =>
+            String(recipient.email || "")
+              .trim()
+              .toLowerCase(),
+          )
           .filter(Boolean),
       ),
     );
@@ -492,7 +496,8 @@ export class CommunicationsService {
                     ? "RESPONSÁVEIS DOS SEUS ALUNOS."
                     : "RESPONSÁVEIS CADASTRADOS NA ESCOLA.",
       })),
-      emailConfigured: !!tenant?.smtpHost && !!tenant?.smtpPort && !!tenant?.smtpEmail,
+      emailConfigured:
+        !!tenant?.smtpHost && !!tenant?.smtpPort && !!tenant?.smtpEmail,
       tenant,
     };
   }

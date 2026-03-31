@@ -5,8 +5,8 @@ type Viewer = ICurrentUser | null | undefined;
 function hasPermission(viewer: Viewer, permission: string) {
   return Boolean(
     viewer?.isMaster ||
-      viewer?.role === "ADMIN" ||
-      viewer?.permissions?.includes(permission),
+    viewer?.role === "ADMIN" ||
+    viewer?.permissions?.includes(permission),
   );
 }
 

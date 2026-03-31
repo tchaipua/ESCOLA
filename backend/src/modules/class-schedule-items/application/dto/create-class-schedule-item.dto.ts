@@ -35,15 +35,16 @@ export class CreateClassScheduleItemDto {
   })
   @IsString()
   @IsIn(DAY_OF_WEEK_VALUES, {
-    message:
-      "Selecione um dia da semana válido entre segunda e domingo.",
+    message: "Selecione um dia da semana válido entre segunda e domingo.",
   })
   @IsNotEmpty({ message: "Selecione o dia da semana." })
   dayOfWeek!: string;
 
   @ApiProperty({ description: "Vínculo professor x matéria da aula" })
   @IsOptional()
-  @IsUUID("4", { message: "Selecione um vínculo válido de professor e matéria." })
+  @IsUUID("4", {
+    message: "Selecione um vínculo válido de professor e matéria.",
+  })
   teacherSubjectId?: string | null;
 
   @ApiProperty({ description: "Horário inicial da aula", example: "07:00" })

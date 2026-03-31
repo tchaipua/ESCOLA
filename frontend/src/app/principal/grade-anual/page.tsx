@@ -119,6 +119,12 @@ type AnnualStandaloneEvent = {
     teacherName: string;
 };
 
+type ExpandedDayModalState = {
+    date: string;
+    lessonItems: AnnualCalendarLessonItem[];
+    standaloneEvents: AnnualStandaloneEvent[];
+};
+
 type WeeklySourceItem = {
     id: string;
     dayOfWeek: string;
@@ -355,6 +361,8 @@ export default function GradeAnualPage() {
     const [selectedDate, setSelectedDate] = useState('');
     const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'YESTERDAY' | 'TOMORROW' | 'WEEK' | null>(null);
     const [weekRange, setWeekRange] = useState<{ start: string; end: string } | null>(null);
+    const [expandedDayModal, setExpandedDayModal] = useState<ExpandedDayModalState | null>(null);
+    const [expandedDaySeriesClassId, setExpandedDaySeriesClassId] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
@@ -382,6 +390,32 @@ export default function GradeAnualPage() {
         'VIEW_CLASS_SCHEDULES',
     ]);
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_LESSON_CALENDARS');
+    const hideCardFooter = currentRole === 'ADMIN' || currentRole === 'PROFESSOR';
+    const expandedDaySeriesClassOptions = useMemo(() => {
+        if (!expandedDayModal) return [];
+
+        const seen = new Set<string>();
+        return [...expandedDayModal.lessonItems, ...expandedDayModal.standaloneEvents]
+            .map((item) => ({ id: item.seriesClassId || '', label: item.seriesClassLabel || 'SEM TURMA' }))
+            .filter((item) => item.id)
+            .filter((item) => {
+                if (seen.has(item.id)) return false;
+                seen.add(item.id);
+                return true;
+            });
+    }, [expandedDayModal]);
+
+    const expandedDayLessonItems = useMemo(() => {
+        if (!expandedDayModal) return [];
+        if (!expandedDaySeriesClassId) return expandedDayModal.lessonItems;
+        return expandedDayModal.lessonItems.filter((item) => item.seriesClassId === expandedDaySeriesClassId);
+    }, [expandedDayModal, expandedDaySeriesClassId]);
+
+    const expandedDayStandaloneEvents = useMemo(() => {
+        if (!expandedDayModal) return [];
+        if (!expandedDaySeriesClassId) return expandedDayModal.standaloneEvents;
+        return expandedDayModal.standaloneEvents.filter((item) => item.seriesClassId === expandedDaySeriesClassId);
+    }, [expandedDayModal, expandedDaySeriesClassId]);
 
     const filteredRecords = useMemo(() => {
         return records.filter((record) => {
@@ -932,6 +966,20 @@ export default function GradeAnualPage() {
         }
     };
 
+    const openExpandedDayModal = (date: string, lessonItems: AnnualCalendarLessonItem[], standaloneEvents: AnnualStandaloneEvent[]) => {
+        setExpandedDaySeriesClassId('');
+        setExpandedDayModal({
+            date,
+            lessonItems,
+            standaloneEvents,
+        });
+    };
+
+    const closeExpandedDayModal = () => {
+        setExpandedDayModal(null);
+        setExpandedDaySeriesClassId('');
+    };
+
     const handlePeriodChange = (localId: string, field: 'periodType' | 'startDate' | 'endDate', value: string) => {
         setModalErrorStatus(null);
         setFormData((current) => ({
@@ -1442,6 +1490,7 @@ export default function GradeAnualPage() {
                                                                     setDateShortcut(null);
                                                                     setWeekRange(null);
                                                                     setSelectedDate(day);
+                                                                    openExpandedDayModal(day, dayLessonItems, dayStandaloneEvents);
                                                                 }}
                                                                 className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-blue-700"
                                                             >
@@ -1553,36 +1602,6 @@ export default function GradeAnualPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="mt-5 flex items-center justify-between gap-3">
-                                                {renderInfoButton(record)}
-                                                {canManage ? (
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <GridRowActionIconButton title="Editar grade anual" onClick={() => void handleEdit(record)} tone="blue">
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                            </svg>
-                                                        </GridRowActionIconButton>
-                                                        <GridRowActionIconButton title="Buscar novamente grade semanal" onClick={() => void handleRefreshGeneratedCalendar(record)} tone="emerald">
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                                            </svg>
-                                                        </GridRowActionIconButton>
-                                                        <GridRowActionIconButton title={record.canceledAt ? 'Ativar grade anual' : 'Inativar grade anual'} onClick={() => void openAnnualStatusModal(record)} tone={record.canceledAt ? 'emerald' : 'rose'}>
-                                                            {record.canceledAt ? (
-                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            ) : (
-                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                                </svg>
-                                                            )}
-                                                        </GridRowActionIconButton>
-                                                    </div>
-                                                ) : (
-                                                    <span className="self-center text-xs font-semibold uppercase tracking-wide text-slate-300">Somente leitura</span>
-                                                )}
-                                            </div>
                                         </article>
                                     ))}
                                 </div>
@@ -1591,6 +1610,114 @@ export default function GradeAnualPage() {
                     ) : null}
                 </div>
             </section>
+
+            {expandedDayModal ? (
+                <div className="fixed inset-0 z-[56] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {tenant?.logoUrl ? (
+                                        <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Dia expandido</div>
+                                    <h2 className="mt-2 text-2xl font-extrabold text-slate-800">{getFullDateLabel(expandedDayModal.date)}</h2>
+                                    <p className="mt-2 text-sm font-medium text-slate-500">
+                                        {expandedDayLessonItems.length} horário(s) e {expandedDayStandaloneEvents.length} evento(s) neste dia.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeExpandedDayModal}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+
+                        <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+                            <div className="mb-5 max-w-sm">
+                                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                                    Filtrar por turma
+                                </label>
+                                <select
+                                    value={expandedDaySeriesClassId}
+                                    onChange={(event) => setExpandedDaySeriesClassId(event.target.value)}
+                                    className={inputClass}
+                                >
+                                    <option value="">Todas as turmas</option>
+                                    {expandedDaySeriesClassOptions.map((option) => (
+                                        <option key={option.id} value={option.id}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {expandedDayLessonItems.length ? (
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    {expandedDayLessonItems.map((item) => (
+                                        <div key={item.id} className="rounded-2xl border border-blue-200 bg-[#eef5ff] px-4 py-4 shadow-sm">
+                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">
+                                                {item.startTime} - {item.endTime}
+                                            </div>
+                                            <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">{item.subjectName}</div>
+                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-600">{item.teacherName}</div>
+                                            <div className="mt-1 text-xs font-medium uppercase text-slate-500">{item.seriesClassLabel}</div>
+                                            {item.events.length ? (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {item.events.map((event) => (
+                                                        <span
+                                                            key={event.id}
+                                                            className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                                                event.eventType === 'PROVA'
+                                                                    ? 'bg-red-100 text-red-700'
+                                                                    : event.eventType === 'TRABALHO'
+                                                                        ? 'bg-amber-100 text-amber-700'
+                                                                        : 'bg-blue-100 text-blue-700'
+                                                            }`}
+                                                        >
+                                                            {event.title || event.eventTypeLabel}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
+                            {expandedDayStandaloneEvents.length ? (
+                                <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    {expandedDayStandaloneEvents.map((event) => (
+                                        <div key={event.id} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 shadow-sm">
+                                            <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
+                                                EVENTO EXTRA
+                                            </div>
+                                            <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">{event.title || event.eventTypeLabel}</div>
+                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-500">{event.seriesClassLabel}</div>
+                                            <div className="text-xs font-semibold uppercase text-slate-500">{event.subjectName}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="border-t border-slate-100 px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL_DIA_EXPANDIDO" className="mt-0 text-[11px]" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {isModalOpen ? (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">

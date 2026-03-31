@@ -6,9 +6,7 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { NotificationsService } from "../../../notifications/application/services/notifications.service";
-import {
-  UpsertLessonAssessmentDto,
-} from "../dto/upsert-lesson-assessment.dto";
+import { UpsertLessonAssessmentDto } from "../dto/upsert-lesson-assessment.dto";
 import { ListMyTeacherAssessmentsDto } from "../dto/list-my-teacher-assessments.dto";
 import { ListTeacherGradeHistoryDto } from "../dto/list-teacher-grade-history.dto";
 
@@ -28,7 +26,9 @@ export class LessonAssessmentsService {
   }
 
   private normalizeText(value: string) {
-    return String(value || "").trim().toUpperCase();
+    return String(value || "")
+      .trim()
+      .toUpperCase();
   }
 
   private formatShiftLabel(value?: string | null) {
@@ -122,7 +122,9 @@ export class LessonAssessmentsService {
   }
 
   async findMyTeacherAssessments(query: ListMyTeacherAssessmentsDto) {
-    const normalizedStatus = String(query.status || "ALL").trim().toUpperCase();
+    const normalizedStatus = String(query.status || "ALL")
+      .trim()
+      .toUpperCase();
     const events = await this.prisma.lessonEvent.findMany({
       where: {
         tenantId: this.tenantId(),
@@ -200,7 +202,8 @@ export class LessonAssessmentsService {
       const comboKey = `${lessonItem.schoolYearId}:${lessonItem.seriesClassId}`;
       const totalStudents = enrollmentKeys.get(comboKey) || 0;
       const gradedStudentsCount =
-        event.assessment?.grades.filter((grade) => grade.score !== null).length || 0;
+        event.assessment?.grades.filter((grade) => grade.score !== null)
+          .length || 0;
       const hasGrades = gradedStudentsCount > 0;
 
       return {
@@ -236,8 +239,10 @@ export class LessonAssessmentsService {
     return {
       items: filtered,
       totalItems: filtered.length,
-      totalPending: filtered.filter((event) => event.pendingStudentsCount > 0).length,
-      totalWithGrades: filtered.filter((event) => event.gradedStudentsCount > 0).length,
+      totalPending: filtered.filter((event) => event.pendingStudentsCount > 0)
+        .length,
+      totalWithGrades: filtered.filter((event) => event.gradedStudentsCount > 0)
+        .length,
     };
   }
 
@@ -308,7 +313,9 @@ export class LessonAssessmentsService {
       null;
 
     const lessonItemsByYear = selectedSchoolYearId
-      ? teacherLessonItems.filter((item) => item.schoolYearId === selectedSchoolYearId)
+      ? teacherLessonItems.filter(
+          (item) => item.schoolYearId === selectedSchoolYearId,
+        )
       : teacherLessonItems;
 
     const teacherSubjects = Array.from(
@@ -325,16 +332,13 @@ export class LessonAssessmentsService {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     const selectedTeacherSubjectId =
-      query.teacherSubjectId ||
-      teacherSubjects[0]?.id ||
-      null;
+      query.teacherSubjectId || teacherSubjects[0]?.id || null;
 
-    const lessonItemsByYearAndSubject =
-      selectedTeacherSubjectId
-        ? lessonItemsByYear.filter(
-            (item) => item.teacherSubjectId === selectedTeacherSubjectId,
-          )
-        : lessonItemsByYear;
+    const lessonItemsByYearAndSubject = selectedTeacherSubjectId
+      ? lessonItemsByYear.filter(
+          (item) => item.teacherSubjectId === selectedTeacherSubjectId,
+        )
+      : lessonItemsByYear;
 
     const seriesClasses = Array.from(
       new Map(
@@ -356,9 +360,7 @@ export class LessonAssessmentsService {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     const selectedSeriesClassId =
-      query.seriesClassId ||
-      seriesClasses[0]?.id ||
-      null;
+      query.seriesClassId || seriesClasses[0]?.id || null;
 
     if (
       !selectedSchoolYearId ||
@@ -472,7 +474,8 @@ export class LessonAssessmentsService {
         .filter((value): value is number => value !== null);
 
       const averageScore = scoredValues.length
-        ? scoredValues.reduce((sum, value) => sum + value, 0) / scoredValues.length
+        ? scoredValues.reduce((sum, value) => sum + value, 0) /
+          scoredValues.length
         : null;
 
       return {
@@ -497,14 +500,15 @@ export class LessonAssessmentsService {
       header: selectedLessonItem
         ? {
             schoolYearLabel:
-              schoolYears.find((item) => item.id === selectedSchoolYearId)?.label ||
-              "",
+              schoolYears.find((item) => item.id === selectedSchoolYearId)
+                ?.label || "",
             subjectName:
-              teacherSubjects.find((item) => item.id === selectedTeacherSubjectId)
-                ?.subjectName || "",
+              teacherSubjects.find(
+                (item) => item.id === selectedTeacherSubjectId,
+              )?.subjectName || "",
             seriesClassLabel:
-              seriesClasses.find((item) => item.id === selectedSeriesClassId)?.label ||
-              "",
+              seriesClasses.find((item) => item.id === selectedSeriesClassId)
+                ?.label || "",
           }
         : null,
       assessments,
@@ -516,7 +520,11 @@ export class LessonAssessmentsService {
     };
   }
 
-  private async findActiveStudentsForLessonEvent(lessonEvent: Awaited<ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>>) {
+  private async findActiveStudentsForLessonEvent(
+    lessonEvent: Awaited<
+      ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>
+    >,
+  ) {
     const lessonItem = this.requireLessonCalendarItem(lessonEvent);
     return this.prisma.enrollment.findMany({
       where: {
@@ -548,19 +556,27 @@ export class LessonAssessmentsService {
   }
 
   private mapAssessmentResponse(
-    lessonEvent: Awaited<ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>>,
-    enrollments: Awaited<ReturnType<LessonAssessmentsService["findActiveStudentsForLessonEvent"]>>,
+    lessonEvent: Awaited<
+      ReturnType<LessonAssessmentsService["findLessonEventForTeacher"]>
+    >,
+    enrollments: Awaited<
+      ReturnType<LessonAssessmentsService["findActiveStudentsForLessonEvent"]>
+    >,
   ) {
     const lessonItem = this.requireLessonCalendarItem(lessonEvent);
     const gradesByStudent = new Map(
-      (lessonEvent.assessment?.grades || []).map((grade) => [grade.studentId, grade]),
+      (lessonEvent.assessment?.grades || []).map((grade) => [
+        grade.studentId,
+        grade,
+      ]),
     );
 
     return {
       lessonEvent: {
         id: lessonEvent.id,
         eventType: lessonEvent.eventType,
-        eventTypeLabel: lessonEvent.eventType === "PROVA" ? "PROVA" : "TRABALHO",
+        eventTypeLabel:
+          lessonEvent.eventType === "PROVA" ? "PROVA" : "TRABALHO",
         title: lessonEvent.title,
         description: lessonEvent.description,
       },
@@ -606,15 +622,22 @@ export class LessonAssessmentsService {
 
   async findByLessonEvent(lessonEventId: string) {
     const lessonEvent = await this.findLessonEventForTeacher(lessonEventId);
-    const enrollments = await this.findActiveStudentsForLessonEvent(lessonEvent);
+    const enrollments =
+      await this.findActiveStudentsForLessonEvent(lessonEvent);
     return this.mapAssessmentResponse(lessonEvent, enrollments);
   }
 
-  async upsertByLessonEvent(lessonEventId: string, dto: UpsertLessonAssessmentDto) {
+  async upsertByLessonEvent(
+    lessonEventId: string,
+    dto: UpsertLessonAssessmentDto,
+  ) {
     const lessonEvent = await this.findLessonEventForTeacher(lessonEventId);
     const lessonItem = this.requireLessonCalendarItem(lessonEvent);
-    const enrollments = await this.findActiveStudentsForLessonEvent(lessonEvent);
-    const validStudentIds = new Set(enrollments.map((enrollment) => enrollment.studentId));
+    const enrollments =
+      await this.findActiveStudentsForLessonEvent(lessonEvent);
+    const validStudentIds = new Set(
+      enrollments.map((enrollment) => enrollment.studentId),
+    );
 
     const normalizedGrades = dto.grades.map((grade) => {
       if (!validStudentIds.has(grade.studentId)) {
@@ -769,7 +792,8 @@ export class LessonAssessmentsService {
       }
     }
 
-    const refreshedLessonEvent = await this.findLessonEventForTeacher(lessonEventId);
+    const refreshedLessonEvent =
+      await this.findLessonEventForTeacher(lessonEventId);
     const refreshedEnrollments =
       await this.findActiveStudentsForLessonEvent(refreshedLessonEvent);
 

@@ -72,17 +72,24 @@ export class ClassScheduleItemsController {
 
   @Patch(":id/status")
   @Permissions("MANAGE_CLASS_SCHEDULES")
-  @ApiOperation({ summary: "Ativa ou inativa logicamente um lançamento da grade horária" })
+  @ApiOperation({
+    summary: "Ativa ou inativa logicamente um lançamento da grade horária",
+  })
   setActiveStatus(
     @Param("id") id: string,
     @Body() setRecordActiveDto: SetRecordActiveDto,
   ) {
-    return this.classScheduleItemsService.setActiveStatus(id, setRecordActiveDto.active);
+    return this.classScheduleItemsService.setActiveStatus(
+      id,
+      setRecordActiveDto.active,
+    );
   }
 
   @Delete(":id")
   @Permissions("MANAGE_CLASS_SCHEDULES")
-  @ApiOperation({ summary: "Exclui fisicamente um lançamento da grade horária" })
+  @ApiOperation({
+    summary: "Exclui fisicamente um lançamento da grade horária",
+  })
   remove(@Param("id") id: string) {
     return this.classScheduleItemsService.remove(id);
   }

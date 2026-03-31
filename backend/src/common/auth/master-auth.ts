@@ -5,7 +5,9 @@ export const MASTER_TENANT_ID = "__MSINFOR_MASTER__";
 export const MASTER_PERMISSIONS = ["*"];
 
 export function normalizeMasterIdentifier(value: string) {
-  return String(value || "").trim().toUpperCase();
+  return String(value || "")
+    .trim()
+    .toUpperCase();
 }
 
 export function isMasterLoginIdentifier(value: string) {

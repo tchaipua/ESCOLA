@@ -100,7 +100,9 @@ export type ComplementaryAccessProfileCode =
 export function getDefaultAccessProfileForRole(
   role?: string | null,
 ): AccessProfileCode | null {
-  const normalizedRole = String(role || "").trim().toUpperCase();
+  const normalizedRole = String(role || "")
+    .trim()
+    .toUpperCase();
 
   switch (normalizedRole) {
     case "ADMIN":
@@ -124,9 +126,9 @@ export function normalizeAccessProfileCode(
   value?: string | null,
   role?: string | null,
 ): AccessProfileCode | null {
-  const normalized = String(value || "").trim().toUpperCase() as
-    | AccessProfileCode
-    | "";
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase() as AccessProfileCode | "";
 
   if (normalized && normalized in ACCESS_PROFILE_DEFINITIONS) {
     const profile = ACCESS_PROFILE_DEFINITIONS[normalized];
@@ -169,8 +171,9 @@ export function normalizeComplementaryAccessProfiles(
         .trim()
         .toUpperCase(),
     )
-    .filter((item: string): item is ComplementaryAccessProfileCode =>
-      item in COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS,
+    .filter(
+      (item: string): item is ComplementaryAccessProfileCode =>
+        item in COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS,
     );
 
   return Array.from(new Set(normalized));

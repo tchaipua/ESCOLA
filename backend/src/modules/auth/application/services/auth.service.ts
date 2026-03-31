@@ -198,13 +198,25 @@ export class AuthService {
     const where = { id: userId, tenantId };
     switch (modelType) {
       case "user":
-        return this.prisma.user.findFirst({ where, select: { password: true } });
+        return this.prisma.user.findFirst({
+          where,
+          select: { password: true },
+        });
       case "teacher":
-        return this.prisma.teacher.findFirst({ where, select: { password: true } });
+        return this.prisma.teacher.findFirst({
+          where,
+          select: { password: true },
+        });
       case "student":
-        return this.prisma.student.findFirst({ where, select: { password: true } });
+        return this.prisma.student.findFirst({
+          where,
+          select: { password: true },
+        });
       case "guardian":
-        return this.prisma.guardian.findFirst({ where, select: { password: true } });
+        return this.prisma.guardian.findFirst({
+          where,
+          select: { password: true },
+        });
       default:
         return null;
     }
@@ -340,15 +352,15 @@ export class AuthService {
         );
       }
 
-    const payload = {
-      userId: MASTER_USER_ID,
-      tenantId: selectedTenant.id,
-      role: MASTER_ROLE,
-      permissions: MASTER_PERMISSIONS,
-      isMaster: true,
-      name: MASTER_LOGIN_USERNAME,
-      modelType: "master",
-    };
+      const payload = {
+        userId: MASTER_USER_ID,
+        tenantId: selectedTenant.id,
+        role: MASTER_ROLE,
+        permissions: MASTER_PERMISSIONS,
+        isMaster: true,
+        name: MASTER_LOGIN_USERNAME,
+        modelType: "master",
+      };
 
       return {
         status: "SUCCESS",
@@ -515,7 +527,11 @@ export class AuthService {
     }
 
     const effectiveModel: AccountModelType = modelType || "user";
-    const account = await this.loadAccountPassword(effectiveModel, userId, tenantId);
+    const account = await this.loadAccountPassword(
+      effectiveModel,
+      userId,
+      tenantId,
+    );
     if (!account?.password) {
       throw new UnauthorizedException("Senha inválida.");
     }
