@@ -32,6 +32,8 @@ type NavItem = {
     showAfterDashboardBase?: boolean;
 };
 
+type ChangePasswordErrorVariant = 'blank' | 'mismatch' | 'invalid-current' | 'generic';
+
 function deriveScreenContextLabel(pathnameValue: string | null) {
     if (!pathnameValue) return 'PRINCIPAL_ROOT';
     const segments = pathnameValue.split('/').filter(Boolean);
@@ -57,11 +59,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+    const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
     const [unreadSummary, setUnreadSummary] = useState<UnreadNotificationSummary | null>(null);
     const [showUnreadPopup, setShowUnreadPopup] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+    const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmNewPassword, setConfirmNewPassword] = useState('');
+    const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+    const [changePasswordStatus, setChangePasswordStatus] = useState<string | null>(null);
+    const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+    const [changePasswordErrorVariant, setChangePasswordErrorVariant] = useState<ChangePasswordErrorVariant | null>(null);
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [changePasswordAlertType, setChangePasswordAlertType] = useState<'error' | 'success' | null>(null);
     const userMenuRef = useRef<HTMLDivElement>(null);
+    const CHANGE_PASSWORD_SCREEN_ID = 'PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL';
 
     const isPersonalRole = currentRole === 'PROFESSOR' || currentRole === 'ALUNO' || currentRole === 'RESPONSAVEL';
 
@@ -119,6 +135,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentPermissions(permissions);
         setCurrentUserName(name);
     }, [router]);
+
+    useEffect(() => {
+        const loadCurrentUserEmail = async () => {
+            try {
+                const { token } = getDashboardAuthContext();
+                if (!token) {
+                    setCurrentUserEmail(null);
+                    return;
+                }
+
+                const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                const data = await response.json().catch(() => null);
+                if (!response.ok) {
+                    throw new Error(data?.message || 'Não foi possível carregar o e-mail do usuário.');
+                }
+
+                setCurrentUserEmail(typeof data?.email === 'string' && data.email.trim() ? data.email.trim().toUpperCase() : null);
+            } catch {
+                setCurrentUserEmail(null);
+            }
+        };
+
+        void loadCurrentUserEmail();
+    }, []);
 
     useEffect(() => {
         const loadCurrentTenant = async () => {
@@ -216,6 +261,142 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const handleUserMenuLogout = () => {
         setUserMenuOpen(false);
         handleLogout();
+    };
+
+    const handleOpenChangePassword = () => {
+        setUserMenuOpen(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setShowCurrentPassword(false);
+        setShowNewPassword(false);
+        setShowConfirmNewPassword(false);
+        setChangePasswordStatus(null);
+        setChangePasswordError(null);
+        setChangePasswordErrorVariant(null);
+        setChangePasswordAlertType(null);
+        setIsChangePasswordOpen(true);
+    };
+
+    const closeChangePassword = () => {
+        setIsChangePasswordOpen(false);
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setChangePasswordStatus(null);
+        setChangePasswordError(null);
+        setChangePasswordErrorVariant(null);
+        setChangePasswordAlertType(null);
+        setIsChangingPassword(false);
+    };
+
+    const handleSubmitChangePassword = async () => {
+        setChangePasswordError(null);
+        setChangePasswordStatus(null);
+        setChangePasswordErrorVariant(null);
+        setChangePasswordAlertType(null);
+
+        const normalizedCurrentPassword = currentPassword.trim();
+        const normalizedNewPassword = newPassword.trim();
+        const normalizedConfirmNewPassword = confirmNewPassword.trim();
+
+        const { token } = getDashboardAuthContext();
+        if (!token) {
+            setChangePasswordError('TOKEN DE AUTENTICAÇÃO AUSENTE.');
+            setChangePasswordErrorVariant('generic');
+            setChangePasswordAlertType('error');
+            return;
+        }
+
+        if (!normalizedCurrentPassword) {
+            setChangePasswordError('INFORME A SENHA ATUAL.');
+            setChangePasswordErrorVariant('generic');
+            setChangePasswordAlertType('error');
+            return;
+        }
+
+        try {
+            setIsChangingPassword(true);
+            const confirmResponse = await fetch('http://localhost:3001/api/v1/auth/confirm-shared-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    password: normalizedCurrentPassword,
+                }),
+            });
+
+            const confirmPayload = await confirmResponse.json().catch(() => null);
+            if (!confirmResponse.ok) {
+                const rawMessage = Array.isArray(confirmPayload?.message)
+                    ? String(confirmPayload.message[0])
+                    : String(confirmPayload?.message || 'NÃO FOI POSSÍVEL VALIDAR A SENHA ATUAL.');
+                throw new Error(rawMessage);
+            }
+
+            if (!normalizedNewPassword) {
+                setChangePasswordError('NOVA SENHA INFORMADA EM BRANCO');
+                setChangePasswordErrorVariant('blank');
+                setChangePasswordAlertType('error');
+                return;
+            }
+
+            if (normalizedNewPassword !== normalizedConfirmNewPassword) {
+                setChangePasswordError('SENHAS INFORMADAS DIFERENTES');
+                setChangePasswordErrorVariant('mismatch');
+                setChangePasswordAlertType('error');
+                return;
+            }
+
+            const response = await fetch('http://localhost:3001/api/v1/auth/change-shared-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    currentPassword: normalizedCurrentPassword,
+                    newPassword: normalizedNewPassword,
+                }),
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                const rawMessage = Array.isArray(payload?.message)
+                    ? String(payload.message[0])
+                    : String(payload?.message || 'NÃO FOI POSSÍVEL ALTERAR A SENHA.');
+                throw new Error(rawMessage);
+            }
+
+            setChangePasswordStatus('SENHA ALTERADA E SINCRONIZADA COM SUCESSO.');
+            setChangePasswordAlertType('success');
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmNewPassword('');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'NÃO FOI POSSÍVEL ALTERAR A SENHA.';
+            const normalizedErrorMessage = errorMessage.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+            setChangePasswordError(errorMessage);
+            setChangePasswordErrorVariant(normalizedErrorMessage.includes('SENHA INVALIDA') ? 'invalid-current' : 'generic');
+            setChangePasswordAlertType('error');
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
+
+    const renderChangePasswordErrorMessage = () => {
+        if (changePasswordErrorVariant === 'invalid-current') {
+            return (
+                <>
+                    <div>SENHA ATUAL</div>
+                    <div>INFORMADA INVÁLIDA !!!</div>
+                </>
+            );
+        }
+
+        return <div>{changePasswordError}</div>;
     };
 
     const userDisplayName = currentUserName || 'USUÁRIO DO SISTEMA';
@@ -607,6 +788,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <div className="absolute right-0 mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white py-2 shadow-lg shadow-slate-900/5 z-20">
                                     <button
                                         type="button"
+                                        onClick={handleOpenChangePassword}
+                                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                                    >
+                                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
+                                        </svg>
+                                        <span>ALTERAR SENHA</span>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={handleUserMenuLogout}
                                         className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                                     >
@@ -653,6 +844,257 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                 </footer>
             </div>
+
+            {isChangePasswordOpen ? (
+                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 px-6 py-5">
+                            <div className="flex items-center gap-4">
+                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white bg-white shadow-md">
+                                    {currentTenant?.logoUrl ? (
+                                        <img src={currentTenant.logoUrl} alt={currentTenant.name} className="h-full w-full object-contain p-2" />
+                                    ) : (
+                                        <span className="text-lg font-black uppercase text-slate-500">
+                                            {String(currentTenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">Alterar senha</div>
+                                    <div className="mt-1 text-2xl font-black text-slate-900">Senha do e-mail geral</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeChangePassword}
+                                className="rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-red-700"
+                            >
+                                FECHAR
+                            </button>
+                        </div>
+
+                        <div className="px-6 py-6">
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <div className="md:col-span-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                                    A nova senha será validada pelo e-mail e sincronizada em todos os cadastros vinculados.
+                                </div>
+
+                                <div className="md:col-span-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">E-mail que será alterado</div>
+                                    <div className="mt-1 break-all text-base font-black">
+                                        {currentUserEmail || 'E-MAIL NÃO LOCALIZADO'}
+                                    </div>
+                                </div>
+
+                                <div className="md:col-span-3">
+                                    <label className="mb-1 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Senha atual</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showCurrentPassword ? 'text' : 'password'}
+                                            value={currentPassword}
+                                            onChange={(event) => setCurrentPassword(event.target.value)}
+                                            placeholder="INFORME A SENHA ATUAL"
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium text-slate-700 outline-none focus:bg-white"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCurrentPassword((value) => !value)}
+                                            className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900"
+                                            aria-label={showCurrentPassword ? 'Ocultar senha atual' : 'Mostrar senha atual'}
+                                        >
+                                            {showCurrentPassword ? (
+                                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 3l18 18" />
+                                                    <path d="M10.58 10.58A2 2 0 0 0 13.42 13.42" />
+                                                    <path d="M9.88 5.09A10.94 10.94 0 0 1 12 5c7 0 10 7 10 7a18.27 18.27 0 0 1-4.23 5.42" />
+                                                    <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 0 0 5.39-1.44" />
+                                                </svg>
+                                            ) : (
+                                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="md:col-span-3">
+                                    <label className="mb-1 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Nova senha</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showNewPassword ? 'text' : 'password'}
+                                            value={newPassword}
+                                            onChange={(event) => setNewPassword(event.target.value)}
+                                            placeholder="INFORME A NOVA SENHA"
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium text-slate-700 outline-none focus:bg-white"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNewPassword((value) => !value)}
+                                            className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900"
+                                            aria-label={showNewPassword ? 'Mostrar senha nova' : 'Ocultar senha nova'}
+                                        >
+                                            {showNewPassword ? (
+                                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 3l18 18" />
+                                                    <path d="M10.58 10.58A2 2 0 0 0 13.42 13.42" />
+                                                    <path d="M9.88 5.09A10.94 10.94 0 0 1 12 5c7 0 10 7 10 7a18.27 18.27 0 0 1-4.23 5.42" />
+                                                    <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 0 0 5.39-1.44" />
+                                                </svg>
+                                            ) : (
+                                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="md:col-span-3">
+                                    <label className="mb-1 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Repetir nova senha</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showConfirmNewPassword ? 'text' : 'password'}
+                                            value={confirmNewPassword}
+                                            onChange={(event) => setConfirmNewPassword(event.target.value)}
+                                            placeholder="REPITA A NOVA SENHA"
+                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium text-slate-700 outline-none focus:bg-white"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowConfirmNewPassword((value) => !value)}
+                                            className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900"
+                                            aria-label={showConfirmNewPassword ? 'Mostrar confirmação de senha' : 'Ocultar confirmação de senha'}
+                                        >
+                                            {showConfirmNewPassword ? (
+                                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 3l18 18" />
+                                                    <path d="M10.58 10.58A2 2 0 0 0 13.42 13.42" />
+                                                    <path d="M9.88 5.09A10.94 10.94 0 0 1 12 5c7 0 10 7 10 7a18.27 18.27 0 0 1-4.23 5.42" />
+                                                    <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 0 0 5.39-1.44" />
+                                                </svg>
+                                            ) : (
+                                                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => void handleSubmitChangePassword()}
+                                disabled={isChangingPassword}
+                                className="w-full rounded-xl bg-[#153a6a] px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-800 disabled:cursor-wait disabled:bg-slate-300"
+                            >
+                                {isChangingPassword ? 'SALVANDO...' : 'ALTERAR SENHA'}
+                            </button>
+                            <ScreenNameCopy
+                                screenId={CHANGE_PASSWORD_SCREEN_ID}
+                                label="NOME DA TELA"
+                                className="justify-end"
+                                disableMargin
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {changePasswordAlertType && (changePasswordError || changePasswordStatus) ? (
+                <div className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md">
+                    <div
+                        className={`w-full max-w-lg overflow-hidden rounded-[30px] border bg-white shadow-[0_30px_90px_rgba(15,23,42,0.45)] ${
+                            changePasswordAlertType === 'error' ? 'border-rose-200' : 'border-emerald-200'
+                        }`}
+                    >
+                        <div
+                            className={`flex items-start gap-4 px-6 py-5 ${
+                                changePasswordAlertType === 'error'
+                                    ? 'bg-gradient-to-r from-rose-50 to-orange-50'
+                                    : 'bg-gradient-to-r from-emerald-50 to-cyan-50'
+                            }`}
+                        >
+                            <div
+                                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white shadow-md ${
+                                    changePasswordAlertType === 'error' ? 'ring-2 ring-rose-200' : 'ring-2 ring-emerald-200'
+                                }`}
+                            >
+                                {changePasswordAlertType === 'error' ? (
+                                    changePasswordErrorVariant === 'blank' ? (
+                                        <img src="/password-empty-warning.svg" alt="Senha não informada" className="h-10 w-10 object-contain" />
+                                    ) : (
+                                        <svg viewBox="0 0 24 24" className="h-7 w-7 text-rose-600 mx-auto" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 9v4" />
+                                            <path d="M12 17h.01" />
+                                            <path d="M10.29 3.86l-8.45 14.63A2 2 0 0 0 3.58 21h16.84a2 2 0 0 0 1.74-3.01L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        </svg>
+                                    )
+                                ) : (
+                                    <svg viewBox="0 0 24 24" className="h-7 w-7 text-emerald-600 mx-auto" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                )}
+                            </div>
+                            <div className="min-w-0 flex-1 text-center">
+                                {changePasswordAlertType === 'error' ? (
+                                    <>
+                                        <div className="text-[18px] font-black uppercase tracking-[0.45em] text-rose-700">
+                                            E R R O !!!
+                                        </div>
+                                        <div className="mt-3 text-lg font-black uppercase leading-tight text-slate-900">
+                                            {renderChangePasswordErrorMessage()}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-700">
+                                            Sucesso
+                                        </div>
+                                        <div className="mt-1 text-xl font-black text-slate-900">
+                                            {changePasswordStatus}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setChangePasswordAlertType(null);
+                                    setChangePasswordError(null);
+                                    setChangePasswordErrorVariant(null);
+                                    setChangePasswordStatus(null);
+                                }}
+                                className="rounded-full bg-white px-3 py-2 text-sm font-black text-slate-500 shadow-sm hover:text-slate-900"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="flex justify-end border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setChangePasswordAlertType(null);
+                                    setChangePasswordError(null);
+                                    setChangePasswordErrorVariant(null);
+                                    setChangePasswordStatus(null);
+                                }}
+                                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white ${
+                                    changePasswordAlertType === 'error' ? 'bg-rose-600 hover:bg-rose-500' : 'bg-emerald-600 hover:bg-emerald-500'
+                                }`}
+                            >
+                                FECHAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {showUnreadPopup && unreadSummary?.count ? (
                 <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">

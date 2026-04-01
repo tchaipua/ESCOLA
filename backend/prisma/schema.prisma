@@ -156,7 +156,6 @@ model User {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
-  @@unique([email, tenantId])
   @@map("users")
 }
 
@@ -201,7 +200,6 @@ model Person {
 
   @@index([tenantId])
   @@unique([tenantId, cpfDigits])
-  @@unique([tenantId, email])
   @@map("people")
 }
 

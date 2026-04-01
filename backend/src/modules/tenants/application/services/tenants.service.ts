@@ -473,10 +473,13 @@ export class TenantsService {
 
   async findEmailUsage(email: string) {
     const normalizedEmail = this.assertEmailForLookup(email);
+    const prismaClient = (this.prisma as PrismaService & {
+      getUnscopedClient?: () => PrismaService;
+    }).getUnscopedClient?.() || this.prisma;
 
     const [tenants, users, teachers, students, guardians] = await Promise.all([
-      this.prisma.tenant.findMany({
-        where: { email: normalizedEmail, canceledAt: null },
+      prismaClient.tenant.findMany({
+        where: { canceledAt: null },
         select: {
           id: true,
           name: true,
@@ -486,8 +489,8 @@ export class TenantsService {
           updatedBy: true,
         },
       }),
-      this.prisma.user.findMany({
-        where: { email: normalizedEmail, canceledAt: null },
+      prismaClient.user.findMany({
+        where: { canceledAt: null },
         select: {
           id: true,
           name: true,
@@ -497,9 +500,19 @@ export class TenantsService {
           updatedBy: true,
           tenant: { select: { id: true, name: true, document: true } },
         },
-      }),
-      this.prisma.teacher.findMany({
-        where: { email: normalizedEmail, canceledAt: null },
+      }) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          email: string | null;
+          role: string;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }>
+      >,
+      prismaClient.teacher.findMany({
+        where: { canceledAt: null },
         select: {
           id: true,
           name: true,
@@ -508,9 +521,18 @@ export class TenantsService {
           updatedBy: true,
           tenant: { select: { id: true, name: true, document: true } },
         },
-      }),
-      this.prisma.student.findMany({
-        where: { email: normalizedEmail, canceledAt: null },
+      }) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          email: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }>
+      >,
+      prismaClient.student.findMany({
+        where: { canceledAt: null },
         select: {
           id: true,
           name: true,
@@ -519,9 +541,18 @@ export class TenantsService {
           updatedBy: true,
           tenant: { select: { id: true, name: true, document: true } },
         },
-      }),
-      this.prisma.guardian.findMany({
-        where: { email: normalizedEmail, canceledAt: null },
+      }) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          email: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }>
+      >,
+      prismaClient.guardian.findMany({
+        where: { canceledAt: null },
         select: {
           id: true,
           name: true,
@@ -530,16 +561,63 @@ export class TenantsService {
           updatedBy: true,
           tenant: { select: { id: true, name: true, document: true } },
         },
-      }),
+      }) as Promise<
+        Array<{
+          id: string;
+          name: string;
+          email: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }>
+      >,
     ]);
 
     return [
-      ...tenants.map((record) => this.mapTenantEmailUsage(record)),
-      ...users.map((record) => this.mapUserEmailUsage(record)),
-      ...teachers.map((record) => this.mapTeacherEmailUsage(record)),
-      ...students.map((record) => this.mapStudentEmailUsage(record)),
-      ...guardians.map((record) => this.mapGuardianEmailUsage(record)),
-    ].sort((left, right) => {
+      ...tenants.map((record: {
+        id: string;
+        name: string;
+        email: string | null;
+        document?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+      }) => this.mapTenantEmailUsage(record)),
+      ...users.map((record: {
+        id: string;
+        name: string;
+        email: string | null;
+        role: string;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant: { id: string; name: string; document?: string | null };
+      }) => this.mapUserEmailUsage(record)),
+      ...teachers.map((record: {
+        id: string;
+        name: string;
+        email: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant: { id: string; name: string; document?: string | null };
+      }) => this.mapTeacherEmailUsage(record)),
+      ...students.map((record: {
+        id: string;
+        name: string;
+        email: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant: { id: string; name: string; document?: string | null };
+      }) => this.mapStudentEmailUsage(record)),
+      ...guardians.map((record: {
+        id: string;
+        name: string;
+        email: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant: { id: string; name: string; document?: string | null };
+      }) => this.mapGuardianEmailUsage(record)),
+    ]
+      .filter((item) => this.normalizeEmail(item.currentEmail) === normalizedEmail)
+      .sort((left, right) => {
       return (
         left.tenantName.localeCompare(right.tenantName) ||
         left.entityLabel.localeCompare(right.entityLabel) ||
@@ -607,26 +685,17 @@ export class TenantsService {
           );
         }
 
-        const conflict = await this.prisma.user.findFirst({
-          where: {
-            tenantId: user.tenantId,
-            email: newEmail,
-            canceledAt: null,
-            id: { not: recordId },
-          },
-          select: { id: true },
-        });
-
-        if (conflict) {
-          throw new ConflictException(
-            `Já existe outro usuário com este email em ${user.tenant.name}.`,
+        const passwordHash =
+          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+            newEmail,
+            { kind: "USER", id: recordId },
           );
-        }
 
         await this.prisma.user.update({
           where: { id: recordId },
           data: {
             email: newEmail,
+            password: passwordHash,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -655,26 +724,17 @@ export class TenantsService {
           );
         }
 
-        const conflict = await this.prisma.teacher.findFirst({
-          where: {
-            tenantId: teacher.tenantId,
-            email: newEmail,
-            canceledAt: null,
-            id: { not: recordId },
-          },
-          select: { id: true },
-        });
-
-        if (conflict) {
-          throw new ConflictException(
-            `Já existe outro professor com este email em ${teacher.tenant.name}.`,
+        const passwordHash =
+          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+            newEmail,
+            { kind: "TEACHER", id: recordId },
           );
-        }
 
         await this.prisma.teacher.update({
           where: { id: recordId },
           data: {
             email: newEmail,
+            password: passwordHash,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -696,10 +756,17 @@ export class TenantsService {
           );
         }
 
+        const passwordHash =
+          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+            newEmail,
+            { kind: "STUDENT", id: recordId },
+          );
+
         await this.prisma.student.update({
           where: { id: recordId },
           data: {
             email: newEmail,
+            password: passwordHash,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -721,10 +788,17 @@ export class TenantsService {
           );
         }
 
+        const passwordHash =
+          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+            newEmail,
+            { kind: "GUARDIAN", id: recordId },
+          );
+
         await this.prisma.guardian.update({
           where: { id: recordId },
           data: {
             email: newEmail,
+            password: passwordHash,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -976,7 +1050,7 @@ export class TenantsService {
       .trim()
       .toUpperCase();
     const email = this.assertEmailForLookup(payload.email);
-    const password = String(payload.password || "");
+    const password = String(payload.password || "").trim();
     const photoUrl = String(payload.photoUrl || "").trim() || null;
     const role = this.normalizeAccessRole(payload.role);
     const birthDate = this.normalizeOptionalDate(payload.birthDate);
@@ -1027,23 +1101,18 @@ export class TenantsService {
       throw new BadRequestException("Informe o nome do usuário de acesso.");
     }
 
-    if (password.length < 6) {
-      throw new ConflictException("A senha deve ter no mínimo 6 caracteres.");
+    let hashedPassword: string;
+    if (password) {
+      if (password.length < 6) {
+        throw new ConflictException("A senha deve ter no mínimo 6 caracteres.");
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      hashedPassword = await bcrypt.hash(password, salt);
+    } else {
+      hashedPassword =
+        await this.sharedProfilesService.getReusablePasswordHashOrThrow(email);
     }
-
-    const existing = await this.prisma.user.findFirst({
-      where: { tenantId, email, canceledAt: null },
-      select: { id: true },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        "Já existe um usuário com este e-mail nesta escola.",
-      );
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await this.prisma.user.create({
       data: {
@@ -1071,6 +1140,7 @@ export class TenantsService {
         tenantId: true,
         name: true,
         email: true,
+        password: true,
         photoUrl: true,
         complementaryProfiles: true,
         role: true,
@@ -1293,26 +1363,24 @@ export class TenantsService {
       throw new BadRequestException("Informe o nome do usuário de acesso.");
     }
 
-    if (email && email !== user.email) {
-      const existing = await this.prisma.user.findFirst({
-        where: { tenantId, email, canceledAt: null, id: { not: userId } },
-        select: { id: true },
-      });
-
-      if (existing) {
-        throw new ConflictException(
-          "Já existe outro usuário com este e-mail nesta escola.",
-        );
-      }
-    }
-
     let hashedPassword: string | undefined;
+    const normalizedCurrentEmail = this.normalizeEmail(user.email);
+    const normalizedIncomingEmail = email ?? normalizedCurrentEmail;
+    const shouldResolvePasswordForEmailChange =
+      Boolean(normalizedIncomingEmail) &&
+      normalizedIncomingEmail !== normalizedCurrentEmail;
     if (payload.password !== undefined && payload.password !== "") {
       if (String(payload.password).length < 6) {
         throw new ConflictException("A senha deve ter no mínimo 6 caracteres.");
       }
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(String(payload.password), salt);
+    } else if (shouldResolvePasswordForEmailChange) {
+      hashedPassword =
+        await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+          normalizedIncomingEmail,
+          { kind: "USER", id: userId },
+        );
     }
 
     const updated = await this.prisma.user.update({
@@ -1823,22 +1891,21 @@ export class TenantsService {
         });
 
         if (adminUser) {
-          if (
-            updateTenantDto.adminEmail &&
-            updateTenantDto.adminEmail !== adminUser.email
-          ) {
-            const emailDupe = await tx.user.findFirst({
-              where: {
-                tenantId: id,
-                email: updateTenantDto.adminEmail,
-                canceledAt: null,
-                id: { not: adminUser.id },
-              },
-              include: { tenant: true },
-            });
-            if (emailDupe)
-              throw new ConflictException(
-                `E R R O ! ! !\nEmail Já Utilizado\n${emailDupe.tenant.name}`,
+          const normalizedCurrentAdminEmail = this.normalizeEmail(
+            adminUser.email,
+          );
+          const normalizedIncomingAdminEmail = updateTenantDto.adminEmail
+            ? this.normalizeEmail(updateTenantDto.adminEmail)
+            : normalizedCurrentAdminEmail;
+          const shouldResolvePasswordForAdminEmailChange =
+            Boolean(normalizedIncomingAdminEmail) &&
+            normalizedIncomingAdminEmail !== normalizedCurrentAdminEmail;
+
+          if (!hashedPassword && shouldResolvePasswordForAdminEmailChange) {
+            hashedPassword =
+              await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+                normalizedIncomingAdminEmail,
+                { kind: "USER", id: adminUser.id },
               );
           }
 
@@ -1897,12 +1964,13 @@ export class TenantsService {
     });
 
     if (hashedPassword && adminsToSync.length > 0) {
+      const passwordHashToSync = hashedPassword;
       for (const admin of adminsToSync) {
         await this.runAsMasterTenantContext(admin.tenantId, async () => {
           await this.sharedProfilesService.syncSharedPasswordByEmail(
             admin.tenantId,
             admin.email,
-            hashedPassword,
+            passwordHashToSync,
             { kind: "USER", id: admin.userId },
             this.masterAuditUser,
           );

@@ -63,6 +63,20 @@ export type SharedNameSuggestion = {
     active?: boolean;
 };
 
+export type EmailUsageRecord = {
+    entityType: string;
+    entityLabel: string;
+    recordId: string;
+    recordName: string;
+    email: string;
+    tenantId: string;
+    tenantName: string;
+    tenantDocument?: string | null;
+    tenantLogoUrl?: string | null;
+    updatedAt?: string;
+    updatedBy?: string | null;
+};
+
 type NameSuggestionCandidate = {
     name?: string | null;
     cpf?: string | null;
@@ -446,6 +460,34 @@ export async function fetchSharedPersonProfileByEmail(email: string): Promise<Sh
     }
 
     return response.json();
+}
+
+export async function fetchEmailUsageByEmail(email: string): Promise<EmailUsageRecord[]> {
+    const normalizedEmail = String(email || '').trim().toUpperCase();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) return [];
+
+    const { token } = getDashboardAuthContext();
+    if (!token) {
+        throw new Error('Token não encontrado, por favor faça login novamente.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/shared-profiles/email-usage/${encodeURIComponent(normalizedEmail)}`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    if (response.status === 404) {
+        return [];
+    }
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || 'Não foi possível consultar o uso deste e-mail.');
+    }
+
+    const data = await response.json().catch(() => []);
+    return Array.isArray(data) ? data : [];
 }
 
 export async function fetchSharedPersonNameSuggestions(name: string, limit = 8): Promise<SharedNameSuggestion[]> {

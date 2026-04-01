@@ -253,8 +253,7 @@ export class StudentsService {
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     } else if (sanitizedDto.email) {
       hashedPassword =
-        (await this.sharedProfilesService.findSharedPasswordByEmail(
-          this.tenantId(),
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
           sanitizedDto.email,
         )) || undefined;
     }
@@ -746,10 +745,29 @@ export class StudentsService {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
+    const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
+      currentStudent.email,
+    );
+    const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
+      sanitizedDto,
+      "email",
+    )
+      ? this.sharedProfilesService.normalizeEmail(sanitizedDto.email)
+      : normalizedCurrentEmail;
+    const shouldResolvePasswordForEmailChange =
+      Boolean(normalizedIncomingEmail) &&
+      normalizedIncomingEmail !== normalizedCurrentEmail;
+
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
+    } else if (shouldResolvePasswordForEmailChange) {
+      hashedPassword =
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+          normalizedIncomingEmail,
+          { kind: "STUDENT", id },
+        )) || undefined;
     }
     const accessProfile =
       normalizeAccessProfileCode(

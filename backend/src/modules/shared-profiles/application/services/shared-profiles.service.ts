@@ -3,6 +3,7 @@ import { PrismaService } from "../../../../prisma/prisma.service";
 
 type SharedProfileKind = "TEACHER" | "STUDENT" | "GUARDIAN";
 type SharedEmailAccountKind =
+  | "TENANT"
   | "USER"
   | "TEACHER"
   | "STUDENT"
@@ -174,6 +175,20 @@ type SharedNameSuggestion = {
   score: number;
 };
 
+type EmailUsageRecord = {
+  entityType: SharedEmailAccountKind;
+  entityLabel: string;
+  recordId: string;
+  recordName: string;
+  email: string;
+  tenantId: string;
+  tenantName: string;
+  tenantDocument: string | null;
+  tenantLogoUrl: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+};
+
 const PROTECTED_PLACEHOLDER_NAME = "PESSOA SEM NOME";
 
 const SHARED_PROFILE_FIELDS = [
@@ -211,6 +226,117 @@ export class SharedProfilesService {
       .trim()
       .toUpperCase();
     return normalized || "";
+  }
+
+  private normalizeEmailVariants(value?: string | null) {
+    const clean = String(value || "").trim();
+    if (!clean) return [] as string[];
+
+    return Array.from(new Set([clean, clean.toUpperCase(), clean.toLowerCase()]));
+  }
+
+  private getCrossTenantPrisma(): any {
+    const prismaWithUnscoped = this.prisma as PrismaService & {
+      getUnscopedClient?: () => unknown;
+    };
+
+    return typeof prismaWithUnscoped.getUnscopedClient === "function"
+      ? prismaWithUnscoped.getUnscopedClient()
+      : this.prisma;
+  }
+
+  private filterByNormalizedEmail<T extends { id: string; email?: string | null }>(
+    records: T[],
+    normalizedEmail: string,
+  ) {
+    return records.filter(
+      (record) => this.normalizeEmail(record.email) === normalizedEmail,
+    );
+  }
+
+  private async loadPasswordSyncTargetsByEmail(
+    email: string,
+    options?: {
+      tenantId?: string | null;
+      exclude?: { kind: SharedEmailAccountKind; id: string };
+    },
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) {
+      return {
+        people: [] as Array<{ id: string }>,
+        users: [] as Array<{ id: string }>,
+        teachers: [] as Array<{ id: string }>,
+        students: [] as Array<{ id: string }>,
+        guardians: [] as Array<{ id: string }>,
+      };
+    }
+
+    const tenantScope = options?.tenantId ? { tenantId: options.tenantId } : {};
+    const exclude = options?.exclude;
+    const prismaClient = options?.tenantId
+      ? this.prisma
+      : this.getCrossTenantPrisma();
+
+    const [people, users, teachers, students, guardians] = await Promise.all([
+      prismaClient.person.findMany({
+        where: {
+          ...tenantScope,
+          email: { not: null },
+          ...(exclude?.kind === "PERSON" ? { id: { not: exclude.id } } : {}),
+        },
+        select: { id: true, email: true },
+      }),
+      prismaClient.user.findMany({
+        where: {
+          ...tenantScope,
+          ...(exclude?.kind === "USER" ? { id: { not: exclude.id } } : {}),
+        },
+        select: { id: true, email: true },
+      }),
+      prismaClient.teacher.findMany({
+        where: {
+          ...tenantScope,
+          email: { not: null },
+          ...(exclude?.kind === "TEACHER" ? { id: { not: exclude.id } } : {}),
+        },
+        select: { id: true, email: true },
+      }),
+      prismaClient.student.findMany({
+        where: {
+          ...tenantScope,
+          email: { not: null },
+          ...(exclude?.kind === "STUDENT" ? { id: { not: exclude.id } } : {}),
+        },
+        select: { id: true, email: true },
+      }),
+      prismaClient.guardian.findMany({
+        where: {
+          ...tenantScope,
+          email: { not: null },
+          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
+        },
+        select: { id: true, email: true },
+      }),
+    ]);
+
+    return {
+      people: this.filterByNormalizedEmail(people, normalizedEmail).map(
+        ({ id }) => ({ id }),
+      ),
+      users: this.filterByNormalizedEmail(users, normalizedEmail).map(
+        ({ id }) => ({ id }),
+      ),
+      teachers: this.filterByNormalizedEmail(teachers, normalizedEmail).map(
+        ({ id }) => ({ id }),
+      ),
+      students: this.filterByNormalizedEmail(students, normalizedEmail).map(
+        ({ id }) => ({ id }),
+      ),
+      guardians: this.filterByNormalizedEmail(guardians, normalizedEmail).map(
+        ({ id }) => ({ id }),
+      ),
+    };
   }
 
   private normalizeWritableName(value?: string | null) {
@@ -1271,6 +1397,129 @@ export class SharedProfilesService {
     return latest?.record.password || null;
   }
 
+  async findSharedPasswordByEmailAcrossTenants(
+    email?: string | null,
+    exclude?: { kind: SharedEmailAccountKind; id: string },
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) return null;
+
+    const crossTenantPrisma = this.getCrossTenantPrisma();
+    const [people, users, teachers, students, guardians] = await Promise.all([
+      crossTenantPrisma.person.findMany({
+        where: {
+          canceledAt: null,
+          email: { not: null },
+          ...(exclude?.kind === "PERSON" ? { id: { not: exclude.id } } : {}),
+        },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          updatedAt: true,
+        },
+      }),
+      crossTenantPrisma.user.findMany({
+        where: {
+          canceledAt: null,
+          ...(exclude?.kind === "USER" ? { id: { not: exclude.id } } : {}),
+        },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          updatedAt: true,
+        },
+      }),
+      crossTenantPrisma.teacher.findMany({
+        where: {
+          canceledAt: null,
+          email: { not: null },
+          ...(exclude?.kind === "TEACHER" ? { id: { not: exclude.id } } : {}),
+        },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          updatedAt: true,
+        },
+      }),
+      crossTenantPrisma.student.findMany({
+        where: {
+          canceledAt: null,
+          email: { not: null },
+          ...(exclude?.kind === "STUDENT" ? { id: { not: exclude.id } } : {}),
+        },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          updatedAt: true,
+        },
+      }),
+      crossTenantPrisma.guardian.findMany({
+        where: {
+          canceledAt: null,
+          email: { not: null },
+          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
+        },
+        select: {
+          id: true,
+          email: true,
+          password: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    const latest = [
+      ...people.map((record: SharedEmailAccountRecord) => ({
+        kind: "PERSON" as const,
+        record,
+      })),
+      ...users.map((record: SharedEmailAccountRecord) => ({
+        kind: "USER" as const,
+        record,
+      })),
+      ...teachers.map((record: SharedEmailAccountRecord) => ({
+        kind: "TEACHER" as const,
+        record,
+      })),
+      ...students.map((record: SharedEmailAccountRecord) => ({
+        kind: "STUDENT" as const,
+        record,
+      })),
+      ...guardians.map((record: SharedEmailAccountRecord) => ({
+        kind: "GUARDIAN" as const,
+        record,
+      })),
+    ]
+      .filter(({ record }) => this.normalizeEmail(record.email) === normalizedEmail)
+      .filter(({ record }) => !!record.password)
+      .sort(
+        (left, right) =>
+          right.record.updatedAt.getTime() - left.record.updatedAt.getTime(),
+      )[0];
+
+    return latest?.record.password || null;
+  }
+
+  async getReusablePasswordHashOrThrow(
+    email?: string | null,
+    exclude?: { kind: SharedEmailAccountKind; id: string },
+  ) {
+    const existingPasswordHash =
+      await this.findSharedPasswordByEmailAcrossTenants(email, exclude);
+
+    if (existingPasswordHash) {
+      return existingPasswordHash;
+    }
+
+    throw new BadRequestException(
+      "INFORME A SENHA. ESTE E-MAIL AINDA NÃO POSSUI ACESSO CADASTRADO NO SISTEMA.",
+    );
+  }
+
   async syncSharedPasswordByEmail(
     tenantId: string,
     email: string,
@@ -1281,49 +1530,11 @@ export class SharedProfilesService {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail || !passwordHash) return;
 
-    const [people, users, teachers, students, guardians] = await Promise.all([
-      this.prisma.person.findMany({
-        where: {
-          tenantId,
-          email: normalizedEmail,
-          ...(source?.kind === "PERSON" ? { id: { not: source.id } } : {}),
-        },
-        select: { id: true },
-      }),
-      this.prisma.user.findMany({
-        where: {
-          tenantId,
-          canceledAt: null,
-          email: normalizedEmail,
-          ...(source?.kind === "USER" ? { id: { not: source.id } } : {}),
-        },
-        select: { id: true },
-      }),
-      this.prisma.teacher.findMany({
-        where: {
-          tenantId,
-          email: normalizedEmail,
-          ...(source?.kind === "TEACHER" ? { id: { not: source.id } } : {}),
-        },
-        select: { id: true },
-      }),
-      this.prisma.student.findMany({
-        where: {
-          tenantId,
-          email: normalizedEmail,
-          ...(source?.kind === "STUDENT" ? { id: { not: source.id } } : {}),
-        },
-        select: { id: true },
-      }),
-      this.prisma.guardian.findMany({
-        where: {
-          tenantId,
-          email: normalizedEmail,
-          ...(source?.kind === "GUARDIAN" ? { id: { not: source.id } } : {}),
-        },
-        select: { id: true },
-      }),
-    ]);
+    const { people, users, teachers, students, guardians } =
+      await this.loadPasswordSyncTargetsByEmail(email, {
+        tenantId,
+        exclude: source,
+      });
 
     const operations = [
       ...people.map((record) =>
@@ -1376,6 +1587,73 @@ export class SharedProfilesService {
     if (operations.length === 0) return;
 
     await this.prisma.$transaction(operations);
+  }
+
+  async syncSharedPasswordByEmailAcrossTenants(
+    email: string,
+    passwordHash: string,
+    source?: { kind: SharedEmailAccountKind; id: string },
+    userId?: string | null,
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail || !passwordHash) return;
+    const crossTenantPrisma = this.getCrossTenantPrisma();
+
+    const { people, users, teachers, students, guardians } =
+      await this.loadPasswordSyncTargetsByEmail(email, {
+        exclude: source,
+      });
+
+    const operations = [
+      ...people.map((record) =>
+        crossTenantPrisma.person.update({
+          where: { id: record.id },
+          data: {
+            password: passwordHash,
+            updatedBy: userId || undefined,
+          },
+        }),
+      ),
+      ...users.map((record) =>
+        crossTenantPrisma.user.update({
+          where: { id: record.id },
+          data: {
+            password: passwordHash,
+            updatedBy: userId || undefined,
+          },
+        }),
+      ),
+      ...teachers.map((record) =>
+        crossTenantPrisma.teacher.update({
+          where: { id: record.id },
+          data: {
+            password: passwordHash,
+            updatedBy: userId || undefined,
+          },
+        }),
+      ),
+      ...students.map((record) =>
+        crossTenantPrisma.student.update({
+          where: { id: record.id },
+          data: {
+            password: passwordHash,
+            updatedBy: userId || undefined,
+          },
+        }),
+      ),
+      ...guardians.map((record) =>
+        crossTenantPrisma.guardian.update({
+          where: { id: record.id },
+          data: {
+            password: passwordHash,
+            updatedBy: userId || undefined,
+          },
+        }),
+      ),
+    ];
+
+    if (operations.length === 0) return;
+    await crossTenantPrisma.$transaction(operations);
   }
 
   async hydrateMissingFieldsFromCpf<T extends Record<string, any>>(
@@ -1470,5 +1748,189 @@ export class SharedProfilesService {
 
     await this.syncLinkedRolesFromPerson(tenantId, person, userId);
     return person;
+  }
+
+  async findEmailUsage(email: string) {
+    const normalizedEmail = this.normalizeEmail(email);
+
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      throw new BadRequestException("INFORME UM E-MAIL VÁLIDO PARA CONSULTA.");
+    }
+
+    const prismaClient = this.getCrossTenantPrisma();
+
+    const [tenants, users, teachers, students, guardians, people] =
+      await Promise.all([
+        prismaClient.tenant.findMany({
+          where: { canceledAt: null },
+          select: {
+            id: true,
+            name: true,
+            document: true,
+            logoUrl: true,
+            updatedAt: true,
+            updatedBy: true,
+            email: true,
+          },
+        }),
+        prismaClient.user.findMany({
+          where: { canceledAt: null },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            updatedAt: true,
+            updatedBy: true,
+            tenant: { select: { id: true, name: true, document: true } },
+          },
+        }),
+        prismaClient.teacher.findMany({
+          where: { canceledAt: null },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            updatedAt: true,
+            updatedBy: true,
+            tenant: { select: { id: true, name: true, document: true } },
+          },
+        }),
+        prismaClient.student.findMany({
+          where: { canceledAt: null },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            updatedAt: true,
+            updatedBy: true,
+            tenant: { select: { id: true, name: true, document: true } },
+          },
+        }),
+        prismaClient.guardian.findMany({
+          where: { canceledAt: null },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            updatedAt: true,
+            updatedBy: true,
+            tenant: { select: { id: true, name: true, document: true } },
+          },
+        }),
+        prismaClient.person.findMany({
+          where: { canceledAt: null },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            updatedAt: true,
+            updatedBy: true,
+            tenant: { select: { id: true, name: true, document: true } },
+          },
+        }),
+      ]);
+
+    const mapUsage = (
+      entityType: SharedEmailAccountKind,
+      entityLabel: string,
+      record: {
+        id: string;
+        name: string;
+        email?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant?: { id: string; name: string; document?: string | null } | null;
+      },
+    ): EmailUsageRecord | null => {
+      if (!record.email) return null;
+
+      return {
+        entityType,
+        entityLabel,
+        recordId: record.id,
+        recordName: record.name,
+        email: record.email,
+        tenantId: record.tenant?.id || "",
+        tenantName: record.tenant?.name || "",
+        tenantDocument: record.tenant?.document ?? null,
+        tenantLogoUrl: null,
+        updatedAt: record.updatedAt,
+        updatedBy: record.updatedBy ?? null,
+      };
+    };
+
+    const result: EmailUsageRecord[] = [
+      ...tenants.map((record: {
+        id: string;
+        name: string;
+        document?: string | null;
+        logoUrl?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        email?: string | null;
+      }) => ({
+        entityType: "TENANT" as const,
+        entityLabel: "ESCOLA",
+        recordId: record.id,
+        recordName: record.name,
+        email: record.email || "",
+        tenantId: record.id,
+        tenantName: record.name,
+        tenantDocument: record.document ?? null,
+        tenantLogoUrl: record.logoUrl ?? null,
+        updatedAt: record.updatedAt,
+        updatedBy: record.updatedBy ?? null,
+      })),
+      ...users.map((record: {
+        id: string;
+        name: string;
+        email?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant?: { id: string; name: string; document?: string | null } | null;
+      }) => mapUsage("USER", "USUÁRIO", record)),
+      ...teachers.map((record: {
+        id: string;
+        name: string;
+        email?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant?: { id: string; name: string; document?: string | null } | null;
+      }) => mapUsage("TEACHER", "PROFESSOR", record)),
+      ...students.map((record: {
+        id: string;
+        name: string;
+        email?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant?: { id: string; name: string; document?: string | null } | null;
+      }) => mapUsage("STUDENT", "ALUNO", record)),
+      ...guardians.map((record: {
+        id: string;
+        name: string;
+        email?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant?: { id: string; name: string; document?: string | null } | null;
+      }) => mapUsage("GUARDIAN", "RESPONSÁVEL", record)),
+      ...people.map((record: {
+        id: string;
+        name: string;
+        email?: string | null;
+        updatedAt: Date;
+        updatedBy?: string | null;
+        tenant?: { id: string; name: string; document?: string | null } | null;
+      }) => mapUsage("PERSON", "PESSOA", record)),
+    ]
+      .filter((item): item is EmailUsageRecord => !!item)
+      .filter((item) => this.normalizeEmail(item.email) === normalizedEmail);
+
+    return result.sort((left, right) => {
+      return (
+        left.tenantName.localeCompare(right.tenantName) ||
+        left.entityLabel.localeCompare(right.entityLabel) ||
+        left.recordName.localeCompare(right.recordName)
+      );
+    });
   }
 }

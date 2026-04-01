@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   UnauthorizedException,
   ConflictException,
@@ -93,6 +94,20 @@ export class AuthService {
     return Array.from(
       new Set([clean, clean.toUpperCase(), clean.toLowerCase()]),
     );
+  }
+
+  private normalizeComparableEmail(email?: string | null) {
+    return String(email || "").trim().toUpperCase();
+  }
+
+  private getCrossTenantPrisma(): any {
+    const prismaWithUnscoped = this.prisma as PrismaService & {
+      getUnscopedClient?: () => unknown;
+    };
+
+    return typeof prismaWithUnscoped.getUnscopedClient === "function"
+      ? prismaWithUnscoped.getUnscopedClient()
+      : this.prisma;
   }
 
   private isMicrosoftConsumerDomain(email?: string | null): boolean {
@@ -217,9 +232,87 @@ export class AuthService {
           where,
           select: { password: true },
         });
+        default:
+          return null;
+      }
+    }
+
+  private async loadAccountById(
+    modelType: AccountModelType,
+    userId: string,
+    tenantId: string,
+  ): Promise<{ email: string | null } | null> {
+    const where = { id: userId, tenantId };
+    switch (modelType) {
+      case "user":
+        return this.prisma.user.findFirst({
+          where,
+          select: { email: true },
+        });
+      case "teacher":
+        return this.prisma.teacher.findFirst({
+          where,
+          select: { email: true },
+        });
+      case "student":
+        return this.prisma.student.findFirst({
+          where,
+          select: { email: true },
+        });
+      case "guardian":
+        return this.prisma.guardian.findFirst({
+          where,
+          select: { email: true },
+        });
       default:
         return null;
     }
+  }
+
+  private async loadPasswordCandidatesByEmailAcrossAllProfiles(
+    email: string,
+  ): Promise<
+    Array<{ password: string | null }>
+  > {
+    const normalizedEmail = this.normalizeComparableEmail(email);
+    const crossTenantPrisma = this.getCrossTenantPrisma();
+    const [users, teachers, students, guardians, people] = await Promise.all([
+      crossTenantPrisma.user.findMany({
+        where: {},
+        select: { email: true, password: true },
+      }),
+      crossTenantPrisma.teacher.findMany({
+        where: {
+          email: { not: null },
+        },
+        select: { email: true, password: true },
+      }),
+      crossTenantPrisma.student.findMany({
+        where: {
+          email: { not: null },
+        },
+        select: { email: true, password: true },
+      }),
+      crossTenantPrisma.guardian.findMany({
+        where: {
+          email: { not: null },
+        },
+        select: { email: true, password: true },
+      }),
+      crossTenantPrisma.person.findMany({
+        where: {
+          email: { not: null },
+        },
+        select: { email: true, password: true },
+      }),
+    ]);
+
+    return [...people, ...users, ...teachers, ...students, ...guardians]
+      .filter(
+        (account) =>
+          this.normalizeComparableEmail(account.email) === normalizedEmail,
+      )
+      .map((account) => ({ password: account.password }));
   }
 
   private getUniqueTenants(accounts: AccountLookup[]) {
@@ -544,6 +637,111 @@ export class AuthService {
     return { status: "SUCCESS" };
   }
 
+  async confirmSharedPassword(
+    userId: string | null,
+    tenantId: string | null,
+    modelType: AccountModelType | "master" | undefined,
+    password: string,
+  ) {
+    if (!userId || !tenantId) {
+      throw new UnauthorizedException("Usuário inválido.");
+    }
+
+    const normalizedPassword = password.trim();
+    if (!normalizedPassword) {
+      throw new UnauthorizedException("Informe a senha para continuar.");
+    }
+
+    if (modelType === "master") {
+      if (!isValidMasterPass(normalizedPassword)) {
+        throw new UnauthorizedException("Senha inválida.");
+      }
+      return { status: "SUCCESS" };
+    }
+
+    const effectiveModel: AccountModelType = modelType || "user";
+    const currentAccount = await this.loadAccountById(
+      effectiveModel,
+      userId,
+      tenantId,
+    );
+    if (!currentAccount?.email) {
+      throw new BadRequestException(
+        "Não foi possível localizar o e-mail do usuário.",
+      );
+    }
+
+    const passwordCandidates =
+      await this.loadPasswordCandidatesByEmailAcrossAllProfiles(
+        currentAccount.email,
+      );
+    const validPassword = await Promise.all(
+      passwordCandidates
+        .filter((account) => !!account.password)
+        .map((account) =>
+          bcrypt.compare(normalizedPassword, account.password as string),
+        ),
+    );
+
+    if (!validPassword.some(Boolean)) {
+      throw new UnauthorizedException("Senha inválida.");
+    }
+
+    return { status: "SUCCESS" };
+  }
+
+  async changeSharedPassword(
+    userId: string | null,
+    tenantId: string | null,
+    modelType: AccountModelType | "master" | undefined,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    if (!userId || !tenantId) {
+      throw new UnauthorizedException("Usuário inválido.");
+    }
+    const normalizedCurrentPassword = currentPassword.trim();
+    const normalizedNewPassword = newPassword.trim();
+
+    if (!normalizedCurrentPassword || !normalizedNewPassword) {
+      throw new UnauthorizedException("Informe a senha atual e a nova senha.");
+    }
+    if (normalizedNewPassword.length < 6) {
+      throw new BadRequestException("A nova senha deve ter pelo menos 6 caracteres.");
+    }
+
+    if (modelType === "master") {
+      if (!isValidMasterPass(normalizedCurrentPassword)) {
+        throw new UnauthorizedException("Senha inválida.");
+      }
+      throw new BadRequestException("Alteração de senha do master não disponível nesta tela.");
+    }
+
+    const effectiveModel: AccountModelType = modelType || "user";
+    const currentAccount = await this.loadAccountById(effectiveModel, userId, tenantId);
+    if (!currentAccount?.email) {
+      throw new BadRequestException("Não foi possível localizar o e-mail do usuário.");
+    }
+    await this.confirmSharedPassword(
+      userId,
+      tenantId,
+      modelType,
+      normalizedCurrentPassword,
+    );
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(normalizedNewPassword, salt);
+
+    await this.sharedProfilesService.syncSharedPasswordByEmailAcrossTenants(
+      currentAccount.email,
+      hashedPassword,
+      undefined,
+      userId,
+    );
+
+    return { status: "SUCCESS" };
+  }
+
   async register(registerDto: RegisterDto, currentUser: ICurrentUser) {
     const tenantId_forced = currentUser.tenantId;
     const normalizedEmail = registerDto.email.trim().toUpperCase();
@@ -571,19 +769,6 @@ export class AuthService {
               complementaryProfiles,
               permissions: null,
             });
-
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        email: normalizedEmail,
-        tenantId: tenantId_forced,
-      },
-    });
-
-    if (existingUser) {
-      throw new ConflictException(
-        "Houve um conflito: Email já em uso nesta escola.",
-      );
-    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);

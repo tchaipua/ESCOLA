@@ -85,3 +85,4 @@
 ## Notas recentes
 
 - 2026-03-17: Resumo por turma agora ordena pelas séries conforme o `sortOrder` registrado no cadastro de séries para refletir a sequência natural de aprendizado.
+- 2026-03-31: Regra oficializada de e-mail compartilhado entre escolas apenas para autenticacao (`login`, `forgot-password`, validacao de senha compartilhada e troca global de senha), mantendo isolamento normal por `tenantId` fora desses fluxos.

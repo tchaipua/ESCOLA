@@ -46,28 +46,34 @@ type GuardianSummarySubject = {
     }> | null;
 };
 
-type GuardianSummaryStudent = {
-    student?: {
-        id?: string | null;
-        name?: string | null;
-        currentEnrollment?: {
-            schoolYear?: number | null;
-            seriesName?: string | null;
-            className?: string | null;
-            shift?: string | null;
-        } | null;
-        attendance?: {
-            totalLessons?: number | null;
-            totalPresent?: number | null;
-            totalAbsent?: number | null;
-            overallFrequency?: number | null;
-        } | null;
-        grades?: {
-            totalReleasedGrades?: number | null;
-            overallAverage?: number | null;
-            bySubject?: GuardianSummarySubject[] | null;
-        } | null;
+type GuardianStudentIdentity = {
+    id?: string | null;
+    name?: string | null;
+};
+
+type GuardianStudentPwaSummary = {
+    student?: GuardianStudentIdentity | null;
+    currentEnrollment?: {
+        schoolYear?: number | null;
+        seriesName?: string | null;
+        className?: string | null;
+        shift?: string | null;
     } | null;
+    attendance?: {
+        totalLessons?: number | null;
+        totalPresent?: number | null;
+        totalAbsent?: number | null;
+        overallFrequency?: number | null;
+    } | null;
+    grades?: {
+        totalReleasedGrades?: number | null;
+        overallAverage?: number | null;
+        bySubject?: GuardianSummarySubject[] | null;
+    } | null;
+} | null;
+
+type GuardianSummaryStudent = {
+    student?: GuardianStudentPwaSummary;
     id: string;
     kinship?: string | null;
     kinshipDescription?: string | null;
@@ -654,7 +660,7 @@ export default function ResponsavelPwaPage() {
     const readCount = notifications.filter((notification) => notification.readAt).length;
     const studentNameById = new Map(
         (summary?.students || [])
-            .map((item) => [String(item?.student?.id || ''), String(item?.student?.name || '')] as const)
+            .map((item) => [String(item?.student?.student?.id || ''), String(item?.student?.student?.name || '')] as const)
             .filter(([id, name]) => Boolean(id) && Boolean(name)),
     );
 

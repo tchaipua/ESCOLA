@@ -13,13 +13,15 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
-import { fetchSharedPersonNameSuggestions, fetchSharedPersonProfileByCpf, fetchSharedPersonProfileByEmail, getAllowedDashboardFields, getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission, mergeSharedPersonIntoForm, type SharedNameSuggestion } from '@/app/lib/dashboard-crud-utils';
+import { fetchEmailUsageByEmail, fetchSharedPersonNameSuggestions, fetchSharedPersonProfileByCpf, fetchSharedPersonProfileByEmail, getAllowedDashboardFields, getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission, mergeSharedPersonIntoForm, type EmailUsageRecord, type SharedNameSuggestion } from '@/app/lib/dashboard-crud-utils';
 import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRole, PERMISSION_OPTIONS, type AccessProfileCode } from '@/app/lib/access-profiles';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
+const PROFESSORES_DETAIL_COPY_SCREEN_ID = 'PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO';
+const PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_EMAIL_USAGE_MODAL';
 
 type SubjectRecord = {
     id: string;
@@ -98,6 +100,13 @@ type TeacherFormState = {
 type ExistingCpfAlert = {
     name: string;
     roles: string[];
+};
+
+type EmailUsageAlert = {
+    email: string;
+    usages: EmailUsageRecord[];
+    currentTenantId: string | null;
+    currentTenantName: string;
 };
 
 const DEFAULT_TEACHER_PROFILE = getDefaultAccessProfileForRole('PROFESSOR');
@@ -439,6 +448,8 @@ export default function ProfessoresPage() {
     const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
     const [debouncedTeacherNameQuery, setDebouncedTeacherNameQuery] = useState('');
     const [existingCpfAlert, setExistingCpfAlert] = useState<ExistingCpfAlert | null>(null);
+    const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
+    const [originalTeacherEmail, setOriginalTeacherEmail] = useState('');
     const [teacherStatusToggleTarget, setTeacherStatusToggleTarget] = useState<TeacherRecord | null>(null);
     const [teacherStatusToggleAction, setTeacherStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingTeacherToggle, setIsProcessingTeacherToggle] = useState(false);
@@ -687,6 +698,7 @@ export default function ProfessoresPage() {
 
     const openModal = () => {
         setEditingTeacherId(null);
+        setOriginalTeacherEmail('');
         setActiveTab(1);
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
@@ -705,12 +717,14 @@ export default function ProfessoresPage() {
         setShowNameSuggestions(false);
         setNameSuggestionError(null);
         setExistingCpfAlert(null);
+        setEmailUsageAlert(null);
         setIsModalOpen(true);
     };
 
     const closeModal = () => {
         setIsModalOpen(false);
         setEditingTeacherId(null);
+        setOriginalTeacherEmail('');
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
         setHourlyRateForTeacher('');
@@ -722,10 +736,12 @@ export default function ProfessoresPage() {
         setShowNameSuggestions(false);
         setNameSuggestionError(null);
         setExistingCpfAlert(null);
+        setEmailUsageAlert(null);
     };
 
     const handleEdit = (prof: TeacherRecord) => {
         setEditingTeacherId(prof.id);
+        setOriginalTeacherEmail(String(prof.email || '').trim().toUpperCase());
         setActiveTab(1);
         setSelectedTeacherForSubjects(prof);
         setSelectedSubjectIdForTeacher('');
@@ -774,6 +790,7 @@ export default function ProfessoresPage() {
         setShowNameSuggestions(false);
         setNameSuggestionError(null);
         setExistingCpfAlert(null);
+        setEmailUsageAlert(null);
         void resolvePersonSystemRoles(prof.cpf, prof.email);
         setIsModalOpen(true);
     };
@@ -818,6 +835,72 @@ export default function ProfessoresPage() {
     const handleTeacherCpfChange = (value: string) => {
         setFormData((current) => ({ ...current, cpf: value.toUpperCase() }));
         setExistingCpfAlert(null);
+    };
+
+    const handleTeacherEmailChange = (value: string) => {
+        setFormData((current) => ({ ...current, email: value.toUpperCase() }));
+        setEmailUsageAlert(null);
+    };
+
+    const normalizeTeacherEmail = (value?: string | null) => String(value || '').trim().toUpperCase();
+
+    const resolveTeacherEmailUsageConflicts = async (email: string, showAlert = true) => {
+        const normalizedEmail = normalizeTeacherEmail(email);
+
+        if (!normalizedEmail || !normalizedEmail.includes('@')) {
+            if (showAlert) {
+                setEmailUsageAlert(null);
+            }
+            return [] as EmailUsageRecord[];
+        }
+
+        const normalizedOriginalEmail = normalizeTeacherEmail(originalTeacherEmail);
+        if (editingTeacherId && normalizedEmail === normalizedOriginalEmail) {
+            if (showAlert) {
+                setEmailUsageAlert(null);
+            }
+            return [] as EmailUsageRecord[];
+        }
+
+        const usages = await fetchEmailUsageByEmail(normalizedEmail);
+        const filteredUsages = usages.filter((usage) => {
+            if (!editingTeacherId) return true;
+            return !(usage.entityType === 'TEACHER' && usage.recordId === editingTeacherId);
+        });
+
+        if (filteredUsages.length === 0) {
+            if (showAlert) {
+                setEmailUsageAlert(null);
+            }
+            return [] as EmailUsageRecord[];
+        }
+
+        if (showAlert) {
+            setEmailUsageAlert({
+                email: normalizedEmail,
+                usages: filteredUsages,
+                currentTenantId,
+                currentTenantName: currentTenantBranding?.schoolName || 'ESCOLA LOGADA',
+            });
+        }
+
+        return filteredUsages;
+    };
+
+    const handleTeacherEmailBlur = async () => {
+        const normalizedEmail = String(formData.email || '').trim().toUpperCase();
+
+        if (!normalizedEmail || !normalizedEmail.includes('@')) {
+            setEmailUsageAlert(null);
+            return;
+        }
+
+        try {
+            await resolveTeacherEmailUsageConflicts(normalizedEmail);
+        } catch (error: any) {
+            setEmailUsageAlert(null);
+            setErrorStatus(error?.message || 'Não foi possível consultar o uso deste e-mail.');
+        }
     };
 
     const handleTeacherProfileChange = (profileCode: AccessProfileCode) => {
@@ -1378,6 +1461,7 @@ export default function ProfessoresPage() {
 
             closeModal();
             fetchProfessores();
+            setEmailUsageAlert(null);
 
         } catch (err: any) {
             let errorMsg = err.message || 'Ocorreu um erro.';
@@ -1833,7 +1917,13 @@ export default function ProfessoresPage() {
                                                 {teacherFieldAccess.access ? (
                                                     <div className="md:col-span-2">
                                                         <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail para contato / acesso</label>
-                                                        <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                                        <input
+                                                            type="email"
+                                                            value={formData.email}
+                                                            onChange={(e) => handleTeacherEmailChange(e.target.value)}
+                                                            onBlur={() => void handleTeacherEmailBlur()}
+                                                            className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                        />
                                                     </div>
                                                 ) : null}
                                             </div>
@@ -2095,7 +2185,14 @@ export default function ProfessoresPage() {
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail de Login PWA (Apenas para Acesso)</label>
-                                                <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value.toUpperCase() })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm" placeholder="Apenas para acessar o portal" />
+                                                <input
+                                                    type="email"
+                                                    value={formData.email}
+                                                    onChange={(e) => handleTeacherEmailChange(e.target.value)}
+                                                    onBlur={() => void handleTeacherEmailBlur()}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Apenas para acessar o portal"
+                                                />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">
@@ -2143,11 +2240,18 @@ export default function ProfessoresPage() {
                                 ) : null}
                                 <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                    {editingTeacherId ? 'Salvar Edição do Professor' : 'Registrar Professor'}
+                                                {editingTeacherId ? 'Salvar' : 'Registrar Professor'}
                                 </button>
                             </div>
                         </div>
-                        <ScreenNameCopy screenId="PRINCIPAL_PROFESSORES_DETAIL" />
+                        <div className="mt-3 flex justify-end">
+                            <ScreenNameCopy
+                                screenId={PROFESSORES_DETAIL_COPY_SCREEN_ID}
+                                label="NOME DA TELA"
+                                className="mt-0 justify-end"
+                                disableMargin
+                            />
+                        </div>
                     </div>
                     </div>
                 </div>
@@ -2176,6 +2280,122 @@ export default function ProfessoresPage() {
                                         <span key={i} className="block mb-1">{line}</span>
                                     ))}
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {emailUsageAlert && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 px-4">
+                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200 relative">
+                        <button
+                            type="button"
+                            onClick={() => setEmailUsageAlert(null)}
+                            className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-slate-100/80 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-800"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <div className="border-b border-amber-100 bg-amber-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img
+                                            src={currentTenantBranding.logoUrl}
+                                            alt={`Logotipo de ${currentTenantBranding.schoolName}`}
+                                            className="h-full w-full object-contain p-1.5"
+                                        />
+                                    ) : (
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">EA</span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">E-mail já utilizado</div>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-800">{emailUsageAlert.email}</h3>
+                                    <p className="mt-1 text-sm font-medium text-slate-600">
+                                        Este e-mail já está cadastrado em {emailUsageAlert.usages.length} local(is). Verifique a escola e o perfil abaixo.
+                                    </p>
+                                </div>
+                            </div>
+                            {Array.from(new Set(
+                                emailUsageAlert.usages
+                                    .filter((usage) => usage.tenantId && usage.tenantId !== emailUsageAlert.currentTenantId)
+                                    .map((usage) => usage.tenantName),
+                            )).length > 0 ? (
+                                <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-amber-800">
+                                    OUTRAS ESCOLAS ENCONTRADAS: {' '}
+                                    {Array.from(new Set(
+                                        emailUsageAlert.usages
+                                            .filter((usage) => usage.tenantId && usage.tenantId !== emailUsageAlert.currentTenantId)
+                                            .map((usage) => usage.tenantName),
+                                    )).join(' | ')}
+                                </div>
+                            ) : (
+                                <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
+                                    VÍNCULO LOCAL IDENTIFICADO NA ESCOLA {emailUsageAlert.currentTenantName}.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="max-h-[60vh] overflow-y-auto p-6">
+                            <div className="grid grid-cols-1 gap-3">
+                                {emailUsageAlert.usages.map((usage, index) => (
+                                    <div
+                                        key={`${usage.tenantId}-${usage.recordId}-${usage.entityType}-${index}`}
+                                        className={`rounded-2xl border px-4 py-4 ${usage.tenantId !== emailUsageAlert.currentTenantId ? 'border-amber-300 bg-amber-50/70' : 'border-slate-200 bg-slate-50'}`}
+                                    >
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                                    {usage.tenantName}
+                                                </div>
+                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                    {usage.recordName || 'SEM NOME'}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {usage.tenantId !== emailUsageAlert.currentTenantId ? (
+                                                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
+                                                        OUTRA ESCOLA
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                                                        Escola Atual
+                                                    </span>
+                                                )}
+                                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">
+                                                    {usage.entityLabel}
+                                                </span>
+                                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">
+                                                    {usage.tenantDocument || 'SEM DOCUMENTO'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy
+                                    screenId={PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID}
+                                    label="NOME DA TELA"
+                                    className="mt-0 justify-end"
+                                    disableMargin
+                                />
+                            </div>
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setEmailUsageAlert(null)}
+                                    className="rounded-xl bg-[#153a6a] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-800"
+                                >
+                                    ENTENDI
+                                </button>
                             </div>
                         </div>
                     </div>

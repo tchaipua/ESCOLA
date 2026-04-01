@@ -5,6 +5,7 @@ export interface ICurrentUser {
   tenantId: string;
   role: string;
   permissions: string[];
+  email?: string | null;
   isMaster?: boolean;
   modelType?: "user" | "teacher" | "student" | "guardian" | "master";
 }

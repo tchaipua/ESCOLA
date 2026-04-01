@@ -96,3 +96,12 @@ Para cada decisao, registrar:
 - Impacto: viabiliza limpeza definitiva de escolas implantadas por engano ou descartadas, mas abre uma excecao controlada a politica historica de soft delete
 - Alternativas consideradas: manter apenas cancelamento logico; apagar manualmente no banco; permitir delete fisico em modulos comuns
 - Status: aceita
+
+## DEC-0010
+
+- Data: 2026-03-31
+- Contexto: o mesmo e-mail pode existir em perfis e escolas diferentes, e o negocio exige credencial unica por e-mail para login e troca de senha sem quebrar o isolamento operacional do tenant
+- Decisao: tratar o e-mail como chave global apenas nos fluxos de autenticacao compartilhada, permitindo busca cross-tenant somente em `login`, `forgot-password`, validacao de senha compartilhada e alteracao de senha global por e-mail; fora desses fluxos, o isolamento por `tenantId` permanece obrigatorio
+- Impacto: garante que um mesmo e-mail possa entrar em varias escolas, recuperar senha corretamente e manter uma unica senha em todos os perfis vinculados, sem liberar cruzamento de dados operacionais entre escolas
+- Alternativas consideradas: manter senha independente por escola; permitir cruzamento geral de dados por e-mail em qualquer tela; limitar a verificacao apenas ao cadastro atualmente logado
+- Status: aceita

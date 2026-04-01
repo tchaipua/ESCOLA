@@ -182,8 +182,7 @@ export class GuardiansService {
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     } else if (sanitizedDto.email) {
       hashedPassword =
-        (await this.sharedProfilesService.findSharedPasswordByEmail(
-          tenantId,
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
           sanitizedDto.email,
         )) || undefined;
     }
@@ -394,6 +393,19 @@ export class GuardiansService {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
+    const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
+      currentGuardian.email,
+    );
+    const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
+      sanitizedDto,
+      "email",
+    )
+      ? this.sharedProfilesService.normalizeEmail(sanitizedDto.email)
+      : normalizedCurrentEmail;
+    const shouldResolvePasswordForEmailChange =
+      Boolean(normalizedIncomingEmail) &&
+      normalizedIncomingEmail !== normalizedCurrentEmail;
+
     if (
       sanitizedDto.cpf !== undefined &&
       this.normalizeDocument(sanitizedDto.cpf) !==
@@ -410,6 +422,12 @@ export class GuardiansService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
+    } else if (shouldResolvePasswordForEmailChange) {
+      hashedPassword =
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+          normalizedIncomingEmail,
+          { kind: "GUARDIAN", id },
+        )) || undefined;
     }
     const accessProfile =
       normalizeAccessProfileCode(

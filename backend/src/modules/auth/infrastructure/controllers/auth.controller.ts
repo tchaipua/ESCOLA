@@ -63,6 +63,41 @@ export class AuthController {
     );
   }
 
+  @ApiBearerAuth()
+  @Post("confirm-shared-password")
+  @ApiOperation({ summary: "Confirma a senha compartilhada do e-mail em todos os perfis vinculados" })
+  async confirmSharedPassword(
+    @CurrentUser() user: ICurrentUser,
+    @Body() payload: ConfirmPasswordDto,
+  ) {
+    return this.authService.confirmSharedPassword(
+      user.userId,
+      user.tenantId,
+      user.modelType,
+      payload.password,
+    );
+  }
+
+  @ApiBearerAuth()
+  @Post("change-shared-password")
+  @ApiOperation({ summary: "Altera a senha compartilhada e sincroniza em todos os perfis vinculados" })
+  async changeSharedPassword(
+    @CurrentUser() user: ICurrentUser,
+    @Body()
+    payload: {
+      currentPassword: string;
+      newPassword: string;
+    },
+  ) {
+    return this.authService.changeSharedPassword(
+      user.userId,
+      user.tenantId,
+      user.modelType,
+      payload.currentPassword,
+      payload.newPassword,
+    );
+  }
+
   @Public()
   @Post("forgot-password")
   @ApiOperation({ summary: "Solicitar recuperação de senha" })

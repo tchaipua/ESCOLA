@@ -183,21 +183,6 @@ export class TeachersService {
 
     await this.assertUniqueTeacherCpf(tenantId, sanitizedDto.cpf);
 
-    if (sanitizedDto.email) {
-      const existing = await this.prisma.teacher.findFirst({
-        where: {
-          tenantId,
-          email: sanitizedDto.email,
-          canceledAt: null,
-        },
-      });
-      if (existing) {
-        throw new ConflictException(
-          `E R R O ! ! !\nEmail Já Utilizado\nJá existe um professor com este e-mail no sistema.`,
-        );
-      }
-    }
-
     await this.fillAddressFromViaCep(sanitizedDto);
 
     let hashedPassword = undefined;
@@ -206,8 +191,7 @@ export class TeachersService {
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     } else if (sanitizedDto.email) {
       hashedPassword =
-        (await this.sharedProfilesService.findSharedPasswordByEmail(
-          getTenantContext()!.tenantId,
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
           sanitizedDto.email,
         )) || undefined;
     }
@@ -352,20 +336,18 @@ export class TeachersService {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
-    if (sanitizedDto.email && sanitizedDto.email !== teacher.email) {
-      const existing = await this.prisma.teacher.findFirst({
-        where: {
-          tenantId: getTenantContext()!.tenantId,
-          email: sanitizedDto.email,
-          canceledAt: null,
-        },
-      });
-      if (existing) {
-        throw new ConflictException(
-          `E R R O ! ! !\nEmail Já Utilizado\nJá existe um professor com este e-mail no sistema.`,
-        );
-      }
-    }
+    const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
+      teacher.email,
+    );
+    const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
+      sanitizedDto,
+      "email",
+    )
+      ? this.sharedProfilesService.normalizeEmail(sanitizedDto.email)
+      : normalizedCurrentEmail;
+    const shouldResolvePasswordForEmailChange =
+      Boolean(normalizedIncomingEmail) &&
+      normalizedIncomingEmail !== normalizedCurrentEmail;
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       tenantId,
@@ -393,6 +375,12 @@ export class TeachersService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
+    } else if (shouldResolvePasswordForEmailChange) {
+      hashedPassword =
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+          normalizedIncomingEmail,
+          { kind: "TEACHER", id },
+        )) || undefined;
     }
 
     const accessProfile =
@@ -409,6 +397,7 @@ export class TeachersService {
           : teacher.permissions;
 
     const rawData = this.transformToUpperCase(sanitizedDto);
+    delete rawData.password;
     delete rawData.permissions;
     delete rawData.accessProfile;
 

@@ -54,6 +54,16 @@ export class SharedProfilesController {
     return profile;
   }
 
+  @Get("email-usage/:email")
+  @Roles("ADMIN", "SECRETARIA", "COORDENACAO", "USER", "USUARIO_ESCOLA")
+  @ApiOperation({
+    summary:
+      "Consulta em quais cadastros e escolas um e-mail já está sendo utilizado",
+  })
+  async findEmailUsage(@Param("email") email: string) {
+    return this.sharedProfilesService.findEmailUsage(email);
+  }
+
   @Get("name-suggestions/:name")
   @ApiOperation({
     summary:

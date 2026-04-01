@@ -250,25 +250,6 @@ export class PeopleService {
       }
     }
 
-    const normalizedEmail = this.sharedProfilesService.normalizeEmail(
-      payload.email,
-    );
-    if (normalizedEmail) {
-      const personByEmail = await this.prisma.person.findFirst({
-        where: {
-          tenantId: this.tenantId(),
-          email: normalizedEmail,
-          ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
-        },
-        select: { id: true, name: true },
-      });
-
-      if (personByEmail) {
-        throw new ConflictException(
-          `Já existe uma pessoa com este e-mail na escola: ${personByEmail.name}.`,
-        );
-      }
-    }
   }
 
   private async findPersonEntity(id: string) {
@@ -549,6 +530,11 @@ export class PeopleService {
     if (createDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(createDto.password, salt);
+    } else if (normalizedEmail) {
+      hashedPassword =
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+          normalizedEmail,
+        )) || null;
     }
 
     const createdPerson = await this.prisma.person.create({
@@ -612,6 +598,11 @@ export class PeopleService {
     )
       ? this.sharedProfilesService.normalizeEmail(updateDto.email)
       : currentPerson.email;
+    const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
+      currentPerson.email,
+    );
+    const shouldResolvePasswordForEmailChange =
+      Boolean(normalizedEmail) && normalizedEmail !== normalizedCurrentEmail;
 
     await this.ensureUniquePersonIdentity(
       {
@@ -627,6 +618,12 @@ export class PeopleService {
     if (updateDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(updateDto.password, salt);
+    } else if (shouldResolvePasswordForEmailChange) {
+      hashedPassword =
+        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
+          normalizedEmail,
+          { kind: "PERSON", id },
+        )) || undefined;
     }
 
     await this.prisma.person.update({

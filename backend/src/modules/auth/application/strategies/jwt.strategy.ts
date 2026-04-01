@@ -37,6 +37,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         permissions: Array.isArray(payload.permissions)
           ? payload.permissions
           : MASTER_PERMISSIONS,
+        email:
+          typeof payload.email === "string" && payload.email.trim()
+            ? payload.email
+            : "MSINFOR",
+        modelType: "master",
         isMaster: true,
       };
     }
@@ -61,6 +66,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           accessProfile: true,
           complementaryProfiles: true,
           permissions: true,
+          email: true,
         },
       }),
       this.prisma.teacher.findFirst({
@@ -74,6 +80,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tenantId: true,
           accessProfile: true,
           permissions: true,
+          email: true,
         },
       }),
       this.prisma.student.findFirst({
@@ -87,6 +94,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tenantId: true,
           accessProfile: true,
           permissions: true,
+          email: true,
         },
       }),
       this.prisma.guardian.findFirst({
@@ -100,11 +108,21 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           tenantId: true,
           accessProfile: true,
           permissions: true,
+          email: true,
         },
       }),
     ]);
 
     const account = user || teacher || student || guardian;
+    const modelType = user
+      ? "user"
+      : teacher
+        ? "teacher"
+        : student
+          ? "student"
+          : guardian
+            ? "guardian"
+            : undefined;
 
     if (!account) {
       throw new UnauthorizedException("Acesso negado: Perfil inexistente");
@@ -114,6 +132,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       userId: payload.userId,
       tenantId: payload.tenantId,
       role: payload.role,
+      email:
+        typeof account.email === "string" && account.email.trim()
+          ? account.email
+          : null,
+      modelType,
       permissions: user
         ? resolveAccountPermissions({
             role: user.role,

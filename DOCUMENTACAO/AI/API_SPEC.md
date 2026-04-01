@@ -52,6 +52,10 @@ Resposta resumida:
 
 ### POST `/auth/login`
 
+- Regra de escopo: este e um dos poucos fluxos com busca cross-tenant autorizada por e-mail
+- Comportamento: o backend deve pesquisar o e-mail informado em todas as escolas para descobrir em quais tenants e perfis ele existe
+- Restricao: depois da escolha da escola/perfil, o restante da sessao volta ao isolamento normal por `tenantId`
+
 Body atual:
 
 ```json
@@ -114,6 +118,7 @@ Respostas possiveis:
 
 - aceita `email`
 - pode retornar `MULTIPLE_TENANTS` quando o email estiver em mais de uma escola
+- Regra de escopo: a busca do e-mail acontece em todas as escolas, mas o reset continua direcionado ao tenant/perfil escolhido
 
 ### POST `/auth/reset-password`
 
@@ -141,6 +146,46 @@ Respostas possiveis:
 ```
 
 - Em caso de senha inválida, retorna `401 Unauthorized` com a mensagem padrão `"Senha inválida."`.
+
+### POST `/auth/confirm-shared-password`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Body:
+
+```json
+{
+  "password": "SENHA_ATUAL"
+}
+```
+
+- Uso: valida a senha atual pelo e-mail do usuario logado, pesquisando em todos os perfis e em todas as escolas vinculadas a esse e-mail
+- Regra principal: se qualquer perfil do mesmo e-mail possuir a senha informada, a validacao deve retornar sucesso, mesmo que o cadastro atualmente logado tenha outra senha
+- Resposta de sucesso:
+
+```json
+{
+  "status": "SUCCESS"
+}
+```
+
+### POST `/auth/change-shared-password`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Body:
+
+```json
+{
+  "currentPassword": "SENHA_ATUAL",
+  "newPassword": "NOVA_SENHA"
+}
+```
+
+- Uso: altera a senha compartilhada do e-mail exibido na tela `PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL`
+- Regra de escopo: este fluxo pode pesquisar e atualizar registros em todas as escolas, exclusivamente para manter senha unica por e-mail
+- Regra principal:
+  - a senha atual deve ser validada contra todos os perfis do mesmo e-mail em todas as escolas
+  - a nova senha deve ser replicada em todos os perfis vinculados a esse e-mail em todas as escolas
+  - um e-mail deve possuir apenas uma senha valida no ecossistema
 
 ## People
 
@@ -252,6 +297,11 @@ Resposta resumida:
   }
 ]
 ```
+
+### GET `/shared-profiles/email-usage/:email`
+
+- Uso: consulta administrativa para descobrir em quais cadastros e escolas um e-mail esta sendo usado
+- Excecao de escopo: pode retornar referencias de varias escolas, mas nao libera dados operacionais completos cross-tenant
 
 ## Modulos operacionais por papel
 
