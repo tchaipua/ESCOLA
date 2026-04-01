@@ -15,6 +15,7 @@ import { type GridStatusFilterValue } from '@/app/components/grid-status-filter'
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
     fetchAddressByCep,
+    fetchEmailUsageByEmail,
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
@@ -27,6 +28,7 @@ import {
     isValidCnpj,
     isValidCpf,
     mergeSharedPersonIntoForm,
+    type EmailUsageRecord,
     type SharedNameSuggestion,
 } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
@@ -48,6 +50,13 @@ type GuardianStudentLink = {
     kinship?: string | null;
     kinshipDescription?: string | null;
     student?: { id: string; name: string } | null;
+};
+
+type EmailUsageAlert = {
+    email: string;
+    usages: EmailUsageRecord[];
+    currentTenantId: string | null;
+    currentTenantName: string;
 };
 
 type GuardianRecord = {
@@ -79,7 +88,7 @@ type GuardianRecord = {
 
 type GuardianFormState = {
     name: string; birthDate: string; cpf: string; rg: string; cnpj: string; nickname: string; corporateName: string;
-    phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string; password: string;
+    phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string;
     zipCode: string; street: string; number: string; city: string; state: string; neighborhood: string; complement: string;
     accessProfile: AccessProfileCode; permissions: string[];
 };
@@ -88,7 +97,7 @@ const DEFAULT_GUARDIAN_PROFILE = getDefaultAccessProfileForRole('RESPONSAVEL');
 
 const EMPTY_FORM: GuardianFormState = {
     name: '', birthDate: '', cpf: '', rg: '', cnpj: '', nickname: '', corporateName: '',
-    phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
+    phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
     zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
     accessProfile: DEFAULT_GUARDIAN_PROFILE, permissions: getProfilePermissions(DEFAULT_GUARDIAN_PROFILE),
 };
@@ -281,6 +290,7 @@ export default function ResponsaveisPage() {
     const [isLoadingNameSuggestions, setIsLoadingNameSuggestions] = useState(false);
     const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
     const [debouncedGuardianNameQuery, setDebouncedGuardianNameQuery] = useState('');
+    const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
 
     const canViewGuardians = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_GUARDIANS');
     const canManageGuardians = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_GUARDIANS');
@@ -474,6 +484,7 @@ export default function ResponsaveisPage() {
         setShowNameSuggestions(false);
         setIsLoadingNameSuggestions(false);
         setNameSuggestionError(null);
+        setEmailUsageAlert(null);
     };
 
     const openModal = () => {
@@ -504,7 +515,6 @@ export default function ResponsaveisPage() {
             cellphone1: guardian.cellphone1 || '',
             cellphone2: guardian.cellphone2 || '',
             email: guardian.email || '',
-            password: '',
             zipCode: guardian.zipCode || '',
             street: guardian.street || '',
             number: guardian.number || '',
@@ -549,6 +559,38 @@ export default function ResponsaveisPage() {
             setPersonSystemRoles(buildSystemRoleBadges(profile.roles));
         } catch (error) {
             setSaveError(errorMessage(error, 'Não foi possível reaproveitar os dados deste CPF.'));
+        }
+    };
+
+    const handleEmailUsageBlur = async () => {
+        const normalizedEmail = String(formData.email || '').trim().toUpperCase();
+
+        if (!normalizedEmail || !normalizedEmail.includes('@')) {
+            setEmailUsageAlert(null);
+            return;
+        }
+
+        try {
+            const usages = await fetchEmailUsageByEmail(normalizedEmail);
+            const filteredUsages = usages.filter((usage) => {
+                if (!editingGuardianId) return true;
+                return !(usage.entityType === 'GUARDIAN' && usage.recordId === editingGuardianId);
+            });
+
+            if (filteredUsages.length === 0) {
+                setEmailUsageAlert(null);
+                return;
+            }
+
+            setEmailUsageAlert({
+                email: normalizedEmail,
+                usages: filteredUsages,
+                currentTenantId,
+                currentTenantName: currentTenantBranding?.schoolName || 'ESCOLA LOGADA',
+            });
+        } catch (error) {
+            setEmailUsageAlert(null);
+            setErrorStatus(errorMessage(error, 'Não foi possível consultar o uso deste e-mail.'));
         }
     };
 
@@ -810,11 +852,9 @@ export default function ResponsaveisPage() {
                 cellphone1: formatPhone(formData.cellphone1),
                 cellphone2: formatPhone(formData.cellphone2),
             };
-            if (editingGuardianId && !payload.password) delete payload.password;
             if (!payload.birthDate) delete payload.birthDate;
             if (!guardianFieldAccess.access) {
                 delete payload.email;
-                delete payload.password;
                 delete payload.accessProfile;
                 delete payload.permissions;
             }
@@ -1185,14 +1225,7 @@ export default function ResponsaveisPage() {
                                                     type="email"
                                                     value={formData.email}
                                                     onChange={(event) => setFormData((current) => ({ ...current, email: event.target.value.toUpperCase() }))}
-                                                    className={`${inputClass} bg-white`}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={labelClass}>{editingGuardianId ? 'Senha nova (opcional)' : 'Senha de acesso'}</label>
-                                                <input
-                                                    value={formData.password}
-                                                    onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
+                                                    onBlur={handleEmailUsageBlur}
                                                     className={`${inputClass} bg-white`}
                                                 />
                                             </div>
@@ -1222,18 +1255,22 @@ export default function ResponsaveisPage() {
                                     </div>
                                 )
                             ) : null}
-                            <div className="sticky bottom-0 -mx-6 mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
-                                <div className="flex flex-wrap gap-3">
-                                    <button type="button" onClick={closeModal} className="rounded-xl px-6 py-3 text-sm font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100">Sair sem Gravar</button>
-                                    {activeTab > 1 ? (
-                                        <button type="button" onClick={() => setActiveTab((current) => current - 1)} className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Voltar</button>
-                                    ) : null}
+                            <div className="sticky bottom-0 -mx-6 mt-8 flex flex-col gap-3 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex flex-wrap gap-3">
+                                        <button type="button" onClick={closeModal} className="rounded-xl px-6 py-3 text-sm font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100">SAIR</button>
+                                    </div>
+                                    <div className="flex flex-wrap justify-end gap-3">
+                                        <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingGuardianId ? 'Salvar' : 'Registrar responsável'}</button>
+                                    </div>
                                 </div>
-                                <div className="flex flex-wrap justify-end gap-3">
-                                    {activeTab < 3 ? (
-                                        <button type="button" onClick={() => setActiveTab((current) => current + 1)} className="rounded-xl bg-[#153a6a] px-8 py-3 text-sm font-bold text-white hover:bg-blue-800">Próxima etapa →</button>
-                                    ) : null}
-                                    <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingGuardianId ? 'Salvar edição' : 'Registrar responsável'}</button>
+                                <div className="flex justify-end">
+                                    <ScreenNameCopy
+                                        screenId="PRINCIPAL_RESPONSAVEIS_POPUP_EDITAR_RESPONSAVEL"
+                                        label="Tela"
+                                        disableMargin
+                                        className="w-auto justify-end"
+                                    />
                                 </div>
                             </div>
                         </form>
@@ -1289,6 +1326,81 @@ export default function ResponsaveisPage() {
                         <div className="border-t border-slate-100 bg-white px-6 py-3">
                             <div className="flex justify-end">
                                 <ScreenNameCopy screenId="PRINCIPAL_RESPONSAVEIS_ALUNOS_VINCULADOS" disableMargin className="w-auto" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {emailUsageAlert ? (
+                <div className="fixed inset-0 z-[59] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
+                        <div className="border-b border-amber-100 bg-amber-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
+                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">EA</span>
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">E-mail já utilizado</div>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-800">{emailUsageAlert.email}</h3>
+                                    <p className="mt-1 text-sm font-medium text-slate-600">
+                                        Este e-mail já está cadastrado em {emailUsageAlert.usages.length} local(is). Verifique a escola e o perfil abaixo.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="max-h-[60vh] overflow-y-auto p-6">
+                            <div className="grid grid-cols-1 gap-3">
+                                {emailUsageAlert.usages.map((usage, index) => (
+                                    <div
+                                        key={`${usage.tenantId}-${usage.recordId}-${usage.entityType}-${index}`}
+                                        className={`rounded-2xl border px-4 py-4 ${usage.tenantId !== emailUsageAlert.currentTenantId ? 'border-amber-300 bg-amber-50/70' : 'border-slate-200 bg-slate-50'}`}
+                                    >
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                                    {usage.tenantName}
+                                                </div>
+                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                    {usage.recordName || 'SEM NOME'}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {usage.tenantId !== emailUsageAlert.currentTenantId ? (
+                                                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
+                                                        OUTRA ESCOLA
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                                                        ESCOLA ATUAL
+                                                    </span>
+                                                )}
+                                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">
+                                                    {usage.entityLabel}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy
+                                    screenId="PRINCIPAL_RESPONSAVEIS_POPUP_EMAIL_USAGE_ALERT"
+                                    label="Tela"
+                                    disableMargin
+                                    className="w-auto justify-end"
+                                />
+                            </div>
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setEmailUsageAlert(null)}
+                                    className="rounded-xl bg-[#153a6a] px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-800"
+                                >
+                                    ENTENDI
+                                </button>
                             </div>
                         </div>
                     </div>

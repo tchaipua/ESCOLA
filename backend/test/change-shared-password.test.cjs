@@ -8,54 +8,71 @@ const {
   SharedProfilesService,
 } = require("../dist/src/modules/shared-profiles/application/services/shared-profiles.service.js");
 
-async function testChangeSharedPasswordRejectsPasswordFromDifferentEmail() {
-  const unrelatedPasswordHash = await bcrypt.hash("SENHA-ATUAL", 10);
+function createAuthPrisma({ email = "GERAL@ESCOLA.COM", modelType = "user" } = {}) {
+  const buildFindFirst = (expectedModel) => async ({ select }) =>
+    expectedModel === modelType &&
+    select &&
+    Object.prototype.hasOwnProperty.call(select, "email")
+      ? { email }
+      : null;
 
-  const prisma = {
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "GERAL@ESCOLA.COM" }
-          : null,
-      findMany: async ({ where }) => {
-        assert.deepEqual(where || {}, {});
-        return [{ email: "OUTRO@ESCOLA.COM", password: unrelatedPasswordHash }];
-      },
-    },
-    teacher: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [{ email: "OUTRO@ESCOLA.COM", password: unrelatedPasswordHash }];
-      },
-    },
-    student: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [{ email: "OUTRO@ESCOLA.COM", password: unrelatedPasswordHash }];
-      },
-    },
-    guardian: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [{ email: "OUTRO@ESCOLA.COM", password: unrelatedPasswordHash }];
-      },
-    },
-    person: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [{ email: "OUTRO@ESCOLA.COM", password: unrelatedPasswordHash }];
-      },
-    },
+  return {
+    user: { findFirst: buildFindFirst("user") },
+    teacher: { findFirst: buildFindFirst("teacher") },
+    student: { findFirst: buildFindFirst("student") },
+    guardian: { findFirst: buildFindFirst("guardian") },
   };
+}
 
-  let syncCalled = false;
-  const sharedProfilesService = {
-    syncSharedPasswordByEmailAcrossTenants: async () => {
-      syncCalled = true;
-    },
+function createSharedProfilesMock(overrides = {}) {
+  return {
+    getOrCreateEmailCredentialFromLegacy: async (email) => ({
+      id: "cred-1",
+      email: String(email || "")
+        .trim()
+        .toUpperCase(),
+      passwordHash: null,
+      emailVerified: true,
+    }),
+    updateEmailCredentialPassword: async () => undefined,
+    findEmailCredentialByVerificationToken: async () => null,
+    markEmailCredentialVerified: async () => undefined,
+    ...overrides,
   };
+}
 
-  const service = new AuthService(prisma, { sign: () => "token" }, sharedProfilesService);
+function createAuthService({
+  prisma = createAuthPrisma(),
+  sharedProfilesService = {},
+  globalSettingsService = { findSettings: async () => ({ emailEnabled: false }) },
+} = {}) {
+  return new AuthService(
+    prisma,
+    { sign: () => "token" },
+    createSharedProfilesMock(sharedProfilesService),
+    globalSettingsService,
+  );
+}
+
+async function testChangeSharedPasswordRejectsPasswordFromDifferentEmailCredential() {
+  const unrelatedPasswordHash = await bcrypt.hash("OUTRA-SENHA", 10);
+  let updateCalled = false;
+
+  const service = createAuthService({
+    sharedProfilesService: {
+      getOrCreateEmailCredentialFromLegacy: async (email) => ({
+        id: "cred-1",
+        email: String(email || "")
+          .trim()
+          .toUpperCase(),
+        passwordHash: unrelatedPasswordHash,
+        emailVerified: true,
+      }),
+      updateEmailCredentialPassword: async () => {
+        updateCalled = true;
+      },
+    },
+  });
 
   await assert.rejects(
     () =>
@@ -72,37 +89,22 @@ async function testChangeSharedPasswordRejectsPasswordFromDifferentEmail() {
     },
   );
 
-  assert.equal(syncCalled, false);
+  assert.equal(updateCalled, false);
 }
 
-async function testConfirmSharedPasswordAcceptsPasswordFromAnotherProfileWithSameEmail() {
-  const matchingSharedPasswordHash = await bcrypt.hash("SENHA-OUTRA-ESCOLA", 10);
+async function testConfirmSharedPasswordAcceptsPasswordFromEmailCredential() {
+  const matchingPasswordHash = await bcrypt.hash("SENHA-OUTRA-ESCOLA", 10);
 
-  const prisma = {
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "GERAL@ESCOLA.COM" }
-          : null,
-      findMany: async () => [],
+  const service = createAuthService({
+    sharedProfilesService: {
+      getOrCreateEmailCredentialFromLegacy: async () => ({
+        id: "cred-1",
+        email: "GERAL@ESCOLA.COM",
+        passwordHash: matchingPasswordHash,
+        emailVerified: true,
+      }),
     },
-    teacher: {
-      findMany: async () => [
-        { email: "GERAL@ESCOLA.COM", password: matchingSharedPasswordHash },
-      ],
-    },
-    student: {
-      findMany: async () => [],
-    },
-    guardian: {
-      findMany: async () => [],
-    },
-    person: {
-      findMany: async () => [],
-    },
-  };
-
-  const service = new AuthService(prisma, { sign: () => "token" }, {});
+  });
 
   const result = await service.confirmSharedPassword(
     "user-1",
@@ -114,34 +116,19 @@ async function testConfirmSharedPasswordAcceptsPasswordFromAnotherProfileWithSam
   assert.deepEqual(result, { status: "SUCCESS" });
 }
 
-async function testConfirmSharedPasswordRejectsPasswordFromUnrelatedEmail() {
+async function testConfirmSharedPasswordRejectsPasswordFromUnrelatedCredential() {
   const unrelatedPasswordHash = await bcrypt.hash("SENHA-OUTRA-CONTA", 10);
 
-  const prisma = {
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "GERAL@ESCOLA.COM" }
-          : null,
-      findMany: async () => [],
+  const service = createAuthService({
+    sharedProfilesService: {
+      getOrCreateEmailCredentialFromLegacy: async () => ({
+        id: "cred-1",
+        email: "GERAL@ESCOLA.COM",
+        passwordHash: unrelatedPasswordHash,
+        emailVerified: true,
+      }),
     },
-    teacher: {
-      findMany: async () => [
-        { email: "OUTRO@ESCOLA.COM", password: unrelatedPasswordHash },
-      ],
-    },
-    student: {
-      findMany: async () => [],
-    },
-    guardian: {
-      findMany: async () => [],
-    },
-    person: {
-      findMany: async () => [],
-    },
-  };
-
-  const service = new AuthService(prisma, { sign: () => "token" }, {});
+  });
 
   await assert.rejects(
     () =>
@@ -149,7 +136,7 @@ async function testConfirmSharedPasswordRejectsPasswordFromUnrelatedEmail() {
         "user-1",
         "tenant-1",
         "user",
-        "SENHA-OUTRA-CONTA",
+        "SENHA-ATUAL",
       ),
     (error) => {
       assert.equal(error.message, "Senha inválida.");
@@ -158,105 +145,24 @@ async function testConfirmSharedPasswordRejectsPasswordFromUnrelatedEmail() {
   );
 }
 
-async function testChangeSharedPasswordAcceptsAnyMatchingPasswordForSameEmail() {
-  const matchingSharedPasswordHash = await bcrypt.hash("SENHA-DO-ALUNO", 10);
-  const differentCurrentPasswordHash = await bcrypt.hash("OUTRA-SENHA", 10);
-  const syncCalls = [];
+async function testChangeSharedPasswordUpdatesGlobalEmailCredential() {
+  const currentPasswordHash = await bcrypt.hash("SENHA-MISTA", 10);
+  const updateCalls = [];
 
-  const prisma = {
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "GERAL@ESCOLA.COM" }
-          : null,
-      findMany: async ({ where }) => {
-        assert.deepEqual(where || {}, {});
-        return [{ email: "GERAL@ESCOLA.COM", password: differentCurrentPasswordHash }];
+  const service = createAuthService({
+    prisma: createAuthPrisma({ email: "Prof@Escola.com" }),
+    sharedProfilesService: {
+      getOrCreateEmailCredentialFromLegacy: async () => ({
+        id: "cred-1",
+        email: "PROF@ESCOLA.COM",
+        passwordHash: currentPasswordHash,
+        emailVerified: true,
+      }),
+      updateEmailCredentialPassword: async (...args) => {
+        updateCalls.push(args);
       },
     },
-    teacher: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [];
-      },
-    },
-    student: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [{ email: "GERAL@ESCOLA.COM", password: matchingSharedPasswordHash }];
-      },
-    },
-    guardian: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [];
-      },
-    },
-    person: {
-      findMany: async ({ where }) => {
-        assert.equal(where?.email?.not, null);
-        return [];
-      },
-    },
-  };
-
-  const sharedProfilesService = {
-    syncSharedPasswordByEmailAcrossTenants: async (...args) => {
-      syncCalls.push(args);
-    },
-  };
-
-  const service = new AuthService(prisma, { sign: () => "token" }, sharedProfilesService);
-
-  const result = await service.changeSharedPassword(
-    "user-1",
-    "tenant-1",
-    "user",
-    "SENHA-DO-ALUNO",
-    "NOVA123",
-  );
-
-  assert.deepEqual(result, { status: "SUCCESS" });
-  assert.equal(syncCalls.length, 1);
-  assert.equal(syncCalls[0][0], "GERAL@ESCOLA.COM");
-  assert.equal(syncCalls[0][2], undefined);
-  assert.equal(syncCalls[0][3], "user-1");
-  assert.equal(await bcrypt.compare("NOVA123", syncCalls[0][1]), true);
-}
-
-async function testChangeSharedPasswordAcceptsMatchingPasswordFromMixedCaseEmail() {
-  const matchingSharedPasswordHash = await bcrypt.hash("SENHA-MISTA", 10);
-  const syncCalls = [];
-
-  const prisma = {
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "PROF@ESCOLA.COM" }
-          : null,
-      findMany: async () => [{ email: "Prof@Escola.com", password: matchingSharedPasswordHash }],
-    },
-    teacher: {
-      findMany: async () => [],
-    },
-    student: {
-      findMany: async () => [],
-    },
-    guardian: {
-      findMany: async () => [],
-    },
-    person: {
-      findMany: async () => [],
-    },
-  };
-
-  const sharedProfilesService = {
-    syncSharedPasswordByEmailAcrossTenants: async (...args) => {
-      syncCalls.push(args);
-    },
-  };
-
-  const service = new AuthService(prisma, { sign: () => "token" }, sharedProfilesService);
+  });
 
   const result = await service.changeSharedPassword(
     "user-1",
@@ -267,105 +173,14 @@ async function testChangeSharedPasswordAcceptsMatchingPasswordFromMixedCaseEmail
   );
 
   assert.deepEqual(result, { status: "SUCCESS" });
-  assert.equal(syncCalls.length, 1);
-}
-
-async function testChangeSharedPasswordUsesUnscopedClientForSharedEmailCandidates() {
-  const matchingSharedPasswordHash = await bcrypt.hash("SENHA-GLOBAL", 10);
-  const syncCalls = [];
-
-  const unscopedPrisma = {
-    user: {
-      findMany: async () => [],
-    },
-    teacher: {
-      findMany: async () => [
-        { email: "GERAL@ESCOLA.COM", password: matchingSharedPasswordHash },
-      ],
-    },
-    student: {
-      findMany: async () => [],
-    },
-    guardian: {
-      findMany: async () => [],
-    },
-    person: {
-      findMany: async () => [],
-    },
-  };
-
-  const prisma = {
-    getUnscopedClient: () => unscopedPrisma,
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "GERAL@ESCOLA.COM" }
-          : null,
-      findMany: async () => [],
-    },
-    teacher: {
-      findMany: async () => [],
-    },
-    student: {
-      findMany: async () => [],
-    },
-    guardian: {
-      findMany: async () => [],
-    },
-    person: {
-      findMany: async () => [],
-    },
-  };
-
-  const sharedProfilesService = {
-    syncSharedPasswordByEmailAcrossTenants: async (...args) => {
-      syncCalls.push(args);
-    },
-  };
-
-  const service = new AuthService(prisma, { sign: () => "token" }, sharedProfilesService);
-
-  const result = await service.changeSharedPassword(
-    "user-1",
-    "tenant-1",
-    "user",
-    "SENHA-GLOBAL",
-    "NOVA123",
-  );
-
-  assert.deepEqual(result, { status: "SUCCESS" });
-  assert.equal(syncCalls.length, 1);
-  assert.equal(syncCalls[0][0], "GERAL@ESCOLA.COM");
+  assert.equal(updateCalls.length, 1);
+  assert.equal(updateCalls[0][0], "Prof@Escola.com");
+  assert.equal(updateCalls[0][2], "user-1");
+  assert.equal(await bcrypt.compare("NOVA123", updateCalls[0][1]), true);
 }
 
 async function testChangeSharedPasswordRejectsBlankPasswordWithSpaces() {
-  const prisma = {
-    user: {
-      findFirst: async ({ select }) =>
-        select && Object.prototype.hasOwnProperty.call(select, "email")
-          ? { email: "GERAL@ESCOLA.COM" }
-          : null,
-      findMany: async () => [],
-    },
-    teacher: {
-      findMany: async () => [],
-    },
-    student: {
-      findMany: async () => [],
-    },
-    guardian: {
-      findMany: async () => [],
-    },
-    person: {
-      findMany: async () => [],
-    },
-  };
-
-  const service = new AuthService(
-    prisma,
-    { sign: () => "token" },
-    { syncSharedPasswordByEmailAcrossTenants: async () => undefined },
-  );
+  const service = createAuthService();
 
   await assert.rejects(
     () =>
@@ -383,271 +198,283 @@ async function testChangeSharedPasswordRejectsBlankPasswordWithSpaces() {
   );
 }
 
-async function testSyncSharedPasswordAcrossTenantsUpdatesAllUsersForEmail() {
-  const userFindManyCalls = [];
-  const userUpdates = [];
+async function testChangeSharedPasswordRejectsShortNewPassword() {
+  const currentPasswordHash = await bcrypt.hash("SENHA-VALIDA", 10);
 
-  const prisma = {
-    person: {
-      findMany: async () => [],
-      update: async (args) => args,
+  const service = createAuthService({
+    sharedProfilesService: {
+      getOrCreateEmailCredentialFromLegacy: async () => ({
+        id: "cred-1",
+        email: "GERAL@ESCOLA.COM",
+        passwordHash: currentPasswordHash,
+        emailVerified: true,
+      }),
     },
-    user: {
-      findMany: async (args) => {
-        userFindManyCalls.push(args);
-        return [
-          { id: "user-1", email: "GERAL@ESCOLA.COM" },
-          { id: "user-2", email: "GERAL@ESCOLA.COM" },
-        ];
-      },
-      update: async (args) => {
-        userUpdates.push(args);
-        return args;
-      },
-    },
-    teacher: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    student: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    guardian: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    $transaction: async (operations) => operations,
-  };
-
-  const service = new SharedProfilesService(prisma);
-
-  await service.syncSharedPasswordByEmailAcrossTenants(
-    "GERAL@ESCOLA.COM",
-    "HASH-NOVA",
-    undefined,
-    "user-autor",
-  );
-
-  assert.equal(userFindManyCalls.length, 1);
-  assert.deepEqual(userFindManyCalls[0].where || {}, {});
-  assert.deepEqual(
-    userUpdates.map((item) => item.where.id).sort(),
-    ["user-1", "user-2"],
-  );
-  userUpdates.forEach((item) => {
-    assert.equal(item.data.password, "HASH-NOVA");
-    assert.equal(item.data.updatedBy, "user-autor");
   });
-}
 
-async function testSyncSharedPasswordAcrossTenantsMatchesEmailIgnoringCase() {
-  const userUpdates = [];
-  const teacherUpdates = [];
-
-  const prisma = {
-    person: {
-      findMany: async () => [],
-      update: async (args) => args,
+  await assert.rejects(
+    () =>
+      service.changeSharedPassword(
+        "user-1",
+        "tenant-1",
+        "user",
+        "SENHA-VALIDA",
+        "12345",
+      ),
+    (error) => {
+      assert.equal(error.message, "A nova senha deve ter pelo menos 6 caracteres.");
+      return true;
     },
-    user: {
-      findMany: async () => [
-        { id: "user-1", email: "PROF@ESCOLA.COM" },
-        { id: "user-2", email: "prof@escola.com" },
-        { id: "user-3", email: "Prof@Escola.com" },
-        { id: "user-4", email: "outro@escola.com" },
-      ],
-      update: async (args) => {
-        userUpdates.push(args);
-        return args;
-      },
-    },
-    teacher: {
-      findMany: async () => [
-        { id: "teacher-1", email: "prof@escola.com" },
-        { id: "teacher-2", email: "OUTRO@ESCOLA.COM" },
-      ],
-      update: async (args) => {
-        teacherUpdates.push(args);
-        return args;
-      },
-    },
-    student: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    guardian: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    $transaction: async (operations) => operations,
-  };
-
-  const service = new SharedProfilesService(prisma);
-
-  await service.syncSharedPasswordByEmailAcrossTenants(
-    "PROF@ESCOLA.COM",
-    "HASH-GLOBAL",
-    undefined,
-    "user-autor",
-  );
-
-  assert.deepEqual(
-    userUpdates.map((item) => item.where.id).sort(),
-    ["user-1", "user-2", "user-3"],
-  );
-  assert.deepEqual(
-    teacherUpdates.map((item) => item.where.id).sort(),
-    ["teacher-1"],
   );
 }
 
-async function testSyncSharedPasswordAcrossTenantsUsesUnscopedClient() {
-  const userUpdates = [];
-  const teacherUpdates = [];
+async function testVerifyEmailMarksCredentialAsVerified() {
+  const verificationHashes = [];
+  const markedIds = [];
 
-  const unscopedPrisma = {
-    person: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    user: {
-      findMany: async () => [
-        { id: "user-tenant-a", email: "GERAL@ESCOLA.COM" },
-        { id: "user-tenant-b", email: "GERAL@ESCOLA.COM" },
-      ],
-      update: async (args) => {
-        userUpdates.push(args);
-        return args;
+  const service = createAuthService({
+    sharedProfilesService: {
+      findEmailCredentialByVerificationToken: async (hash) => {
+        verificationHashes.push(hash);
+        return { id: "cred-123" };
+      },
+      markEmailCredentialVerified: async (id) => {
+        markedIds.push(id);
       },
     },
-    teacher: {
-      findMany: async () => [
-        { id: "teacher-tenant-c", email: "GERAL@ESCOLA.COM" },
-      ],
-      update: async (args) => {
-        teacherUpdates.push(args);
-        return args;
+  });
+
+  const result = await service.verifyEmail("token-livre");
+
+  assert.deepEqual(result, {
+    status: "SUCCESS",
+    message: "E-mail confirmado com sucesso.",
+  });
+  assert.equal(verificationHashes.length, 1);
+  assert.equal(verificationHashes[0].length, 64);
+  assert.deepEqual(markedIds, ["cred-123"]);
+}
+
+async function testVerifyEmailRejectsInvalidToken() {
+  const service = createAuthService({
+    sharedProfilesService: {
+      findEmailCredentialByVerificationToken: async () => null,
+    },
+  });
+
+  await assert.rejects(
+    () => service.verifyEmail("token-invalido"),
+    (error) => {
+      assert.match(error.message, /expirado/i);
+      return true;
+    },
+  );
+}
+
+async function testGetOrCreateEmailCredentialFromLegacyCreatesVerifiedCredentialFromLatestHash() {
+  const createCalls = [];
+  let storedCredential = null;
+
+  const prisma = {
+    emailCredential: {
+      findUnique: async ({ where }) => {
+        assert.equal(where.email, "PROF@ESCOLA.COM");
+        return storedCredential;
+      },
+      create: async (args) => {
+        createCalls.push(args);
+        storedCredential = { id: "cred-1", ...args.data };
+        return storedCredential;
+      },
+      update: async ({ where, data }) => {
+        assert.equal(where.id, "cred-1");
+        storedCredential = { ...storedCredential, ...data };
+        return storedCredential;
       },
     },
-    student: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    guardian: {
-      findMany: async () => [],
-      update: async (args) => args,
-    },
-    $transaction: async (operations) => operations,
+    getUnscopedClient: () => ({
+      person: {
+        findMany: async () => [
+          {
+            id: "person-1",
+            email: "prof@escola.com",
+            password: "HASH-OLD",
+            updatedAt: new Date("2026-03-01T10:00:00.000Z"),
+          },
+        ],
+      },
+      user: {
+        findMany: async () => [],
+      },
+      teacher: {
+        findMany: async () => [
+          {
+            id: "teacher-1",
+            email: "PROF@ESCOLA.COM",
+            password: "HASH-NEW",
+            updatedAt: new Date("2026-03-02T10:00:00.000Z"),
+          },
+        ],
+      },
+      student: {
+        findMany: async () => [],
+      },
+      guardian: {
+        findMany: async () => [],
+      },
+    }),
+  };
+
+  const service = new SharedProfilesService(prisma);
+  const result = await service.getOrCreateEmailCredentialFromLegacy(
+    "prof@escola.com",
+    { userId: "user-1" },
+  );
+
+  assert.equal(createCalls.length, 1);
+  assert.equal(createCalls[0].data.email, "PROF@ESCOLA.COM");
+  assert.equal(createCalls[0].data.passwordHash, "HASH-NEW");
+  assert.equal(createCalls[0].data.emailVerified, true);
+  assert.equal(createCalls[0].data.createdBy, "user-1");
+  assert.equal(createCalls[0].data.updatedBy, "user-1");
+  assert.equal(result.passwordHash, "HASH-NEW");
+}
+
+async function testGetOrCreateEmailCredentialFromLegacyReturnsExistingCredential() {
+  const existing = {
+    id: "cred-existente",
+    email: "PROF@ESCOLA.COM",
+    passwordHash: "HASH-ATUAL",
+    emailVerified: true,
   };
 
   const prisma = {
-    getUnscopedClient: () => unscopedPrisma,
-    person: {
-      findMany: async () => {
-        throw new Error("scoped-person-findMany-should-not-run");
-      },
-      update: async () => {
-        throw new Error("scoped-person-update-should-not-run");
+    emailCredential: {
+      findUnique: async ({ where }) => {
+        assert.equal(where.email, "PROF@ESCOLA.COM");
+        return existing;
       },
     },
-    user: {
-      findMany: async () => {
-        throw new Error("scoped-user-findMany-should-not-run");
+    getUnscopedClient: () => ({
+      person: {
+        findMany: async () => {
+          throw new Error("legacy lookup should not run");
+        },
       },
-      update: async () => {
-        throw new Error("scoped-user-update-should-not-run");
+      user: {
+        findMany: async () => {
+          throw new Error("legacy lookup should not run");
+        },
       },
-    },
-    teacher: {
-      findMany: async () => {
-        throw new Error("scoped-teacher-findMany-should-not-run");
+      teacher: {
+        findMany: async () => {
+          throw new Error("legacy lookup should not run");
+        },
       },
-      update: async () => {
-        throw new Error("scoped-teacher-update-should-not-run");
+      student: {
+        findMany: async () => {
+          throw new Error("legacy lookup should not run");
+        },
       },
-    },
-    student: {
-      findMany: async () => {
-        throw new Error("scoped-student-findMany-should-not-run");
+      guardian: {
+        findMany: async () => {
+          throw new Error("legacy lookup should not run");
+        },
       },
-      update: async () => {
-        throw new Error("scoped-student-update-should-not-run");
+    }),
+  };
+
+  const service = new SharedProfilesService(prisma);
+  const result = await service.getOrCreateEmailCredentialFromLegacy(
+    "prof@escola.com",
+  );
+
+  assert.equal(result, existing);
+}
+
+async function testUpdateEmailCredentialPasswordCreatesNormalizedCredential() {
+  const createCalls = [];
+  let storedCredential = null;
+
+  const prisma = {
+    emailCredential: {
+      findUnique: async ({ where }) => {
+        assert.equal(where.email, "PROF@ESCOLA.COM");
+        return storedCredential;
       },
-    },
-    guardian: {
-      findMany: async () => {
-        throw new Error("scoped-guardian-findMany-should-not-run");
+      create: async (args) => {
+        createCalls.push(args);
+        storedCredential = { id: "cred-1", ...args.data };
+        return storedCredential;
       },
-      update: async () => {
-        throw new Error("scoped-guardian-update-should-not-run");
+      update: async ({ where, data }) => {
+        assert.equal(where.id, "cred-1");
+        storedCredential = { ...storedCredential, ...data };
+        return storedCredential;
       },
-    },
-    $transaction: async () => {
-      throw new Error("scoped-transaction-should-not-run");
     },
   };
 
   const service = new SharedProfilesService(prisma);
-
-  await service.syncSharedPasswordByEmailAcrossTenants(
-    "GERAL@ESCOLA.COM",
-    "HASH-UNICO",
-    undefined,
+  await service.updateEmailCredentialPassword(
+    "prof@escola.com",
+    "HASH-NOVA",
     "user-autor",
   );
 
-  assert.deepEqual(
-    userUpdates.map((item) => item.where.id).sort(),
-    ["user-tenant-a", "user-tenant-b"],
-  );
-  assert.deepEqual(
-    teacherUpdates.map((item) => item.where.id).sort(),
-    ["teacher-tenant-c"],
-  );
+  assert.equal(createCalls.length, 1);
+  assert.equal(createCalls[0].data.email, "PROF@ESCOLA.COM");
+  assert.equal(createCalls[0].data.passwordHash, "HASH-NOVA");
+  assert.equal(createCalls[0].data.emailVerified, false);
+  assert.equal(createCalls[0].data.createdBy, "user-autor");
+  assert.equal(createCalls[0].data.updatedBy, "user-autor");
 }
 
 async function main() {
   const tests = [
     {
-      name: "changeSharedPassword rejects password from unrelated email",
-      fn: testChangeSharedPasswordRejectsPasswordFromDifferentEmail,
+      name: "changeSharedPassword rejects password from unrelated email credential",
+      fn: testChangeSharedPasswordRejectsPasswordFromDifferentEmailCredential,
     },
     {
-      name: "confirmSharedPassword accepts password from another profile with the same email",
-      fn: testConfirmSharedPasswordAcceptsPasswordFromAnotherProfileWithSameEmail,
+      name: "confirmSharedPassword accepts password from email credential",
+      fn: testConfirmSharedPasswordAcceptsPasswordFromEmailCredential,
     },
     {
-      name: "confirmSharedPassword rejects password from unrelated email",
-      fn: testConfirmSharedPasswordRejectsPasswordFromUnrelatedEmail,
+      name: "confirmSharedPassword rejects password from unrelated credential",
+      fn: testConfirmSharedPasswordRejectsPasswordFromUnrelatedCredential,
     },
     {
-      name: "changeSharedPassword accepts any matching password for the same email",
-      fn: testChangeSharedPasswordAcceptsAnyMatchingPasswordForSameEmail,
-    },
-    {
-      name: "changeSharedPassword accepts matching password from mixed-case email",
-      fn: testChangeSharedPasswordAcceptsMatchingPasswordFromMixedCaseEmail,
-    },
-    {
-      name: "changeSharedPassword uses unscoped client for shared email candidates",
-      fn: testChangeSharedPasswordUsesUnscopedClientForSharedEmailCandidates,
+      name: "changeSharedPassword updates the global email credential",
+      fn: testChangeSharedPasswordUpdatesGlobalEmailCredential,
     },
     {
       name: "changeSharedPassword rejects blank password made only of spaces",
       fn: testChangeSharedPasswordRejectsBlankPasswordWithSpaces,
     },
     {
-      name: "syncSharedPasswordByEmailAcrossTenants updates all user records for the email",
-      fn: testSyncSharedPasswordAcrossTenantsUpdatesAllUsersForEmail,
+      name: "changeSharedPassword rejects a new password that is too short",
+      fn: testChangeSharedPasswordRejectsShortNewPassword,
     },
     {
-      name: "syncSharedPasswordByEmailAcrossTenants matches email ignoring case",
-      fn: testSyncSharedPasswordAcrossTenantsMatchesEmailIgnoringCase,
+      name: "verifyEmail marks the credential as verified",
+      fn: testVerifyEmailMarksCredentialAsVerified,
     },
     {
-      name: "syncSharedPasswordByEmailAcrossTenants uses unscoped client",
-      fn: testSyncSharedPasswordAcrossTenantsUsesUnscopedClient,
+      name: "verifyEmail rejects an invalid or expired token",
+      fn: testVerifyEmailRejectsInvalidToken,
+    },
+    {
+      name: "getOrCreateEmailCredentialFromLegacy creates a verified credential from the latest legacy hash",
+      fn: testGetOrCreateEmailCredentialFromLegacyCreatesVerifiedCredentialFromLatestHash,
+    },
+    {
+      name: "getOrCreateEmailCredentialFromLegacy returns the existing credential",
+      fn: testGetOrCreateEmailCredentialFromLegacyReturnsExistingCredential,
+    },
+    {
+      name: "updateEmailCredentialPassword creates a normalized email credential",
+      fn: testUpdateEmailCredentialPasswordCreatesNormalizedCredential,
     },
   ];
 

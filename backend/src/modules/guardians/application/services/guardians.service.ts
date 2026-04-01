@@ -180,11 +180,6 @@ export class GuardiansService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    } else if (sanitizedDto.email) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          sanitizedDto.email,
-        )) || undefined;
     }
     const accessProfile =
       normalizeAccessProfileCode(sanitizedDto.accessProfile, "RESPONSAVEL") ||
@@ -202,7 +197,7 @@ export class GuardiansService {
     const createdGuardian = await this.prisma.guardian.create({
       data: {
         ...rawData,
-        password: hashedPassword, // Sobrescreve a senha aberta do UpperCase com o Hash seguro
+        password: null,
         accessProfile,
         permissions: explicitPermissions,
         birthDate: sanitizedDto.birthDate
@@ -217,18 +212,28 @@ export class GuardiansService {
       tenantId,
       "GUARDIAN",
       createdGuardian.id,
-      createdGuardian,
+      {
+        ...createdGuardian,
+        password: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
       getTenantContext()!.userId,
     );
 
-    if (sanitizedDto.email && hashedPassword) {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        tenantId,
-        sanitizedDto.email,
-        hashedPassword,
-        { kind: "GUARDIAN", id: createdGuardian.id },
-        getTenantContext()!.userId,
-      );
+    if (sanitizedDto.email) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          sanitizedDto.email,
+          hashedPassword,
+          getTenantContext()!.userId,
+        );
+      } else {
+        await this.sharedProfilesService.ensureEmailCredential(
+          sanitizedDto.email,
+          { userId: getTenantContext()!.userId },
+        );
+      }
     }
 
     return sanitizeGuardianSummaryForViewer(
@@ -422,12 +427,6 @@ export class GuardiansService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    } else if (shouldResolvePasswordForEmailChange) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          normalizedIncomingEmail,
-          { kind: "GUARDIAN", id },
-        )) || undefined;
     }
     const accessProfile =
       normalizeAccessProfileCode(
@@ -450,7 +449,8 @@ export class GuardiansService {
       where: { id },
       data: {
         ...rawData,
-        password: hashedPassword ? hashedPassword : rawData.password,
+        password:
+          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
         accessProfile,
         permissions: explicitPermissions,
         birthDate: sanitizedDto.birthDate
@@ -464,20 +464,30 @@ export class GuardiansService {
       getTenantContext()!.tenantId,
       "GUARDIAN",
       updatedGuardian.id,
-      updatedGuardian,
+      {
+        ...updatedGuardian,
+        password: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
       getTenantContext()!.userId,
       currentGuardian.cpf,
     );
 
     const emailForPasswordSync = sanitizedDto.email || currentGuardian.email;
-    if (emailForPasswordSync && hashedPassword) {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        getTenantContext()!.tenantId,
-        emailForPasswordSync,
-        hashedPassword,
-        { kind: "GUARDIAN", id: updatedGuardian.id },
-        getTenantContext()!.userId,
-      );
+    if (emailForPasswordSync) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          emailForPasswordSync,
+          hashedPassword,
+          getTenantContext()!.userId,
+        );
+      } else if (shouldResolvePasswordForEmailChange) {
+        await this.sharedProfilesService.ensureEmailCredential(
+          emailForPasswordSync,
+          { userId: getTenantContext()!.userId },
+        );
+      }
     }
 
     return sanitizeGuardianSummaryForViewer(

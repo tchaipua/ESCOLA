@@ -130,12 +130,33 @@ model GlobalSetting {
   @@map("global_settings")
 }
 
+model EmailCredential {
+  id                    String   @id @default(uuid())
+  email                 String   @unique
+  passwordHash          String?
+  emailVerified         Boolean  @default(false)
+  verifiedAt            DateTime?
+  verificationToken     String?
+  verificationExpires   DateTime?
+  resetPasswordToken    String?
+  resetPasswordExpires  DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  @@map("email_credentials")
+}
+
 model User {
   id        String   @id @default(uuid())
   tenantId  String
   name      String
   email     String
-  password  String
+  password  String?
   photoUrl  String?
   complementaryProfiles String?
   role      String   @default("SECRETARIA") // ADMIN | SECRETARIA | PROFESSOR | ALUNO | RESPONSAVEL

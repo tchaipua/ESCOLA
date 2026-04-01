@@ -7,6 +7,23 @@ import { decodeDashboardToken, getHomeRouteForRole } from '@/app/lib/dashboard-c
 
 export default function LoginPage() {
   const router = useRouter();
+  const normalizeLoginErrorMessage = (message?: string) => {
+    const rawMessage = String(message || '').trim();
+
+    if (!rawMessage) {
+      return 'Não foi possível concluir seu acesso agora. Tente novamente.';
+    }
+
+    if (
+      rawMessage.includes('Cross-Tenant Error') ||
+      rawMessage.includes('Contexto ausente para manipulação restrita de EmailCredential')
+    ) {
+      return 'Não foi possível preparar o acesso deste e-mail agora. Tente novamente em alguns instantes. Se for seu primeiro acesso, use "Esqueci a senha" para criar sua senha.';
+    }
+
+    return rawMessage;
+  };
+
   const getAccountTypeLabel = (accountType: string) => {
     switch (String(accountType || '').trim().toLowerCase()) {
       case 'user':
@@ -34,7 +51,7 @@ export default function LoginPage() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorStatus, setErrorStatus] = useState<{ message: string; detail?: string } | null>(null);
-  const [successStatus, setSuccessStatus] = useState<{ message: string; devResetLink?: string } | null>(null);
+  const [successStatus, setSuccessStatus] = useState<{ message: string; devResetLink?: string; devVerificationLink?: string } | null>(null);
   const [multipleSchools, setMultipleSchools] = useState<{ id: string; name: string; logoUrl?: string | null }[] | null>(null);
   const [multipleAccessOptions, setMultipleAccessOptions] = useState<Array<{
     accountId: string;
@@ -50,8 +67,6 @@ export default function LoginPage() {
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [forgotSendingTenantId, setForgotSendingTenantId] = useState<string | null>(null);
-  const [forgotMultipleSchools, setForgotMultipleSchools] = useState<{ id: string; name: string }[] | null>(null);
   const isMasterLoginFlow = email.trim().toUpperCase() === 'MSINFOR';
 
   useEffect(() => {
@@ -69,6 +84,28 @@ export default function LoginPage() {
       return () => clearTimeout(timer);
     }
   }, [errorStatus]);
+
+  const handleIntermediateAuthStatus = (data: any) => {
+    if (data.status === 'MULTIPLE_TENANTS') {
+      setMultipleSchools(data.tenants);
+      return true;
+    }
+
+    if (data.status === 'MULTIPLE_ACCOUNTS') {
+      setMultipleAccessOptions(data.accounts);
+      return true;
+    }
+
+    if (data.status === 'EMAIL_CONFIRMATION_REQUIRED') {
+      setSuccessStatus({
+        message: data.message || 'Vamos enviar um e-mail de confirmação para continuar.',
+        devVerificationLink: data.devVerificationLink || undefined,
+      });
+      return true;
+    }
+
+    return false;
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,14 +130,7 @@ export default function LoginPage() {
         throw new Error(data.message || 'Falha na Autenticação');
       }
 
-      if (data.status === 'MULTIPLE_TENANTS') {
-        // Interrompe o login e abre a tela pro usuário escolher a escola
-        setMultipleSchools(data.tenants);
-        return;
-      }
-
-      if (data.status === 'MULTIPLE_ACCOUNTS') {
-        setMultipleAccessOptions(data.accounts);
+      if (handleIntermediateAuthStatus(data)) {
         return;
       }
 
@@ -108,7 +138,7 @@ export default function LoginPage() {
       router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
 
     } catch (err: any) {
-      const errorMsg = err.message || 'Erro de conexão com o servidor.';
+      const errorMsg = normalizeLoginErrorMessage(err.message || 'Erro de conexão com o servidor.');
       if (errorMsg.includes('|')) {
         const [msg, detail] = errorMsg.split('|');
         setErrorStatus({ message: msg, detail });
@@ -140,15 +170,14 @@ export default function LoginPage() {
 
       if (!response.ok) throw new Error(data.message || 'Falha na Autenticação');
 
-      if (data.status === 'MULTIPLE_ACCOUNTS') {
-        setMultipleAccessOptions(data.accounts);
+      if (handleIntermediateAuthStatus(data)) {
         return;
       }
 
       setStoredToken(data.access_token, rememberMe);
       router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
     } catch (err: any) {
-      setErrorStatus({ message: err.message || 'Erro ao selecionar escola' });
+      setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar escola') });
     } finally {
       setLoading(false);
     }
@@ -182,29 +211,29 @@ export default function LoginPage() {
         throw new Error(data.message || 'Falha na autenticação');
       }
 
+      if (handleIntermediateAuthStatus(data)) {
+        return;
+      }
+
       setStoredToken(data.access_token, rememberMe);
       router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
     } catch (err: any) {
-      setErrorStatus({ message: err.message || 'Erro ao selecionar o tipo de acesso.' });
+      setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar o tipo de acesso.') });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleForgotPassword = async (e: React.SyntheticEvent, tenantId?: string) => {
+  const handleForgotPassword = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setForgotLoading(true);
-    setForgotSendingTenantId(tenantId || null);
     setErrorStatus(null);
 
     try {
-      const payload: any = { email: forgotEmail.toUpperCase() };
-      if (tenantId) payload.tenantId = tenantId;
-
       const response = await fetch('http://localhost:3001/api/v1/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ email: forgotEmail.toUpperCase() }),
       });
 
       const data = await response.json();
@@ -213,22 +242,27 @@ export default function LoginPage() {
         throw new Error(data.message || 'Falha ao solicitar recuperação');
       }
 
-      if (data.status === 'MULTIPLE_TENANTS') {
-        setForgotMultipleSchools(data.tenants);
-      } else {
-        setForgotMultipleSchools(null);
-        setIsForgotModalOpen(false); // Fechar a tela
-        setSuccessStatus({
-          message: data.message || 'Email de recuperação enviado com sucesso!',
-          devResetLink: data.devResetLink || undefined,
-        });
-      }
+      setIsForgotModalOpen(false);
+      setSuccessStatus({
+        message: data.message || 'Email de recuperação enviado com sucesso!',
+        devResetLink: data.devResetLink || undefined,
+        devVerificationLink: undefined,
+      });
     } catch (err: any) {
-      setErrorStatus({ message: err.message || 'Erro ao comunicar com o servidor' });
+      setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao comunicar com o servidor') });
     } finally {
       setForgotLoading(false);
-      setForgotSendingTenantId(null);
     }
+  };
+
+  const handleOpenForgotPasswordModal = () => {
+    setForgotEmail(email.trim());
+    setIsForgotModalOpen(true);
+  };
+
+  const handleCloseForgotPasswordModal = () => {
+    setIsForgotModalOpen(false);
+    setForgotEmail('');
   };
 
   return (
@@ -370,7 +404,7 @@ export default function LoginPage() {
                   <span className="text-[11px] font-medium text-[#5c6778] tracking-tight hover:text-[#2272c7] transition-colors">Manter Conectado</span>
                 </label>
 
-                <button type="button" onClick={() => setIsForgotModalOpen(true)} className="flex items-center gap-1.5 focus:outline-none group">
+                  <button type="button" onClick={handleOpenForgotPasswordModal} className="flex items-center gap-1.5 focus:outline-none group">
                   <div className="w-3 h-3 bg-[#4288d6] border-[1.5px] border-[#2272c7] rounded-[2px]"></div>
                   <span className="text-[11px] font-medium text-[#5c6778] tracking-tight group-hover:underline">Esqueci a Senha?</span>
                 </button>
@@ -475,18 +509,18 @@ export default function LoginPage() {
                   {successStatus.message}
                 </p>
 
-                {successStatus.devResetLink && (
+                {(successStatus.devResetLink || successStatus.devVerificationLink) && (
                   <div className="mt-3 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-left shadow-inner">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">
-                      Link de recuperacao (ambiente local)
+                      Link local de apoio
                     </p>
                     <a
-                      href={successStatus.devResetLink}
+                      href={successStatus.devResetLink || successStatus.devVerificationLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-1 block break-all text-xs font-semibold leading-5 text-[#2272c7] hover:text-[#1a5592] hover:underline"
                     >
-                      {successStatus.devResetLink}
+                      {successStatus.devResetLink || successStatus.devVerificationLink}
                     </a>
                   </div>
                 )}
@@ -649,15 +683,11 @@ export default function LoginPage() {
               </div>
             )}
             <div className="bg-[#1e293b] p-6 text-center relative">
-              <button
-                onClick={() => {
-                  setIsForgotModalOpen(false);
-                  setForgotMultipleSchools(null);
-                  setForgotEmail('');
-                }}
-                className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
-                title="Fechar"
-              >
+                <button
+                  onClick={handleCloseForgotPasswordModal}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+                  title="Fechar"
+                >
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
 
@@ -665,69 +695,32 @@ export default function LoginPage() {
                 <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
               </div>
               <h2 className="text-xl font-bold text-white mb-1">Recuperar Senha</h2>
-              <p className="text-slate-400 text-sm font-medium">
-                {forgotMultipleSchools ? 'Seu e-mail está em várias escolas' : 'Enviaremos um link de acesso'}
-              </p>
+              <p className="text-slate-400 text-sm font-medium">Enviaremos um link de acesso</p>
             </div>
 
             <div className="p-6">
-              {forgotMultipleSchools ? (
-                <>
-                  <p className="text-slate-600 text-sm font-bold mb-3 text-center">De qual escola você quer recuperar?</p>
-                  <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
-                    {forgotMultipleSchools.map((school) => (
-                      <button
-                        key={school.id}
-                        onClick={(e) => handleForgotPassword(e, school.id)}
-                        disabled={forgotLoading}
-                        className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-xl transition-all group active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold shadow-sm group-hover:bg-[#1e293b] group-hover:text-white transition-colors text-xs">
-                            {school.name.substring(0, 2).toUpperCase()}
-                          </div>
-                          <span className="font-bold text-slate-700 group-hover:text-slate-900 text-left text-sm">
-                            {school.name}
-                          </span>
-                        </div>
-                        {forgotLoading && forgotSendingTenantId === school.id ? (
-                          <div className="flex items-center gap-2 text-slate-500">
-                            <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-                            <span className="text-xs font-bold">Enviando...</span>
-                          </div>
-                        ) : (
-                          <svg className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <form onSubmit={(e) => handleForgotPassword(e, undefined)} className="flex flex-col gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail Cadastrado</label>
-                    <input
-                      type="text"
-                      className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-3 text-sm outline-none focus:border-[#2272c7] focus:ring-2 focus:ring-[#2272c7]/20 transition-all shadow-sm"
-                      placeholder="usuario@dominio.com"
-                      value={forgotEmail}
-                      onChange={e => setForgotEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={forgotLoading}
-                    className="w-full mt-2 bg-[#1e293b] hover:bg-slate-800 text-white font-bold py-3 text-sm rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-70 flex justify-center"
-                  >
-                    {forgotLoading ? (
-                      <div className="w-5 h-5 border-[2px] border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : 'Solicitar Link de Acesso'}
-                  </button>
-                </form>
-              )}
+              <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail Cadastrado</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-3 text-sm outline-none focus:border-[#2272c7] focus:ring-2 focus:ring-[#2272c7]/20 transition-all shadow-sm"
+                    placeholder="usuario@dominio.com"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full mt-2 bg-[#1e293b] hover:bg-slate-800 text-white font-bold py-3 text-sm rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-70 flex justify-center"
+                >
+                  {forgotLoading ? (
+                    <div className="w-5 h-5 border-[2px] border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : 'Solicitar Link de Acesso'}
+                </button>
+              </form>
             </div>
           </div>
         </div>

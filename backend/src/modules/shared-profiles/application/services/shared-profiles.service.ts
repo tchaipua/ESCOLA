@@ -151,9 +151,6 @@ type SharedProfileSyncUpdate = {
   cellphone1: string | null;
   cellphone2: string | null;
   email: string | null;
-  password: string | null;
-  resetPasswordToken: string | null;
-  resetPasswordExpires: Date | null;
   zipCode: string | null;
   street: string | null;
   number: string | null;
@@ -243,6 +240,190 @@ export class SharedProfilesService {
     return typeof prismaWithUnscoped.getUnscopedClient === "function"
       ? prismaWithUnscoped.getUnscopedClient()
       : this.prisma;
+  }
+
+  async findEmailCredential(email?: string | null) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) return null;
+
+    return this.prisma.emailCredential.findUnique({
+      where: { email: normalizedEmail },
+    });
+  }
+
+  async ensureEmailCredential(
+    email?: string | null,
+    options?: {
+      passwordHash?: string | null;
+      verified?: boolean;
+      userId?: string | null;
+    },
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) return null;
+
+    const existing = await this.findEmailCredential(normalizedEmail);
+    const now = new Date();
+
+    if (!existing) {
+      return this.prisma.emailCredential.create({
+        data: {
+          email: normalizedEmail,
+          passwordHash: options?.passwordHash ?? null,
+          emailVerified: options?.verified === true,
+          verifiedAt: options?.verified === true ? now : null,
+          createdBy: options?.userId || undefined,
+          updatedBy: options?.userId || undefined,
+        },
+      });
+    }
+
+    const data: Record<string, unknown> = {
+      updatedBy: options?.userId || undefined,
+    };
+
+    if (options?.passwordHash !== undefined) {
+      data.passwordHash = options.passwordHash || null;
+    }
+
+    if (options?.verified !== undefined) {
+      data.emailVerified = options.verified;
+      data.verifiedAt = options.verified
+        ? existing.verifiedAt || now
+        : null;
+      if (options.verified) {
+        data.verificationToken = null;
+        data.verificationExpires = null;
+      }
+    }
+
+    return this.prisma.emailCredential.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  async getOrCreateEmailCredentialFromLegacy(
+    email?: string | null,
+    options?: {
+      exclude?: { kind: SharedEmailAccountKind; id: string };
+      userId?: string | null;
+    },
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) return null;
+
+    const existing = await this.findEmailCredential(normalizedEmail);
+    if (existing) return existing;
+
+    const legacyPasswordHash = await this.findSharedPasswordByEmailAcrossTenants(
+      normalizedEmail,
+      options?.exclude,
+      options?.userId,
+    );
+
+    return this.ensureEmailCredential(normalizedEmail, {
+      passwordHash: legacyPasswordHash || null,
+      verified: Boolean(legacyPasswordHash),
+      userId: options?.userId,
+    });
+  }
+
+  async updateEmailCredentialPassword(
+    email?: string | null,
+    passwordHash?: string | null,
+    userId?: string | null,
+  ) {
+    return this.ensureEmailCredential(email, {
+      passwordHash: passwordHash || null,
+      userId,
+    });
+  }
+
+  async storeEmailCredentialResetToken(
+    email: string,
+    tokenHash: string,
+    expiresAt: Date,
+    userId?: string | null,
+  ) {
+    const credential = await this.getOrCreateEmailCredentialFromLegacy(email, {
+      userId,
+    });
+    if (!credential) return null;
+
+    return this.prisma.emailCredential.update({
+      where: { id: credential.id },
+      data: {
+        resetPasswordToken: tokenHash,
+        resetPasswordExpires: expiresAt,
+        updatedBy: userId || undefined,
+      },
+    });
+  }
+
+  async clearEmailCredentialResetToken(id: string, userId?: string | null) {
+    return this.prisma.emailCredential.update({
+      where: { id },
+      data: {
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+        updatedBy: userId || undefined,
+      },
+    });
+  }
+
+  async findEmailCredentialByResetToken(tokenHash: string) {
+    return this.prisma.emailCredential.findFirst({
+      where: {
+        resetPasswordToken: tokenHash,
+        resetPasswordExpires: { gt: new Date() },
+        canceledAt: null,
+      },
+    });
+  }
+
+  async storeEmailCredentialVerificationToken(
+    email: string,
+    tokenHash: string,
+    expiresAt: Date,
+    userId?: string | null,
+  ) {
+    const credential = await this.getOrCreateEmailCredentialFromLegacy(email, {
+      userId,
+    });
+    if (!credential) return null;
+
+    return this.prisma.emailCredential.update({
+      where: { id: credential.id },
+      data: {
+        verificationToken: tokenHash,
+        verificationExpires: expiresAt,
+        updatedBy: userId || undefined,
+      },
+    });
+  }
+
+  async findEmailCredentialByVerificationToken(tokenHash: string) {
+    return this.prisma.emailCredential.findFirst({
+      where: {
+        verificationToken: tokenHash,
+        verificationExpires: { gt: new Date() },
+        canceledAt: null,
+      },
+    });
+  }
+
+  async markEmailCredentialVerified(id: string, userId?: string | null) {
+    return this.prisma.emailCredential.update({
+      where: { id },
+      data: {
+        emailVerified: true,
+        verifiedAt: new Date(),
+        verificationToken: null,
+        verificationExpires: null,
+        updatedBy: userId || undefined,
+      },
+    });
   }
 
   private filterByNormalizedEmail<T extends { id: string; email?: string | null }>(
@@ -444,9 +625,6 @@ export class SharedProfilesService {
       cellphone1: record.cellphone1 ?? null,
       cellphone2: record.cellphone2 ?? null,
       email: record.email ?? null,
-      password: record.password ?? null,
-      resetPasswordToken: record.resetPasswordToken ?? null,
-      resetPasswordExpires: record.resetPasswordExpires ?? null,
       zipCode: record.zipCode ?? null,
       street: record.street ?? null,
       number: record.number ?? null,
@@ -475,9 +653,6 @@ export class SharedProfilesService {
       cellphone1: person.cellphone1 ?? null,
       cellphone2: person.cellphone2 ?? null,
       email: person.email ?? null,
-      password: person.password ?? null,
-      resetPasswordToken: person.resetPasswordToken ?? null,
-      resetPasswordExpires: person.resetPasswordExpires ?? null,
       zipCode: person.zipCode ?? null,
       street: person.street ?? null,
       number: person.number ?? null,
@@ -1369,9 +1544,15 @@ export class SharedProfilesService {
     tenantId: string,
     email?: string | null,
     exclude?: { kind: SharedEmailAccountKind; id: string },
+    userId?: string | null,
   ) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return null;
+
+    const credential = await this.findEmailCredential(normalizedEmail);
+    if (credential?.passwordHash) {
+      return credential.passwordHash;
+    }
 
     const person = await this.findPersonByEmail(
       tenantId,
@@ -1379,6 +1560,11 @@ export class SharedProfilesService {
       exclude?.kind === "PERSON" ? exclude.id : null,
     );
     if (person?.password) {
+      await this.ensureEmailCredential(normalizedEmail, {
+        passwordHash: person.password,
+        verified: true,
+        userId,
+      });
       return person.password;
     }
 
@@ -1394,15 +1580,31 @@ export class SharedProfilesService {
           right.record.updatedAt.getTime() - left.record.updatedAt.getTime(),
       )[0];
 
-    return latest?.record.password || null;
+    if (!latest?.record.password) {
+      return null;
+    }
+
+    await this.ensureEmailCredential(normalizedEmail, {
+      passwordHash: latest.record.password,
+      verified: true,
+      userId,
+    });
+
+    return latest.record.password;
   }
 
   async findSharedPasswordByEmailAcrossTenants(
     email?: string | null,
     exclude?: { kind: SharedEmailAccountKind; id: string },
+    userId?: string | null,
   ) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return null;
+
+    const credential = await this.findEmailCredential(normalizedEmail);
+    if (credential?.passwordHash) {
+      return credential.passwordHash;
+    }
 
     const crossTenantPrisma = this.getCrossTenantPrisma();
     const [people, users, teachers, students, guardians] = await Promise.all([
@@ -1501,7 +1703,17 @@ export class SharedProfilesService {
           right.record.updatedAt.getTime() - left.record.updatedAt.getTime(),
       )[0];
 
-    return latest?.record.password || null;
+    if (!latest?.record.password) {
+      return null;
+    }
+
+    await this.ensureEmailCredential(normalizedEmail, {
+      passwordHash: latest.record.password,
+      verified: true,
+      userId,
+    });
+
+    return latest.record.password;
   }
 
   async getReusablePasswordHashOrThrow(
@@ -1529,64 +1741,10 @@ export class SharedProfilesService {
   ) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail || !passwordHash) return;
-
-    const { people, users, teachers, students, guardians } =
-      await this.loadPasswordSyncTargetsByEmail(email, {
-        tenantId,
-        exclude: source,
-      });
-
-    const operations = [
-      ...people.map((record) =>
-        this.prisma.person.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...users.map((record) =>
-        this.prisma.user.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...teachers.map((record) =>
-        this.prisma.teacher.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...students.map((record) =>
-        this.prisma.student.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...guardians.map((record) =>
-        this.prisma.guardian.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-    ];
-
-    if (operations.length === 0) return;
-
-    await this.prisma.$transaction(operations);
+    await this.ensureEmailCredential(normalizedEmail, {
+      passwordHash,
+      userId,
+    });
   }
 
   async syncSharedPasswordByEmailAcrossTenants(
@@ -1597,63 +1755,10 @@ export class SharedProfilesService {
   ) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail || !passwordHash) return;
-    const crossTenantPrisma = this.getCrossTenantPrisma();
-
-    const { people, users, teachers, students, guardians } =
-      await this.loadPasswordSyncTargetsByEmail(email, {
-        exclude: source,
-      });
-
-    const operations = [
-      ...people.map((record) =>
-        crossTenantPrisma.person.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...users.map((record) =>
-        crossTenantPrisma.user.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...teachers.map((record) =>
-        crossTenantPrisma.teacher.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...students.map((record) =>
-        crossTenantPrisma.student.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-      ...guardians.map((record) =>
-        crossTenantPrisma.guardian.update({
-          where: { id: record.id },
-          data: {
-            password: passwordHash,
-            updatedBy: userId || undefined,
-          },
-        }),
-      ),
-    ];
-
-    if (operations.length === 0) return;
-    await crossTenantPrisma.$transaction(operations);
+    await this.ensureEmailCredential(normalizedEmail, {
+      passwordHash,
+      userId,
+    });
   }
 
   async hydrateMissingFieldsFromCpf<T extends Record<string, any>>(

@@ -1,0 +1,120 @@
+[31m[Nest] 47912  - [39m01/04/2026, 05:44:54 [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31mNest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+[39m
+Error: Nest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+
+    at Injector.lookupComponentInParentModules (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:262:19)
+    at async Injector.resolveComponentInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:215:33)
+    at async resolveParam (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:129:38)
+    at async Promise.all (index 3)
+    at async Injector.resolveConstructorParams (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:144:27)
+    at async Injector.loadInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:70:13)
+    at async Injector.loadProvider (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:98:9)
+    at async C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:56:13
+    at async Promise.all (index 3)
+    at async InstanceLoader.createInstancesOfProviders (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:55:9)
+[31m[Nest] 31432  - [39m01/04/2026, 05:45:22 [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31mNest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+[39m
+Error: Nest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+
+    at Injector.lookupComponentInParentModules (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:262:19)
+    at async Injector.resolveComponentInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:215:33)
+    at async resolveParam (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:129:38)
+    at async Promise.all (index 3)
+    at async Injector.resolveConstructorParams (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:144:27)
+    at async Injector.loadInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:70:13)
+    at async Injector.loadProvider (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:98:9)
+    at async C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:56:13
+    at async Promise.all (index 3)
+    at async InstanceLoader.createInstancesOfProviders (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:55:9)
+[31m[Nest] 44476  - [39m01/04/2026, 05:45:39 [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31mNest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+[39m
+Error: Nest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+
+    at Injector.lookupComponentInParentModules (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:262:19)
+    at async Injector.resolveComponentInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:215:33)
+    at async resolveParam (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:129:38)
+    at async Promise.all (index 3)
+    at async Injector.resolveConstructorParams (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:144:27)
+    at async Injector.loadInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:70:13)
+    at async Injector.loadProvider (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:98:9)
+    at async C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:56:13
+    at async Promise.all (index 3)
+    at async InstanceLoader.createInstancesOfProviders (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:55:9)
+[31m[Nest] 25392  - [39m01/04/2026, 05:45:50 [31m  ERROR[39m [38;5;3m[ExceptionHandler] [39m[31mNest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+[39m
+Error: Nest can't resolve dependencies of the AuthService (PrismaService, JwtService, SharedProfilesService, ?). Please make sure that the argument GlobalSettingsService at index [3] is available in the AuthModule context.
+
+Potential solutions:
+- Is AuthModule a valid NestJS module?
+- If GlobalSettingsService is a provider, is it part of the current AuthModule?
+- If GlobalSettingsService is exported from a separate @Module, is that module imported within AuthModule?
+  @Module({
+    imports: [ /* the Module containing GlobalSettingsService */ ]
+  })
+
+    at Injector.lookupComponentInParentModules (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:262:19)
+    at async Injector.resolveComponentInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:215:33)
+    at async resolveParam (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:129:38)
+    at async Promise.all (index 3)
+    at async Injector.resolveConstructorParams (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:144:27)
+    at async Injector.loadInstance (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:70:13)
+    at async Injector.loadProvider (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\injector.js:98:9)
+    at async C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:56:13
+    at async Promise.all (index 3)
+    at async InstanceLoader.createInstancesOfProviders (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\injector\instance-loader.js:55:9)

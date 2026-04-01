@@ -55,6 +55,7 @@ Resposta resumida:
 - Regra de escopo: este e um dos poucos fluxos com busca cross-tenant autorizada por e-mail
 - Comportamento: o backend deve pesquisar o e-mail informado em todas as escolas para descobrir em quais tenants e perfis ele existe
 - Restricao: depois da escolha da escola/perfil, o restante da sessao volta ao isolamento normal por `tenantId`
+- Credencial: a senha valida passa a ser a da tabela global `email_credentials`, independente da escola logada
 
 Body atual:
 
@@ -114,16 +115,41 @@ Respostas possiveis:
 }
 ```
 
+### E-mail pendente de confirmacao
+
+```json
+{
+  "status": "EMAIL_CONFIRMATION_REQUIRED",
+  "message": "SEU E-MAIL AINDA NAO FOI CONFIRMADO. ENVIAMOS UM LINK DE VERIFICACAO PARA O SEU ENDERECO."
+}
+```
+
+- Regra principal:
+  - o e-mail de verificacao e enviado usando as configuracoes gerais da softhouse
+  - enquanto o e-mail nao for confirmado, o login nao conclui
+
+### GET `/auth/verify-email`
+
+- Uso: confirma o e-mail global a partir do token enviado por e-mail
+- Query string:
+
+```text
+/auth/verify-email?token=TOKEN
+```
+
 ### POST `/auth/forgot-password`
 
 - aceita `email`
-- pode retornar `MULTIPLE_TENANTS` quando o email estiver em mais de uma escola
-- Regra de escopo: a busca do e-mail acontece em todas as escolas, mas o reset continua direcionado ao tenant/perfil escolhido
+- Regra de escopo: a busca do e-mail acontece em todas as escolas
+- Regra de credencial: o token de redefinicao passa a ser controlado em `email_credentials`
+- Regra principal: como a senha agora e global por e-mail, o fluxo nao deve exigir escolha de escola para recuperar acesso
+- Envio: usa as configuracoes gerais da softhouse
 
 ### POST `/auth/reset-password`
 
 - redefine a senha por token
-- respeita tenant e trilha de auditoria
+- atualiza a credencial global em `email_credentials`
+- respeita trilha de auditoria
 
 ### POST `/auth/confirm-password`
 
@@ -160,6 +186,7 @@ Respostas possiveis:
 
 - Uso: valida a senha atual pelo e-mail do usuario logado, pesquisando em todos os perfis e em todas as escolas vinculadas a esse e-mail
 - Regra principal: se qualquer perfil do mesmo e-mail possuir a senha informada, a validacao deve retornar sucesso, mesmo que o cadastro atualmente logado tenha outra senha
+- Fonte oficial da senha: `email_credentials`
 - Resposta de sucesso:
 
 ```json
@@ -183,8 +210,8 @@ Respostas possiveis:
 - Uso: altera a senha compartilhada do e-mail exibido na tela `PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL`
 - Regra de escopo: este fluxo pode pesquisar e atualizar registros em todas as escolas, exclusivamente para manter senha unica por e-mail
 - Regra principal:
-  - a senha atual deve ser validada contra todos os perfis do mesmo e-mail em todas as escolas
-  - a nova senha deve ser replicada em todos os perfis vinculados a esse e-mail em todas as escolas
+  - a senha atual deve ser validada pela credencial global do e-mail
+  - a nova senha deve ser gravada na tabela global `email_credentials`
   - um e-mail deve possuir apenas uma senha valida no ecossistema
 
 ## People
@@ -225,6 +252,12 @@ Consulta uma pessoa mestre e os papeis vinculados no tenant atual.
 
 Cria uma pessoa mestre e opcionalmente ja cria os papeis informados.
 
+Regra atual:
+
+- o campo `email` continua existindo no cadastro
+- a senha nao deve mais ser informada nas telas operacionais de pessoa
+- quando houver senha em integracao legada, ela serve apenas para semear `email_credentials`
+
 Body resumido:
 
 ```json
@@ -232,7 +265,6 @@ Body resumido:
   "name": "NOME",
   "cpf": "000.000.000-00",
   "email": "LOGIN@ESCOLA.COM",
-  "password": "SenhaInicial",
   "roles": [
     { "role": "PROFESSOR", "accessProfile": "PROFESSOR_PADRAO" },
     { "role": "RESPONSAVEL", "accessProfile": "RESPONSAVEL_CONSULTA" }

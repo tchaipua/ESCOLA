@@ -33,6 +33,7 @@ import {
   MASTER_USER_ID,
 } from "../../../../common/auth/master-auth";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
+import { GlobalSettingsService } from "../../../global-settings/application/services/global-settings.service";
 
 type AccountModelType = "user" | "teacher" | "student" | "guardian";
 
@@ -87,6 +88,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly sharedProfilesService: SharedProfilesService,
+    private readonly globalSettingsService: GlobalSettingsService,
   ) {}
 
   private normalizeEmailVariants(email: string): string[] {
@@ -412,6 +414,132 @@ export class AuthService {
     });
   }
 
+  private async loadEmailCredential(email?: string | null) {
+    return this.sharedProfilesService.getOrCreateEmailCredentialFromLegacy(
+      email,
+    );
+  }
+
+  private buildFrontendLink(pathname: string, token: string) {
+    const frontendBaseUrl = (
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    ).replace(/\/$/, "");
+
+    return `${frontendBaseUrl}${pathname}?token=${token}`;
+  }
+
+  private async sendEmailUsingGlobalSettings(payload: {
+    to: string;
+    subject: string;
+    text: string;
+    html: string;
+  }) {
+    const settings = await this.globalSettingsService.findSettings();
+
+    if (!settings.emailEnabled) {
+      return { warning: "GLOBAL_EMAIL_DISABLED" as const };
+    }
+
+    const smtpHost = String(settings.emailSmtpHost || "").trim();
+    const smtpPort = Number(settings.emailSmtpPort || 0) || 465;
+    const smtpUser = String(settings.emailSmtpUser || "").trim();
+    const smtpPassword = String(settings.emailSmtpPassword || "").trim();
+    const smtpSecure = settings.emailUseSsl !== false;
+    const smtpAuthenticate = settings.emailUseAuth !== false;
+
+    if (!smtpHost) {
+      return { warning: "GLOBAL_SMTP_MISSING" as const };
+    }
+
+    if (smtpAuthenticate && (!smtpUser || !smtpPassword)) {
+      return { warning: "GLOBAL_SMTP_CREDENTIALS_MISSING" as const };
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: smtpAuthenticate
+        ? {
+            user: smtpUser,
+            pass: smtpPassword,
+          }
+        : undefined,
+    });
+
+    const fromAddress =
+      String(settings.emailSenderEmail || "").trim() ||
+      smtpUser ||
+      `no-reply@${smtpHost}`;
+    const fromName =
+      String(settings.emailSenderName || "").trim() || "MSINFOR SISTEMAS";
+    const replyTo = String(settings.emailReplyTo || "").trim() || undefined;
+
+    await transporter.sendMail({
+      from: `"${fromName}" <${fromAddress}>`,
+      to: payload.to,
+      replyTo,
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+    });
+
+    return { warning: null };
+  }
+
+  private async triggerEmailVerification(email: string, name?: string | null) {
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    const verificationHash = crypto
+      .createHash("sha256")
+      .update(verificationToken)
+      .digest("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.sharedProfilesService.storeEmailCredentialVerificationToken(
+      email,
+      verificationHash,
+      expiresAt,
+    );
+
+    const verificationLink = this.buildFrontendLink(
+      "/confirm-email",
+      verificationToken,
+    );
+    const displayName = String(name || email || "USUARIO").trim();
+    const response: {
+      status: "EMAIL_CONFIRMATION_REQUIRED";
+      message: string;
+      devVerificationLink?: string;
+      warning?: string;
+    } = {
+      status: "EMAIL_CONFIRMATION_REQUIRED",
+      message:
+        "Este e-mail ainda não foi confirmado. Vamos enviar um e-mail de confirmação para continuar.",
+    };
+
+    if (process.env.NODE_ENV !== "production") {
+      response.devVerificationLink = verificationLink;
+    }
+
+    try {
+      const mailResult = await this.sendEmailUsingGlobalSettings({
+        to: email,
+        subject: "Confirmação de E-mail - MSINFOR",
+        text: `${displayName}, confirme seu e-mail acessando: ${verificationLink}`,
+        html: `<h3>Confirmação de e-mail</h3><p>${displayName}, confirme seu acesso clicando no botão abaixo.</p><a href="${verificationLink}" style="padding:10px 20px; background:#2563eb; color:#fff; text-decoration:none; border-radius:6px;">Confirmar e-mail</a>`,
+      });
+
+      if (mailResult.warning) {
+        response.warning = mailResult.warning;
+      }
+    } catch (error) {
+      console.error("[SMTP Error] Falha ao enviar confirmação de e-mail:", error);
+      response.warning = "GLOBAL_SMTP_SEND_FAILED";
+    }
+
+    return response;
+  }
+
   async login(loginDto: LoginDto) {
     const normalizedIdentifier = loginDto.email.trim().toUpperCase();
 
@@ -480,21 +608,29 @@ export class AuthService {
       );
     }
 
-    const validUsers: AccountLookup[] = [];
-    for (const account of accounts) {
-      if (!account.password) continue;
-      const isPasswordValid = await bcrypt.compare(
-        loginDto.password,
-        account.password,
+    const credential = await this.loadEmailCredential(loginDto.email);
+    if (!credential?.passwordHash) {
+      throw new UnauthorizedException(
+        "ESTE E-MAIL AINDA NÃO POSSUI UMA SENHA DE ACESSO CONFIGURADA. USE A OPÇÃO ESQUECI A SENHA PARA CRIAR SUA SENHA E ENTRAR NO SISTEMA.",
       );
-      if (isPasswordValid) validUsers.push(account);
     }
 
-    if (validUsers.length === 0) {
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      credential.passwordHash,
+    );
+
+    if (!isPasswordValid) {
       throw new UnauthorizedException(
         `SENHA INVÁLIDA PARA O USUÁRIO|${accounts[0].name.toUpperCase()}`,
       );
     }
+
+    if (!credential.emailVerified) {
+      return this.triggerEmailVerification(loginDto.email, accounts[0]?.name);
+    }
+
+    const validUsers = accounts;
 
     let userToLogin: AccountLookup | null = null;
     const validTenantIds = Array.from(
@@ -620,16 +756,24 @@ export class AuthService {
     }
 
     const effectiveModel: AccountModelType = modelType || "user";
-    const account = await this.loadAccountPassword(
+    const currentAccount = await this.loadAccountById(
       effectiveModel,
       userId,
       tenantId,
     );
-    if (!account?.password) {
+    if (!currentAccount?.email) {
       throw new UnauthorizedException("Senha inválida.");
     }
 
-    const isPasswordValid = await bcrypt.compare(password, account.password);
+    const credential = await this.loadEmailCredential(currentAccount.email);
+    if (!credential?.passwordHash) {
+      throw new UnauthorizedException("Senha inválida.");
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      credential.passwordHash,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException("Senha inválida.");
     }
@@ -671,19 +815,17 @@ export class AuthService {
       );
     }
 
-    const passwordCandidates =
-      await this.loadPasswordCandidatesByEmailAcrossAllProfiles(
-        currentAccount.email,
-      );
-    const validPassword = await Promise.all(
-      passwordCandidates
-        .filter((account) => !!account.password)
-        .map((account) =>
-          bcrypt.compare(normalizedPassword, account.password as string),
-        ),
+    const credential = await this.loadEmailCredential(currentAccount.email);
+    if (!credential?.passwordHash) {
+      throw new UnauthorizedException("Senha inválida.");
+    }
+
+    const validPassword = await bcrypt.compare(
+      normalizedPassword,
+      credential.passwordHash,
     );
 
-    if (!validPassword.some(Boolean)) {
+    if (!validPassword) {
       throw new UnauthorizedException("Senha inválida.");
     }
 
@@ -732,10 +874,9 @@ export class AuthService {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(normalizedNewPassword, salt);
 
-    await this.sharedProfilesService.syncSharedPasswordByEmailAcrossTenants(
+    await this.sharedProfilesService.updateEmailCredentialPassword(
       currentAccount.email,
       hashedPassword,
-      undefined,
       userId,
     );
 
@@ -770,14 +911,18 @@ export class AuthService {
               permissions: null,
             });
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(registerDto.password, salt);
+    const normalizedPassword = String(registerDto.password || "").trim();
+    let hashedPassword: string | null = null;
+    if (normalizedPassword) {
+      const salt = await bcrypt.genSalt(10);
+      hashedPassword = await bcrypt.hash(normalizedPassword, salt);
+    }
 
     const newUser = await this.prisma.user.create({
       data: {
         name: registerDto.name.trim().toUpperCase(),
         email: normalizedEmail,
-        password: hashedPassword,
+        password: null,
         tenantId: tenantId_forced,
         role: normalizedRole || "SECRETARIA",
         complementaryProfiles:
@@ -793,13 +938,17 @@ export class AuthService {
       },
     });
 
-    await this.sharedProfilesService.syncSharedPasswordByEmail(
-      tenantId_forced,
-      normalizedEmail,
-      hashedPassword,
-      { kind: "USER", id: newUser.id },
-      currentUser.userId,
-    );
+    if (hashedPassword) {
+      await this.sharedProfilesService.updateEmailCredentialPassword(
+        normalizedEmail,
+        hashedPassword,
+        currentUser.userId,
+      );
+    } else {
+      await this.sharedProfilesService.ensureEmailCredential(normalizedEmail, {
+        userId: currentUser.userId,
+      });
+    }
 
     return {
       ...newUser,
@@ -819,26 +968,7 @@ export class AuthService {
       throw new NotFoundException("E-mail não encontrado na base de dados.");
     }
 
-    let accountsToRecover = accounts;
-    const distinctTenants = this.getUniqueTenants(accounts);
-
-    if (forgotDto.tenantId) {
-      accountsToRecover = accounts.filter(
-        (account) => account.tenantId === forgotDto.tenantId,
-      );
-      if (accountsToRecover.length === 0) {
-        return {
-          message: "Se o e-mail existir, você receberá um link de recuperação.",
-        };
-      }
-    } else if (distinctTenants.length > 1) {
-      return {
-        status: "MULTIPLE_TENANTS",
-        tenants: distinctTenants,
-      };
-    }
-
-    const userToRecover = this.pickPreferredAccount(accountsToRecover);
+    const userToRecover = this.pickPreferredAccount(accounts);
     if (!userToRecover) {
       return {
         message: "Se o e-mail existir, você receberá um link de recuperação.",
@@ -853,42 +983,13 @@ export class AuthService {
     const resetToken = crypto.randomBytes(32).toString("hex");
     const hash = crypto.createHash("sha256").update(resetToken).digest("hex");
     const expiresAt = new Date(Date.now() + 3600000);
-    const updateData = {
-      resetPasswordToken: hash,
-      resetPasswordExpires: expiresAt,
-    };
-
-    await Promise.all(
-      accountsToRecover.map((account) => {
-        switch (account.modelType) {
-          case "user":
-            return this.prisma.user.update({
-              where: { id: account.id },
-              data: updateData,
-            });
-          case "teacher":
-            return this.prisma.teacher.update({
-              where: { id: account.id },
-              data: updateData,
-            });
-          case "student":
-            return this.prisma.student.update({
-              where: { id: account.id },
-              data: updateData,
-            });
-          case "guardian":
-            return this.prisma.guardian.update({
-              where: { id: account.id },
-              data: updateData,
-            });
-        }
-      }),
+    await this.sharedProfilesService.storeEmailCredentialResetToken(
+      userToRecover.email,
+      hash,
+      expiresAt,
     );
 
-    const frontendBaseUrl = (
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    ).replace(/\/$/, "");
-    const resetLink = `${frontendBaseUrl}/reset-password?token=${resetToken}`;
+    const resetLink = this.buildFrontendLink("/reset-password", resetToken);
 
     const successResponse: any = {
       status: "SUCCESS",
@@ -899,69 +1000,17 @@ export class AuthService {
       successResponse.devResetLink = resetLink;
     }
 
-    const tenant = userToRecover.tenant;
-    const smtpHost = tenant.smtpHost?.trim() || "";
-    const smtpPort =
-      typeof tenant.smtpPort === "number"
-        ? tenant.smtpPort
-        : tenant.smtpSecure
-          ? 465
-          : 587;
-    const smtpTimeout =
-      typeof tenant.smtpTimeout === "number" ? tenant.smtpTimeout : 60;
-    const smtpSecure = tenant.smtpSecure === true;
-    const smtpAuthenticate = tenant.smtpAuthenticate !== false;
-    const smtpEmail = tenant.smtpEmail?.trim();
-    const smtpPassword = tenant.smtpPassword?.trim();
-
-    if (!smtpHost) {
-      console.warn(`[SMTP] Configuração ausente para ${tenant.name}.`);
-      return successResponse;
-    }
-
-    if (smtpAuthenticate && (!smtpEmail || !smtpPassword)) {
-      console.warn(`[SMTP] Credenciais ausentes para ${tenant.name}.`);
-
-      if (isNonProduction) {
-        successResponse.warning = "SMTP_CREDENTIALS_MISSING";
-        return successResponse;
-      }
-
-      throw new ServiceUnavailableException(
-        "Configuração de e-mail incompleta para esta escola.",
-      );
-    }
-
     try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        connectionTimeout: smtpTimeout * 1000,
-        auth: smtpAuthenticate
-          ? {
-              user: smtpEmail,
-              pass: smtpPassword,
-            }
-          : undefined,
-      });
-
-      const fromAddress = smtpEmail || `no-reply@${smtpHost}`;
-
-      await transporter.sendMail({
-        from: `"${tenant.name}" <${fromAddress}>`,
+      const mailResult = await this.sendEmailUsingGlobalSettings({
         to: userToRecover.email,
         subject: "Recuperação de Senha - MSINFOR",
         text: `Você solicitou a recuperação de senha. Acesse o link para redefinir: ${resetLink}\n\nSe não foi você, ignore.`,
-        html: `<h3>Recuperação de Senha (${tenant.name})</h3>
-                       <p>Para criar uma nova senha, clique no botão abaixo:</p>
-                       <a href="${resetLink}" style="padding:10px 20px; background:#4f46e5; color:#fff; text-decoration:none; border-radius:5px;">Redefinir Senha</a>
-                       <br><br><p>Se você não solicitou isso, ignore este e-mail.</p>`,
+        html: `<h3>Recuperação de senha</h3><p>Para criar uma nova senha, clique no botão abaixo:</p><a href="${resetLink}" style="padding:10px 20px; background:#2563eb; color:#fff; text-decoration:none; border-radius:6px;">Redefinir senha</a><br><br><p>Se você não solicitou isso, ignore este e-mail.</p>`,
       });
 
-      console.log(
-        `[SMTP] E-mail de Recuperação enviado com sucesso para ${userToRecover.email} por ${tenant.name}`,
-      );
+      if (mailResult.warning) {
+        successResponse.warning = mailResult.warning;
+      }
 
       if (this.isMicrosoftConsumerDomain(userToRecover.email)) {
         successResponse.warning = "OUTLOOK_DELIVERY_DELAY_POSSIBLE";
@@ -974,8 +1023,8 @@ export class AuthService {
         err,
       );
 
+      successResponse.warning = "GLOBAL_SMTP_SEND_FAILED";
       if (isNonProduction) {
-        successResponse.warning = "SMTP_SEND_FAILED";
         return successResponse;
       }
 
@@ -991,79 +1040,42 @@ export class AuthService {
       .update(resetDto.token)
       .digest("hex");
 
-    const [users, teachers, students, guardians] = await Promise.all([
-      this.prisma.user.findMany({
-        where: {
-          resetPasswordToken: hash,
-          resetPasswordExpires: { gt: new Date() },
-        },
-      }),
-      this.prisma.teacher.findMany({
-        where: {
-          resetPasswordToken: hash,
-          resetPasswordExpires: { gt: new Date() },
-        },
-      }),
-      this.prisma.student.findMany({
-        where: {
-          resetPasswordToken: hash,
-          resetPasswordExpires: { gt: new Date() },
-        },
-      }),
-      this.prisma.guardian.findMany({
-        where: {
-          resetPasswordToken: hash,
-          resetPasswordExpires: { gt: new Date() },
-        },
-      }),
-    ]);
+    const credential =
+      await this.sharedProfilesService.findEmailCredentialByResetToken(hash);
 
-    const targets = [
-      ...users.map((item) => ({ type: "user" as const, item })),
-      ...teachers.map((item) => ({ type: "teacher" as const, item })),
-      ...students.map((item) => ({ type: "student" as const, item })),
-      ...guardians.map((item) => ({ type: "guardian" as const, item })),
-    ];
-
-    if (targets.length === 0) {
+    if (!credential?.email) {
       throw new UnauthorizedException("Token inválido ou expirado.");
     }
 
     const salt = await bcrypt.genSalt(10);
     const newHashedPassword = await bcrypt.hash(resetDto.newPassword, salt);
-    const applyData = {
-      password: newHashedPassword,
-      resetPasswordToken: null,
-      resetPasswordExpires: null,
-    };
-
-    await Promise.all(
-      targets.map((target) => {
-        switch (target.type) {
-          case "user":
-            return this.prisma.user.update({
-              where: { id: target.item.id },
-              data: applyData,
-            });
-          case "teacher":
-            return this.prisma.teacher.update({
-              where: { id: target.item.id },
-              data: applyData,
-            });
-          case "student":
-            return this.prisma.student.update({
-              where: { id: target.item.id },
-              data: applyData,
-            });
-          case "guardian":
-            return this.prisma.guardian.update({
-              where: { id: target.item.id },
-              data: applyData,
-            });
-        }
-      }),
+    await this.sharedProfilesService.updateEmailCredentialPassword(
+      credential.email,
+      newHashedPassword,
+    );
+    await this.sharedProfilesService.clearEmailCredentialResetToken(
+      credential.id,
     );
 
     return { message: "Senha redefinida com sucesso!" };
+  }
+
+  async verifyEmail(token: string) {
+    const hash = crypto.createHash("sha256").update(token).digest("hex");
+    const credential =
+      await this.sharedProfilesService.findEmailCredentialByVerificationToken(
+        hash,
+      );
+
+    if (!credential) {
+      throw new UnauthorizedException("Token inválido ou expirado.");
+    }
+
+    await this.sharedProfilesService.markEmailCredentialVerified(credential.id);
+
+    return {
+      status: "SUCCESS",
+      message: "E-mail confirmado com sucesso.",
+    };
   }
 }

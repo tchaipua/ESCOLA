@@ -251,11 +251,6 @@ export class StudentsService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    } else if (sanitizedDto.email) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          sanitizedDto.email,
-        )) || undefined;
     }
     const accessProfile =
       normalizeAccessProfileCode(sanitizedDto.accessProfile, "ALUNO") ||
@@ -274,7 +269,7 @@ export class StudentsService {
     const createdStudent = await this.prisma.student.create({
       data: {
         ...rawData,
-        password: hashedPassword,
+        password: null,
         accessProfile,
         permissions: explicitPermissions,
         photoUrl: sanitizedDto.photoUrl?.trim() || null,
@@ -291,18 +286,28 @@ export class StudentsService {
       this.tenantId(),
       "STUDENT",
       createdStudent.id,
-      createdStudent,
+      {
+        ...createdStudent,
+        password: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
       this.userId(),
     );
 
-    if (sanitizedDto.email && hashedPassword) {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        this.tenantId(),
-        sanitizedDto.email,
-        hashedPassword,
-        { kind: "STUDENT", id: createdStudent.id },
-        this.userId(),
-      );
+    if (sanitizedDto.email) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          sanitizedDto.email,
+          hashedPassword,
+          this.userId(),
+        );
+      } else {
+        await this.sharedProfilesService.ensureEmailCredential(
+          sanitizedDto.email,
+          { userId: this.userId() },
+        );
+      }
     }
 
     return sanitizeStudentForViewer(
@@ -762,12 +767,6 @@ export class StudentsService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    } else if (shouldResolvePasswordForEmailChange) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          normalizedIncomingEmail,
-          { kind: "STUDENT", id },
-        )) || undefined;
     }
     const accessProfile =
       normalizeAccessProfileCode(
@@ -800,7 +799,8 @@ export class StudentsService {
       data: {
         ...rawData,
         name: resolvedStudentName,
-        password: hashedPassword || undefined,
+        password:
+          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
         accessProfile,
         permissions: explicitPermissions,
         photoUrl: Object.prototype.hasOwnProperty.call(sanitizedDto, "photoUrl")
@@ -827,20 +827,28 @@ export class StudentsService {
       {
         ...updatedStudent,
         name: resolvedStudentName,
+        password: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
       },
       this.userId(),
       currentStudent.cpf,
     );
 
     const emailForPasswordSync = sanitizedDto.email || currentStudent.email;
-    if (emailForPasswordSync && hashedPassword) {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        this.tenantId(),
-        emailForPasswordSync,
-        hashedPassword,
-        { kind: "STUDENT", id: updatedStudent.id },
-        this.userId(),
-      );
+    if (emailForPasswordSync) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          emailForPasswordSync,
+          hashedPassword,
+          this.userId(),
+        );
+      } else if (shouldResolvePasswordForEmailChange) {
+        await this.sharedProfilesService.ensureEmailCredential(
+          emailForPasswordSync,
+          { userId: this.userId() },
+        );
+      }
     }
 
     return sanitizeStudentForViewer(

@@ -53,7 +53,6 @@ type AccessUser = {
 type AccessFormState = {
   name: string;
   email: string;
-  password: string;
   birthDate: string;
   rg: string;
   cpf: string;
@@ -88,7 +87,6 @@ type TenantAccessManagerProps = {
 const EMPTY_FORM: AccessFormState = {
   name: '',
   email: '',
-  password: '',
   birthDate: '',
   rg: '',
   cpf: '',
@@ -265,7 +263,6 @@ export default function TenantAccessManager({
     setFormData({
       name: user.name || '',
       email: user.email || '',
-      password: '',
       birthDate: user.birthDate || '',
       rg: user.rg || '',
       cpf: user.cpf || '',
@@ -373,15 +370,6 @@ export default function TenantAccessManager({
       return;
     }
 
-    if (!editingUserId && !formData.password.trim()) {
-      setErrorMessage('Defina uma senha inicial para o novo acesso.');
-      return;
-    }
-
-    if (formData.password.trim()) {
-      payload.password = formData.password.trim();
-    }
-
     if (payload.role !== 'ADMIN' && formData.permissions.length === 0) {
       setErrorMessage('Selecione pelo menos uma permissão para este perfil.');
       return;
@@ -447,8 +435,7 @@ export default function TenantAccessManager({
   const canAdvanceToPermissions =
     formData.role !== 'ADMIN' &&
     formData.name.trim() &&
-    formData.email.trim() &&
-    (editingUserId !== null || formData.password.trim());
+    formData.email.trim();
   const showPermissionScreen = formData.role !== 'ADMIN' && formStep === 'PERMISSOES';
   const showFocusedEditor = editingUserId !== null;
   const showFocusedCreate = isCreatingNew && editingUserId === null;
@@ -725,16 +712,6 @@ export default function TenantAccessManager({
                     }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
                     placeholder="USUARIO@ESCOLA.COM"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Nova senha (opcional)</label>
-                  <input
-                    type="text"
-                    value={formData.password}
-                    onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    placeholder="Preencha so se quiser trocar"
                   />
                 </div>
               </div>
@@ -1020,7 +997,7 @@ export default function TenantAccessManager({
                           setErrorMessage(null);
                           setFormStep('PERMISSOES');
                         } else {
-                          setErrorMessage('Preencha nome, e-mail e senha antes de configurar as permissões.');
+                          setErrorMessage('Preencha nome e e-mail antes de configurar as permissões.');
                         }
                       }}
                       className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100"
@@ -1051,7 +1028,7 @@ export default function TenantAccessManager({
                       setErrorMessage(null);
                       setFormStep('PERMISSOES');
                     } else {
-                      setErrorMessage('Preencha nome, e-mail e senha antes de abrir a tela de permissões.');
+                      setErrorMessage('Preencha nome e e-mail antes de abrir a tela de permissões.');
                     }
                   }}
                   className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-800"

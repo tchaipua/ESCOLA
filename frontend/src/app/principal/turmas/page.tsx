@@ -39,6 +39,7 @@ type SeriesRecord = {
     name: string;
     canceledAt?: string | null;
     code?: string | null;
+    sortOrder?: number | null;
 };
 
 type ClassRecord = {
@@ -136,12 +137,19 @@ const formatPhoneNumber = (value?: string | null) => {
     return value;
 };
 
-type SeriesClassColumnKey = 'className' | 'series' | 'seriesCode' | 'shift' | 'studentsCount' | 'defaultMonthlyFee' | 'totalMonthlyFee' | 'recordStatus';
+type SeriesClassColumnKey = 'className' | 'series' | 'seriesSortOrder' | 'seriesCode' | 'shift' | 'studentsCount' | 'defaultMonthlyFee' | 'totalMonthlyFee' | 'recordStatus';
 type SeriesClassExportColumnKey = SeriesClassColumnKey;
 
 const SERIES_CLASS_COLUMNS: ConfigurableGridColumn<SeriesClassRecord, SeriesClassColumnKey>[] = [
     { key: 'className', label: 'Turma', getValue: (row) => row.class?.name || '---' },
     { key: 'series', label: 'Série', getValue: (row) => row.series?.name || '---' },
+    {
+        key: 'seriesSortOrder',
+        label: 'Ordem de aprendizado',
+        getValue: (row) => row.series?.sortOrder !== null && row.series?.sortOrder !== undefined ? String(row.series.sortOrder) : '---',
+        getSortValue: (row) => row.series?.sortOrder ?? -1,
+        visibleByDefault: true,
+    },
     { key: 'seriesCode', label: 'Código da série', getValue: (row) => row.series?.code || '---', visibleByDefault: false },
     { key: 'shift', label: 'Turno', getValue: (row) => getShiftLabel(row.class?.shift || '') || '---' },
     {
@@ -196,7 +204,7 @@ function getSeriesClassExportConfigStorageKey(tenantId: string | null) {
 }
 
 const DEFAULT_SORT: GridSortState<SeriesClassColumnKey> = {
-    column: 'className',
+    column: 'seriesSortOrder',
     direction: 'asc',
 };
 const TURMAS_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_STUDENTS_MODAL';
@@ -728,6 +736,7 @@ export default function TurmasPage() {
             );
         }
         if (columnKey === 'series') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{item.series?.name || '---'}</td>;
+        if (columnKey === 'seriesSortOrder') return <td key={columnKey} className={`px-6 py-4 text-sm font-semibold ${tone}`}>{item.series?.sortOrder !== null && item.series?.sortOrder !== undefined ? String(item.series.sortOrder) : '---'}</td>;
         if (columnKey === 'seriesCode') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{item.series?.code || '---'}</td>;
         if (columnKey === 'shift') {
             return (

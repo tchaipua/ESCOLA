@@ -129,7 +129,22 @@ Objetivo:
 
 ## Login e senha
 
-A credencial compartilhada hoje pode existir em:
+A credencial compartilhada agora deve ser controlada prioritariamente em:
+
+- `email_credentials`
+
+Campos principais:
+
+- `email`
+- `passwordHash`
+- `emailVerified`
+- `verifiedAt`
+- `verificationToken`
+- `verificationExpires`
+- `resetPasswordToken`
+- `resetPasswordExpires`
+
+Legado ainda existente no banco:
 
 - `users`
 - `people`
@@ -137,7 +152,11 @@ A credencial compartilhada hoje pode existir em:
 - `students`
 - `guardians`
 
-A regra aplicada e sincronizar senha por email quando o email representa o mesmo acesso funcional.
+A regra aplicada agora e:
+
+- a senha valida do ecossistema passa a ser a da tabela global por `email`
+- a verificacao de e-mail passa a ser global por `email`
+- os campos de senha legados deixam de ser o ponto oficial de controle
 
 ## Soft delete
 

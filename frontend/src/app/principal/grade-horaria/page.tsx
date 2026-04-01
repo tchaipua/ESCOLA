@@ -1157,18 +1157,6 @@ export default function GradeHorariaPlanejadaPage() {
                 <div>
                     <h1 className="text-3xl font-extrabold tracking-tight text-[#153a6a]">Grade horária</h1>
                     <p className="mt-1 font-medium text-slate-500">Monte a grade planejada da escola por ano letivo, turma, dia e aula.</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-500">
-                        <span>Programa: <span className="rounded-full bg-slate-100 px-3 py-1 font-bold tracking-wide text-slate-700">{SCREEN_PROGRAM_NAME}</span></span>
-                        <button
-                            type="button"
-                            onClick={handleCopyScreenProgramName}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
-                        >
-                            Copiar nome
-                        </button>
-                        {clipboardFeedback === 'success' ? <span className="text-emerald-600">Nome copiado.</span> : null}
-                        {clipboardFeedback === 'error' ? <span className="text-rose-600">Não foi possível copiar.</span> : null}
-                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">

@@ -530,11 +530,6 @@ export class PeopleService {
     if (createDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(createDto.password, salt);
-    } else if (normalizedEmail) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          normalizedEmail,
-        )) || null;
     }
 
     const createdPerson = await this.prisma.person.create({
@@ -553,7 +548,7 @@ export class PeopleService {
         cellphone1: mutableData.cellphone1 || null,
         cellphone2: mutableData.cellphone2 || null,
         email: normalizedEmail || null,
-        password: hashedPassword,
+        password: null,
         zipCode: mutableData.zipCode || null,
         street: mutableData.street || null,
         number: mutableData.number || null,
@@ -565,6 +560,20 @@ export class PeopleService {
         createdBy: currentUser?.userId || this.userId(),
       },
     });
+
+    if (normalizedEmail) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          normalizedEmail,
+          hashedPassword,
+          currentUser?.userId || this.userId(),
+        );
+      } else {
+        await this.sharedProfilesService.ensureEmailCredential(normalizedEmail, {
+          userId: currentUser?.userId || this.userId(),
+        });
+      }
+    }
 
     await this.upsertRolesForPerson(
       await this.findPersonEntity(createdPerson.id),
@@ -618,12 +627,6 @@ export class PeopleService {
     if (updateDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(updateDto.password, salt);
-    } else if (shouldResolvePasswordForEmailChange) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          normalizedEmail,
-          { kind: "PERSON", id },
-        )) || undefined;
     }
 
     await this.prisma.person.update({
@@ -679,7 +682,8 @@ export class PeopleService {
         email: Object.prototype.hasOwnProperty.call(updateDto, "email")
           ? normalizedEmail || null
           : undefined,
-        password: hashedPassword || undefined,
+        password:
+          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
         zipCode: Object.prototype.hasOwnProperty.call(updateDto, "zipCode")
           ? mutableData.zipCode || null
           : undefined,
@@ -710,6 +714,20 @@ export class PeopleService {
         updatedBy: currentUser?.userId || this.userId(),
       },
     });
+
+    if (normalizedEmail) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          normalizedEmail,
+          hashedPassword,
+          currentUser?.userId || this.userId(),
+        );
+      } else if (shouldResolvePasswordForEmailChange) {
+        await this.sharedProfilesService.ensureEmailCredential(normalizedEmail, {
+          userId: currentUser?.userId || this.userId(),
+        });
+      }
+    }
 
     await this.upsertRolesForPerson(
       await this.findPersonEntity(id),

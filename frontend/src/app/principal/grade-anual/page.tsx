@@ -359,6 +359,7 @@ export default function GradeAnualPage() {
     const [selectedYear, setSelectedYear] = useState('');
     const [selectedMonth, setSelectedMonth] = useState('');
     const [selectedDate, setSelectedDate] = useState('');
+    const [specificDateFilter, setSpecificDateFilter] = useState('');
     const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'YESTERDAY' | 'TOMORROW' | 'WEEK' | null>(null);
     const [weekRange, setWeekRange] = useState<{ start: string; end: string } | null>(null);
     const [expandedDayModal, setExpandedDayModal] = useState<ExpandedDayModalState | null>(null);
@@ -418,6 +419,10 @@ export default function GradeAnualPage() {
     }, [expandedDayModal, expandedDaySeriesClassId]);
 
     const filteredRecords = useMemo(() => {
+        if (!selectedCalendarSeriesClassId) {
+            return [];
+        }
+
         return records.filter((record) => {
             const isActive = !record.canceledAt;
             const matchesStatus =
@@ -430,7 +435,7 @@ export default function GradeAnualPage() {
 
             return matchesStatus && matchesYear;
         });
-    }, [records, selectedYear, statusFilter]);
+    }, [records, selectedCalendarSeriesClassId, selectedYear, statusFilter]);
 
     const sortedRecords = useMemo(
         () => sortGridRows(filteredRecords, GRID_COLUMNS, DEFAULT_SORT),
@@ -467,11 +472,14 @@ export default function GradeAnualPage() {
         if (weekRange) {
             return monthGridDays.filter((day) => day >= weekRange.start && day <= weekRange.end);
         }
+        if (specificDateFilter) {
+            return monthGridDays.filter((day) => day === specificDateFilter);
+        }
         if (dateShortcut && dateShortcut !== 'WEEK') {
             return monthGridDays.filter((day) => day === selectedDate);
         }
         return monthGridDays;
-    }, [dateShortcut, monthGridDays, selectedDate, weekRange]);
+    }, [dateShortcut, monthGridDays, selectedDate, specificDateFilter, weekRange]);
     const visibleDaySet = useMemo(() => new Set(visibleCalendarDays), [visibleCalendarDays]);
     const lessonItemsByDate = useMemo(() => {
         const map = new Map<string, AnnualCalendarLessonItem[]>();
@@ -567,11 +575,27 @@ export default function GradeAnualPage() {
         const year = String(target.getFullYear());
         const month = String(target.getMonth() + 1).padStart(2, '0');
 
+        setSpecificDateFilter('');
         setDateShortcut(shortcut);
         setWeekRange(nextWeekRange);
         setSelectedYear(year);
         setSelectedMonth(month);
         setSelectedDate(formatDateOnly(target));
+    };
+
+    const handleSpecificDateFilterChange = (value: string) => {
+        setDateShortcut(null);
+        setWeekRange(null);
+        setSpecificDateFilter(value);
+
+        if (!value) {
+            return;
+        }
+
+        const [year, month] = value.split('-');
+        setSelectedYear(year || '');
+        setSelectedMonth(month || '');
+        setSelectedDate(value);
     };
 
     const loadBaseData = async () => {
@@ -1191,7 +1215,7 @@ export default function GradeAnualPage() {
                     </div>
                 </div>
 
-                <div className="px-8 py-6">
+                <div className="sticky top-[72px] z-30 border-b border-slate-200 bg-white/95 px-8 py-6 backdrop-blur-sm">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                         <div className="flex flex-wrap gap-3">
                             <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -1214,6 +1238,7 @@ export default function GradeAnualPage() {
                                 <select
                                     value={selectedYear}
                                     onChange={(event) => {
+                                        setSpecificDateFilter('');
                                         setDateShortcut(null);
                                         setWeekRange(null);
                                         setSelectedYear(event.target.value);
@@ -1230,6 +1255,7 @@ export default function GradeAnualPage() {
                                 <select
                                     value={selectedMonth}
                                     onChange={(event) => {
+                                        setSpecificDateFilter('');
                                         setDateShortcut(null);
                                         setWeekRange(null);
                                         setSelectedMonth(event.target.value);
@@ -1243,6 +1269,26 @@ export default function GradeAnualPage() {
                                         </option>
                                     ))}
                                 </select>
+                            </label>
+                            <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                                Data específica
+                                <div className="mt-1 flex items-center gap-2">
+                                    <input
+                                        type="date"
+                                        value={specificDateFilter}
+                                        onChange={(event) => handleSpecificDateFilterChange(event.target.value)}
+                                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                    />
+                                    {specificDateFilter ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSpecificDateFilterChange('')}
+                                            className="rounded-full border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 transition hover:border-blue-200 hover:text-blue-700"
+                                        >
+                                            Limpar
+                                        </button>
+                                    ) : null}
+                                </div>
                             </label>
                             <div className="flex flex-wrap gap-2">
                                 {[
@@ -1304,24 +1350,9 @@ export default function GradeAnualPage() {
                             ) : null}
                         </div>
                     </div>
+                </div>
 
-                    <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Turmas no período</div>
-                            <div className="mt-2 text-2xl font-extrabold text-slate-800">{totalRecordsInMonth}</div>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Dias com registro</div>
-                            <div className="mt-2 text-2xl font-extrabold text-slate-800">{totalDaysWithEntries}</div>
-                        </div>
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Dia selecionado</div>
-                            <div className="mt-2 text-base font-extrabold capitalize text-slate-800">{selectedDate ? getFullDateLabel(selectedDate) : 'Selecione uma data'}</div>
-                            <div className="mt-1 text-sm font-medium text-slate-500">{selectedDayLessonItems.length + selectedDayStandaloneEvents.length} item(ns) nesta data</div>
-                        </div>
-                    </div>
-
-                    <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
                         {isLoading ? (
                             <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-12 text-center text-sm font-medium text-slate-500">
                                 Carregando visão anual da escola...
@@ -1336,7 +1367,7 @@ export default function GradeAnualPage() {
 
                         {!isLoading && sortedRecords.length > 0 ? (
                             <div className="space-y-4">
-                                <div className="grid grid-cols-7 gap-3">
+                                <div className="sticky top-[188px] z-20 grid grid-cols-7 gap-3 bg-slate-50/95 pt-1 backdrop-blur-sm">
                                     {WEEKDAY_LABELS.map((label) => (
                                         <div key={label} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
                                             {label}
@@ -1511,104 +1542,6 @@ export default function GradeAnualPage() {
                             </div>
                         ) : null}
                     </div>
-
-                    {!isLoading && sortedRecords.length > 0 ? (
-                        <div className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                            {selectedDayStandaloneEvents.length > 0 ? (
-                                <div className="mb-5 grid grid-cols-1 gap-3 xl:grid-cols-2">
-                                    {selectedDayStandaloneEvents.map((event) => (
-                                        <div key={event.id} className="rounded-[20px] border border-red-300 bg-red-50 px-4 py-3 shadow-sm">
-                                            <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
-                                                EVENTO EXTRA
-                                            </div>
-                                            <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">
-                                                {event.title || event.eventTypeLabel}
-                                            </div>
-                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-500">
-                                                {event.seriesClassLabel}
-                                            </div>
-                                            <div className="text-xs font-semibold uppercase text-slate-500">
-                                                {event.subjectName}
-                                            </div>
-                                            {event.description ? (
-                                                <div className="mt-2 text-xs font-medium text-slate-600">
-                                                    {event.description}
-                                                </div>
-                                            ) : null}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : null}
-
-                            {selectedDayRecordSummaries.length > 0 && (
-                                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3">
-                                    {selectedDayRecordSummaries.map((record) => (
-                                        <article
-                                            key={`${record.id}-${selectedDate}`}
-                                            className={`rounded-[28px] border p-5 shadow-sm transition ${record.canceledAt ? 'border-rose-200 bg-rose-50/70' : 'border-slate-200 bg-white hover:border-blue-200'}`}
-                                        >
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">
-                                                        Ano letivo {record.schoolYear?.year || '---'}
-                                                    </div>
-                                                    <h3 className="mt-2 text-xl font-extrabold text-slate-800">
-                                                        {record.seriesClass?.series?.name || 'SEM SÉRIE'} - {record.seriesClass?.class?.name || 'SEM TURMA'}
-                                                    </h3>
-                                                    <p className="mt-2 text-sm font-medium text-slate-500">
-                                                        Última sincronização da grade semanal: {formatDateTime(record.lastWeeklySyncAt)}
-                                                    </p>
-                                                </div>
-                                                <RecordStatusIndicator active={!record.canceledAt} />
-                                            </div>
-
-                                            <div className="mt-4 flex flex-wrap gap-2">
-                                                {selectedDayLessonItems
-                                                    .filter((entry) => entry.lessonCalendarId === record.id)
-                                                    .slice(0, 3)
-                                                    .map((entry) => (
-                                                        <span
-                                                            key={`${record.id}-${entry.id}`}
-                                                            className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${entry.events.some((event) => event.eventType === 'PROVA') ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}
-                                                        >
-                                                            {entry.startTime} - {entry.endTime} • {entry.subjectName}
-                                                        </span>
-                                                    ))}
-                                            </div>
-
-                                            <div className="mt-5 grid grid-cols-3 gap-3">
-                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Aula</div>
-                                                    <div className="mt-2 text-xl font-extrabold text-slate-800">{record.classPeriodsCount}</div>
-                                                </div>
-                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Intervalo</div>
-                                                    <div className="mt-2 text-xl font-extrabold text-slate-800">{record.intervalPeriodsCount}</div>
-                                                </div>
-                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Geradas</div>
-                                                    <div className="mt-2 text-xl font-extrabold text-slate-800">{record.generatedItemsCount}</div>
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-5 space-y-3">
-                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Períodos de aula</div>
-                                                    <div className="mt-2 text-sm font-semibold text-slate-700">{record.classPeriodsLabel || 'Não informado'}</div>
-                                                </div>
-                                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Intervalos / férias</div>
-                                                    <div className="mt-2 text-sm font-semibold text-slate-700">{record.intervalPeriodsLabel || 'Sem intervalos'}</div>
-                                                </div>
-                                            </div>
-
-                                        </article>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ) : null}
-                </div>
             </section>
 
             {expandedDayModal ? (

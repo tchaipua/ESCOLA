@@ -75,9 +75,9 @@ export class CreateTenantDto {
   @IsNotEmpty()
   adminEmail!: string;
 
-  @ApiProperty({ description: "Senha do Administrador" })
+  @ApiPropertyOptional({ description: "Senha do Administrador" })
   @IsString()
   @MinLength(6, { message: "A senha do admin deve ter no mínimo 6 caracteres" })
-  @IsNotEmpty()
-  adminPassword!: string;
+  @IsOptional()
+  adminPassword?: string;
 }

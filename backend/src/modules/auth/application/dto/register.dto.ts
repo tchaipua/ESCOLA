@@ -20,11 +20,11 @@ export class RegisterDto {
   @IsNotEmpty()
   email!: string;
 
-  @ApiProperty({ description: "Senha de acesso" })
+  @ApiPropertyOptional({ description: "Senha de acesso" })
   @IsString()
   @MinLength(6, { message: "A senha deve ter no mínimo 6 caracteres" })
-  @IsNotEmpty()
-  password!: string;
+  @IsOptional()
+  password?: string;
 
   @ApiPropertyOptional({
     description: "Nível de Permissão",

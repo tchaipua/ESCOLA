@@ -172,6 +172,8 @@ export default function MsinforAdminPage() {
     const [emailUsageExportFormat, setEmailUsageExportFormat] = useState<GridExportFormat>('excel');
     const [tenantExportColumns, setTenantExportColumns] = useState<Record<TenantExportColumnKey, boolean>>(buildDefaultExportColumns(TENANT_EXPORT_COLUMNS));
     const [emailUsageExportColumns, setEmailUsageExportColumns] = useState<Record<EmailUsageExportColumnKey, boolean>>(buildDefaultExportColumns(EMAIL_USAGE_EXPORT_COLUMNS));
+    const [isAdminPasswordVisible, setIsAdminPasswordVisible] = useState(false);
+    const [isSmtpPasswordVisible, setIsSmtpPasswordVisible] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -644,7 +646,7 @@ export default function MsinforAdminPage() {
                                 : "outras escolas";
                     const detailList = otherSchools.length ? formattedList : "outras escolas";
                     setAdminPasswordEqualityNote(
-                        `Esse e-mail já está vinculado ${label} ${detailList}. A senha precisa ser a mesma em todas elas.`,
+                        `Esse e-mail já está vinculado ${label} ${detailList}. O acesso continuará sendo compartilhado por esse e-mail.`,
                     );
                 } else {
                     setAdminPasswordEqualityNote(null);
@@ -777,8 +779,7 @@ export default function MsinforAdminPage() {
                 smtpAuthType: formData.smtpAuthType || (formData.smtpSecure ? 'SSL' : 'STARTTLS'),
             };
 
-            // Se for edição e a senha estiver vazia, remove do payload para não dar erro de validação (MinLength 6)
-            if (editingTenantId && !payload.adminPassword) {
+            if (!String(formData.adminPassword || '').trim()) {
                 delete payload.adminPassword;
             }
 
@@ -801,9 +802,6 @@ export default function MsinforAdminPage() {
 
         } catch (err: any) {
             let errorMsg = err.message || 'Ocorreu um erro.';
-            if (errorMsg.includes('adminPassword should not be empty') || errorMsg.includes('mínimo 6 caracteres')) {
-                errorMsg = 'A senha deve ter no mínimo 6 caracteres';
-            }
 
             const normalizedError = errorMsg.toLowerCase();
             const isSharedPasswordError =
@@ -881,6 +879,7 @@ export default function MsinforAdminPage() {
 
     const handleEdit = (escola: any) => {
         setEditingTenantId(escola.id);
+        setIsSmtpPasswordVisible(false);
         const admin = escola.users?.[0] || {};
 
         setFormData({
@@ -889,7 +888,7 @@ export default function MsinforAdminPage() {
             logoUrl: escola.logoUrl || '',
             adminName: admin.name || '',
             adminEmail: admin.email || '',
-            adminPassword: '', // Limpo, para não enviar acidentalmente
+            adminPassword: '',
             rg: escola.rg || '', cpf: escola.cpf || '', cnpj: escola.cnpj || '', nickname: escola.nickname || '', corporateName: escola.corporateName || '',
             phone: escola.phone || '', whatsapp: escola.whatsapp || '', cellphone1: escola.cellphone1 || '', cellphone2: escola.cellphone2 || '', email: escola.email || '',
             zipCode: escola.zipCode || '', street: escola.street || '', number: escola.number || '', city: escola.city || '', state: escola.state || '', neighborhood: escola.neighborhood || '', complement: escola.complement || '',
@@ -921,6 +920,8 @@ export default function MsinforAdminPage() {
         setIsModalOpen(false);
         setEditingTenantId(null);
         setActiveTab(0);
+        setIsAdminPasswordVisible(false);
+        setIsSmtpPasswordVisible(false);
         setFormData({
             name: '', document: '', logoUrl: '', adminName: '', adminEmail: '', adminPassword: '',
             rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
@@ -2120,17 +2121,36 @@ export default function MsinforAdminPage() {
                                                 )}
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">
-                                                    {editingTenantId ? 'Senha de Acesso (Criptografada e Segura)' : 'Senha Inicial de Acesso *'}
-                                                </label>
-                                                <input type="text" required={!editingTenantId} minLength={6} value={formData.adminPassword} onChange={e => setFormData({ ...formData, adminPassword: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder={editingTenantId ? '•••••••• (Digite uma nova para substituir)' : 'Mínimo 6 caracteres'} />
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Senha de Acesso</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type={isAdminPasswordVisible ? 'text' : 'password'}
+                                                        value={formData.adminPassword}
+                                                        onChange={e => setFormData({ ...formData, adminPassword: e.target.value })}
+                                                        className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 pr-12 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                                        placeholder={editingTenantId ? 'Informe uma nova senha quando quiser alterar' : 'Informe a senha de acesso'}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsAdminPasswordVisible((current) => !current)}
+                                                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 transition-colors hover:text-indigo-600"
+                                                        title={isAdminPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                                                    >
+                                                        {isAdminPasswordVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.584 10.587A2 2 0 0012 14a2 2 0 001.414-.586" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.953 9.953 0 0112 4c5 0 9.27 3.11 11 7.5a11.826 11.826 0 01-4.293 5.246M6.228 6.228C3.89 7.778 2.117 9.99 1 12.5 2.73 16.89 7 20 12 20a9.96 9.96 0 005.042-1.37" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" />
+                                                                <circle cx="12" cy="12" r="3" />
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        <div className="mt-8 flex justify-end gap-3 pt-5 border-t border-slate-100">
-                                            <button type="button" onClick={() => setActiveTab(6)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95">
-                                                Avançar para Sistema de E-mails →
-                                            </button>
                                         </div>
                                     </div>
                                 )}
@@ -2194,40 +2214,57 @@ export default function MsinforAdminPage() {
                                             </div>
                                             <div className="md:col-span-2">
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Senha SMTP / App Password</label>
-                                                <input type="password" value={formData.smtpPassword} onChange={e => setFormData({ ...formData, smtpPassword: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="App password do provedor" />
+                                                <div className="relative">
+                                                    <input
+                                                        type={isSmtpPasswordVisible ? 'text' : 'password'}
+                                                        value={formData.smtpPassword}
+                                                        onChange={e => setFormData({ ...formData, smtpPassword: e.target.value })}
+                                                        className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 pr-12 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                                        placeholder="App password do provedor"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsSmtpPasswordVisible((current) => !current)}
+                                                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 transition-colors hover:text-indigo-600"
+                                                        title={isSmtpPasswordVisible ? 'Ocultar senha SMTP' : 'Mostrar senha SMTP'}
+                                                    >
+                                                        {isSmtpPasswordVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.584 10.587A2 2 0 0012 14a2 2 0 001.414-.586" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.953 9.953 0 0112 4c5 0 9.27 3.11 11 7.5a11.826 11.826 0 01-4.293 5.246M6.228 6.228C3.89 7.778 2.117 9.99 1 12.5 2.73 16.89 7 20 12 20a9.96 9.96 0 005.042-1.37" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" />
+                                                                <circle cx="12" cy="12" r="3" />
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
 
-                                        <div className="mt-8 flex justify-end gap-3 pt-5 border-t border-slate-100">
-                                            <button type="button" onClick={closeModal} className="px-6 py-3 text-slate-500 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar e Fechar</button>
-                                            <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all active:scale-95 flex items-center gap-2">
-                                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                                {editingTenantId ? 'Salvar Edição da Escola' : 'Confirmar e Implantar Escola'}
-                                            </button>
-                                        </div>
                                     </div>
                                 )}
                             </div>
-                            {/* Botoes de Navegação das Abas genéricas */}
-                            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 max-w-4xl pt-2">
-                                <div className="flex flex-1 min-w-0 items-center gap-3 flex-wrap">
-                                    <ScreenNameCopy
-                                        screenId={EDIT_SCHOOL_SCREEN_ID}
-                                        label="Tela"
-                                        disableMargin
-                                        className="w-full justify-start"
-                                    />
-                                </div>
-                                {(activeTab < 4) && (
-                                    <div className="flex gap-3 flex-wrap">
-                                        <button type="button" onClick={closeModal} className="px-6 py-3 text-slate-400 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar</button>
-                                        <button type="button" onClick={() => setActiveTab(activeTab + 1)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95">
-                                            Próxima Etapa →
-                                        </button>
-                                    </div>
-                                )}
+                            <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-5 max-w-4xl">
+                                <button type="button" onClick={closeModal} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors text-sm">
+                                    SAIR SEM SALVAR
+                                </button>
+                                <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all active:scale-95 flex items-center gap-2">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                                    {editingTenantId ? 'Salvar' : 'Confirmar e Implantar Escola'}
+                                </button>
                             </div>
-
+                            <div className="mt-4 flex justify-end max-w-4xl">
+                                <ScreenNameCopy
+                                    screenId={EDIT_SCHOOL_SCREEN_ID}
+                                    label="Tela"
+                                    disableMargin
+                                    className="justify-end"
+                                />
+                            </div>
                         </form>
                     </div>
                 </div>

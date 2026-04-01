@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { getTenantContext } from "../common/tenant/tenant.context";
 import { ForbiddenException } from "@nestjs/common";
 
-const IGNORED_MODELS = ["Tenant", "GlobalSetting"];
+const IGNORED_MODELS = ["Tenant", "GlobalSetting", "EmailCredential"];
 const PUBLIC_MODELS = ["User", "Teacher", "Student", "Guardian"];
 
 export function tenantMiddleware(): Prisma.Middleware {

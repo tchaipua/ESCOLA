@@ -85,7 +85,6 @@ type TeacherFormState = {
     cellphone1: string;
     cellphone2: string;
     email: string;
-    password: string;
     zipCode: string;
     street: string;
     number: string;
@@ -524,7 +523,7 @@ export default function ProfessoresPage() {
     // States do Formulário
     const [formData, setFormData] = useState<TeacherFormState>({
         name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
-        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
+        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
         zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
         accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
     });
@@ -708,7 +707,7 @@ export default function ProfessoresPage() {
         setEditingEffectiveFromBySubject({});
         setFormData({
             name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
-            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
+            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
             zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
             accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
         });
@@ -774,7 +773,6 @@ export default function ProfessoresPage() {
             cellphone1: prof.cellphone1 || '',
             cellphone2: prof.cellphone2 || '',
             email: prof.email || '',
-            password: '', // Não carrega senha
             zipCode: prof.zipCode || '',
             street: prof.street || '',
             number: prof.number || '',
@@ -1396,13 +1394,9 @@ export default function ProfessoresPage() {
                 : 'http://localhost:3001/api/v1/teachers';
             const method = editingTeacherId ? 'PATCH' : 'POST';
 
-            const payload = { ...formData, password: formData.password.trim(), permissions: formData.permissions };
-            if (editingTeacherId && !payload.password) {
-                delete (payload as any).password;
-            }
+            const payload = { ...formData, permissions: formData.permissions };
             if (!teacherFieldAccess.access) {
                 delete (payload as any).email;
-                delete (payload as any).password;
                 delete (payload as any).accessProfile;
                 delete (payload as any).permissions;
             }
@@ -1465,9 +1459,6 @@ export default function ProfessoresPage() {
 
         } catch (err: any) {
             let errorMsg = err.message || 'Ocorreu um erro.';
-            if (errorMsg.includes('password should not be empty') || errorMsg.includes('mínimo')) {
-                errorMsg = 'A senha deve ter no mínimo 4 caracteres';
-            }
             setSaveError(errorMsg);
             setTimeout(() => setSaveError(null), 5000);
         }
@@ -2193,12 +2184,6 @@ export default function ProfessoresPage() {
                                                     className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
                                                     placeholder="Apenas para acessar o portal"
                                                 />
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">
-                                                    {editingTeacherId ? 'Senha Nova (Deixe em branco para não alterar)' : 'Senha de Acesso ao PWA'}
-                                                </label>
-                                                <input type="text" value={formData.password} onChange={e => setFormData({ ...formData, password: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm" placeholder={editingTeacherId ? '••••••••' : 'Defina a senha inicial'} minLength={4} />
                                             </div>
                                             <div className="md:col-span-2">
                                                 <div className="mb-2 text-xs font-bold text-slate-600">Permissões específicas do docente</div>

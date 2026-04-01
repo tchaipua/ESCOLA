@@ -1,16 +1,35 @@
 import { Injectable } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { PrismaService } from "../../../../prisma/prisma.service";
+import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sharedProfilesService: SharedProfilesService,
+  ) {}
 
   async create(createUserDto: any, tenantId: string) {
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    const normalizedEmail = String(createUserDto.email || "")
+      .trim()
+      .toUpperCase();
+    const normalizedPassword = String(createUserDto.password || "").trim();
+    let hashedPassword: string | null = null;
+
+    if (normalizedPassword) {
+      hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+      await this.sharedProfilesService.updateEmailCredentialPassword(
+        normalizedEmail,
+        hashedPassword,
+      );
+    } else if (normalizedEmail) {
+      await this.sharedProfilesService.ensureEmailCredential(normalizedEmail);
+    }
+
     return {
       ...createUserDto,
-      password: hashedPassword,
+      password: null,
       tenantId,
     };
   }

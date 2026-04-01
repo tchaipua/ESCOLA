@@ -340,11 +340,14 @@ export class TenantsService {
       }
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(
-      createTenantDto.adminPassword,
-      salt,
-    );
+    const normalizedAdminPassword = String(
+      createTenantDto.adminPassword || "",
+    ).trim();
+    let hashedPassword: string | null = null;
+    if (normalizedAdminPassword) {
+      const salt = await bcrypt.genSalt(10);
+      hashedPassword = await bcrypt.hash(normalizedAdminPassword, salt);
+    }
 
     const result = await this.prisma.$transaction(async (tx) => {
       const newTenant = await tx.tenant.create({
@@ -394,7 +397,7 @@ export class TenantsService {
           tenantId: newTenant.id,
           name: createTenantDto.adminName,
           email: createTenantDto.adminEmail,
-          password: hashedPassword,
+          password: null,
           role: "ADMIN",
           createdBy: this.masterAuditUser,
           updatedBy: this.masterAuditUser,
@@ -405,20 +408,24 @@ export class TenantsService {
     });
 
     await this.runAsMasterTenantContext(result.admin.tenantId, async () => {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        result.admin.tenantId,
-        result.admin.email,
-        hashedPassword,
-        { kind: "USER", id: result.admin.id },
-        this.masterAuditUser,
-      );
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          result.admin.email,
+          hashedPassword,
+          this.masterAuditUser,
+        );
+      } else {
+        await this.sharedProfilesService.ensureEmailCredential(
+          result.admin.email,
+          { userId: this.masterAuditUser },
+        );
+      }
 
       await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
         result.admin.tenantId,
         {
           name: result.admin.name,
           email: result.admin.email,
-          password: hashedPassword,
         },
         this.masterAuditUser,
       );
@@ -685,17 +692,15 @@ export class TenantsService {
           );
         }
 
-        const passwordHash =
-          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-            newEmail,
-            { kind: "USER", id: recordId },
-          );
+        await this.sharedProfilesService.ensureEmailCredential(newEmail, {
+          userId: this.masterAuditUser,
+        });
 
         await this.prisma.user.update({
           where: { id: recordId },
           data: {
             email: newEmail,
-            password: passwordHash,
+            password: null,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -724,17 +729,15 @@ export class TenantsService {
           );
         }
 
-        const passwordHash =
-          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-            newEmail,
-            { kind: "TEACHER", id: recordId },
-          );
+        await this.sharedProfilesService.ensureEmailCredential(newEmail, {
+          userId: this.masterAuditUser,
+        });
 
         await this.prisma.teacher.update({
           where: { id: recordId },
           data: {
             email: newEmail,
-            password: passwordHash,
+            password: null,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -756,17 +759,15 @@ export class TenantsService {
           );
         }
 
-        const passwordHash =
-          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-            newEmail,
-            { kind: "STUDENT", id: recordId },
-          );
+        await this.sharedProfilesService.ensureEmailCredential(newEmail, {
+          userId: this.masterAuditUser,
+        });
 
         await this.prisma.student.update({
           where: { id: recordId },
           data: {
             email: newEmail,
-            password: passwordHash,
+            password: null,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -788,17 +789,15 @@ export class TenantsService {
           );
         }
 
-        const passwordHash =
-          await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-            newEmail,
-            { kind: "GUARDIAN", id: recordId },
-          );
+        await this.sharedProfilesService.ensureEmailCredential(newEmail, {
+          userId: this.masterAuditUser,
+        });
 
         await this.prisma.guardian.update({
           where: { id: recordId },
           data: {
             email: newEmail,
-            password: passwordHash,
+            password: null,
             updatedBy: this.masterAuditUser,
           },
         });
@@ -1101,7 +1100,7 @@ export class TenantsService {
       throw new BadRequestException("Informe o nome do usuário de acesso.");
     }
 
-    let hashedPassword: string;
+    let hashedPassword: string | null = null;
     if (password) {
       if (password.length < 6) {
         throw new ConflictException("A senha deve ter no mínimo 6 caracteres.");
@@ -1109,9 +1108,6 @@ export class TenantsService {
 
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(password, salt);
-    } else {
-      hashedPassword =
-        await this.sharedProfilesService.getReusablePasswordHashOrThrow(email);
     }
 
     const user = await this.prisma.user.create({
@@ -1119,7 +1115,7 @@ export class TenantsService {
         tenantId,
         name,
         email,
-        password: hashedPassword,
+        password: null,
         photoUrl,
         complementaryProfiles:
           role === "ADMIN"
@@ -1153,19 +1149,22 @@ export class TenantsService {
     });
 
     await this.runAsMasterTenantContext(tenantId, async () => {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        tenantId,
-        email,
-        hashedPassword,
-        { kind: "USER", id: user.id },
-        this.masterAuditUser,
-      );
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          email,
+          hashedPassword,
+          this.masterAuditUser,
+        );
+      } else {
+        await this.sharedProfilesService.ensureEmailCredential(email, {
+          userId: this.masterAuditUser,
+        });
+      }
       await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
         tenantId,
         {
           name,
           email,
-          password: hashedPassword,
           birthDate,
           rg,
           cpf,
@@ -1375,12 +1374,6 @@ export class TenantsService {
       }
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(String(payload.password), salt);
-    } else if (shouldResolvePasswordForEmailChange) {
-      hashedPassword =
-        await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          normalizedIncomingEmail,
-          { kind: "USER", id: userId },
-        );
     }
 
     const updated = await this.prisma.user.update({
@@ -1388,7 +1381,8 @@ export class TenantsService {
       data: {
         name,
         email,
-        password: hashedPassword,
+        password:
+          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
         photoUrl,
         complementaryProfiles:
           role === "ADMIN"
@@ -1418,14 +1412,19 @@ export class TenantsService {
 
     const emailForPasswordSync = email || user.email;
     await this.runAsMasterTenantContext(tenantId, async () => {
-      if (emailForPasswordSync && hashedPassword) {
-        await this.sharedProfilesService.syncSharedPasswordByEmail(
-          tenantId,
-          emailForPasswordSync,
-          hashedPassword,
-          { kind: "USER", id: updated.id },
-          this.masterAuditUser,
-        );
+      if (emailForPasswordSync) {
+        if (hashedPassword) {
+          await this.sharedProfilesService.updateEmailCredentialPassword(
+            emailForPasswordSync,
+            hashedPassword,
+            this.masterAuditUser,
+          );
+        } else if (shouldResolvePasswordForEmailChange) {
+          await this.sharedProfilesService.ensureEmailCredential(
+            emailForPasswordSync,
+            { userId: this.masterAuditUser },
+          );
+        }
       }
 
       await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
@@ -1433,7 +1432,6 @@ export class TenantsService {
         {
           name: name !== undefined ? name : user.name,
           email: email !== undefined ? email : user.email,
-          password: hashedPassword,
           birthDate,
           rg,
           cpf,
@@ -1815,7 +1813,6 @@ export class TenantsService {
     let adminProfileSyncPayload: {
       name?: string | null;
       email?: string | null;
-      password?: string | null;
     } | null = null;
 
     const updatedTenant = await this.prisma.$transaction(async (tx) => {
@@ -1901,19 +1898,15 @@ export class TenantsService {
             Boolean(normalizedIncomingAdminEmail) &&
             normalizedIncomingAdminEmail !== normalizedCurrentAdminEmail;
 
-          if (!hashedPassword && shouldResolvePasswordForAdminEmailChange) {
-            hashedPassword =
-              await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-                normalizedIncomingAdminEmail,
-                { kind: "USER", id: adminUser.id },
-              );
-          }
-
           await tx.user.update({
             where: { id: adminUser.id },
             data: {
               name: updateTenantDto.adminName || undefined,
               email: updateTenantDto.adminEmail || undefined,
+              password:
+                hashedPassword || shouldResolvePasswordForAdminEmailChange
+                  ? null
+                  : undefined,
               updatedBy: this.masterAuditUser,
             },
           });
@@ -1923,58 +1916,33 @@ export class TenantsService {
           adminProfileSyncPayload = {
             name: updateTenantDto.adminName || adminUser.name,
             email: updateTenantDto.adminEmail || adminUser.email,
-            password: hashedPassword,
           };
+
+          if (shouldResolvePasswordForAdminEmailChange && finalAdminEmailForPassword) {
+            adminsToSync.push({
+              userId: adminUser.id,
+              tenantId: id,
+              email: finalAdminEmailForPassword,
+            });
+          }
         }
-      }
-
-      if (hashedPassword && finalAdminEmailForPassword) {
-        const adminEmailForPassword = finalAdminEmailForPassword;
-        const matchingAdmins = await tx.user.findMany({
-          where: {
-            email: adminEmailForPassword,
-            role: "ADMIN",
-            canceledAt: null,
-          },
-          select: { id: true, tenantId: true },
-        });
-
-        await Promise.all(
-          matchingAdmins.map((admin) =>
-            tx.user.update({
-              where: { id: admin.id },
-              data: {
-                password: hashedPassword,
-                updatedBy: this.masterAuditUser,
-              },
-            }),
-          ),
-        );
-
-        adminsToSync.push(
-          ...matchingAdmins.map((admin) => ({
-            userId: admin.id,
-            tenantId: admin.tenantId,
-            email: adminEmailForPassword,
-          })),
-        );
       }
 
       return updatedTenant;
     });
 
-    if (hashedPassword && adminsToSync.length > 0) {
-      const passwordHashToSync = hashedPassword;
-      for (const admin of adminsToSync) {
-        await this.runAsMasterTenantContext(admin.tenantId, async () => {
-          await this.sharedProfilesService.syncSharedPasswordByEmail(
-            admin.tenantId,
-            admin.email,
-            passwordHashToSync,
-            { kind: "USER", id: admin.userId },
-            this.masterAuditUser,
-          );
-        });
+    if (finalAdminEmailForPassword) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          finalAdminEmailForPassword,
+          hashedPassword,
+          this.masterAuditUser,
+        );
+      } else if (adminsToSync.length > 0) {
+        await this.sharedProfilesService.ensureEmailCredential(
+          finalAdminEmailForPassword,
+          { userId: this.masterAuditUser },
+        );
       }
     }
 

@@ -15,6 +15,7 @@ import { type GridStatusFilterValue } from '@/app/components/grid-status-filter'
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
     fetchAddressByCep,
+    fetchEmailUsageByEmail,
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
@@ -28,6 +29,7 @@ import {
     isValidCpf,
     mergeSharedPersonIntoForm,
     readImageFileAsDataUrl,
+    type EmailUsageRecord,
     type SharedNameSuggestion,
 } from '@/app/lib/dashboard-crud-utils';
 import {
@@ -92,6 +94,13 @@ type StudentGuardianLink = {
     kinship?: string | null;
     kinshipDescription?: string | null;
     guardian?: GuardianSummary | null;
+};
+
+type EmailUsageAlert = {
+    email: string;
+    usages: EmailUsageRecord[];
+    currentTenantId: string | null;
+    currentTenantName: string;
 };
 
 type SchoolYearSummary = {
@@ -173,7 +182,6 @@ type StudentFormState = {
     cellphone1: string;
     cellphone2: string;
     email: string;
-    password: string;
     zipCode: string;
     street: string;
     number: string;
@@ -211,7 +219,6 @@ const EMPTY_FORM: StudentFormState = {
     cellphone1: '',
     cellphone2: '',
     email: '',
-    password: '',
     zipCode: '',
     street: '',
     number: '',
@@ -512,6 +519,7 @@ export default function AlunosPage() {
     const [isLoadingNameSuggestions, setIsLoadingNameSuggestions] = useState(false);
     const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
     const [debouncedStudentNameQuery, setDebouncedStudentNameQuery] = useState('');
+    const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
 
     const canViewStudents = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_STUDENTS');
     const canManageStudents = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_STUDENTS');
@@ -857,6 +865,7 @@ export default function AlunosPage() {
         setShowNameSuggestions(false);
         setIsLoadingNameSuggestions(false);
         setNameSuggestionError(null);
+        setEmailUsageAlert(null);
         resetGuardianSection();
         setPhotoError(null);
     };
@@ -942,6 +951,11 @@ export default function AlunosPage() {
                             <div className={`text-[13px] ${student.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
                                 {student.birthDate ? new Date(student.birthDate).toLocaleDateString() : 'Sem data de nascimento'}
                             </div>
+                            {student.email ? (
+                                <div className={`text-[13px] font-medium ${student.canceledAt ? 'text-rose-500' : 'text-slate-500'}`}>
+                                    E-mail: {student.email}
+                                </div>
+                            ) : null}
                         </div>
                     </div>
                 </td>
@@ -1032,7 +1046,6 @@ export default function AlunosPage() {
                 cellphone1: detail.cellphone1 || '',
                 cellphone2: detail.cellphone2 || '',
                 email: detail.email || '',
-                password: '',
                 zipCode: detail.zipCode || '',
                 street: detail.street || '',
                 number: detail.number || '',
@@ -1140,6 +1153,38 @@ export default function AlunosPage() {
         } catch (error) {
             setSaveError(errorMessage(error, 'Não foi possível reaproveitar os dados deste CPF.'));
             setFormData((current) => ({ ...current, cpf: formattedCpf }));
+        }
+    };
+
+    const handleEmailUsageBlur = async () => {
+        const normalizedEmail = String(formData.email || '').trim().toUpperCase();
+
+        if (!normalizedEmail || !normalizedEmail.includes('@')) {
+            setEmailUsageAlert(null);
+            return;
+        }
+
+        try {
+            const usages = await fetchEmailUsageByEmail(normalizedEmail);
+            const filteredUsages = usages.filter((usage) => {
+                if (!editingStudentId) return true;
+                return !(usage.entityType === 'STUDENT' && usage.recordId === editingStudentId);
+            });
+
+            if (filteredUsages.length === 0) {
+                setEmailUsageAlert(null);
+                return;
+            }
+
+            setEmailUsageAlert({
+                email: normalizedEmail,
+                usages: filteredUsages,
+                currentTenantId,
+                currentTenantName: currentTenantBranding?.schoolName || 'ESCOLA LOGADA',
+            });
+        } catch (error) {
+            setEmailUsageAlert(null);
+            setErrorStatus(errorMessage(error, 'Não foi possível consultar o uso deste e-mail.'));
         }
     };
 
@@ -1290,12 +1335,10 @@ export default function AlunosPage() {
             };
             if (!String(formData.email || '').trim()) delete payload.email;
             delete payload.seriesClassId;
-            if (editingStudentId && !payload.password) delete payload.password;
             if (!payload.birthDate) delete payload.birthDate;
             if (!studentFieldAccess.financial) delete payload.monthlyFee;
             if (!studentFieldAccess.access) {
                 delete payload.email;
-                delete payload.password;
                 delete payload.accessProfile;
                 delete payload.permissions;
             }
@@ -1909,14 +1952,7 @@ export default function AlunosPage() {
                                                     type="email"
                                                     value={formData.email}
                                                     onChange={(event) => setFormData((current) => ({ ...current, email: event.target.value.toUpperCase() }))}
-                                                    className={`${inputClass} bg-white`}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={labelClass}>{editingStudentId ? 'Senha nova (opcional)' : 'Senha de acesso'}</label>
-                                                <input
-                                                    value={formData.password}
-                                                    onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
+                                                    onBlur={handleEmailUsageBlur}
                                                     className={`${inputClass} bg-white`}
                                                 />
                                             </div>
@@ -2141,33 +2177,9 @@ export default function AlunosPage() {
                             ) : null}
 
                             <div className="sticky bottom-0 -mx-6 mt-8 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
-                                <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
                                     <button type="button" onClick={closeModal} className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100">Sair sem Gravar</button>
-                                    {activeTab > 1 ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab(activeTab === 4 ? 3 : activeTab === 6 ? 5 : activeTab - 1)}
-                                            className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                                        >
-                                            {activeTab === 4
-                                                ? 'Voltar para acesso'
-                                                : activeTab === 5
-                                                    ? (editingStudentId ? 'Voltar para responsáveis' : 'Voltar para acesso')
-                                                    : activeTab === 6
-                                                        ? 'Voltar para fotos'
-                                                        : 'Voltar'}
-                                        </button>
-                                    ) : null}
-                                    {activeTab < 6 ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab(activeTab === 3 ? (editingStudentId ? 4 : 5) : activeTab + 1)}
-                                            className="rounded-xl bg-[#153a6a] px-8 py-3 text-sm font-bold text-white hover:bg-blue-800"
-                                        >
-                                            Próxima etapa →
-                                        </button>
-                                    ) : null}
-                                    <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingStudentId ? 'Salvar edição' : 'Registrar aluno'}</button>
+                                    <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingStudentId ? 'Salvar' : 'Registrar aluno'}</button>
                                 </div>
                                 <div className="mt-3 flex justify-end">
                                     <ScreenNameCopy screenId="PRINCIPAL_ALUNOS_POPUP_EDITAR_ALUNO" className="mt-0" />
@@ -2287,6 +2299,81 @@ export default function AlunosPage() {
                         </div>
                         <div className="border-t border-slate-100 bg-slate-50 px-6 py-4 text-right">
                             <button onClick={() => setSelectedGuardianDetails(null)} className="rounded-xl bg-[#153a6a] px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-800">Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {emailUsageAlert ? (
+                <div className="fixed inset-0 z-[59] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm">
+                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl border border-amber-200">
+                        <div className="border-b border-amber-100 bg-amber-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
+                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">EA</span>
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">E-mail já utilizado</div>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-800">{emailUsageAlert.email}</h3>
+                                    <p className="mt-1 text-sm font-medium text-slate-600">
+                                        Este e-mail já está cadastrado em {emailUsageAlert.usages.length} local(is). Verifique a escola e o perfil abaixo.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="max-h-[42vh] overflow-y-auto p-6">
+                            <div className="grid grid-cols-1 gap-3">
+                                {emailUsageAlert.usages.map((usage, index) => (
+                                    <div
+                                        key={`${usage.tenantId}-${usage.recordId}-${usage.entityType}-${index}`}
+                                        className={`rounded-2xl border px-4 py-4 ${usage.tenantId !== emailUsageAlert.currentTenantId ? 'border-amber-300 bg-amber-50/70' : 'border-slate-200 bg-slate-50'}`}
+                                    >
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                                    {usage.tenantName}
+                                                </div>
+                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                    {usage.recordName || 'SEM NOME'}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {usage.tenantId !== emailUsageAlert.currentTenantId ? (
+                                                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
+                                                        OUTRA ESCOLA
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                                                        ESCOLA ATUAL
+                                                    </span>
+                                                )}
+                                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">
+                                                    {usage.entityLabel}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy
+                                    screenId="PRINCIPAL_ALUNOS_POPUP_EMAIL_USAGE_ALERT"
+                                    label="Tela"
+                                    className="mt-0 justify-end"
+                                    disableMargin
+                                />
+                            </div>
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setEmailUsageAlert(null)}
+                                    className="rounded-xl bg-[#153a6a] px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-800"
+                                >
+                                    ENTENDI
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -189,11 +189,6 @@ export class TeachersService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    } else if (sanitizedDto.email) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          sanitizedDto.email,
-        )) || undefined;
     }
 
     const accessProfile =
@@ -212,7 +207,7 @@ export class TeachersService {
     const createdTeacher = await this.prisma.teacher.create({
       data: {
         ...rawData,
-        password: hashedPassword, // Segurança PWA
+        password: null,
         accessProfile,
         permissions: explicitPermissions,
         birthDate: sanitizedDto.birthDate
@@ -227,18 +222,28 @@ export class TeachersService {
       tenantId,
       "TEACHER",
       createdTeacher.id,
-      createdTeacher,
+      {
+        ...createdTeacher,
+        password: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
       getTenantContext()!.userId,
     );
 
-    if (sanitizedDto.email && hashedPassword) {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        tenantId,
-        sanitizedDto.email,
-        hashedPassword,
-        { kind: "TEACHER", id: createdTeacher.id },
-        getTenantContext()!.userId,
-      );
+    if (sanitizedDto.email) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          sanitizedDto.email,
+          hashedPassword,
+          getTenantContext()!.userId,
+        );
+      } else {
+        await this.sharedProfilesService.ensureEmailCredential(
+          sanitizedDto.email,
+          { userId: getTenantContext()!.userId },
+        );
+      }
     }
 
     return sanitizeTeacherForViewer(
@@ -375,12 +380,6 @@ export class TeachersService {
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    } else if (shouldResolvePasswordForEmailChange) {
-      hashedPassword =
-        (await this.sharedProfilesService.getReusablePasswordHashOrThrow(
-          normalizedIncomingEmail,
-          { kind: "TEACHER", id },
-        )) || undefined;
     }
 
     const accessProfile =
@@ -405,7 +404,8 @@ export class TeachersService {
       where: { id },
       data: {
         ...rawData,
-        password: hashedPassword ? hashedPassword : rawData.password,
+        password:
+          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
         accessProfile,
         permissions: explicitPermissions,
         birthDate: sanitizedDto.birthDate
@@ -419,20 +419,30 @@ export class TeachersService {
       tenantId,
       "TEACHER",
       updatedTeacher.id,
-      updatedTeacher,
+      {
+        ...updatedTeacher,
+        password: null,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+      },
       getTenantContext()!.userId,
       teacher.cpf,
     );
 
     const emailForPasswordSync = sanitizedDto.email || teacher.email;
-    if (emailForPasswordSync && hashedPassword) {
-      await this.sharedProfilesService.syncSharedPasswordByEmail(
-        tenantId,
-        emailForPasswordSync,
-        hashedPassword,
-        { kind: "TEACHER", id: updatedTeacher.id },
-        getTenantContext()!.userId,
-      );
+    if (emailForPasswordSync) {
+      if (hashedPassword) {
+        await this.sharedProfilesService.updateEmailCredentialPassword(
+          emailForPasswordSync,
+          hashedPassword,
+          getTenantContext()!.userId,
+        );
+      } else if (shouldResolvePasswordForEmailChange) {
+        await this.sharedProfilesService.ensureEmailCredential(
+          emailForPasswordSync,
+          { userId: getTenantContext()!.userId },
+        );
+      }
     }
 
     return sanitizeTeacherForViewer(

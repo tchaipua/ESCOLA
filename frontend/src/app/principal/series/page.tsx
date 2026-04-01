@@ -106,7 +106,7 @@ function getSeriesExportConfigStorageKey(tenantId: string | null) {
 }
 
 const DEFAULT_SORT: GridSortState<SeriesColumnKey> = {
-    column: 'name',
+    column: 'sortOrder',
     direction: 'asc',
 };
 const SERIES_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STUDENTS_MODAL';

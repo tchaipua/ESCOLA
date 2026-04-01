@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get } from "@nestjs/common";
+import { Controller, Post, Body, Get, Query } from "@nestjs/common";
 import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { AuthService } from "../../application/services/auth.service";
 import { LoginDto } from "../../application/dto/login.dto";
@@ -110,5 +110,12 @@ export class AuthController {
   @ApiOperation({ summary: "Redefinir senha com token recebido no email" })
   async resetPassword(@Body() payload: ResetPasswordDto) {
     return this.authService.resetPassword(payload);
+  }
+
+  @Public()
+  @Get("verify-email")
+  @ApiOperation({ summary: "Confirma o e-mail pelo token recebido no link" })
+  async verifyEmail(@Query("token") token: string) {
+    return this.authService.verifyEmail(token);
   }
 }

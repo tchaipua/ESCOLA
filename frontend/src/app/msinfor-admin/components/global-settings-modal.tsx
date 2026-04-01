@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 export type GeneralSettingsTab = 's3' | 'email';
 
@@ -55,6 +56,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsForm = {
     emailUseSsl: true,
     emailUseAuth: true,
 };
+
+const GLOBAL_SETTINGS_MODAL_SCREEN_ID = 'MSINFOR_ADMIN_CONFIGURACOES_GERAIS_MODAL';
 
 type GlobalSettingsModalProps = {
     isOpen: boolean;
@@ -113,6 +116,13 @@ export default function GlobalSettingsModal({
     onDismissTestResult,
 }: GlobalSettingsModalProps) {
     const [isS3SecretVisible, setIsS3SecretVisible] = useState(false);
+    const [isEmailSmtpPasswordVisible, setIsEmailSmtpPasswordVisible] = useState(false);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setIsEmailSmtpPasswordVisible(false);
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -331,7 +341,37 @@ export default function GlobalSettingsModal({
                                     <div className="grid gap-4 xl:grid-cols-3">
                                         <label className={`${fieldCardClass()} xl:col-span-2`}>
                                             <span className={labelClass()}>Senha SMTP</span>
-                                            <input type="password" value={values.emailSmtpPassword} onChange={(event) => onChange('emailSmtpPassword', event.target.value)} autoCapitalize="none" spellCheck={false} className={inputClass()} placeholder="Senha sensível do e-mail" />
+                                            <div className="relative">
+                                                <input
+                                                    type={isEmailSmtpPasswordVisible ? 'text' : 'password'}
+                                                    value={values.emailSmtpPassword}
+                                                    onChange={(event) => onChange('emailSmtpPassword', event.target.value)}
+                                                    autoCapitalize="none"
+                                                    spellCheck={false}
+                                                    className={`${inputClass()} pr-14`}
+                                                    placeholder="Senha sensível do e-mail"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsEmailSmtpPasswordVisible((current) => !current)}
+                                                    className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                                                    aria-label={isEmailSmtpPasswordVisible ? 'Ocultar senha SMTP' : 'Mostrar senha SMTP'}
+                                                    title={isEmailSmtpPasswordVisible ? 'Ocultar senha SMTP' : 'Mostrar senha SMTP'}
+                                                >
+                                                    {isEmailSmtpPasswordVisible ? (
+                                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 3L21 21" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.77 9.77 0 0112 4c5 0 9.27 3.11 11 8-0.55 1.55-1.46 2.94-2.62 4.06M6.1 6.1C3.97 7.57 2.33 9.61 1 12c1.73 4.89 6 8 11 8 2.04 0 3.95-.52 5.61-1.43" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M1 12C2.73 7.11 7 4 12 4s9.27 3.11 11 8c-1.73 4.89-6 8-11 8S2.73 16.89 1 12z" />
+                                                            <circle cx="12" cy="12" r="3" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
                                         </label>
                                         <label className={fieldCardClass()}>
                                             <span className={labelClass()}>Usar autenticação</span>
@@ -361,18 +401,21 @@ export default function GlobalSettingsModal({
                             <div className="text-xs font-semibold text-slate-500">
                                 Campos sensíveis não sofrem uppercase automático neste módulo global.
                             </div>
-                            <div className="flex items-center gap-3">
-                                {activeTab === 's3' ? (
-                                    <button type="button" onClick={onTestS3} disabled={isTesting} className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-black text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70">
-                                        {isTesting ? 'Testando S3...' : 'Testar comunicação S3'}
+                            <div className="flex flex-col items-end gap-3">
+                                <div className="flex items-center gap-3">
+                                    {activeTab === 's3' ? (
+                                        <button type="button" onClick={onTestS3} disabled={isTesting} className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-black text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70">
+                                            {isTesting ? 'Testando S3...' : 'Testar comunicação S3'}
+                                        </button>
+                                    ) : null}
+                                    <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50">
+                                        Cancelar
                                     </button>
-                                ) : null}
-                                <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50">
-                                    Cancelar
-                                </button>
-                                <button type="submit" disabled={isSaving} className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70">
-                                    {isSaving ? 'Salvando...' : 'Salvar configurações gerais'}
-                                </button>
+                                    <button type="submit" disabled={isSaving} className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70">
+                                        {isSaving ? 'Salvando...' : 'Salvar configurações gerais'}
+                                    </button>
+                                </div>
+                                <ScreenNameCopy screenId={GLOBAL_SETTINGS_MODAL_SCREEN_ID} label="Tela" className="mt-0 justify-end" disableMargin />
                             </div>
                         </div>
                     </div>
