@@ -7,6 +7,7 @@ import {
   IsArray,
   IsString,
   ArrayUnique,
+  IsIn,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
@@ -50,6 +51,20 @@ export class CreateStudentDto {
   @IsNumber()
   @IsOptional()
   monthlyFee?: number | null;
+  @ApiPropertyOptional({
+    description: "Quem paga a mensalidade do aluno",
+    enum: ["ALUNO", "RESPONSAVEL"],
+  })
+  @IsString()
+  @IsIn(["ALUNO", "RESPONSAVEL"])
+  @IsOptional()
+  billingPayerType?: "ALUNO" | "RESPONSAVEL";
+  @ApiPropertyOptional({
+    description: "Responsável definido como pagador da mensalidade",
+  })
+  @IsString()
+  @IsOptional()
+  billingGuardianId?: string | null;
   @ApiPropertyOptional({ description: "Observações gerais do aluno" })
   @IsString()
   @IsOptional()
@@ -86,3 +101,4 @@ export class CreateStudentDto {
   @ApiPropertyOptional() @IsString() @IsOptional() neighborhood?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() complement?: string;
 }
+

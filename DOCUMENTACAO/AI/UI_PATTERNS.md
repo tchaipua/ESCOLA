@@ -243,9 +243,25 @@ Componentes/Telas base:
   - quando a senha for obrigatória e estiver em branco ou incorreta, o modal deve exibir um alerta em estilo “pop-up” (um bloco flutuante com borda, sombra e texto uppercase no canto superior) para reforçar o erro antes de prosseguir.
 - **Componentes/Telas**:
   - `frontend/src/app/components/screen-name-copy.tsx`
-  - `frontend/src/app/components/status-confirmation-modal.tsx`
-  - modais/popup dos dashboards acadêmicos (`series`, `turmas`, `grade`, etc.)
-  - qualquer modal de confirmação ou formulário com ações de cancelamento/fechamento.
+- `frontend/src/app/components/status-confirmation-modal.tsx`
+- modais/popup dos dashboards acadêmicos (`series`, `turmas`, `grade`, etc.)
+- qualquer modal de confirmação ou formulário com ações de cancelamento/fechamento.
+
+### PAT-013 - Popup institucional com logo da escola e identificador exclusivo
+
+- todo popup/modal exibido no sistema deve trazer o logotipo da escola no cabeçalho quando houver contexto de tenant logado
+- o cabeçalho deve manter identidade visual forte e mensagem clara da situação
+- todo popup/modal deve exibir um nome exclusivo no canto inferior direito
+- o nome exclusivo deve ter um botão de cópia ao lado, reutilizando `ScreenNameCopy`
+- o botão de cópia deve permitir replicar o identificador com a mesma intenção de `Ctrl+C`
+- essa regra vale para mensagens de erro, bloqueio, confirmação e avisos operacionais
+- a aplicação pode reutilizar o componente compartilhado existente e, quando preciso, criar um wrapper específico por tipo de popup
+
+Componentes/Telas:
+
+- `frontend/src/app/components/screen-name-copy.tsx`
+- `frontend/src/app/lib/tenant-branding-cache.ts`
+- popups e modais do painel principal e demais módulos administrativos
 
 ## Telas-modelo para novos sistemas
 

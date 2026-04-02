@@ -130,3 +130,16 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `frontend/src/app/components/status-confirmation-modal.tsx`
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
 - Status: aprovado
+
+### UIP-0009
+
+- Data: 2026-04-02
+- Padrão: popup institucional com logo da escola e identificador exclusivo
+- Contexto: necessidade de padronizar popups de bloqueio, erro e confirmação em todo o sistema com identidade visual da escola e rastreabilidade do nome da tela
+- Alteração: todo popup deve exibir o logotipo da escola no cabeçalho quando houver tenant, além de um identificador exclusivo no canto inferior direito com botão de cópia para clipboard no estilo `ScreenNameCopy`
+- Componentes/Telas:
+  - `frontend/src/app/components/screen-name-copy.tsx`
+  - `frontend/src/app/lib/tenant-branding-cache.ts`
+  - popups/modais do painel principal e módulos administrativos
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- Status: aprovado

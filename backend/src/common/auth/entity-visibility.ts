@@ -125,6 +125,14 @@ export function sanitizeStudentForViewer<T extends Record<string, any>>(
 
   if (!canViewStudentFinancialData(viewer)) {
     result.monthlyFee = null;
+    result.billingPayerType = null;
+    result.billingGuardianId = null;
+    result.billingGuardian = null;
+  } else if (result.billingGuardian) {
+    result.billingGuardian = sanitizeGuardianSummaryForViewer(
+      result.billingGuardian,
+      viewer,
+    );
   }
 
   if (!canViewStudentAccessData(viewer)) {
@@ -196,3 +204,4 @@ export function sanitizeTeacherForViewer<T extends Record<string, any>>(
 
   return result as T;
 }
+

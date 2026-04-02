@@ -368,6 +368,7 @@ model Guardian {
   tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   person       Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
   students     GuardianStudent[]
+  billingStudents Student[]      @relation("StudentBillingGuardian")
 
   @@index([tenantId])
   @@index([personId])
@@ -399,6 +400,8 @@ model Student {
   accessProfile  String?
   permissions    String?
   monthlyFee     Float?
+  billingPayerType String @default("ALUNO")
+  billingGuardianId String?
   notes          String?
   // Segurança e Recuperação
   password             String? 
@@ -424,12 +427,14 @@ model Student {
   tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   person      Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
   guardians   GuardianStudent[]
+  billingGuardian Guardian?     @relation("StudentBillingGuardian", fields: [billingGuardianId], references: [id], onDelete: Restrict)
   enrollments Enrollment[]
   lessonAssessmentGrades LessonAssessmentGrade[]
   lessonAttendances LessonAttendance[]
 
   @@index([tenantId])
   @@index([personId])
+  @@index([billingGuardianId])
   @@map("students")
 }
 
@@ -960,7 +965,4 @@ model CommunicationCampaign {
   @@index([senderType, senderId])
   @@map("communication_campaigns")
 }
-
-
-
 

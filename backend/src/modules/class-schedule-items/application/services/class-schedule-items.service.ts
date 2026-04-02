@@ -68,6 +68,41 @@ export class ClassScheduleItemsService {
     }
   }
 
+  private timeRangesOverlap(
+    leftStartTime: string,
+    leftEndTime: string,
+    rightStartTime: string,
+    rightEndTime: string,
+  ) {
+    return leftStartTime < rightEndTime && rightStartTime < leftEndTime;
+  }
+
+  private formatSeriesClassLabel(
+    seriesClass?:
+      | {
+          series?: { name?: string | null } | null;
+          class?: { name?: string | null } | null;
+        }
+      | null,
+  ) {
+    const seriesName = seriesClass?.series?.name || "SEM SÉRIE";
+    const className = seriesClass?.class?.name || "SEM TURMA";
+    return `${seriesName} - ${className}`;
+  }
+
+  private formatScheduleConflictLabel(item: {
+    startTime: string;
+    endTime: string;
+    teacherSubject?: {
+      teacher?: { name?: string | null } | null;
+      subject?: { name?: string | null } | null;
+    } | null;
+  }) {
+    const subjectName = item.teacherSubject?.subject?.name || "INTERVALO";
+    const teacherName = item.teacherSubject?.teacher?.name || "SEM PROFESSOR";
+    return `${item.startTime} às ${item.endTime} - ${subjectName} / ${teacherName}`;
+  }
+
   private async validateReferences(
     schoolYearId: string,
     seriesClassId: string,
@@ -148,6 +183,95 @@ export class ClassScheduleItemsService {
     if (conflict) {
       throw new ConflictException(
         "Já existe um lançamento igual para ano, turma, dia, matéria, professor e horário.",
+      );
+    }
+  }
+
+  private async ensureNoTimeOverlap(
+    schoolYearId: string,
+    seriesClassId: string,
+    teacherSubjectId: string | null | undefined,
+    dayOfWeek: string,
+    startTime: string,
+    endTime: string,
+    itemId?: string,
+  ) {
+    const classItems = await this.prisma.classScheduleItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        schoolYearId,
+        seriesClassId,
+        dayOfWeek,
+        canceledAt: null,
+        id: itemId ? { not: itemId } : undefined,
+      },
+      include: this.includeRelations(),
+    });
+
+    const classConflict = classItems.find((item) =>
+      this.timeRangesOverlap(
+        startTime,
+        endTime,
+        item.startTime,
+        item.endTime,
+      ),
+    );
+
+    if (classConflict) {
+      throw new ConflictException(
+        `Já existe um lançamento sobreposto para esta turma neste dia: ${this.formatScheduleConflictLabel(classConflict)}.`,
+      );
+    }
+
+    if (!teacherSubjectId) {
+      return;
+    }
+
+    const teacherSubject = await this.prisma.teacherSubject.findFirst({
+      where: {
+        id: teacherSubjectId,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+      },
+      select: {
+        teacherId: true,
+      },
+    });
+
+    if (!teacherSubject?.teacherId) {
+      return;
+    }
+
+    const teacherItems = await this.prisma.classScheduleItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        schoolYearId,
+        dayOfWeek,
+        canceledAt: null,
+        id: itemId ? { not: itemId } : undefined,
+        teacherSubject: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+            teacherId: teacherSubject.teacherId,
+          },
+        },
+      },
+      include: this.includeRelations(),
+    });
+
+    const teacherConflict = teacherItems.find((item) =>
+      this.timeRangesOverlap(
+        startTime,
+        endTime,
+        item.startTime,
+        item.endTime,
+      ),
+    );
+
+    if (teacherConflict) {
+      throw new ConflictException(
+        `O professor selecionado já possui aula sobreposta neste dia: ${this.formatSeriesClassLabel(teacherConflict.seriesClass)} - ${this.formatScheduleConflictLabel(teacherConflict)}.`,
       );
     }
   }
@@ -301,6 +425,21 @@ export class ClassScheduleItemsService {
 
       return left.startTime.localeCompare(right.startTime);
     });
+  }
+
+  private async attachDeletionMetadata<T extends { id: string }>(item: T) {
+    const linkedLessonCalendarItems = await this.prisma.lessonCalendarItem.count({
+      where: {
+        tenantId: this.tenantId(),
+        classScheduleItemId: item.id,
+      },
+    });
+
+    return {
+      ...item,
+      linkedLessonCalendarItems,
+      canBePhysicallyDeleted: linkedLessonCalendarItems === 0,
+    };
   }
 
   private async findCurrentEnrollment(studentId: string) {
@@ -493,40 +632,52 @@ export class ClassScheduleItemsService {
       startTime,
       endTime,
     );
+    await this.ensureNoTimeOverlap(
+      createDto.schoolYearId,
+      createDto.seriesClassId,
+      teacherSubjectId,
+      dayOfWeek,
+      startTime,
+      endTime,
+    );
 
     try {
-      return await this.prisma.classScheduleItem.create({
-        data: {
-          tenantId: this.tenantId(),
-          schoolYearId: createDto.schoolYearId,
-          seriesClassId: createDto.seriesClassId,
+        const item = await this.prisma.classScheduleItem.create({
+          data: {
+            tenantId: this.tenantId(),
+            schoolYearId: createDto.schoolYearId,
+            seriesClassId: createDto.seriesClassId,
           teacherSubjectId,
           dayOfWeek,
           startTime,
           endTime,
           createdBy: this.userId(),
+          },
+          include: this.includeRelations(),
+        });
+
+        return this.attachDeletionMetadata(item);
+      } catch (error) {
+        this.rethrowPersistenceError(error);
+      }
+    }
+
+    async findAll() {
+      const items = await this.prisma.classScheduleItem.findMany({
+        where: {
+          tenantId: this.tenantId(),
         },
         include: this.includeRelations(),
-      });
-    } catch (error) {
-      this.rethrowPersistenceError(error);
-    }
-  }
-
-  async findAll() {
-    return this.prisma.classScheduleItem.findMany({
-      where: {
-        tenantId: this.tenantId(),
-      },
-      include: this.includeRelations(),
       orderBy: [
         { canceledAt: "asc" },
         { schoolYear: { year: "desc" } },
         { dayOfWeek: "asc" },
-        { startTime: "asc" },
-      ],
-    });
-  }
+          { startTime: "asc" },
+        ],
+      });
+
+      return Promise.all(items.map((item) => this.attachDeletionMetadata(item)));
+    }
 
   async findOne(id: string) {
     const item = await this.prisma.classScheduleItem.findFirst({
@@ -543,8 +694,8 @@ export class ClassScheduleItemsService {
       );
     }
 
-    return item;
-  }
+      return this.attachDeletionMetadata(item);
+    }
 
   async update(id: string, updateDto: UpdateClassScheduleItemDto) {
     const currentItem = await this.findOne(id);
@@ -576,6 +727,15 @@ export class ClassScheduleItemsService {
       teacherSubjectId,
     );
     await this.ensureNoExactDuplicate(
+      schoolYearId,
+      seriesClassId,
+      teacherSubjectId,
+      dayOfWeek,
+      startTime,
+      endTime,
+      id,
+    );
+    await this.ensureNoTimeOverlap(
       schoolYearId,
       seriesClassId,
       teacherSubjectId,
@@ -645,13 +805,25 @@ export class ClassScheduleItemsService {
   }
 
   async setActiveStatus(id: string, active: boolean) {
-    await this.findOne(id);
+    const currentItem = await this.findOne(id);
 
-    await this.prisma.classScheduleItem.update({
-      where: { id },
-      data: active
-        ? {
-            canceledAt: null,
+    if (active) {
+      await this.ensureNoTimeOverlap(
+        currentItem.schoolYearId,
+        currentItem.seriesClassId,
+        currentItem.teacherSubjectId ?? null,
+        currentItem.dayOfWeek,
+        currentItem.startTime,
+        currentItem.endTime,
+        id,
+      );
+    }
+
+      await this.prisma.classScheduleItem.update({
+        where: { id },
+        data: active
+          ? {
+              canceledAt: null,
             canceledBy: null,
             updatedBy: this.userId(),
           }
@@ -660,14 +832,14 @@ export class ClassScheduleItemsService {
             canceledBy: this.userId(),
             updatedBy: this.userId(),
           },
-    });
+      });
 
-    const updatedItem = await this.findOne(id);
+      const updatedItem = await this.findOne(id);
 
-    return {
-      message: active
-        ? "Lançamento ativado com sucesso."
-        : "Lançamento inativado com sucesso.",
+      return {
+        message: active
+          ? "Lançamento ativado com sucesso."
+          : "Lançamento inativado com sucesso.",
       item: updatedItem,
     };
   }

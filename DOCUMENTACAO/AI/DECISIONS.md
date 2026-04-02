@@ -105,3 +105,12 @@ Para cada decisao, registrar:
 - Impacto: garante que um mesmo e-mail possa entrar em varias escolas, recuperar senha corretamente e manter uma unica senha em todos os perfis vinculados, sem liberar cruzamento de dados operacionais entre escolas
 - Alternativas consideradas: manter senha independente por escola; permitir cruzamento geral de dados por e-mail em qualquer tela; limitar a verificacao apenas ao cadastro atualmente logado
 - Status: aceita
+
+## DEC-0011
+
+- Data: 2026-04-02
+- Contexto: o sistema escolar ja possui `monthlyFee` em `students` e vinculo de parentesco em `guardian_students`, mas precisa se preparar para futura integracao com uma plataforma financeira separada e compartilhada com outros ramos, sem criar contrato escolar completo agora
+- Decisao: armazenar a regra de `quem paga a mensalidade` no proprio `students`, usando campos como `billingPayerType`, `billingGuardianId` e, opcionalmente, `billingDueDay`; manter `guardian_students` apenas como tabela de vinculo e parentesco; expor ao financeiro futuro o `referente` e o `pagador` como conceitos separados
+- Impacto: reduz acoplamento entre dominio escolar e dominio financeiro, simplifica a implementacao incremental no sistema escolar atual e preserva compatibilidade futura com outros ramos, como petshop
+- Alternativas consideradas: salvar o pagador diretamente em `guardian_students`; criar um modulo de contrato escolar completo neste momento; replicar a logica financeira inteira dentro do sistema escolar
+- Status: aceita

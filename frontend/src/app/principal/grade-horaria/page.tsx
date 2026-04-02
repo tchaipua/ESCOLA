@@ -8,15 +8,21 @@ import GridFooterControls from '@/app/components/grid-footer-controls';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, type GridColumnDefinition, type GridExportFormat } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
+import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const GRADE_HORARIA_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_STATUS_MODAL';
+const GRADE_HORARIA_NEW_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_NEW_MODAL';
+const GRADE_HORARIA_EDIT_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_EDIT_MODAL';
+const GRADE_HORARIA_BLOCKED_DELETE_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_BLOQUEIO_EXCLUSAO';
+const GRADE_HORARIA_BLOCKED_DELETE_MESSAGE = 'Este lançamento já foi usado no calendário anual e não pode mais ser excluído !!!';
 const SCHOOL_YEAR_START = 2025;
 const SCREEN_PROGRAM_NAME = 'PRINCIPAL_GRADE_HORARIA_SEMANAL_CARDS';
 const DAY_OPTIONS = [
@@ -89,6 +95,8 @@ type ScheduleRecord = {
 type ClassScheduleItemRecord = {
     id: string;
     canceledAt?: string | null;
+    canBePhysicallyDeleted?: boolean;
+    linkedLessonCalendarItems?: number;
     dayOfWeek: DayValue;
     startTime: string;
     endTime: string;
@@ -289,6 +297,16 @@ function getShiftSummary(shift?: string | null) {
     return periods.length > 0 ? periods.map((period) => getPeriodLabel(period)).join(' / ') : 'Não informado';
 }
 
+function timeRangesOverlap(leftStartTime: string, leftEndTime: string, rightStartTime: string, rightEndTime: string) {
+    return leftStartTime < rightEndTime && rightStartTime < leftEndTime;
+}
+
+function getScheduleConflictLabel(item: ClassScheduleItemRecord) {
+    const subjectName = item.teacherSubject?.subject?.name || 'INTERVALO';
+    const teacherName = item.teacherSubject?.teacher?.name || 'SEM PROFESSOR';
+    return `${item.startTime} às ${item.endTime} - ${subjectName} / ${teacherName}`;
+}
+
 function getStorageKey(tenantId: string | null) {
     return `grade-horaria:last-selection:${tenantId || 'default'}`;
 }
@@ -356,6 +374,7 @@ export default function GradeHorariaPlanejadaPage() {
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [modalErrorStatus, setModalErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [blockedDeleteMessage, setBlockedDeleteMessage] = useState<string | null>(null);
     const [clipboardFeedback, setClipboardFeedback] = useState<ClipboardFeedback>('idle');
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
@@ -376,6 +395,8 @@ export default function GradeHorariaPlanejadaPage() {
     const hasTeacherSubjectOptions = teacherSubjects.length > 0;
     const selectedSeriesClass = seriesClasses.find((item) => item.id === formData.seriesClassId) || null;
     const selectedPeriods = parseShiftPeriods(selectedSeriesClass?.class?.shift);
+    const blockedDeleteBranding = readCachedTenantBranding(currentTenantId);
+    const modalErrorBranding = blockedDeleteBranding;
     const periodSchedules = schedules.filter((item) =>
         selectedPeriods.includes(item.period),
     );
@@ -423,18 +444,23 @@ export default function GradeHorariaPlanejadaPage() {
     const sameDaySeriesTimeItems = useMemo(() => {
         return items.filter((item) =>
             item.id !== editingId
+            && !item.canceledAt
             && item.schoolYear?.id === formData.schoolYearId
             && item.seriesClass?.id === formData.seriesClassId
             && item.dayOfWeek === formData.dayOfWeek,
         );
     }, [editingId, formData.dayOfWeek, formData.schoolYearId, formData.seriesClassId, items]);
 
-    const duplicateTimeKeys = new Set(
-        sameDaySeriesTimeItems.map((item) => `${item.startTime}-${item.endTime}`),
+    const blockedScheduleOptionsCount = periodSchedules.filter((schedule) =>
+        sameDaySeriesTimeItems.some((item) =>
+            timeRangesOverlap(schedule.startTime, schedule.endTime, item.startTime, item.endTime),
+        ),
     );
     const availableSchedules = periodSchedules.filter((item) =>
         selectedPeriods.includes(item.period)
-        && !duplicateTimeKeys.has(`${item.startTime}-${item.endTime}`),
+        && !sameDaySeriesTimeItems.some((scheduledItem) =>
+            timeRangesOverlap(item.startTime, item.endTime, scheduledItem.startTime, scheduledItem.endTime),
+        ),
     );
     const isIntervalSchedule = formData.scheduleOption === 'INTERVALO';
     const hasPeriodSchedules = periodSchedules.length > 0;
@@ -449,6 +475,7 @@ export default function GradeHorariaPlanejadaPage() {
             .filter(
                 (item) =>
                     item.id !== editingId
+                    && !item.canceledAt
                     && item.schoolYear?.id === formData.schoolYearId
                     && item.seriesClass?.id === formData.seriesClassId
                     && item.dayOfWeek === formData.dayOfWeek
@@ -537,20 +564,56 @@ export default function GradeHorariaPlanejadaPage() {
         if (!formData.startTime || !formData.endTime) return [];
 
         return sameDaySeriesTimeItems
-            .filter((item) => item.startTime === formData.startTime && item.endTime === formData.endTime)
+            .filter((item) => timeRangesOverlap(formData.startTime, formData.endTime, item.startTime, item.endTime))
             .slice()
             .sort((left, right) => {
+                const startDiff = left.startTime.localeCompare(right.startTime);
+                if (startDiff !== 0) return startDiff;
                 const subjectDiff = (left.teacherSubject?.subject?.name || '').localeCompare(right.teacherSubject?.subject?.name || '');
                 if (subjectDiff !== 0) return subjectDiff;
                 return (left.teacherSubject?.teacher?.name || '').localeCompare(right.teacherSubject?.teacher?.name || '');
             });
     }, [formData.endTime, formData.startTime, sameDaySeriesTimeItems]);
 
+    const sameDayTeacherItems = useMemo(() => {
+        if (!formData.schoolYearId || !formData.dayOfWeek || !formData.teacherId) {
+            return [];
+        }
+
+        return items.filter((item) =>
+            item.id !== editingId
+            && !item.canceledAt
+            && item.schoolYear?.id === formData.schoolYearId
+            && item.dayOfWeek === formData.dayOfWeek
+            && item.seriesClass?.id !== formData.seriesClassId
+            && item.teacherSubject?.teacher?.id === formData.teacherId,
+        );
+    }, [editingId, formData.dayOfWeek, formData.schoolYearId, formData.seriesClassId, formData.teacherId, items]);
+
+    const conflictingTeacherItems = useMemo(() => {
+        if (!formData.startTime || !formData.endTime || !formData.teacherId || isIntervalSchedule) {
+            return [];
+        }
+
+        return sameDayTeacherItems
+            .filter((item) => timeRangesOverlap(formData.startTime, formData.endTime, item.startTime, item.endTime))
+            .slice()
+            .sort((left, right) => {
+                const startDiff = left.startTime.localeCompare(right.startTime);
+                if (startDiff !== 0) return startDiff;
+                return getSeriesClassLabel(left.seriesClass).localeCompare(getSeriesClassLabel(right.seriesClass));
+            });
+    }, [formData.endTime, formData.startTime, formData.teacherId, isIntervalSchedule, sameDayTeacherItems]);
+
     const conflictSummary = conflictingScheduleItems
-        .map((item) => `${item.startTime} às ${item.endTime} - ${item.teacherSubject?.subject?.name || 'SEM MATÉRIA'} / ${item.teacherSubject?.teacher?.name || 'SEM PROFESSOR'}`)
+        .map((item) => getScheduleConflictLabel(item))
+        .join(' | ');
+    const teacherConflictSummary = conflictingTeacherItems
+        .map((item) => `${getSeriesClassLabel(item.seriesClass)} - ${getScheduleConflictLabel(item)}`)
         .join(' | ');
 
     const hasSelectedTimeConflict = conflictingScheduleItems.length > 0;
+    const hasTeacherTimeConflict = conflictingTeacherItems.length > 0;
     const hasInvalidTeacherSubjectSelection = !!formData.subjectId && !!formData.teacherId && !selectedTeacherSubject;
     const canSubmitForm =
         canManage
@@ -562,6 +625,7 @@ export default function GradeHorariaPlanejadaPage() {
         && !!formData.endTime
         && (isIntervalSchedule || (!!formData.subjectId && !!formData.teacherId))
         && !hasSelectedTimeConflict
+        && !hasTeacherTimeConflict
         && (!isIntervalSchedule && !hasInvalidTeacherSubjectSelection || isIntervalSchedule);
 
     const focusScheduleField = () => {
@@ -1038,6 +1102,11 @@ export default function GradeHorariaPlanejadaPage() {
     };
 
     const openScheduleStatusModal = (item: ClassScheduleItemRecord) => {
+        if (!item.canceledAt && (item.canBePhysicallyDeleted === false || (item.linkedLessonCalendarItems || 0) > 0)) {
+            setBlockedDeleteMessage(GRADE_HORARIA_BLOCKED_DELETE_MESSAGE);
+            return;
+        }
+
         setScheduleStatusToggleTarget(item);
         setScheduleStatusToggleAction(item.canceledAt ? 'activate' : 'deactivate');
     };
@@ -1046,6 +1115,14 @@ export default function GradeHorariaPlanejadaPage() {
         if (!force && isProcessingScheduleToggle) return;
         setScheduleStatusToggleTarget(null);
         setScheduleStatusToggleAction(null);
+    };
+
+    const closeBlockedDeletePopup = () => {
+        setBlockedDeleteMessage(null);
+    };
+
+    const closeModalErrorPopup = () => {
+        setModalErrorStatus(null);
     };
 
     const confirmScheduleStatusToggle = async () => {
@@ -1069,13 +1146,30 @@ export default function GradeHorariaPlanejadaPage() {
                 });
             const data = await response.json().catch(() => null);
 
-            if (!response.ok) throw new Error(getApiErrorMessage(data, willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível excluir o lançamento da grade.'));
+            if (!response.ok) {
+                const apiMessage = getApiErrorMessage(data, willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível excluir o lançamento da grade.');
+                if (!willActivate && apiMessage.includes('não pode mais ser excluído fisicamente')) {
+                    setErrorStatus(null);
+                    setBlockedDeleteMessage(GRADE_HORARIA_BLOCKED_DELETE_MESSAGE);
+                    closeScheduleStatusModal(true);
+                    return;
+                }
+                throw new Error(apiMessage);
+            }
 
             setSuccessStatus(data?.message || (willActivate ? 'Lançamento da grade ativado com sucesso.' : 'Lançamento da grade excluído com sucesso.'));
             await loadData();
             closeScheduleStatusModal(true);
         } catch (error) {
-            setErrorStatus(error instanceof Error ? error.message : (willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível excluir o lançamento da grade.'));
+            const fallbackMessage = willActivate ? 'Não foi possível ativar o lançamento da grade.' : 'Não foi possível excluir o lançamento da grade.';
+            const errorMessage = error instanceof Error ? error.message : fallbackMessage;
+            if (!willActivate && errorMessage.includes('não pode mais ser excluído fisicamente')) {
+                setErrorStatus(null);
+                setBlockedDeleteMessage(GRADE_HORARIA_BLOCKED_DELETE_MESSAGE);
+                closeScheduleStatusModal(true);
+                return;
+            }
+            setErrorStatus(errorMessage);
         } finally {
             setIsProcessingScheduleToggle(false);
         }
@@ -1100,7 +1194,11 @@ export default function GradeHorariaPlanejadaPage() {
             if (!isIntervalSchedule && !formData.subjectId) throw new Error('Selecione a matéria.');
             if (!isIntervalSchedule && !formData.teacherId) throw new Error('Selecione o professor.');
             if (conflictingScheduleItems.length > 0) {
-                throw new Error(`Este horário já está lançado para a turma neste dia: ${conflictSummary}.`);
+                throw new Error(`Este horário sobrepõe outro lançamento desta turma neste dia: ${conflictSummary}.`);
+            }
+
+            if (conflictingTeacherItems.length > 0) {
+                throw new Error(`O professor selecionado já possui aula sobreposta neste dia: ${teacherConflictSummary}.`);
             }
 
             if (!isIntervalSchedule && !selectedTeacherSubject) {
@@ -1338,12 +1436,6 @@ export default function GradeHorariaPlanejadaPage() {
                         </div>
 
                         <form onSubmit={handleSave} className="space-y-5 p-6">
-                            {modalErrorStatus ? (
-                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                                    {modalErrorStatus}
-                                </div>
-                            ) : null}
-
                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                                 <select value={formData.schoolYearId} onChange={(event) => { setModalErrorStatus(null); setFormData((current) => ({ ...current, schoolYearId: event.target.value })); }} className={inputClass}>
                                     <option value="">Selecione o ano letivo</option>
@@ -1460,7 +1552,13 @@ export default function GradeHorariaPlanejadaPage() {
 
                             {hasSelectedTimeConflict ? (
                                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-medium text-red-700">
-                                    Este horário já está ocupado para a mesma turma neste dia. Já lançado: <span className="font-bold">{conflictSummary}</span>.
+                                    Este horário sobrepõe outro lançamento da mesma turma neste dia. Já lançado: <span className="font-bold">{conflictSummary}</span>.
+                                </div>
+                            ) : null}
+
+                            {hasTeacherTimeConflict ? (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm font-medium text-red-700">
+                                    O professor selecionado já possui aula sobreposta neste dia. Conflito encontrado: <span className="font-bold">{teacherConflictSummary}</span>.
                                 </div>
                             ) : null}
 
@@ -1474,8 +1572,8 @@ export default function GradeHorariaPlanejadaPage() {
 
                             {formData.seriesClassId && formData.schoolYearId ? (
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
-                                    {duplicateTimeKeys.size > 0
-                                        ? `Os horários já ocupados para esta turma e este dia deixam de aparecer no combobox. Total bloqueado: ${duplicateTimeKeys.size}.`
+                                    {blockedScheduleOptionsCount.length > 0
+                                        ? `Os horários já ocupados ou sobrepostos para esta turma e este dia deixam de aparecer no combobox. Total bloqueado: ${blockedScheduleOptionsCount.length}.`
                                         : 'Nenhum horário desta turma e deste dia está bloqueado até o momento.'}
                                 </div>
                             ) : null}
@@ -1487,11 +1585,23 @@ export default function GradeHorariaPlanejadaPage() {
                                 </div>
                             ) : null}
 
-                            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-                                <button type="button" onClick={closeModal} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-100">Fechar</button>
-                                <button type="submit" disabled={!canSubmitForm} className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300">
-                                    {isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar lançamento'}
-                                </button>
+                            <div className="space-y-3 border-t border-slate-100 pt-5">
+                                  <div className="flex items-center justify-between gap-3">
+                                      <button type="button" onClick={closeModal} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50">Fechar</button>
+                                      <button type="submit" disabled={!canSubmitForm} className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300">
+                                          {isSaving ? 'Salvando...' : 'Salvar'}
+                                      </button>
+                                  </div>
+                                <div className="flex justify-end">
+                                    <div className="w-full max-w-sm">
+                                        <ScreenNameCopy
+                                            screenId={editingId ? GRADE_HORARIA_EDIT_MODAL_SCREEN_ID : GRADE_HORARIA_NEW_MODAL_SCREEN_ID}
+                                            label="NOME DA TELA"
+                                            className="mt-0 justify-end"
+                                            disableMargin
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -1528,6 +1638,112 @@ export default function GradeHorariaPlanejadaPage() {
                 statusActive={!scheduleStatusToggleTarget?.canceledAt}
                 screenId={GRADE_HORARIA_STATUS_MODAL_SCREEN_ID}
             />
+
+            {blockedDeleteMessage ? (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-rose-200 bg-white shadow-2xl">
+                        <div className="flex items-start gap-4 border-b border-rose-100 bg-rose-50 px-6 py-5">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-sm">
+                                {blockedDeleteBranding?.logoUrl ? (
+                                    <img
+                                        src={blockedDeleteBranding.logoUrl}
+                                        alt={blockedDeleteBranding.schoolName}
+                                        className="h-full w-full object-contain p-1"
+                                    />
+                                ) : (
+                                    <span className="text-xs font-black uppercase text-rose-500">LOGO</span>
+                                )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-center text-2xl font-black uppercase tracking-[0.18em] text-rose-600">NÃO PERMITIDO EXCLUIR !!!</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeBlockedDeletePopup}
+                                className="rounded-full bg-white p-2 text-rose-500 transition hover:text-rose-700"
+                                aria-label="Fechar popup de bloqueio"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="space-y-5 px-6 py-6 text-sm font-semibold text-slate-700">
+                            <p className="text-base leading-7 text-slate-700">{blockedDeleteMessage}</p>
+                            <div className="flex items-end justify-between gap-4">
+                                <div className="min-w-0">
+                                    <ScreenNameCopy
+                                        screenId={GRADE_HORARIA_BLOCKED_DELETE_SCREEN_ID}
+                                        label="Tela"
+                                        className="text-[9px] text-slate-400"
+                                        disableMargin
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={closeBlockedDeletePopup}
+                                    className="rounded-2xl bg-rose-600 px-5 py-3 text-xs font-bold uppercase tracking-[0.3em] text-white transition hover:bg-rose-500"
+                                >
+                                    OK
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {isModalOpen && modalErrorStatus ? (
+                <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md overflow-hidden rounded-3xl border border-rose-200 bg-white shadow-2xl">
+                        <div className="flex items-start gap-4 border-b border-rose-100 bg-rose-50 px-6 py-5">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-sm">
+                                {modalErrorBranding?.logoUrl ? (
+                                    <img
+                                        src={modalErrorBranding.logoUrl}
+                                        alt={modalErrorBranding.schoolName}
+                                        className="h-full w-full object-contain p-1"
+                                    />
+                                ) : (
+                                    <span className="text-xs font-black uppercase text-rose-500">LOGO</span>
+                                )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-2xl font-black uppercase tracking-[0.35em] text-rose-600">E R R O !!!</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeModalErrorPopup}
+                                className="rounded-full bg-white p-2 text-rose-500 transition hover:text-rose-700"
+                                aria-label="Fechar popup de erro"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="space-y-5 px-6 py-6 text-sm font-semibold text-slate-700">
+                            <p className="text-base leading-7 text-slate-700">{modalErrorStatus}</p>
+                            <div className="flex items-end justify-between gap-4">
+                                <div className="min-w-0">
+                                    <ScreenNameCopy
+                                        screenId="PRINCIPAL_GRADE_HORARIA_NEW_MODAL_ERRO"
+                                        label="Tela"
+                                        className="text-[9px] text-slate-400"
+                                        disableMargin
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={closeModalErrorPopup}
+                                    className="rounded-2xl bg-rose-600 px-5 py-3 text-xs font-bold uppercase tracking-[0.3em] text-white transition hover:bg-rose-500"
+                                >
+                                    OK
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             <GridExportModal
                 isOpen={isExportModalOpen}

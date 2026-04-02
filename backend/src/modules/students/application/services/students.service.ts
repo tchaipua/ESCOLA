@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -94,6 +95,123 @@ export class StudentsService {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 
+  private normalizeBillingPayerType(
+    value?: string | null,
+  ): "ALUNO" | "RESPONSAVEL" {
+    return String(value || "").trim().toUpperCase() === "RESPONSAVEL"
+      ? "RESPONSAVEL"
+      : "ALUNO";
+  }
+
+  private normalizeRelationId(value?: string | null) {
+    const normalizedValue = String(value || "").trim();
+    return normalizedValue || null;
+  }
+
+  private async assertActiveBillingGuardianLinkedToStudent(
+    studentId: string,
+    guardianId: string,
+  ) {
+    const tenantId = this.tenantId();
+
+    const activeLink = await this.prisma.guardianStudent.findFirst({
+      where: {
+        tenantId,
+        studentId,
+        guardianId,
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!activeLink) {
+      throw new BadRequestException(
+        "O responsável pagador precisa estar vinculado ativamente a este aluno.",
+      );
+    }
+
+    const activeGuardian = await this.prisma.guardian.findFirst({
+      where: {
+        id: guardianId,
+        tenantId,
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!activeGuardian) {
+      throw new BadRequestException(
+        "O responsável informado para pagamento está inativo ou não pertence a esta escola.",
+      );
+    }
+  }
+
+  private async resolveCreateBillingSettings(dto: CreateStudentDto) {
+    const requestedPayerType = this.normalizeBillingPayerType(dto.billingPayerType);
+    const requestedGuardianId = this.normalizeRelationId(dto.billingGuardianId);
+
+    if (requestedPayerType === "RESPONSAVEL" || requestedGuardianId) {
+      throw new BadRequestException(
+        "Defina o responsável pagador somente após salvar o aluno e vincular os responsáveis.",
+      );
+    }
+
+    return {
+      billingPayerType: "ALUNO" as const,
+      billingGuardianId: null,
+    };
+  }
+
+  private async resolveUpdateBillingSettings(
+    studentId: string,
+    currentStudent: {
+      billingPayerType?: string | null;
+      billingGuardianId?: string | null;
+    },
+    dto: UpdateStudentDto,
+  ) {
+    const nextBillingPayerType = Object.prototype.hasOwnProperty.call(
+      dto,
+      "billingPayerType",
+    )
+      ? this.normalizeBillingPayerType(dto.billingPayerType)
+      : this.normalizeBillingPayerType(currentStudent.billingPayerType);
+
+    const nextBillingGuardianId = Object.prototype.hasOwnProperty.call(
+      dto,
+      "billingGuardianId",
+    )
+      ? this.normalizeRelationId(dto.billingGuardianId)
+      : this.normalizeRelationId(currentStudent.billingGuardianId);
+
+    if (nextBillingPayerType === "ALUNO") {
+      return {
+        billingPayerType: "ALUNO" as const,
+        billingGuardianId: null,
+      };
+    }
+
+    if (!nextBillingGuardianId) {
+      throw new BadRequestException(
+        "Selecione o responsável que pagará a mensalidade do aluno.",
+      );
+    }
+
+    await this.assertActiveBillingGuardianLinkedToStudent(
+      studentId,
+      nextBillingGuardianId,
+    );
+
+    return {
+      billingPayerType: "RESPONSAVEL" as const,
+      billingGuardianId: nextBillingGuardianId,
+    };
+  }
+
   private sanitizeStudentMutationDto<
     T extends CreateStudentDto | UpdateStudentDto,
   >(dto: T, viewer?: ICurrentUser | null): T {
@@ -101,6 +219,8 @@ export class StudentsService {
 
     if (!canViewStudentFinancialData(viewer)) {
       delete sanitizedDto.monthlyFee;
+      delete sanitizedDto.billingPayerType;
+      delete sanitizedDto.billingGuardianId;
     }
 
     if (!canViewStudentAccessData(viewer)) {
@@ -171,8 +291,10 @@ export class StudentsService {
       },
       include: {
         guardians: {
+          where: { canceledAt: null },
           include: { guardian: true },
         },
+        billingGuardian: true,
         person: true,
         enrollments: {
           where: { canceledAt: null },
@@ -247,6 +369,8 @@ export class StudentsService {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
+    const billingSettings = await this.resolveCreateBillingSettings(sanitizedDto);
+
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
       const salt = await bcrypt.genSalt(10);
@@ -265,6 +389,8 @@ export class StudentsService {
     const rawData = this.transformToUpperCase(sanitizedDto);
     delete rawData.permissions;
     delete rawData.accessProfile;
+    delete rawData.billingPayerType;
+    delete rawData.billingGuardianId;
 
     const createdStudent = await this.prisma.student.create({
       data: {
@@ -274,6 +400,8 @@ export class StudentsService {
         permissions: explicitPermissions,
         photoUrl: sanitizedDto.photoUrl?.trim() || null,
         monthlyFee: this.normalizeMonthlyFee(sanitizedDto.monthlyFee),
+        billingPayerType: billingSettings.billingPayerType,
+        billingGuardianId: billingSettings.billingGuardianId,
         birthDate: sanitizedDto.birthDate
           ? new Date(sanitizedDto.birthDate)
           : undefined,
@@ -323,6 +451,11 @@ export class StudentsService {
       }, // Aplica o Soft Delete
       include: {
         person: true,
+        guardians: {
+          where: { canceledAt: null },
+          include: { guardian: true },
+        },
+        billingGuardian: true,
         enrollments: {
           where: { canceledAt: null },
           include: {
@@ -788,11 +921,18 @@ export class StudentsService {
       !this.normalizeDocument(sanitizedDto.cpf || currentStudent.cpf) &&
       Boolean(currentStudent.personId) &&
       !this.normalizeDocument(currentStudent.person?.cpf);
+    const billingSettings = await this.resolveUpdateBillingSettings(
+      id,
+      currentStudent,
+      sanitizedDto,
+    );
 
     const rawData = this.transformToUpperCase(sanitizedDto);
     delete rawData.password;
     delete rawData.permissions;
     delete rawData.accessProfile;
+    delete rawData.billingPayerType;
+    delete rawData.billingGuardianId;
 
     const updatedStudent = await this.prisma.student.update({
       where: { id },
@@ -812,6 +952,8 @@ export class StudentsService {
         )
           ? this.normalizeMonthlyFee(sanitizedDto.monthlyFee)
           : undefined,
+        billingPayerType: billingSettings.billingPayerType,
+        billingGuardianId: billingSettings.billingGuardianId,
         personId: shouldDetachBlankCpfPersonLink ? null : undefined,
         birthDate: sanitizedDto.birthDate
           ? new Date(sanitizedDto.birthDate)
@@ -851,14 +993,10 @@ export class StudentsService {
       }
     }
 
+    const refreshedStudent = await this.findStudentEntity(id);
+
     return sanitizeStudentForViewer(
-      this.mapStudentAccess(
-        this.normalizeStudentDisplayName({
-          ...updatedStudent,
-          name: resolvedStudentName,
-          person: currentStudent.person || null,
-        }),
-      ),
+      this.mapStudentAccess(this.normalizeStudentDisplayName(refreshedStudent)),
       currentUser,
     );
   }
@@ -1042,3 +1180,4 @@ export class StudentsService {
     };
   }
 }
+

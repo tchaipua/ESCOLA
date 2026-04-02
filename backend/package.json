@@ -10,6 +10,7 @@
     "qa:tcha-grade-visibility": "ts-node scripts/tcha-grade-visibility-smoke.ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "test:attendance-notifications": "npm run build && node test/attendance-notifications.test.cjs",
+    "test:student-billing": "npm run build && node test/student-billing.test.cjs",
     "test:change-shared-password": "npm run build && node test/change-shared-password.test.cjs",
     "start": "nest start",
     "start:dev": "nest start --watch",

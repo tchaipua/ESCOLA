@@ -124,3 +124,60 @@ Para cada tarefa, traga:
 - criterio de aceite
 - dependencia
 ```
+
+## 11) Implementar definicao do pagador da mensalidade no escolar
+
+```text
+Leia obrigatoriamente antes de implementar:
+- AGENTS.md
+- DOCUMENTACAO/AI/SYSTEM_IDENTITY.md
+- DOCUMENTACAO/AI/PROJECT_CONTEXT.md
+- DOCUMENTACAO/AI/ARCHITECTURE.md
+- DOCUMENTACAO/AI/DATABASE.md
+- DOCUMENTACAO/AI/DECISIONS.md
+- DOCUMENTACAO/AI/CODING_RULES.md
+- DOCUMENTACAO/AI/FINANCIAL_INTEGRATION.md
+
+Atue como engenheiro senior full stack em NestJS + Prisma + Next.js.
+
+Implemente no sistema escolar a regra de definicao do pagador da mensalidade, pensando explicitamente na futura integracao com uma plataforma financeira externa e compartilhada entre varios ramos de negocio.
+
+Contexto obrigatorio:
+- hoje a mensalidade ja pertence ao aluno em `students.monthlyFee`
+- hoje `guardian_students` representa vinculo e parentesco, e nao deve virar a regra financeira principal
+- a regra de pagador deve ficar no aluno
+- o pagador pode ser o proprio aluno ou um responsavel previamente cadastrado e vinculado ao aluno
+- no futuro o financeiro recebera separadamente o `referente` da cobranca e o `pagador`
+
+Implemente:
+- campos no aluno para suportar a regra de pagador, seguindo a diretriz oficial em `FINANCIAL_INTEGRATION.md`
+- ajustes no schema Prisma, DTOs, services, controllers e retornos de API
+- validacoes para impedir responsavel pagador sem vinculo ativo com o aluno
+- protecao para impedir remocao de um responsavel que esteja definido como pagador atual sem troca previa
+- exibicao e edicao da regra na tela de aluno, reaproveitando a aba de responsaveis e sem redesenhar layout aprovado
+- retorno claro no detalhe do aluno informando quem e o pagador atual
+- documentacao incremental se algum contrato de API mudar
+
+Regras obrigatorias:
+- manter multi-tenant por `tenantId`
+- manter auditoria e soft delete
+- textos em uppercase, exceto senha
+- nao redesenhar a UI aprovada
+- nao criar modulo financeiro dentro do sistema escolar
+- nao criar contrato escolar completo agora
+- nao usar `studentId` como identificador universal do pagador
+
+Comportamento esperado:
+- `billingPayerType = ALUNO` permite boleto futuro em nome do proprio aluno
+- `billingPayerType = RESPONSAVEL` exige `billingGuardianId` preenchido com responsavel ativo vinculado
+- se o pagador for um responsavel, usar preferencialmente `personId`, `nome` e `cpf/cnpj` desse responsavel para futura integracao
+- se o pagador atual for removido dos vinculos do aluno, bloquear a acao ou exigir troca do pagador antes
+
+Entregue:
+- arquivos alterados
+- resumo funcional
+- riscos ou pendencias
+- testes executados
+```
+
+

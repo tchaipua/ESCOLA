@@ -68,6 +68,7 @@ const KINSHIP_OPTIONS = [
 ] as const;
 
 type KinshipValue = (typeof KINSHIP_OPTIONS)[number]['value'];
+type BillingPayerType = 'ALUNO' | 'RESPONSAVEL';
 
 type GuardianSummary = {
     id: string;
@@ -154,6 +155,9 @@ type StudentRecord = {
     cellphone2?: string | null;
     email?: string | null;
     monthlyFee?: number | null;
+    billingPayerType?: BillingPayerType | null;
+    billingGuardianId?: string | null;
+    billingGuardian?: GuardianSummary | null;
     notes?: string | null;
     zipCode?: string | null;
     street?: string | null;
@@ -191,6 +195,8 @@ type StudentFormState = {
     complement: string;
     seriesClassId: string;
     monthlyFee: string;
+    billingPayerType: BillingPayerType;
+    billingGuardianId: string;
     notes: string;
     accessProfile: AccessProfileCode;
     permissions: string[];
@@ -228,6 +234,8 @@ const EMPTY_FORM: StudentFormState = {
     complement: '',
     seriesClassId: '',
     monthlyFee: '',
+    billingPayerType: 'ALUNO',
+    billingGuardianId: '',
     notes: '',
     accessProfile: DEFAULT_STUDENT_PROFILE,
     permissions: getProfilePermissions(DEFAULT_STUDENT_PROFILE),
@@ -462,6 +470,34 @@ function getStudentGuardiansSummary(student: StudentRecord) {
     return student.guardians
         .map((link) => `${link.guardian?.name || 'Responsável'} (${formatKinshipLabel(link)})`)
         .join(' | ');
+}
+
+function getBillingGuardianLabel(guardians: StudentGuardianLink[], guardianId?: string | null) {
+    const guardianLink = guardians.find((link) => link.guardian?.id === guardianId);
+    return guardianLink?.guardian?.name || 'Responsável não identificado';
+}
+
+function getStudentBillingPayerLabel(student: StudentRecord) {
+    const billingPayerType = student.billingPayerType === 'RESPONSAVEL' ? 'RESPONSAVEL' : 'ALUNO';
+    if (billingPayerType === 'ALUNO') {
+        return `O próprio aluno (${student.name || 'ALUNO'})`;
+    }
+
+    return student.billingGuardian?.name
+        || getBillingGuardianLabel(student.guardians || [], student.billingGuardianId)
+        || 'Responsável não identificado';
+}
+
+function getFormBillingPayerLabel(studentName: string, payerType: BillingPayerType, guardianId: string, guardians: StudentGuardianLink[]) {
+    if (payerType === 'ALUNO') {
+        return `O próprio aluno (${studentName || 'ALUNO'})`;
+    }
+
+    if (!guardianId) {
+        return 'Selecione o responsável que pagará a mensalidade.';
+    }
+
+    return getBillingGuardianLabel(guardians, guardianId);
 }
 
 export default function AlunosPage() {
@@ -1055,6 +1091,8 @@ export default function AlunosPage() {
                 complement: detail.complement || '',
                 seriesClassId: getCurrentEnrollmentSeriesClassId(detail, activeSchoolYearId),
                 monthlyFee: formatMoneyValue(detail.monthlyFee),
+                billingPayerType: detail.billingPayerType === 'RESPONSAVEL' ? 'RESPONSAVEL' : 'ALUNO',
+                billingGuardianId: detail.billingGuardianId || '',
                 notes: detail.notes || '',
                 accessProfile: detail.accessProfile || DEFAULT_STUDENT_PROFILE,
                 permissions: Array.isArray(detail.permissions) && detail.permissions.length > 0
@@ -1290,6 +1328,24 @@ export default function AlunosPage() {
         if (formData.cpf && !isValidCpf(formData.cpf)) return setSaveError('CPF inválido. Informe um CPF válido.');
         if (formData.cnpj && !isValidCnpj(formData.cnpj)) return setSaveError('CNPJ inválido. Informe um CNPJ válido.');
 
+        const billingPayerType: BillingPayerType = formData.billingPayerType === 'RESPONSAVEL' ? 'RESPONSAVEL' : 'ALUNO';
+        const selectedBillingGuardian = studentGuardians.find((link) => link.guardian?.id === formData.billingGuardianId);
+
+        if (studentFieldAccess.financial && billingPayerType === 'RESPONSAVEL') {
+            if (!editingStudentId) {
+                setSaveError('Salve o aluno antes de definir um responsável como pagador da mensalidade.');
+                return;
+            }
+            if (!formData.billingGuardianId) {
+                setSaveError('Selecione o responsável que pagará a mensalidade.');
+                return;
+            }
+            if (!selectedBillingGuardian) {
+                setSaveError('O responsável pagador precisa estar vinculado a este aluno.');
+                return;
+            }
+        }
+
         if (editingStudentId) {
             const currentCpfDigits = normalizeCpfDigits(formData.cpf);
             const originalCpfDigits = normalizeCpfDigits(originalStudentCpf);
@@ -1332,11 +1388,17 @@ export default function AlunosPage() {
                 cellphone1: formatPhone(formData.cellphone1),
                 cellphone2: formatPhone(formData.cellphone2),
                 monthlyFee: parseMoneyValue(formData.monthlyFee),
+                billingPayerType,
+                billingGuardianId: billingPayerType === 'RESPONSAVEL' ? (formData.billingGuardianId || null) : null,
             };
             if (!String(formData.email || '').trim()) delete payload.email;
             delete payload.seriesClassId;
             if (!payload.birthDate) delete payload.birthDate;
-            if (!studentFieldAccess.financial) delete payload.monthlyFee;
+            if (!studentFieldAccess.financial) {
+                delete payload.monthlyFee;
+                delete payload.billingPayerType;
+                delete payload.billingGuardianId;
+            }
             if (!studentFieldAccess.access) {
                 delete payload.email;
                 delete payload.accessProfile;
@@ -1452,6 +1514,14 @@ export default function AlunosPage() {
                 throw new Error(err?.message || 'Não foi possível remover o responsável.');
             }
 
+            if (formData.billingPayerType === 'RESPONSAVEL' && formData.billingGuardianId === link.guardian.id) {
+                setFormData((current) => ({
+                    ...current,
+                    billingPayerType: 'ALUNO',
+                    billingGuardianId: '',
+                }));
+            }
+
             setGuardiansStatus('Responsável removido do aluno com sucesso.');
             await loadStudentGuardians(editingStudentId);
         } catch (error) {
@@ -1498,7 +1568,10 @@ export default function AlunosPage() {
                     title: 'Acadêmico',
                     items: [
                         ...(studentFieldAccess.academic ? [{ label: 'Turma atual', value: getStudentCurrentEnrollmentLabel(student, activeSchoolYearId) }] : []),
-                        ...(studentFieldAccess.financial ? [{ label: 'Mensalidade', value: formatMoneyLabel(student.monthlyFee) }] : []),
+                        ...(studentFieldAccess.financial ? [
+                            { label: 'Mensalidade', value: formatMoneyLabel(student.monthlyFee) },
+                            { label: 'Pagador', value: getStudentBillingPayerLabel(student) },
+                        ] : []),
                         { label: 'Responsáveis', value: getStudentGuardiansSummary(student) },
                     ],
                 }] : []),
@@ -1753,10 +1826,11 @@ export default function AlunosPage() {
                             {[
                                 { id: 1, label: '1. DADOS BÁSICOS' },
                                 { id: 2, label: '2. ENDEREÇO' },
-                                { id: 3, label: '3. ACESSO PWA' },
+                                { id: 3, label: '3. CREDENCIAIS DE ACESSO' },
                                 { id: 4, label: '4. RESPONSÁVEIS', disabled: !editingStudentId },
-                                { id: 5, label: '5. FOTOS' },
-                                { id: 6, label: '6. OBSERVAÇÕES' },
+                                { id: 5, label: '5. FINANCEIRO' },
+                                { id: 6, label: '6. FOTOS' },
+                                { id: 7, label: '7. OBSERVAÇÕES' },
                             ].map((tab) => (
                                 <button
                                     key={tab.label}
@@ -2074,7 +2148,12 @@ export default function AlunosPage() {
                                                             <div className="flex flex-col gap-3">
                                                                 <div>
                                                                     <div className="text-sm font-bold text-slate-800">{link.guardian?.name || 'RESPONSÁVEL SEM NOME'}</div>
-                                                                    <div className="mt-1 inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-bold text-violet-700">{formatKinshipLabel(link)}</div>
+                                                                    <div className="mt-1 flex flex-wrap gap-2">
+                                                                        <div className="inline-flex rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-bold text-violet-700">{formatKinshipLabel(link)}</div>
+                                                                        {formData.billingPayerType === 'RESPONSAVEL' && formData.billingGuardianId === link.guardian?.id ? (
+                                                                            <div className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Pagador da mensalidade</div>
+                                                                        ) : null}
+                                                                    </div>
                                                                     <div className="mt-3 text-sm font-medium text-slate-500">{getGuardianPrimaryPhone(link.guardian)}</div>
                                                                 </div>
                                                                 <div className="flex flex-wrap gap-2">
@@ -2111,6 +2190,79 @@ export default function AlunosPage() {
                                 </div>
                             ) : null}
                             {activeTab === 5 ? (
+                                <div className="space-y-6">
+                                    {guardiansError ? <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">{guardiansError}</div> : null}
+                                    {guardiansStatus ? <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">{guardiansStatus}</div> : null}
+
+                                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-5 shadow-sm">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                            <div>
+                                                <h3 className="text-base font-bold text-slate-800">Pagador da mensalidade</h3>
+                                                <p className="mt-1 text-sm text-slate-600">Defina aqui quem responde pela mensalidade do aluno. Esta informação já fica preparada para a futura integração com o sistema financeiro.</p>
+                                            </div>
+                                            <div className="inline-flex rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 shadow-sm">
+                                                Integração futura
+                                            </div>
+                                        </div>
+
+                                        {studentFieldAccess.financial ? (
+                                            <div className="mt-5 space-y-4">
+                                                <div className="grid gap-4 md:grid-cols-2">
+                                                    <div>
+                                                        <label className={labelClass}>Quem paga a mensalidade?</label>
+                                                        <select
+                                                            value={formData.billingPayerType}
+                                                            onChange={(event) => setFormData((current) => ({
+                                                                ...current,
+                                                                billingPayerType: event.target.value as BillingPayerType,
+                                                                billingGuardianId: event.target.value === 'RESPONSAVEL' ? current.billingGuardianId : '',
+                                                            }))}
+                                                            className={inputClass}
+                                                            disabled={!canManageStudents || isLoadingGuardians || isUpdatingGuardians}
+                                                        >
+                                                            <option value="ALUNO">O próprio aluno</option>
+                                                            <option value="RESPONSAVEL" disabled={!studentGuardians.length}>Um responsável vinculado</option>
+                                                        </select>
+                                                        {!editingStudentId ? <div className="mt-2 text-xs font-medium text-slate-500">Salve o aluno primeiro para depois vincular e selecionar um responsável pagador.</div> : null}
+                                                    </div>
+                                                </div>
+
+                                                {formData.billingPayerType === 'RESPONSAVEL' ? (
+                                                    <div>
+                                                        <label className={labelClass}>Responsável pagador *</label>
+                                                        <select
+                                                            value={formData.billingGuardianId}
+                                                            onChange={(event) => setFormData((current) => ({
+                                                                ...current,
+                                                                billingGuardianId: event.target.value,
+                                                            }))}
+                                                            className={inputClass}
+                                                            disabled={!canManageStudents || isLoadingGuardians || isUpdatingGuardians || !studentGuardians.length}
+                                                        >
+                                                            <option value="">SELECIONE O RESPONSÁVEL</option>
+                                                            {studentGuardians.map((link) => (
+                                                                <option key={link.id} value={link.guardian?.id || ''} disabled={!link.guardian?.id}>
+                                                                    {link.guardian ? getGuardianComboLabel(link.guardian) : 'RESPONSÁVEL SEM CADASTRO'}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        {!studentGuardians.length ? <div className="mt-2 text-xs font-medium text-amber-700">Antes de definir o pagador, vincule pelo menos um responsável a este aluno.</div> : null}
+                                                    </div>
+                                                ) : (
+                                                    <div className="rounded-xl border border-dashed border-emerald-200 bg-white/80 px-4 py-3 text-sm font-medium text-slate-600">
+                                                        Quando a integração financeira estiver pronta, os boletos e demais cobranças poderão ser emitidos no nome definido aqui.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-700">
+                                                Seu perfil não possui autorização para definir quem paga a mensalidade deste aluno.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : null}
+                            {activeTab === 6 ? (
                                 <div className="mx-auto max-w-4xl space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-6">
                                     <div>
                                         <div className="text-base font-bold text-slate-800">Fotos do aluno</div>
@@ -2157,7 +2309,7 @@ export default function AlunosPage() {
                                     </div>
                                 </div>
                             ) : null}
-                            {activeTab === 6 ? (
+                            {activeTab === 7 ? (
                                 <div className="mx-auto max-w-3xl space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-6">
                                     <div>
                                         <div className="text-base font-bold text-slate-800">Observações do aluno</div>

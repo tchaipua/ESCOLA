@@ -151,6 +151,35 @@ export class GuardiansService {
     return guardian;
   }
 
+  private async findStudentUsingGuardianAsBillingPayer(guardianId: string) {
+    return this.prisma.student.findFirst({
+      where: {
+        tenantId: getTenantContext()!.tenantId,
+        canceledAt: null,
+        billingPayerType: "RESPONSAVEL",
+        billingGuardianId: guardianId,
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+  }
+
+  private async assertGuardianIsNotBillingPayer(
+    guardianId: string,
+    blockedAction: string,
+  ) {
+    const studentUsingGuardianAsPayer =
+      await this.findStudentUsingGuardianAsBillingPayer(guardianId);
+
+    if (studentUsingGuardianAsPayer) {
+      throw new ConflictException(
+        `O responsável informado está definido como pagador da mensalidade do aluno ${studentUsingGuardianAsPayer.name}. Altere o pagador antes de ${blockedAction}.`,
+      );
+    }
+  }
+
   async create(createDto: CreateGuardianDto, currentUser?: ICurrentUser) {
     const sanitizedDto = this.sanitizeGuardianMutationDto(
       createDto,
@@ -498,6 +527,10 @@ export class GuardiansService {
 
   async remove(id: string) {
     await this.findGuardianEntity(id);
+    await this.assertGuardianIsNotBillingPayer(
+      id,
+      "inativar ou excluir este responsável",
+    );
     return this.prisma.guardian.updateMany({
       where: { id },
       data: {
@@ -509,6 +542,13 @@ export class GuardiansService {
 
   async setActiveStatus(id: string, active: boolean) {
     await this.findGuardianEntity(id);
+
+    if (!active) {
+      await this.assertGuardianIsNotBillingPayer(
+        id,
+        "inativar este responsável",
+      );
+    }
 
     const updatedGuardian = await this.prisma.guardian.update({
       where: { id },
@@ -582,13 +622,42 @@ export class GuardiansService {
   }
 
   async unlinkStudent(guardianId: string, studentId: string) {
-    // Soft Delete do Vínculo
+    const tenantId = getTenantContext()!.tenantId;
+    const userId = getTenantContext()!.userId;
+
+    const existingLink = await this.prisma.guardianStudent.findFirst({
+      where: {
+        guardianId,
+        studentId,
+        tenantId,
+        canceledAt: null,
+      },
+    });
+
+    if (!existingLink) {
+      throw new NotFoundException(
+        "Vínculo entre responsável e aluno não encontrado nesta escola.",
+      );
+    }
+
+    await this.assertGuardianIsNotBillingPayer(
+      guardianId,
+      "remover o vínculo",
+    );
+
     return this.prisma.guardianStudent.updateMany({
-      where: { guardianId, studentId },
+      where: {
+        guardianId,
+        studentId,
+        tenantId,
+        canceledAt: null,
+      },
       data: {
         canceledAt: new Date(),
-        canceledBy: getTenantContext()!.userId,
+        canceledBy: userId,
+        updatedBy: userId,
       },
     });
   }
 }
+
