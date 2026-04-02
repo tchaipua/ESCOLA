@@ -348,6 +348,9 @@ export class TenantsService {
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(normalizedAdminPassword, salt);
     }
+    const adminPasswordHash =
+      hashedPassword ||
+      (await bcrypt.hash("Admin001", await bcrypt.genSalt(10)));
 
     const result = await this.prisma.$transaction(async (tx) => {
       const newTenant = await tx.tenant.create({
@@ -397,7 +400,7 @@ export class TenantsService {
           tenantId: newTenant.id,
           name: createTenantDto.adminName,
           email: createTenantDto.adminEmail,
-          password: null,
+          password: adminPasswordHash,
           role: "ADMIN",
           createdBy: this.masterAuditUser,
           updatedBy: this.masterAuditUser,
