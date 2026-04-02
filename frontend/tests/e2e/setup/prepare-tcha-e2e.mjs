@@ -99,6 +99,15 @@ const backendEnv = {
 
 console.log('[TCHA E2E PREP] Base limpa copiada para tmp-e2e.db...');
 
+console.log('[TCHA E2E PREP] Sincronizando schema Prisma na base temporária...');
+runCommand(
+  'npx',
+  ['prisma', 'db', 'push', '--skip-generate'],
+  backendDir,
+  backendEnv,
+  'prisma db push',
+);
+
 console.log('[TCHA E2E PREP] Rodando smoke geral da TCHA...');
 const smokeOutput = runCommand('npm', ['run', 'qa:tcha-smoke'], backendDir, backendEnv, 'qa:tcha-smoke');
 const smokeSummary = extractLastJsonBlock(smokeOutput);

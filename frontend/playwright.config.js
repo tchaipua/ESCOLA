@@ -31,10 +31,10 @@ module.exports = defineConfig({
       },
       url: 'http://127.0.0.1:3001/api/docs',
       timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
     },
     {
-      command: 'npm run dev -- --hostname 127.0.0.1 --port 3000',
+      command: 'npm run start -- --hostname 127.0.0.1 --port 3000',
       cwd: frontendDir,
       env: {
         ...process.env,
@@ -42,7 +42,7 @@ module.exports = defineConfig({
       },
       url: 'http://127.0.0.1:3000',
       timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
     },
   ],
   projects: [

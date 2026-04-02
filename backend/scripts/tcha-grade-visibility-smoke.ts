@@ -22,6 +22,13 @@ type RequestOptions = {
   expectedStatus?: number | number[];
 };
 
+type LoginResponse = {
+  status: string;
+  access_token?: string;
+  user?: Session["user"];
+  devVerificationLink?: string;
+};
+
 const CONFIG = {
   tenantName: "TCHA",
   adminEmail: "ADMIN.TCHA@MSINFOR.COM",
@@ -120,17 +127,43 @@ async function login(
   password: string,
   tenantId: string,
 ) {
-  const response = await requestJson<{
-    status: string;
-    access_token?: string;
-    user?: Session["user"];
-  }>(baseUrl, "POST", "/api/v1/auth/login", {
-    body: {
-      email,
-      password,
-      tenantId,
-    },
-  });
+  const doLogin = () =>
+    requestJson<LoginResponse>(baseUrl, "POST", "/api/v1/auth/login", {
+      body: {
+        email,
+        password,
+        tenantId,
+      },
+    });
+
+  let response = await doLogin();
+
+  if (response.status === "EMAIL_CONFIRMATION_REQUIRED") {
+    const verificationLink = String(response.devVerificationLink || "").trim();
+    assert(
+      verificationLink,
+      `Login exigiu confirmação de e-mail para ${email}, mas sem devVerificationLink.`,
+    );
+
+    const verificationToken =
+      new URL(verificationLink).searchParams.get("token") || "";
+    assert(
+      verificationToken,
+      `Link de confirmação sem token para ${email}.`,
+    );
+
+    const verificationResult = await requestJson<{ status: string }>(
+      baseUrl,
+      "GET",
+      `/api/v1/auth/verify-email?token=${encodeURIComponent(verificationToken)}`,
+    );
+    assert(
+      verificationResult.status === "SUCCESS",
+      `Falha ao confirmar o e-mail de ${email}.`,
+    );
+
+    response = await doLogin();
+  }
 
   assert(response.status === "SUCCESS", `Login não retornou SUCCESS para ${email}.`);
   assert(response.access_token, `Login sem token para ${email}.`);

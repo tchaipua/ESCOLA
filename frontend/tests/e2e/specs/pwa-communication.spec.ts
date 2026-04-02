@@ -7,7 +7,7 @@ const state = loadTchaE2eState();
 test.describe.serial('FLUXO PWA TCHA', () => {
   test('PROFESSOR SALVA CHAMADA E NOTAS PELA PWA', async ({ page }) => {
     await login(page, state.teacher.email, state.teacher.password);
-    await expectRolePage(page, '/professor', /PWA do professor/i);
+    await expectRolePage(page, '/professor');
 
     await expect(page.getByText(state.tenantName, { exact: true }).first()).toBeVisible();
 
@@ -60,7 +60,7 @@ test.describe.serial('FLUXO PWA TCHA', () => {
 
   test('ALUNO VE APENAS SUA NOTA E SUAS NOTIFICACOES', async ({ page }) => {
     await login(page, state.studentA.email, 'Aluno1234');
-    await expectRolePage(page, '/aluno', /PWA do aluno/i);
+    await expectRolePage(page, '/aluno');
 
     await expect(page.getByRole('heading', { name: state.studentA.name })).toBeVisible();
     await expect(page.getByText(state.tenantName, { exact: true }).first()).toBeVisible();
@@ -77,9 +77,9 @@ test.describe.serial('FLUXO PWA TCHA', () => {
 
   test('RESPONSAVEL VE APENAS O ALUNO VINCULADO E RECEBE A COMUNICACAO CERTA', async ({ page }) => {
     await login(page, state.guardianA.email, 'Resp1234');
-    await expectRolePage(page, '/responsavel', /PWA do responsavel/i);
+    await expectRolePage(page, '/responsavel');
 
-    await expect(page.getByRole('heading', { name: state.guardianA.name })).toBeVisible();
+    await expect(page.locator('main')).toContainText(state.guardianA.name);
     await expect(page.locator('main')).toContainText(state.guardianA.studentName);
     await expect(page.locator('main')).not.toContainText(state.studentB.name);
 

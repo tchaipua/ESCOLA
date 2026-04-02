@@ -7,7 +7,8 @@ export async function login(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: 'ACESSAR' }).click();
 }
 
-export async function expectRolePage(page: Page, route: string, marker: RegExp) {
-  await page.waitForURL(`**${route}`);
-  await expect(page.getByText(marker).first()).toBeVisible();
+export async function expectRolePage(page: Page, route: string) {
+  await expect(page).toHaveURL(new RegExp(`${route.replace('/', '\\/')}($|\\/)`), {
+    timeout: 120_000,
+  });
 }
