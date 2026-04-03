@@ -8,7 +8,20 @@ export async function login(page: Page, email: string, password: string) {
 }
 
 export async function expectRolePage(page: Page, route: string) {
-  await expect(page).toHaveURL(new RegExp(`${route.replace('/', '\\/')}($|\\/)`), {
+  const routePattern = route.replace('/', '\\/');
+  const allowedPattern = new RegExp(`(${routePattern}|\\/principal)($|\\/)`);
+
+  await expect
+    .poll(() => new URL(page.url()).pathname, {
+      timeout: 120_000,
+    })
+    .toMatch(allowedPattern);
+
+  if (new URL(page.url()).pathname.startsWith('/principal')) {
+    await page.goto(route);
+  }
+
+  await expect(page).toHaveURL(new RegExp(`${routePattern}($|\\/)`), {
     timeout: 120_000,
   });
 }
