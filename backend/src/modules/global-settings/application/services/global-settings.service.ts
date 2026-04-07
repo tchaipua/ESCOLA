@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
+import * as nodemailer from "nodemailer";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { UpdateGlobalSettingsDto } from "../dto/update-global-settings.dto";
 
@@ -165,6 +166,17 @@ export class GlobalSettingsService {
     return `${baseFolder}escola/<ID_ESCOLA>`;
   }
 
+  private parseSmtpPort(port: string) {
+    const parsedPort = Number(String(port || "").trim());
+    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      throw new BadRequestException(
+        "Informe uma porta SMTP válida para testar as credenciais.",
+      );
+    }
+
+    return parsedPort;
+  }
+
   async findSettings() {
     const record = await this.prisma.globalSetting.findUnique({
       where: { settingKey: GLOBAL_SETTINGS_KEY },
@@ -290,6 +302,80 @@ export class GlobalSettingsService {
 
       throw new InternalServerErrorException(
         `Não foi possível comunicar com o S3. ${rawMessage}`,
+      );
+    }
+  }
+
+  async testEmailConnection(payload: UpdateGlobalSettingsDto) {
+    const savedSettings = await this.findSettings();
+    const settings = this.mergeSettings({
+      ...savedSettings,
+      ...payload,
+    });
+
+    if (!settings.emailEnabled) {
+      throw new BadRequestException("Ative o módulo de e-mail antes de testar.");
+    }
+
+    if (!settings.emailSmtpHost) {
+      throw new BadRequestException("Informe o host SMTP para o teste.");
+    }
+
+    const smtpPort = this.parseSmtpPort(settings.emailSmtpPort);
+
+    if (settings.emailUseAuth) {
+      if (!settings.emailSmtpUser) {
+        throw new BadRequestException(
+          "Informe o usuário SMTP para testar as credenciais.",
+        );
+      }
+
+      if (!settings.emailSmtpPassword) {
+        throw new BadRequestException(
+          "Informe a senha SMTP para testar as credenciais.",
+        );
+      }
+    }
+
+    try {
+      const transporter = nodemailer.createTransport({
+        host: settings.emailSmtpHost,
+        port: smtpPort,
+        secure: settings.emailUseSsl,
+        connectionTimeout: 30_000,
+        auth: settings.emailUseAuth
+          ? {
+              user: settings.emailSmtpUser,
+              pass: settings.emailSmtpPassword,
+            }
+          : undefined,
+      });
+
+      await transporter.verify();
+
+      return {
+        success: true,
+        message: "Credenciais SMTP validadas com sucesso.",
+        details: [
+          `HOST: ${settings.emailSmtpHost}`,
+          `PORTA: ${smtpPort}`,
+          `SEGURANÇA: ${settings.emailUseSsl ? "SSL/TLS" : "SEM SSL/TLS"}`,
+          `AUTENTICAÇÃO: ${settings.emailUseAuth ? "ATIVA" : "DESATIVADA"}`,
+          settings.emailSmtpUser
+            ? `USUÁRIO: ${settings.emailSmtpUser}`
+            : null,
+        ].filter(Boolean),
+      };
+    } catch (error: any) {
+      const rawMessage =
+        error?.code === "ETIMEDOUT"
+          ? "Tempo limite excedido ao tentar autenticar no SMTP."
+          : error?.response
+            ? String(error.response)
+            : error?.message || "Falha desconhecida ao validar o SMTP.";
+
+      throw new InternalServerErrorException(
+        `Não foi possível validar as credenciais SMTP. ${rawMessage}`,
       );
     }
   }

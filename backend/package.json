@@ -4,6 +4,9 @@
   "description": "Multi-tenant SaaS backend for school system",
   "private": true,
   "scripts": {
+    "prestart": "prisma generate",
+    "prestart:dev": "prisma generate",
+    "prestart:prod": "prisma generate",
     "build": "nest build",
     "backfill:people": "ts-node scripts/backfill-people.ts",
     "qa:tcha-smoke": "ts-node scripts/tcha-general-smoke.ts",
@@ -11,6 +14,7 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "test:attendance-notifications": "npm run build && node test/attendance-notifications.test.cjs",
     "test:student-billing": "npm run build && node test/student-billing.test.cjs",
+    "test:financial-cashier": "npm run build && node test/financial-cashier.test.cjs",
     "test:change-shared-password": "npm run build && node test/change-shared-password.test.cjs",
     "start": "nest start",
     "start:dev": "nest start --watch",

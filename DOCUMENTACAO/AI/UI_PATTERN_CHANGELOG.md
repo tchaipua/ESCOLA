@@ -143,3 +143,16 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - popups/modais do painel principal e módulos administrativos
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
 - Status: aprovado
+
+### UIP-0010
+
+- Data: 2026-04-03
+- Padrão: identificador de popup em linha exclusiva no rodapé
+- Contexto: necessidade de consolidar que novos popups/modais mantenham o nome da tela separado dos botões principais, com leitura mais limpa e rastreabilidade estável
+- Alteração: o rodapé dos popups passou a reservar uma linha exclusiva para `Tela:` e uma linha dedicada para o identificador com botão de cópia ao lado, sempre abaixo da linha principal de ações
+- Componentes/Telas:
+  - `frontend/src/app/components/screen-name-copy.tsx`
+  - popups/modais do painel principal e módulos administrativos
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `frontend/src/app/lib/ui-standards.ts`
+- Status: aprovado

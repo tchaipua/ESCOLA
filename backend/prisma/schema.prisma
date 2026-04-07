@@ -90,7 +90,6 @@ model Tenant {
   notifications Notification[]
   communicationCampaigns CommunicationCampaign[]
   userPreferences UserPreference[]
-
   @@map("tenants")
 }
 
@@ -244,7 +243,6 @@ model SchoolYear {
   classScheduleItems ClassScheduleItem[]
   lessonCalendars LessonCalendar[]
   lessonCalendarItems LessonCalendarItem[]
-
   @@unique([tenantId, year])
   @@map("school_years")
 }
@@ -288,7 +286,6 @@ model Series {
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   seriesClasses SeriesClass[]
-
   @@index([tenantId])
   @@map("series")
 }
@@ -313,7 +310,6 @@ model SeriesClass {
   classScheduleItems ClassScheduleItem[]
   lessonCalendars LessonCalendar[]
   lessonCalendarItems LessonCalendarItem[]
-
   @@index([tenantId])
   @@index([seriesId])
   @@index([classId])
@@ -369,7 +365,6 @@ model Guardian {
   person       Person?           @relation(fields: [personId], references: [id], onDelete: SetNull)
   students     GuardianStudent[]
   billingStudents Student[]      @relation("StudentBillingGuardian")
-
   @@index([tenantId])
   @@index([personId])
   @@map("guardians")
@@ -431,7 +426,6 @@ model Student {
   enrollments Enrollment[]
   lessonAssessmentGrades LessonAssessmentGrade[]
   lessonAttendances LessonAttendance[]
-
   @@index([tenantId])
   @@index([personId])
   @@index([billingGuardianId])

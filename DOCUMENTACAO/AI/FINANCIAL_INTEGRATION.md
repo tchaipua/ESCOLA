@@ -134,6 +134,45 @@ Fase 3:
 
 - gerar contas a receber, boleto e Pix no sistema financeiro externo
 
+## Estado atual da integracao
+
+Em 2026-04-05, o fluxo de `student-financial-launches` passou a operar com fonte exclusiva no `Financeiro`.
+
+Comportamento oficial atual:
+
+- historico: a tela consulta somente o `Financeiro`
+- novos lancamentos: deixam de ser gravados localmente e passam a ser enviados direto para o `Financeiro`
+- tabelas locais antigas: foram removidas do schema e do banco SQLite da `Escola`
+
+Contrato aplicado agora no backend da `Escola`:
+
+- a `Escola` continua validando aluno, turma, pagador e valor da mensalidade
+- a verificacao de duplicidade passa a consultar o `Financeiro`
+- o lote e criado no `Financeiro` com `sourceSystem = ESCOLA`
+- o historico exibido na tela passa a vir somente do `Financeiro`
+
+Consequencia pratica:
+
+- o cadastro escolar continua sendo a fonte de regra de negocio
+- o `Financeiro` passa a ser a fonte oficial dos novos titulos e parcelas
+- o historico legado foi preservado no `Financeiro` por importacao e o banco da `Escola` deixa de manter essas tabelas
+
+## Caixa e baixa em dinheiro
+
+Em 2026-04-05, a `Escola` passou a operar tambem o fluxo de caixa integrado.
+
+Comportamento oficial:
+
+- a `Escola` abre e fecha caixa no `Financeiro`
+- a `Escola` consulta parcelas no `Financeiro` por situacao, aluno e pagador
+- a baixa em dinheiro e gravada somente no `Financeiro`
+
+Regra obrigatoria:
+
+- o usuario precisa ter permissao de `CAIXA` para dar baixa
+- a baixa em dinheiro exige caixa aberto para o usuario logado na escola atual
+- a tela operacional de parcelas abre filtrando `ABERTAS` por padrao
+
 ## Prompt recomendado
 
 O prompt oficial para implementar esta mudanca de forma segura foi registrado em `PROMPTS.md`.

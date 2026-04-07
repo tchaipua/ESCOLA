@@ -26,6 +26,9 @@ import { LessonAssessmentsModule } from "./modules/lesson-assessments/lesson-ass
 import { LessonAttendancesModule } from "./modules/lesson-attendances/lesson-attendances.module";
 import { CommunicationsModule } from "./modules/communications/communications.module";
 import { PeopleModule } from "./modules/people/people.module";
+import { StudentFinancialLaunchesModule } from "./modules/student-financial-launches/student-financial-launches.module";
+import { FinancialCashierModule } from "./modules/financial-cashier/financial-cashier.module";
+import { FinanceiroModule } from "./integrations/financeiro/financeiro.module";
 
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
@@ -60,6 +63,9 @@ import { TenantMiddleware } from "./common/tenant/tenant.middleware";
     LessonAssessmentsModule,
     LessonAttendancesModule,
     CommunicationsModule,
+    StudentFinancialLaunchesModule,
+    FinancialCashierModule,
+    FinanceiroModule,
   ],
   providers: [
     {

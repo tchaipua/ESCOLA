@@ -5,6 +5,7 @@ export type UiPatternId =
     | 'grid-export-pdf'
     | 'grid-export-excel'
     | 'record-details-popup'
+    | 'institutional-popup-identity'
     | 'tabbed-form-fixed-footer'
     | 'special-access-flow'
     | 'global-settings-tabs';
@@ -109,6 +110,21 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
         referenceScreens: [
             'frontend/src/app/principal/alunos/page.tsx',
             'frontend/src/app/msinfor-admin/page.tsx',
+        ],
+        status: 'approved',
+    },
+    {
+        id: 'institutional-popup-identity',
+        name: 'POPUP INSTITUCIONAL COM IDENTIFICADOR',
+        summary: 'POPUP/MODAL COM LOGO NO CABECALHO E BLOCO "TELA:" ISOLADO EM LINHA PROPRIA NO RODAPE COM BOTAO DE COPIA.',
+        documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-013---popup-institucional-com-logo-da-escola-e-identificador-exclusivo',
+        componentPaths: [
+            'frontend/src/app/components/screen-name-copy.tsx',
+            'frontend/src/app/lib/tenant-branding-cache.ts',
+        ],
+        referenceScreens: [
+            'frontend/src/app/principal/mensalidades/page.tsx',
+            'frontend/src/app/components/status-confirmation-modal.tsx',
         ],
         status: 'approved',
     },

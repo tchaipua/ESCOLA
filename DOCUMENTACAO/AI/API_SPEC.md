@@ -460,3 +460,46 @@ Resposta resumida:
 - CPF/CNPJ devem ser validados quando informados
 - Nao pode haver violacao de tenant
 - Nao existe delete fisico nos dados de negocio
+
+## Caixa financeiro integrado
+
+### GET `/financial-cashier/current-session`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `VIEW_CASHIER`
+- Uso: consulta o caixa aberto do usuario logado no `Financeiro`
+
+### POST `/financial-cashier/open-session`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `VIEW_CASHIER`
+- Uso: abre caixa para o usuario logado na escola atual
+
+### POST `/financial-cashier/close-session`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `CLOSE_CASHIER`
+- Uso: fecha o caixa aberto do usuario logado
+
+### GET `/financial-cashier/installments`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `VIEW_CASHIER`
+- Uso: lista parcelas do `Financeiro` para a escola atual
+- Query string opcional:
+  - `status`: `OPEN | PAID | OVERDUE | ALL`
+  - `studentName`
+  - `payerName`
+
+### GET `/financial-cashier/open-installments`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `VIEW_CASHIER`
+- Uso: alias legado para listar apenas parcelas em aberto no `Financeiro`
+
+### POST `/financial-cashier/installments/:installmentId/settle-cash`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `SETTLE_RECEIVABLES`
+- Uso: registra baixa em dinheiro no `Financeiro`
+- Regra obrigatoria: o usuario precisa ter caixa aberto na escola atual

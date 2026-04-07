@@ -14,6 +14,7 @@ import {
 } from '@/app/lib/access-profiles';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
+const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
 
 type TenantSummary = {
   id: string;
@@ -150,6 +151,25 @@ function getOrderedPermissionOptions(selectedPermissions: string[]) {
   return [...active, ...inactive];
 }
 
+function formatBrazilPhone(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.length <= 2) {
+    return `(${digits}`;
+  }
+
+  if (digits.length <= 6) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  }
+
+  if (digits.length <= 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+}
+
 export default function TenantAccessManager({
   tenant,
   getMasterPass,
@@ -171,6 +191,7 @@ export default function TenantAccessManager({
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   const loadUsers = async () => {
     if (!tenant) return;
@@ -218,6 +239,13 @@ export default function TenantAccessManager({
     const timer = window.setTimeout(() => setHelperMessage(null), 3000);
     return () => window.clearTimeout(timer);
   }, [helperMessage]);
+
+  useEffect(() => {
+    if (!copyFeedback) return;
+
+    const timer = window.setTimeout(() => setCopyFeedback(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copyFeedback]);
 
   if (!tenant) return null;
 
@@ -432,6 +460,19 @@ export default function TenantAccessManager({
     }
   };
 
+  const handleCopyScreenName = async () => {
+    if (!navigator?.clipboard?.writeText) {
+      setCopyFeedback('Copiar não suportado pelo navegador.');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(SCREEN_NAME);
+      setCopyFeedback('Nome copiado para a área de transferência.');
+    } catch {
+      setCopyFeedback('Não foi possível copiar o nome.');
+    }
+  };
+
   const canAdvanceToPermissions =
     formData.role !== 'ADMIN' &&
     formData.name.trim() &&
@@ -578,9 +619,9 @@ export default function TenantAccessManager({
                     <button
                       type="submit"
                       disabled={isSaving}
-                      className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-70"
+                      className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-70"
                     >
-                      {isSaving ? 'Salvando...' : editingUserId ? 'Salvar alteracoes' : 'Criar acesso'}
+                      {isSaving ? 'Salvando...' : editingUserId ? 'Salvar alteracoes' : 'Salvar'}
                     </button>
                   </div>
                 </div>
@@ -638,8 +679,8 @@ export default function TenantAccessManager({
             </form>
           </div>
         ) : showFocusedEditor || showFocusedCreate ? (
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-6">
-          <form onSubmit={handleSave} className="mx-auto flex max-w-4xl flex-col gap-5">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-6">
+              <form onSubmit={handleSave} className="mx-auto flex max-w-4xl flex-col gap-5">
             {errorMessage ? (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
                 {errorMessage}
@@ -748,23 +789,33 @@ export default function TenantAccessManager({
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-xs font-bold text-slate-600">WhatsApp</label>
-                  <input
-                    type="text"
-                    value={formData.whatsapp || ''}
-                    onChange={(event) => setFormData((current) => ({ ...current, whatsapp: event.target.value.toUpperCase() }))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-bold text-slate-600">Telefone</label>
-                  <input
-                    type="text"
-                    value={formData.phone || ''}
-                    onChange={(event) => setFormData((current) => ({ ...current, phone: event.target.value.toUpperCase() }))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={formData.whatsapp || ''}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      whatsapp: formatBrazilPhone(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                />
               </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-bold text-slate-600">Telefone</label>
+                <input
+                  type="text"
+                  value={formData.phone || ''}
+                  onChange={(event) =>
+                    setFormData((current) => ({
+                      ...current,
+                      phone: formatBrazilPhone(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
 
               <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Endereco</div>
@@ -1012,67 +1063,73 @@ export default function TenantAccessManager({
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => resetForm({ announce: true })}
-                className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-100"
-              >
-                Voltar para a lista
-              </button>
-              {formData.role !== 'ADMIN' ? (
+            <div className="flex w-full items-center gap-3">
+              <div className="flex flex-1 justify-start">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (canAdvanceToPermissions) {
-                      setErrorMessage(null);
-                      setFormStep('PERMISSOES');
-                    } else {
-                      setErrorMessage('Preencha nome e e-mail antes de abrir a tela de permissões.');
-                    }
-                  }}
-                  className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-800"
+                  onClick={() => resetForm({ announce: true })}
+                  className="rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white hover:bg-red-700"
                 >
-                  Abrir permissões
+                  Sair sem salvar
                 </button>
-              ) : null}
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-70"
-              >
-                {isSaving ? 'Salvando...' : showFocusedEditor ? 'Salvar alteracoes' : 'Criar acesso'}
-              </button>
+              </div>
+              <div className="flex flex-1 justify-center">
+                {formData.role !== 'ADMIN' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (canAdvanceToPermissions) {
+                        setErrorMessage(null);
+                        setFormStep('PERMISSOES');
+                      } else {
+                        setErrorMessage('Preencha nome e e-mail antes de abrir a tela de permissões.');
+                      }
+                    }}
+                    className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-800"
+                  >
+                    Abrir permissões
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex flex-1 justify-end">
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-70"
+                >
+                  {isSaving ? 'Salvando...' : showFocusedEditor ? 'Salvar alteracoes' : 'Salvar'}
+                </button>
+              </div>
             </div>
           </form>
         </div>
         ) : (
-        <div className="min-h-0 flex-1 bg-white">
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-slate-800">Usuarios da escola</h3>
-                <p className="text-sm text-slate-500">Perfis administrativos e matriz de permissões da escola.</p>
+          <div className="min-h-0 flex-1 bg-white">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-slate-800">Usuarios da escola</h3>
+                  <p className="text-sm text-slate-500">Perfis administrativos e matriz de permissões da escola.</p>
+                </div>
+                <div className="min-w-[260px] max-w-[340px] flex-1">
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(event) => setUserSearch(event.target.value.toUpperCase())}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400"
+                    placeholder="Consultar por nome do usuário"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={startCreatingUser}
+                  className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
+                >
+                  Novo acesso
+                </button>
               </div>
-              <div className="min-w-[260px] max-w-[340px] flex-1">
-                <input
-                  type="text"
-                  value={userSearch}
-                  onChange={(event) => setUserSearch(event.target.value.toUpperCase())}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400"
-                  placeholder="Consultar por nome do usuário"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={startCreatingUser}
-                className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700"
-              >
-                Novo acesso
-              </button>
-            </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto p-6">
+              <div className="flex-1 space-y-4 overflow-y-auto p-6">
               {isLoading ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-slate-400">
                   Carregando usuarios...
@@ -1149,10 +1206,29 @@ export default function TenantAccessManager({
                     </div>
                   </div>
                 ))}
+              </div>
             </div>
           </div>
-        </div>
         )}
+        <div className="mt-2 border-t border-slate-200 bg-white px-6 py-3">
+          <div className="flex w-full items-center justify-end gap-3 text-[11px] font-semibold uppercase tracking-[0.4em] text-slate-500">
+            <span className="text-slate-800">{SCREEN_NAME}</span>
+            <button
+              type="button"
+              onClick={handleCopyScreenName}
+              title="Copiar identificação da tela"
+              aria-label="Copiar identificação da tela"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-slate-300"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h3V6h7v11h-3M5 18V5a2 2 0 012-2h8l4 4v11a2 2 0 01-2 2h-8a2 2 0 01-2-2z" />
+              </svg>
+            </button>
+            <span role="status" aria-live="polite" className="sr-only">
+              {copyFeedback || '\u00A0'}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

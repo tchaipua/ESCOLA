@@ -74,4 +74,17 @@ export class GlobalSettingsController {
     this.assertMasterPass(req);
     return this.globalSettingsService.testS3Connection(payload);
   }
+
+  @Public()
+  @Post("test-email")
+  @ApiOperation({
+    summary: "Testa as credenciais SMTP globais da softhouse",
+  })
+  async testEmailConnection(
+    @Req() req: Request,
+    @Body() payload: UpdateGlobalSettingsDto,
+  ) {
+    this.assertMasterPass(req);
+    return this.globalSettingsService.testEmailConnection(payload);
+  }
 }

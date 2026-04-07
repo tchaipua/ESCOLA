@@ -175,6 +175,20 @@ export default function MsinforAdminPage() {
     const [isAdminPasswordVisible, setIsAdminPasswordVisible] = useState(false);
     const [isSmtpPasswordVisible, setIsSmtpPasswordVisible] = useState(false);
 
+    const getLoginErrorTitle = (message?: string) => {
+        const rawMessage = String(message || '').trim();
+
+        if (rawMessage === 'SENHA MASTER INVÁLIDA') {
+            return 'Acesso Negado';
+        }
+
+        if (rawMessage.includes('conectar ao servidor') || rawMessage.includes('servidor')) {
+            return 'Servidor Indisponível';
+        }
+
+        return 'Acesso Negado';
+    };
+
     const [formData, setFormData] = useState({
         name: '',
         document: '',
@@ -1013,6 +1027,42 @@ export default function MsinforAdminPage() {
         }
     };
 
+    const handleTestEmailGeneralSettings = async () => {
+        try {
+            setIsGeneralSettingsTesting(true);
+            setGeneralSettingsTestResult(null);
+
+            const response = await fetch('http://localhost:3001/api/v1/global-settings/test-email', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-msinfor-master-pass': getMasterPassForRequest(),
+                },
+                body: JSON.stringify(generalSettings),
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(payload?.message || 'Não foi possível validar as credenciais SMTP.');
+            }
+
+            setGeneralSettingsTestResult({
+                tone: 'success',
+                title: 'SMTP validado com sucesso',
+                message: payload?.message || 'As credenciais SMTP foram validadas sem erros.',
+                details: Array.isArray(payload?.details) ? payload.details : [],
+            });
+        } catch (error: any) {
+            setGeneralSettingsTestResult({
+                tone: 'error',
+                title: 'Falha ao validar SMTP',
+                message: error?.message || 'Não foi possível validar as credenciais SMTP.',
+            });
+        } finally {
+            setIsGeneralSettingsTesting(false);
+        }
+    };
+
     const handleCepSearch = async () => {
         const cep = formData.zipCode.replace(/\D/g, ''); // Remove todos os não dígitos
         if (cep.length !== 8) {
@@ -1174,7 +1224,7 @@ export default function MsinforAdminPage() {
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                     </svg>
                                 </div>
-                                <h3 className="text-lg font-bold text-slate-800 mb-1">Acesso Negado</h3>
+                                <h3 className="text-lg font-bold text-slate-800 mb-1">{getLoginErrorTitle('SENHA MASTER INVÁLIDA')}</h3>
 
                                 <div className="flex flex-col items-center w-full mt-1 mb-2">
                                     <p className="text-slate-600 font-bold text-[15px] max-w-[200px] leading-tight text-center">
@@ -1704,6 +1754,7 @@ export default function MsinforAdminPage() {
                 onChange={updateGeneralSettingsField}
                 onSave={handleSaveGeneralSettings}
                 onTestS3={handleTestS3GeneralSettings}
+                onTestEmail={handleTestEmailGeneralSettings}
                 onDismissTestResult={() => setGeneralSettingsTestResult(null)}
             />
             {accessTenant && (
@@ -1822,9 +1873,24 @@ export default function MsinforAdminPage() {
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
 
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-                            <h2 className="text-xl font-bold text-[#153a6a] flex items-center gap-2">
-                                {editingTenantId ? 'Editar Escola Cliente' : 'Nova Escola Cliente'}
-                            </h2>
+                            <div className="flex items-center gap-4">
+                                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {formData.logoUrl ? (
+                                        <img
+                                            src={formData.logoUrl}
+                                            alt={`Logotipo da ${formData.name || 'escola'}`}
+                                            className="h-full w-full object-contain"
+                                        />
+                                    ) : (
+                                        <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">
+                                            Sem logo
+                                        </span>
+                                    )}
+                                </div>
+                                <h2 className="text-xl font-bold text-[#153a6a] flex items-center gap-2">
+                                    {editingTenantId ? 'Editar Escola Cliente' : 'Nova Escola Cliente'}
+                                </h2>
+                            </div>
                             <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                             </button>

@@ -105,6 +105,7 @@ Exemplos validos:
 - foto
 - mensalidade
 - observacoes academicas
+- definicao de pagador (`billingPayerType` e `billingGuardianId`) para integracao com o `Financeiro`
 
 ### `guardians`
 
@@ -175,3 +176,12 @@ Cancelamento logico continua obrigatorio.
 ## Observacao sobre legado
 
 O banco legado ja tinha `teachers`, `students` e `guardians` com campos repetidos. A transicao atual usa backfill para criar `people` e preencher `personId` sem apagar nada.
+
+## Financeiro operacional
+
+Desde 2026-04-05, o banco da `Escola` nao mantem mais as tabelas operacionais de lotes e parcelas de mensalidade.
+
+Regra oficial:
+
+- `students` e `classes` continuam definindo valor e pagador
+- titulos, parcelas e historico operacional de lancamentos ficam exclusivamente no projeto `Financeiro`

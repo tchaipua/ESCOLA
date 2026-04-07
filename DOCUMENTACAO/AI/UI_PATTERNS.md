@@ -252,8 +252,12 @@ Componentes/Telas base:
 - todo popup/modal exibido no sistema deve trazer o logotipo da escola no cabeçalho quando houver contexto de tenant logado
 - o cabeçalho deve manter identidade visual forte e mensagem clara da situação
 - todo popup/modal deve exibir um nome exclusivo no canto inferior direito
-- o nome exclusivo deve ter um botão de cópia ao lado, reutilizando `ScreenNameCopy`
+- o rodapé deve reservar uma linha exclusiva para o bloco `Tela:`
+- abaixo de `Tela:`, o identificador exclusivo deve aparecer sozinho em uma linha dedicada
+- o nome exclusivo deve ter um botão de cópia ao lado, reutilizando `ScreenNameCopy` ou o mesmo comportamento visual/funcional
 - o botão de cópia deve permitir replicar o identificador com a mesma intenção de `Ctrl+C`
+- o bloco do identificador não deve dividir a mesma linha com os botões principais de ação do popup
+- sempre que possível, os botões principais ficam em uma linha acima e o identificador fica isolado em uma linha abaixo, no canto inferior direito
 - essa regra vale para mensagens de erro, bloqueio, confirmação e avisos operacionais
 - a aplicação pode reutilizar o componente compartilhado existente e, quando preciso, criar um wrapper específico por tipo de popup
 

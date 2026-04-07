@@ -120,3 +120,12 @@ Preencha este arquivo quando for trazer um projeto iniciado no Gemini para conti
 - Sessao: Codex iniciada apos entrega do Gemini; esta rodada com comandos locais e subagente de exploracao.
 - Contexto atual: workspace `C:\Sistemas\IA\Escola`, repositorio sem metadados `.git` (rodamos `git status -sb` e retornou \"not a git repository\"); confirmar onde fica o repositório rastreado ou se devemos inicializar.
 - Passos imediatos: revisar DOCUMENTACAO/AI, mapear tarefas, manter multi-tenant/suporte de auditoria sem deletar fisico; registrar proximo estado no final desta iteracao.
+
+## 11) Handoff Codex (abr 06 2026)
+
+- Contexto: retomando a interface `ACESSOS_ESPECIAIS_GESTAO_ESCOLA`, seguindo o bloqueio de layout aprovado e mantendo as regras de tenant/auditoria.
+- O que foi entregue:
+  - ajuste dos grids da tela `PRINCIPAL_MENSALIDADES/detalhes` para remover a coluna de competência nas tabelas de sucesso e de problema, mantendo a estrutura restante e atualizando os `colSpan`.
+  - reorganizacao do modal de acessos especiais em abas funcionais, com campos de dados, endereço e foto/perfis separados, formatação de telefone/WhatsApp, indicador explícito de perfil `CAIXA` e rodapé com o identificador `ACESSOS_ESPECIAIS_GESTAO_ESCOLA` copiable.
+  - reforco visual no card da lista para exibir que o usuário atua como caixa, além de manter o botão de edição e exclusão.
+- Pendências/risco: validar o build local (não houve execução de testes nesta rodada) e acompanhar outras alterações em andamento na mesma tela (mesmo modal sendo editado em paralelo).

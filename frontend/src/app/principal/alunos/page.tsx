@@ -2198,7 +2198,7 @@ export default function AlunosPage() {
                                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                             <div>
                                                 <h3 className="text-base font-bold text-slate-800">Pagador da mensalidade</h3>
-                                                <p className="mt-1 text-sm text-slate-600">Defina aqui quem responde pela mensalidade do aluno. Esta informação já fica preparada para a futura integração com o sistema financeiro.</p>
+                                                <p className="mt-1 text-sm text-slate-600">Defina aqui quem responde pela mensalidade do aluno. Esta informação é enviada ao Financeiro para que os títulos sejam emitidos no pagador correto.</p>
                                             </div>
                                             <div className="inline-flex rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700 shadow-sm">
                                                 Integração futura
@@ -2250,7 +2250,7 @@ export default function AlunosPage() {
                                                     </div>
                                                 ) : (
                                                     <div className="rounded-xl border border-dashed border-emerald-200 bg-white/80 px-4 py-3 text-sm font-medium text-slate-600">
-                                                        Quando a integração financeira estiver pronta, os boletos e demais cobranças poderão ser emitidos no nome definido aqui.
+                                                        Os boletos e demais cobranças do Financeiro serão emitidos no nome definido aqui.
                                                     </div>
                                                 )}
                                             </div>

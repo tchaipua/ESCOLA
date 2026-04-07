@@ -34,6 +34,72 @@ type NavItem = {
 
 type ChangePasswordErrorVariant = 'blank' | 'mismatch' | 'invalid-current' | 'generic';
 
+function parseCssColor(value: string) {
+    const match = String(value || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/i);
+    if (!match) return null;
+
+    return {
+        red: Number(match[1]),
+        green: Number(match[2]),
+        blue: Number(match[3]),
+        alpha: match[4] ? Number(match[4]) : 1,
+    };
+}
+
+function isBackdropLikeElement(element: HTMLElement) {
+    const styles = window.getComputedStyle(element);
+    if (styles.position !== 'fixed' || styles.display === 'none' || styles.visibility === 'hidden') {
+        return false;
+    }
+
+    const rect = element.getBoundingClientRect();
+    if (rect.width < window.innerWidth * 0.95 || rect.height < window.innerHeight * 0.95) {
+        return false;
+    }
+
+    const background = parseCssColor(styles.backgroundColor);
+    if (!background) return false;
+
+    const isDarkBackdrop = background.alpha >= 0.2 && background.red < 80 && background.green < 80 && background.blue < 80;
+    return isDarkBackdrop;
+}
+
+function hasVisibleDialogContent(element: HTMLElement) {
+    const descendants = [element, ...Array.from(element.querySelectorAll<HTMLElement>('*'))];
+
+    return descendants.some((node) => {
+        const styles = window.getComputedStyle(node);
+        if (styles.display === 'none' || styles.visibility === 'hidden' || Number(styles.opacity || '1') === 0) {
+            return false;
+        }
+
+        const rect = node.getBoundingClientRect();
+        if (rect.width < 180 || rect.height < 80) {
+            return false;
+        }
+
+        const background = parseCssColor(styles.backgroundColor);
+        if (!background) return false;
+
+        const isPanelLike = background.alpha >= 0.85 && background.red >= 230 && background.green >= 230 && background.blue >= 230;
+        return isPanelLike;
+    });
+}
+
+function clearOrphanBackdrops() {
+    const elements = Array.from(document.body.querySelectorAll<HTMLElement>('div'));
+
+    elements.forEach((element) => {
+        if (element.dataset.codexBackdropGuard === 'ignore') return;
+        if (!isBackdropLikeElement(element)) return;
+        if (hasVisibleDialogContent(element)) return;
+
+        element.style.display = 'none';
+        element.style.pointerEvents = 'none';
+        element.dataset.codexBackdropGuard = 'ignore';
+    });
+}
+
 function deriveScreenContextLabel(pathnameValue: string | null) {
     if (!pathnameValue) return 'PRINCIPAL_ROOT';
     const segments = pathnameValue.split('/').filter(Boolean);
@@ -62,7 +128,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
     const [unreadSummary, setUnreadSummary] = useState<UnreadNotificationSummary | null>(null);
-    const [showUnreadPopup, setShowUnreadPopup] = useState(false);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -202,7 +267,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 const { token, userId } = getDashboardAuthContext();
                 if (!token || !userId) {
                     setUnreadSummary(null);
-                    setShowUnreadPopup(false);
                     return;
                 }
 
@@ -218,16 +282,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 }
 
                 setUnreadSummary(data);
-
-                if (pathname === '/principal/notificacoes' || !data?.count) {
-                    setShowUnreadPopup(false);
-                    return;
-                }
-
-                setShowUnreadPopup(true);
             } catch {
                 setUnreadSummary(null);
-                setShowUnreadPopup(false);
             }
         };
 
@@ -252,6 +308,39 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isUserMenuOpen]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        let frameId = 0;
+        const scheduleCleanup = () => {
+            cancelAnimationFrame(frameId);
+            frameId = window.requestAnimationFrame(() => clearOrphanBackdrops());
+        };
+
+        scheduleCleanup();
+
+        const observer = new MutationObserver(() => {
+            scheduleCleanup();
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style'],
+        });
+
+        const intervalId = window.setInterval(() => {
+            scheduleCleanup();
+        }, 1200);
+
+        return () => {
+            cancelAnimationFrame(frameId);
+            observer.disconnect();
+            window.clearInterval(intervalId);
+        };
+    }, [pathname]);
 
     const handleLogout = () => {
         clearStoredSession();
@@ -589,6 +678,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             icon: (
                 <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10-10a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/mensalidades',
+            label: 'Mensalidades',
+            allowWhen: hasAnyDashboardPermission(currentRole, currentPermissions, ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES']),
+            icon: (
+                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m-7 4h8m-8 4h5m5 4H6a2 2 0 01-2-2V5a2 2 0 012-2h8l4 4v10a2 2 0 01-2 2z" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/parcelas',
+            label: 'Parcelas',
+            allowWhen: hasAnyDashboardPermission(currentRole, currentPermissions, ['VIEW_CASHIER', 'SETTLE_RECEIVABLES']),
+            icon: (
+                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10M7 12h6m-6 5h10M5 3h10l4 4v12a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
                 </svg>
             ),
         },
@@ -1096,53 +1205,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
             ) : null}
 
-            {showUnreadPopup && unreadSummary?.count ? (
-                <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-lg overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
-                        <div className="dashboard-band border-b px-6 py-5">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenant?.logoUrl ? (
-                                        <img
-                                            src={currentTenant.logoUrl}
-                                            alt={`Logo de ${currentTenant.name}`}
-                                            className="h-full w-full object-contain p-1.5"
-                                        />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(currentTenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div>
-                                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-                                        {currentTenant?.name || 'Aviso de entrada'}
-                                    </div>
-                                    <h3 className="mt-2 text-2xl font-extrabold text-slate-800">Você tem notificações não lidas</h3>
-                                    <p className="mt-2 text-sm font-medium text-slate-500">
-                                        O sistema encontrou {unreadSummary.count} notificação(ões) pendente(s). Vá para a área de notificações para revisar e marcar como lida.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="dashboard-band-footer border-t px-6 py-4">
-                            <div className="flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setShowUnreadPopup(false);
-                                        router.push('/principal/notificacoes');
-                                    }}
-                                    className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
-                                >
-                                    Confirmar e abrir notificações
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
         </div>
     );
 }

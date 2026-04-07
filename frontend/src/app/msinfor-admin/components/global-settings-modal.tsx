@@ -77,6 +77,7 @@ type GlobalSettingsModalProps = {
     onChange: <K extends keyof GeneralSettingsForm>(field: K, value: GeneralSettingsForm[K]) => void;
     onSave: (event: FormEvent) => void;
     onTestS3: () => void;
+    onTestEmail: () => void;
     onDismissTestResult: () => void;
 };
 
@@ -113,6 +114,7 @@ export default function GlobalSettingsModal({
     onChange,
     onSave,
     onTestS3,
+    onTestEmail,
     onDismissTestResult,
 }: GlobalSettingsModalProps) {
     const [isS3SecretVisible, setIsS3SecretVisible] = useState(false);
@@ -406,6 +408,11 @@ export default function GlobalSettingsModal({
                                     {activeTab === 's3' ? (
                                         <button type="button" onClick={onTestS3} disabled={isTesting} className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-black text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70">
                                             {isTesting ? 'Testando S3...' : 'Testar comunicação S3'}
+                                        </button>
+                                    ) : null}
+                                    {activeTab === 'email' ? (
+                                        <button type="button" onClick={onTestEmail} disabled={isTesting} className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm font-black text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-70">
+                                            {isTesting ? 'Testando SMTP...' : 'Testar credenciais SMTP'}
                                         </button>
                                     ) : null}
                                     <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50">

@@ -14,6 +14,14 @@ export default function LoginPage() {
       return 'Não foi possível concluir seu acesso agora. Tente novamente.';
     }
 
+    if (rawMessage === 'Failed to fetch') {
+      return 'Não foi possível conectar ao servidor. Isso normalmente acontece quando o backend está fechado, indisponível ou sem resposta no momento.';
+    }
+
+    if (rawMessage === 'Unauthorized') {
+      return 'Seu acesso não foi autorizado no momento. Faça login novamente e tente outra vez.';
+    }
+
     if (
       rawMessage.includes('Cross-Tenant Error') ||
       rawMessage.includes('Contexto ausente para manipulação restrita de EmailCredential')
@@ -22,6 +30,20 @@ export default function LoginPage() {
     }
 
     return rawMessage;
+  };
+
+  const getLoginErrorTitle = (message?: string) => {
+    const rawMessage = String(message || '').trim();
+
+    if (rawMessage === 'Failed to fetch') {
+      return 'Servidor Indisponível';
+    }
+
+    if (rawMessage === 'Unauthorized') {
+      return 'Acesso Não Autorizado';
+    }
+
+    return 'Acesso Negado';
   };
 
   const getAccountTypeLabel = (accountType: string) => {
@@ -445,7 +467,7 @@ export default function LoginPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-slate-800 mb-1">Acesso Negado</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">{getLoginErrorTitle(errorStatus.message)}</h3>
 
               <div className="flex flex-col items-center w-full mt-1 mb-2">
                 <p className="text-slate-600 font-bold text-[15px] max-w-[200px] leading-tight text-center">

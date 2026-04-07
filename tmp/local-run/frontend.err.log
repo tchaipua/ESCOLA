@@ -1,0 +1,88 @@
+⨯ ./src/app/principal/mensalidades/page.tsx:641:43
+Parsing ecmascript source code failed
+[0m [90m 639 |[39m                                                 [33m<[39m[33m/[39m[33mLink[39m[33m>[39m
+ [90m 640 |[39m                                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+[31m[1m>[22m[39m[90m 641 |[39m                                         ) [33m:[39m [36mnull[39m}
+ [90m     |[39m                                           [31m[1m^[22m[39m
+ [90m 642 |[39m                                     [33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 643 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatCurrency(item[33m.[39mtotalAmount)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 644 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatDateLabel(item[33m.[39mfirstDueDate)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m[0m
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/principal/mensalidades/page.tsx [Client Component Browser]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/principal/mensalidades/page.tsx [Client Component SSR]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+
+⨯ ./src/app/principal/mensalidades/page.tsx:641:43
+Parsing ecmascript source code failed
+[0m [90m 639 |[39m                                                 [33m<[39m[33m/[39m[33mLink[39m[33m>[39m
+ [90m 640 |[39m                                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+[31m[1m>[22m[39m[90m 641 |[39m                                         ) [33m:[39m [36mnull[39m}
+ [90m     |[39m                                           [31m[1m^[22m[39m
+ [90m 642 |[39m                                     [33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 643 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatCurrency(item[33m.[39mtotalAmount)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 644 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatDateLabel(item[33m.[39mfirstDueDate)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m[0m
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/principal/mensalidades/page.tsx [Client Component Browser]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/principal/mensalidades/page.tsx [Client Component SSR]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+
+⨯ ./src/app/principal/mensalidades/page.tsx:641:43
+Parsing ecmascript source code failed
+[0m [90m 639 |[39m                                                 [33m<[39m[33m/[39m[33mLink[39m[33m>[39m
+ [90m 640 |[39m                                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+[31m[1m>[22m[39m[90m 641 |[39m                                         ) [33m:[39m [36mnull[39m}
+ [90m     |[39m                                           [31m[1m^[22m[39m
+ [90m 642 |[39m                                     [33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 643 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatCurrency(item[33m.[39mtotalAmount)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 644 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatDateLabel(item[33m.[39mfirstDueDate)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m[0m
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/principal/mensalidades/page.tsx [Client Component Browser]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/principal/mensalidades/page.tsx [Client Component SSR]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+
+⨯ ./src/app/principal/mensalidades/page.tsx:641:43
+Parsing ecmascript source code failed
+[0m [90m 639 |[39m                                                 [33m<[39m[33m/[39m[33mLink[39m[33m>[39m
+ [90m 640 |[39m                                             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+[31m[1m>[22m[39m[90m 641 |[39m                                         ) [33m:[39m [36mnull[39m}
+ [90m     |[39m                                           [31m[1m^[22m[39m
+ [90m 642 |[39m                                     [33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 643 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatCurrency(item[33m.[39mtotalAmount)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m
+ [90m 644 |[39m                                     [33m<[39m[33mtd[39m className[33m=[39m[32m"px-4 py-4"[39m[33m>[39m{formatDateLabel(item[33m.[39mfirstDueDate)}[33m<[39m[33m/[39m[33mtd[39m[33m>[39m[0m
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/principal/mensalidades/page.tsx [Client Component Browser]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/principal/mensalidades/page.tsx [Client Component SSR]
+    ./src/app/principal/mensalidades/page.tsx [Server Component]
+
+
