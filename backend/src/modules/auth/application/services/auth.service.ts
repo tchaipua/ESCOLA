@@ -47,7 +47,6 @@ type AccountLookup = {
   complementaryProfiles?: string | null;
   permissions: string[];
   modelType: AccountModelType;
-  createdAt: Date;
   tenant: {
     id: string;
     name: string;
@@ -99,7 +98,9 @@ export class AuthService {
   }
 
   private normalizeComparableEmail(email?: string | null) {
-    return String(email || "").trim().toUpperCase();
+    return String(email || "")
+      .trim()
+      .toUpperCase();
   }
 
   private getCrossTenantPrisma(): any {
@@ -124,23 +125,49 @@ export class AuthService {
 
   private async findAccountByEmail(email: string): Promise<AccountLookup[]> {
     const emailVariants = this.normalizeEmailVariants(email);
+    const tenantSelect = {
+      id: true,
+      name: true,
+      logoUrl: true,
+      smtpHost: true,
+      smtpPort: true,
+      smtpTimeout: true,
+      smtpSecure: true,
+      smtpAuthenticate: true,
+      smtpEmail: true,
+      smtpPassword: true,
+    } as const;
+    const baseSelect = {
+      id: true,
+      tenantId: true,
+      name: true,
+      email: true,
+      password: true,
+      accessProfile: true,
+      permissions: true,
+      tenant: { select: tenantSelect },
+    } as const;
 
     const [users, teachers, students, guardians] = await Promise.all([
       this.prisma.user.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        include: { tenant: true },
+        select: {
+          ...baseSelect,
+          role: true,
+          complementaryProfiles: true,
+        },
       }),
       this.prisma.teacher.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        include: { tenant: true },
+        select: baseSelect,
       }),
       this.prisma.student.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        include: { tenant: true },
+        select: baseSelect,
       }),
       this.prisma.guardian.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        include: { tenant: true },
+        select: baseSelect,
       }),
     ]);
 
@@ -234,10 +261,10 @@ export class AuthService {
           where,
           select: { password: true },
         });
-        default:
-          return null;
-      }
+      default:
+        return null;
     }
+  }
 
   private async loadAccountById(
     modelType: AccountModelType,
@@ -273,9 +300,7 @@ export class AuthService {
 
   private async loadPasswordCandidatesByEmailAcrossAllProfiles(
     email: string,
-  ): Promise<
-    Array<{ password: string | null }>
-  > {
+  ): Promise<Array<{ password: string | null }>> {
     const normalizedEmail = this.normalizeComparableEmail(email);
     const crossTenantPrisma = this.getCrossTenantPrisma();
     const [users, teachers, students, guardians, people] = await Promise.all([
@@ -396,9 +421,7 @@ export class AuthService {
     return [...accounts].sort((left, right) => {
       const priorityDiff = priority[left.modelType] - priority[right.modelType];
       if (priorityDiff !== 0) return priorityDiff;
-      return (
-        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
-      );
+      return left.id.localeCompare(right.id);
     })[0];
   }
 
@@ -533,7 +556,10 @@ export class AuthService {
         response.warning = mailResult.warning;
       }
     } catch (error) {
-      console.error("[SMTP Error] Falha ao enviar confirmação de e-mail:", error);
+      console.error(
+        "[SMTP Error] Falha ao enviar confirmação de e-mail:",
+        error,
+      );
       response.warning = "GLOBAL_SMTP_SEND_FAILED";
     }
 
@@ -849,20 +875,30 @@ export class AuthService {
       throw new UnauthorizedException("Informe a senha atual e a nova senha.");
     }
     if (normalizedNewPassword.length < 6) {
-      throw new BadRequestException("A nova senha deve ter pelo menos 6 caracteres.");
+      throw new BadRequestException(
+        "A nova senha deve ter pelo menos 6 caracteres.",
+      );
     }
 
     if (modelType === "master") {
       if (!isValidMasterPass(normalizedCurrentPassword)) {
         throw new UnauthorizedException("Senha inválida.");
       }
-      throw new BadRequestException("Alteração de senha do master não disponível nesta tela.");
+      throw new BadRequestException(
+        "Alteração de senha do master não disponível nesta tela.",
+      );
     }
 
     const effectiveModel: AccountModelType = modelType || "user";
-    const currentAccount = await this.loadAccountById(effectiveModel, userId, tenantId);
+    const currentAccount = await this.loadAccountById(
+      effectiveModel,
+      userId,
+      tenantId,
+    );
     if (!currentAccount?.email) {
-      throw new BadRequestException("Não foi possível localizar o e-mail do usuário.");
+      throw new BadRequestException(
+        "Não foi possível localizar o e-mail do usuário.",
+      );
     }
     await this.confirmSharedPassword(
       userId,

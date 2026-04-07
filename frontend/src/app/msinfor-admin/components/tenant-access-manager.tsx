@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
+import { fetchAddressByCep, formatCepInput, normalizeDocumentDigits, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 import {
   COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS,
   getDefaultAccessProfileForRole,
@@ -13,8 +13,18 @@ import {
   type ComplementaryAccessProfileCode,
 } from '@/app/lib/access-profiles';
 
+import ScreenNameCopy from '@/app/components/screen-name-copy';
+
 const API_BASE_URL = 'http://localhost:3001/api/v1';
 const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
+const CPF_CONFLICT_SCREEN_ID = `${SCREEN_NAME}_POPUP_CPF_CONFLICT`;
+
+const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
+const inputClass =
+  'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
+const cepInputClass =
+  'flex-1 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
+const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
 
 type TenantSummary = {
   id: string;
@@ -170,6 +180,40 @@ function formatBrazilPhone(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
 }
 
+function sanitizeCpf(value: string) {
+  return value.replace(/\D/g, '').slice(0, 11);
+}
+
+function formatCpf(value: string) {
+  const digits = sanitizeCpf(value);
+  if (!digits) return '';
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+}
+
+function normalizeSystemRoleLabel(role: string) {
+  const key = String(role || '').toUpperCase().trim();
+  if (!key) return null;
+  if (key === 'TEACHER' || key === 'PROFESSOR') return 'PROFESSOR';
+  if (key === 'STUDENT' || key === 'ALUNO') return 'ALUNO';
+  if (key === 'GUARDIAN' || key === 'RESPONSAVEL') return 'RESPONSAVEL';
+  if (['ADMIN', 'ADMINISTRADOR', 'SCHOOL_ADMIN', 'TENANT_ADMIN', 'ADMIN_ESCOLA'].includes(key)) return 'ADMINISTRADOR';
+  if (key === 'SECRETARIA') return 'SECRETARIA';
+  if (key === 'COORDENACAO') return 'COORDENACAO';
+  if (['USUARIO_ESCOLA', 'USER'].includes(key)) return 'ADMINISTRATIVO';
+  return key.replaceAll('_', ' ');
+}
+
+function buildSystemRoleBadges(roles?: string[]) {
+  const normalizedRoles = (roles || [])
+    .map((role) => normalizeSystemRoleLabel(role))
+    .filter((role): role is string => Boolean(role));
+
+  return Array.from(new Set(normalizedRoles));
+}
+
 export default function TenantAccessManager({
   tenant,
   getMasterPass,
@@ -192,6 +236,9 @@ export default function TenantAccessManager({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [cpfConflictAlert, setCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+  const [cpfConflictRoles, setCpfConflictRoles] = useState<string[]>([]);
+  const [originalCpf, setOriginalCpf] = useState('');
 
   const loadUsers = async () => {
     if (!tenant) return;
@@ -257,6 +304,9 @@ export default function TenantAccessManager({
     setErrorMessage(null);
     setSuccessMessage(null);
     setPhotoError(null);
+    setCpfConflictAlert(null);
+    setCpfConflictRoles([]);
+    setOriginalCpf('');
 
     if (options?.announce) {
       setHelperMessage('Preencha o formulario ao lado para criar um novo acesso.');
@@ -278,6 +328,9 @@ export default function TenantAccessManager({
     setSuccessMessage(null);
     setHelperMessage('Preencha o formulario para criar um novo acesso.');
     setPhotoError(null);
+    setCpfConflictAlert(null);
+    setCpfConflictRoles([]);
+    setOriginalCpf('');
 
     window.setTimeout(() => {
       nameInputRef.current?.focus();
@@ -293,7 +346,7 @@ export default function TenantAccessManager({
       email: user.email || '',
       birthDate: user.birthDate || '',
       rg: user.rg || '',
-      cpf: user.cpf || '',
+      cpf: user.cpf ? sanitizeCpf(user.cpf) : '',
       cnpj: user.cnpj || '',
       nickname: user.nickname || '',
       corporateName: user.corporateName || '',
@@ -318,6 +371,9 @@ export default function TenantAccessManager({
     setSuccessMessage(null);
     setHelperMessage('Modo edicao ativo. Altere os dados e clique em salvar.');
     setPhotoError(null);
+    setCpfConflictAlert(null);
+    setCpfConflictRoles([]);
+    setOriginalCpf(user.cpf ? sanitizeCpf(user.cpf) : '');
   };
 
   const applyRolePreset = (role: AccessFormState['role']) => {
@@ -449,6 +505,80 @@ export default function TenantAccessManager({
       setPhotoError(error?.message || 'Não foi possível carregar a foto selecionada.');
     } finally {
       event.target.value = '';
+    }
+  };
+
+  const handleCepLookup = async () => {
+    try {
+      const address = await fetchAddressByCep(formData.zipCode);
+      if (!address) return;
+      setFormData((current) => ({
+        ...current,
+        street: address.street,
+        neighborhood: address.neighborhood,
+        city: address.city,
+        state: address.state,
+      }));
+    } catch (error: any) {
+      alert(error?.message || 'Falha ao consultar o CEP.');
+    }
+  };
+
+  const requestSharedPersonProfile = async (cpf: string) => {
+    if (!getMasterPass || !tenant?.id) return null;
+    const normalizedCpf = sanitizeCpf(cpf);
+    if (normalizedCpf.length !== 11) return null;
+
+    const response = await fetch(
+      `${API_BASE_URL}/tenants/${tenant.id}/shared-profiles/cpf/${normalizedCpf}`,
+      {
+        headers: { "x-msinfor-master-pass": getMasterPass() },
+      },
+    );
+
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null);
+      throw new Error(
+        errorPayload?.message ||
+          "Não foi possível consultar os dados compartilhados deste CPF.",
+      );
+    }
+
+    return response.json();
+  };
+
+  const handleCpfBlur = async () => {
+    const sanitizedCpf = sanitizeCpf(formData.cpf);
+    if (!sanitizedCpf) {
+      setCpfConflictAlert(null);
+      setCpfConflictRoles([]);
+      return;
+    }
+
+    if (editingUserId && originalCpf && sanitizedCpf === originalCpf) {
+      setCpfConflictAlert(null);
+      setCpfConflictRoles([]);
+      return;
+    }
+
+    try {
+      const profile = await requestSharedPersonProfile(sanitizedCpf);
+      if (!profile) {
+        setCpfConflictAlert(null);
+        setCpfConflictRoles([]);
+        return;
+      }
+
+      const profileName = String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase();
+      setCpfConflictAlert({
+        name: profileName,
+        cpf: formatCpf(sanitizedCpf),
+      });
+      setCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+      setErrorMessage(null);
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Não foi possível validar o CPF informado.');
     }
   };
 
@@ -757,16 +887,19 @@ export default function TenantAccessManager({
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-bold text-slate-600">CPF</label>
-                  <input
-                    type="text"
-                    value={formData.cpf || ''}
-                    onChange={(event) => setFormData((current) => ({ ...current, cpf: event.target.value.toUpperCase() }))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    placeholder="000.000.000-00"
-                  />
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs font-bold text-slate-600">CPF</label>
+                    <input
+                      type="text"
+                      value={formatCpf(formData.cpf)}
+                      onChange={(event) =>
+                        setFormData((current) => ({ ...current, cpf: sanitizeCpf(event.target.value) }))
+                      }
+                      onBlur={handleCpfBlur}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                      placeholder="000.000.000-00"
+                    />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-600">Data de nascimento</label>
@@ -821,66 +954,77 @@ export default function TenantAccessManager({
                 <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Endereco</div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                   <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-600">CEP</label>
-                    <input
-                      type="text"
-                      value={formData.zipCode || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, zipCode: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
+                    <label className={labelClass}>CEP</label>
+                    <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={formatCepInput(formData.zipCode)}
+                          onChange={(event) =>
+                            setFormData((current) => ({ ...current, zipCode: limitNumericDigits(event.target.value, 8) }))
+                          }
+                          className={cepInputClass}
+                        />
+                      <button
+                        type="button"
+                        onClick={handleCepLookup}
+                        className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700"
+                      >
+                        OK
+                      </button>
+                    </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Logradouro</label>
+                    <label className={labelClass}>Logradouro</label>
                     <input
                       type="text"
                       value={formData.street || ''}
                       onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                        className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Numero</label>
+                    <label className={labelClass}>Numero</label>
                     <input
                       type="text"
                       value={formData.number || ''}
                       onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                        className={inputClass}
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Bairro</label>
+                    <label className={labelClass}>Bairro</label>
                     <input
                       type="text"
                       value={formData.neighborhood || ''}
                       onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                        className={inputClass}
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Complemento</label>
+                    <label className={labelClass}>Complemento</label>
                     <input
                       type="text"
                       value={formData.complement || ''}
                       onChange={(event) => setFormData((current) => ({ ...current, complement: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                        className={inputClass}
                     />
                   </div>
                   <div className="md:col-span-3">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Cidade</label>
+                    <label className={labelClass}>Cidade</label>
                     <input
                       type="text"
                       value={formData.city || ''}
                       onChange={(event) => setFormData((current) => ({ ...current, city: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                        className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-600">UF</label>
+                    <label className={labelClass}>UF</label>
                     <input
                       type="text"
                       value={formData.state || ''}
                       onChange={(event) => setFormData((current) => ({ ...current, state: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                      className={inputClass}
                     />
                   </div>
                 </div>
@@ -1230,6 +1374,76 @@ export default function TenantAccessManager({
           </div>
         </div>
       </div>
+      {cpfConflictAlert ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
+            <div className="flex items-start gap-4 border-b border-amber-100 bg-amber-50 px-6 py-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
+                {tenant?.logoUrl ? (
+                  <img src={tenant.logoUrl} alt={tenant.name || 'Escola'} className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">
+                    {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">ATENÇÃO</div>
+                <div className="mt-1 text-lg font-bold text-slate-900">
+                  CPF JÁ USADO POR:
+                </div>
+                <div className="mt-1 text-base font-bold text-slate-900">
+                  {cpfConflictAlert.name}
+                </div>
+                <div className="mt-1 text-sm font-medium text-slate-600">
+                  CPF INFORMADO: {cpfConflictAlert.cpf}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3 px-6 py-4">
+              {cpfConflictRoles.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {cpfConflictRoles.map((role) => (
+                    <span
+                      key={role}
+                      className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                    >
+                      {role}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-900">
+                RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCpfConflictAlert(null);
+                    setCpfConflictRoles([]);
+                  }}
+                  className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-bold text-white hover:bg-rose-700"
+                >
+                  FECHAR
+                </button>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 bg-white px-6 py-3">
+              <div className="flex justify-end">
+                <ScreenNameCopy
+                  screenId={CPF_CONFLICT_SCREEN_ID}
+                  label="Tela"
+                  disableMargin
+                  className="w-auto"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

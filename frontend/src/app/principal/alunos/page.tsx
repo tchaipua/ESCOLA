@@ -19,15 +19,20 @@ import {
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
+    formatCepInput,
     formatCnpj,
+    formatCnpjInput,
     formatCpf,
+    formatCpfInput,
     formatPhone,
+    formatPhoneInput,
     getAllowedDashboardFields,
     getDashboardAuthContext,
     hasDashboardPermission,
     isValidCnpj,
     isValidCpf,
     mergeSharedPersonIntoForm,
+    normalizeDocumentDigits,
     readImageFileAsDataUrl,
     type EmailUsageRecord,
     type SharedNameSuggestion,
@@ -56,6 +61,8 @@ const API_BASE_URL = 'http://localhost:3001/api/v1';
 const ALUNOS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_ALUNOS_STATUS_MODAL';
 
 const normalizeCpfDigits = (value: string) => String(value || '').replace(/\D/g, '');
+const limitNumericDigits = (value: string, maxLength: number) =>
+    normalizeDocumentDigits(value).slice(0, maxLength);
 
 const KINSHIP_OPTIONS = [
     { value: 'PAI', label: 'PAI' },
@@ -248,6 +255,7 @@ const EMPTY_GUARDIAN_LINK_FORM: GuardianLinkFormState = {
     guardianQuery: '',
 };
 
+const CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_ALUNOS_POPUP_CPF_CONFLICT';
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 
@@ -523,6 +531,7 @@ export default function AlunosPage() {
     const [guardiansError, setGuardiansError] = useState<string | null>(null);
     const [guardiansStatus, setGuardiansStatus] = useState<string | null>(null);
     const [cpfConflictAlert, setCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+    const [cpfConflictRoles, setCpfConflictRoles] = useState<string[]>([]);
     const [selectedGuardianDetails, setSelectedGuardianDetails] = useState<GuardianSummary | null>(null);
     const [isGuardiansViewOpen, setIsGuardiansViewOpen] = useState(false);
     const [guardiansViewStudentName, setGuardiansViewStudentName] = useState('');
@@ -894,6 +903,9 @@ export default function AlunosPage() {
         setOriginalStudentPersonId(null);
         setOriginalStudentSeriesClassId('');
         setCpfConflictAlert(null);
+        setCpfConflictRoles([]);
+        setCpfConflictRoles([]);
+        setCpfConflictRoles([]);
         setActiveTab(1);
         setFormData(EMPTY_FORM);
         setPersonSystemRoles(['ALUNO']);
@@ -1161,6 +1173,7 @@ export default function AlunosPage() {
                             name: profileName,
                             cpf: formattedCpf,
                         });
+                        setCpfConflictRoles(buildSystemRoleBadges(profile.roles));
                         setSaveError(null);
                     }
                 } catch (error) {
@@ -1364,6 +1377,7 @@ export default function AlunosPage() {
                             name: profileName,
                             cpf: formatCpf(formData.cpf),
                         });
+                        setCpfConflictRoles(buildSystemRoleBadges(profile.roles));
                         setSaveError(null);
                         return;
                     }
@@ -1855,7 +1869,17 @@ export default function AlunosPage() {
                                     {studentFieldAccess.sensitive ? (
                                         <div>
                                             <label className={labelClass}>CPF (opcional)</label>
-                                            <input value={formData.cpf} onChange={(event) => setFormData((current) => ({ ...current, cpf: event.target.value.toUpperCase() }))} onBlur={handleCpfBlur} className={inputClass} />
+                                            <input
+                                                value={formatCpfInput(formData.cpf)}
+                                                onChange={(event) =>
+                                                    setFormData((current) => ({
+                                                        ...current,
+                                                        cpf: limitNumericDigits(event.target.value, 11),
+                                                    }))
+                                                }
+                                                onBlur={handleCpfBlur}
+                                                className={inputClass}
+                                            />
                                         </div>
                                     ) : null}
                                     <div className="relative lg:col-span-2">
@@ -1968,17 +1992,77 @@ export default function AlunosPage() {
                                     {studentFieldAccess.sensitive ? (
                                         <>
                                             <div><label className={labelClass}>RG</label><input value={formData.rg} onChange={(event) => setFormData((current) => ({ ...current, rg: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>CNPJ</label><input value={formData.cnpj} onChange={(event) => setFormData((current) => ({ ...current, cnpj: event.target.value.toUpperCase() }))} className={inputClass} /></div>
+                                            <div>
+                                                <label className={labelClass}>CNPJ</label>
+                                                <input
+                                                    value={formatCnpjInput(formData.cnpj)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cnpj: limitNumericDigits(event.target.value, 14),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
                                         </>
                                     ) : null}
                                     <div><label className={labelClass}>Apelido</label><input value={formData.nickname} onChange={(event) => setFormData((current) => ({ ...current, nickname: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                     <div className="lg:col-span-2"><label className={labelClass}>Nome empresarial / social</label><input value={formData.corporateName} onChange={(event) => setFormData((current) => ({ ...current, corporateName: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                     {studentFieldAccess.contact ? (
                                         <>
-                                            <div><label className={labelClass}>WhatsApp</label><input value={formData.whatsapp} onChange={(event) => setFormData((current) => ({ ...current, whatsapp: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Telefone</label><input value={formData.phone} onChange={(event) => setFormData((current) => ({ ...current, phone: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Celular 1</label><input value={formData.cellphone1} onChange={(event) => setFormData((current) => ({ ...current, cellphone1: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Celular 2</label><input value={formData.cellphone2} onChange={(event) => setFormData((current) => ({ ...current, cellphone2: event.target.value.toUpperCase() }))} className={inputClass} /></div>
+                                            <div>
+                                                <label className={labelClass}>WhatsApp</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.whatsapp)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            whatsapp: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Telefone</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.phone)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            phone: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Celular 1</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.cellphone1)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cellphone1: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Celular 2</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.cellphone2)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cellphone2: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
                                         </>
                                     ) : null}
                                 </div>
@@ -1986,7 +2070,24 @@ export default function AlunosPage() {
                             {activeTab === 2 ? (
                                 studentFieldAccess.contact ? (
                                     <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
-                                        <div><label className={labelClass}>CEP</label><div className="flex gap-2"><input value={formData.zipCode} onChange={(event) => setFormData((current) => ({ ...current, zipCode: event.target.value.toUpperCase() }))} className={inputClass} /><button type="button" onClick={handleCepSearch} className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700">OK</button></div></div>
+                                        <div>
+                                            <label className={labelClass}>CEP</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={formatCepInput(formData.zipCode)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            zipCode: limitNumericDigits(event.target.value, 8),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                                <button type="button" onClick={handleCepSearch} className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700">
+                                                    OK
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div className="md:col-span-2"><label className={labelClass}>Logradouro</label><input value={formData.street} onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                         <div><label className={labelClass}>Número</label><input value={formData.number} onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                         <div className="md:col-span-2"><label className={labelClass}>Bairro</label><input value={formData.neighborhood} onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))} className={inputClass} /></div>
@@ -2560,16 +2661,41 @@ export default function AlunosPage() {
                                 <div className="mt-1 text-sm font-medium text-slate-600">
                                     CPF INFORMADO: {cpfConflictAlert.cpf}
                                 </div>
+                                {cpfConflictRoles.length > 0 ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {cpfConflictRoles.map((role) => (
+                                            <span
+                                                key={role}
+                                                className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                            >
+                                                {role}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
                                 <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
                                     RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
                                 </div>
                             </div>
                         </div>
+                        <div className="mt-4 flex justify-end">
+                            <div className="w-full max-w-[300px]">
+                                <ScreenNameCopy
+                                    screenId={CPF_CONFLICT_SCREEN_ID}
+                                    label="Tela"
+                                    className="mt-0 justify-end"
+                                    disableMargin
+                                />
+                            </div>
+                        </div>
                         <div className="mt-5 text-right">
                             <button
                                 type="button"
-                                onClick={() => setCpfConflictAlert(null)}
-                                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                                onClick={() => {
+                                    setCpfConflictAlert(null);
+                                    setCpfConflictRoles([]);
+                                }}
+                                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
                             >
                                 Fechar
                             </button>

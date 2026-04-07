@@ -13,7 +13,28 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
-import { fetchEmailUsageByEmail, fetchSharedPersonNameSuggestions, fetchSharedPersonProfileByCpf, fetchSharedPersonProfileByEmail, getAllowedDashboardFields, getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission, mergeSharedPersonIntoForm, type EmailUsageRecord, type SharedNameSuggestion } from '@/app/lib/dashboard-crud-utils';
+import {
+    fetchAddressByCep,
+    fetchEmailUsageByEmail,
+    fetchSharedPersonNameSuggestions,
+    fetchSharedPersonProfileByCpf,
+    fetchSharedPersonProfileByEmail,
+    formatCepInput,
+    formatCnpj,
+    formatCnpjInput,
+    formatCpf,
+    formatCpfInput,
+    formatPhone,
+    formatPhoneInput,
+    getAllowedDashboardFields,
+    getDashboardAuthContext,
+    hasAllDashboardPermissions,
+    hasDashboardPermission,
+    mergeSharedPersonIntoForm,
+    normalizeDocumentDigits,
+    type EmailUsageRecord,
+    type SharedNameSuggestion,
+} from '@/app/lib/dashboard-crud-utils';
 import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRole, PERMISSION_OPTIONS, type AccessProfileCode } from '@/app/lib/access-profiles';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
@@ -22,6 +43,8 @@ import ScreenNameCopy from '@/app/components/screen-name-copy';
 const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
 const PROFESSORES_DETAIL_COPY_SCREEN_ID = 'PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO';
 const PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_EMAIL_USAGE_MODAL';
+const PROFESSORES_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_PROFESSORES_POPUP_CPF_CONFLICT';
+const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
 
 type SubjectRecord = {
     id: string;
@@ -449,6 +472,9 @@ export default function ProfessoresPage() {
     const [existingCpfAlert, setExistingCpfAlert] = useState<ExistingCpfAlert | null>(null);
     const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
     const [originalTeacherEmail, setOriginalTeacherEmail] = useState('');
+    const [originalTeacherCpf, setOriginalTeacherCpf] = useState('');
+    const [teacherCpfConflictAlert, setTeacherCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+    const [teacherCpfConflictRoles, setTeacherCpfConflictRoles] = useState<string[]>([]);
     const [teacherStatusToggleTarget, setTeacherStatusToggleTarget] = useState<TeacherRecord | null>(null);
     const [teacherStatusToggleAction, setTeacherStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingTeacherToggle, setIsProcessingTeacherToggle] = useState(false);
@@ -528,6 +554,16 @@ export default function ProfessoresPage() {
         accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
     });
 
+    const ensureResponse = async (response: Response, fallback: string) => {
+        if (response.status === 401) {
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+        if (!response.ok) {
+            const errData = await response.json().catch(() => null);
+            throw new Error(errData?.message || fallback);
+        }
+    };
+
     const fetchProfessores = async () => {
         try {
             setIsLoading(true);
@@ -551,15 +587,8 @@ export default function ProfessoresPage() {
                 })
             ]);
 
-            if (!teachersResponse.ok) {
-                const errData = await teachersResponse.json().catch(() => null);
-                throw new Error(errData?.message || 'Falha ao buscar professores');
-            }
-
-            if (!subjectsResponse.ok) {
-                const errData = await subjectsResponse.json().catch(() => null);
-                throw new Error(errData?.message || 'Falha ao buscar disciplinas');
-            }
+            await ensureResponse(teachersResponse, 'Falha ao buscar professores');
+            await ensureResponse(subjectsResponse, 'Falha ao buscar disciplinas');
 
             const [teachersData, subjectsData] = await Promise.all([
                 teachersResponse.json(),
@@ -698,6 +727,7 @@ export default function ProfessoresPage() {
     const openModal = () => {
         setEditingTeacherId(null);
         setOriginalTeacherEmail('');
+        setOriginalTeacherCpf('');
         setActiveTab(1);
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
@@ -717,6 +747,8 @@ export default function ProfessoresPage() {
         setNameSuggestionError(null);
         setExistingCpfAlert(null);
         setEmailUsageAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
         setIsModalOpen(true);
     };
 
@@ -724,6 +756,7 @@ export default function ProfessoresPage() {
         setIsModalOpen(false);
         setEditingTeacherId(null);
         setOriginalTeacherEmail('');
+        setOriginalTeacherCpf('');
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
         setHourlyRateForTeacher('');
@@ -736,11 +769,14 @@ export default function ProfessoresPage() {
         setNameSuggestionError(null);
         setExistingCpfAlert(null);
         setEmailUsageAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
     };
 
     const handleEdit = (prof: TeacherRecord) => {
         setEditingTeacherId(prof.id);
         setOriginalTeacherEmail(String(prof.email || '').trim().toUpperCase());
+        setOriginalTeacherCpf(prof.cpf ? limitNumericDigits(prof.cpf, 11) : '');
         setActiveTab(1);
         setSelectedTeacherForSubjects(prof);
         setSelectedSubjectIdForTeacher('');
@@ -763,17 +799,17 @@ export default function ProfessoresPage() {
         setFormData({
             name: prof.name || '',
             rg: prof.rg || '',
-            cpf: prof.cpf || '',
-            cnpj: prof.cnpj || '',
+            cpf: prof.cpf ? limitNumericDigits(prof.cpf, 11) : '',
+            cnpj: prof.cnpj ? limitNumericDigits(prof.cnpj, 14) : '',
             nickname: prof.nickname || '',
             corporateName: prof.corporateName || '',
             birthDate: prof.birthDate ? new Date(prof.birthDate).toISOString().split('T')[0] : '',
-            phone: prof.phone || '',
-            whatsapp: prof.whatsapp || '',
-            cellphone1: prof.cellphone1 || '',
-            cellphone2: prof.cellphone2 || '',
+            phone: prof.phone ? limitNumericDigits(prof.phone, 11) : '',
+            whatsapp: prof.whatsapp ? limitNumericDigits(prof.whatsapp, 11) : '',
+            cellphone1: prof.cellphone1 ? limitNumericDigits(prof.cellphone1, 11) : '',
+            cellphone2: prof.cellphone2 ? limitNumericDigits(prof.cellphone2, 11) : '',
             email: prof.email || '',
-            zipCode: prof.zipCode || '',
+            zipCode: prof.zipCode ? limitNumericDigits(prof.zipCode, 8) : '',
             street: prof.street || '',
             number: prof.number || '',
             city: prof.city || '',
@@ -789,18 +825,54 @@ export default function ProfessoresPage() {
         setNameSuggestionError(null);
         setExistingCpfAlert(null);
         setEmailUsageAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
         void resolvePersonSystemRoles(prof.cpf, prof.email);
         setIsModalOpen(true);
     };
 
     const handleCpfBlur = async () => {
-        if (!formData.cpf || editingTeacherId) return;
+        if (!formData.cpf) return;
+
+        const normalizedFormCpf = normalizeDocumentDigits(formData.cpf);
+
+        if (editingTeacherId) {
+            const normalizedOriginalCpf = normalizeDocumentDigits(originalTeacherCpf);
+            if (!normalizedFormCpf || normalizedFormCpf === normalizedOriginalCpf) {
+                setTeacherCpfConflictAlert(null);
+                setTeacherCpfConflictRoles([]);
+                return;
+            }
+
+            try {
+                const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
+                if (!profile) {
+                    setTeacherCpfConflictAlert(null);
+                    setTeacherCpfConflictRoles([]);
+                    return;
+                }
+
+                const profileName = String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase();
+                setTeacherCpfConflictAlert({
+                    name: profileName,
+                    cpf: formatCpf(formData.cpf),
+                });
+                setTeacherCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+                setSaveError(null);
+            } catch (error: any) {
+                setSaveError(error?.message || 'Não foi possível validar o CPF informado.');
+            }
+
+            return;
+        }
 
         try {
             const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
             if (!profile) {
                 setPersonSystemRoles(['PROFESSOR']);
                 setExistingCpfAlert(null);
+                setTeacherCpfConflictAlert(null);
+                setTeacherCpfConflictRoles([]);
                 return;
             }
 
@@ -817,9 +889,16 @@ export default function ProfessoresPage() {
                 name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
                 roles: detectedRoles.length ? detectedRoles : ['CADASTRO BASE'],
             });
+            setTeacherCpfConflictAlert({
+                name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
+                cpf: formatCpf(formData.cpf),
+            });
+            setTeacherCpfConflictRoles(buildSystemRoleBadges(profile.roles));
         } catch (error: any) {
             setSaveError(error?.message || 'Não foi possível reaproveitar os dados deste CPF.');
             setExistingCpfAlert(null);
+            setTeacherCpfConflictAlert(null);
+            setTeacherCpfConflictRoles([]);
         }
     };
 
@@ -831,8 +910,10 @@ export default function ProfessoresPage() {
     };
 
     const handleTeacherCpfChange = (value: string) => {
-        setFormData((current) => ({ ...current, cpf: value.toUpperCase() }));
+        setFormData((current) => ({ ...current, cpf: limitNumericDigits(value, 11) }));
         setExistingCpfAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
     };
 
     const handleTeacherEmailChange = (value: string) => {
@@ -1294,33 +1375,19 @@ export default function ProfessoresPage() {
     };
 
     const handleCepSearch = async () => {
-        const cep = formData.zipCode.replace(/\D/g, '');
-        if (cep.length !== 8) {
-            alert('CEP inválido! Digite os 8 números.');
-            return;
-        }
-
         try {
-            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-            if (!response.ok) throw new Error('Erro na requisição do CEP');
-
-            const data = await response.json();
-
-            if (data.erro) {
-                alert('O CEP informado não foi encontrado.');
-                return;
-            }
-
-            setFormData(prev => ({
-                ...prev,
-                street: data.logradouro ? data.logradouro.toUpperCase() : '',
-                neighborhood: data.bairro ? data.bairro.toUpperCase() : '',
-                city: data.localidade ? data.localidade.toUpperCase() : '',
-                state: data.uf || ''
+            const address = await fetchAddressByCep(formData.zipCode);
+            if (!address) return;
+            setFormData((current) => ({
+                ...current,
+                street: address.street,
+                neighborhood: address.neighborhood,
+                city: address.city,
+                state: address.state,
             }));
-        } catch (error) {
+        } catch (error: any) {
             console.error('Falha ao consultar viaCEP:', error);
-            alert('Falha ao consultar CEP.');
+            alert(error?.message || 'Falha ao consultar CEP.');
         }
     };
 
@@ -1404,35 +1471,8 @@ export default function ProfessoresPage() {
                 delete (payload as any).birthDate;
             }
 
-            // Mágica da Formatação (Pelo menos no Back-End e Banco de Dados vai ficar lindo!)
-            if (payload.cpf) {
-                const cleanCpf = payload.cpf.replace(/[^\d]+/g, '');
-                if (cleanCpf.length === 11) {
-                    payload.cpf = cleanCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-                }
-            }
-            if (payload.cnpj) {
-                const cleanCnpj = payload.cnpj.replace(/[^\d]+/g, '');
-                if (cleanCnpj.length === 14) {
-                    payload.cnpj = cleanCnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-                }
-            }
-
-            // Mágica da Formatação de Telefones
-            const formatPhone = (val: string) => {
-                if (!val) return val;
-                let num = val.replace(/[^\d]+/g, '');
-                // Se começou com 0 e tem mais de 10 dígitos (Ex: 016...), extrai do segundo caractere em diante
-                if (num.startsWith('0') && num.length >= 11) {
-                    num = num.substring(1);
-                }
-                if (num.length === 11) { // Celular 9 dígitos
-                    return num.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-                } else if (num.length === 10) { // Fixo 8 dígitos
-                    return num.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-                }
-                return val; // Devolve como está se for ramal ou algo bizarro
-            };
+            if (payload.cpf) payload.cpf = formatCpf(payload.cpf);
+            if (payload.cnpj) payload.cnpj = formatCnpj(payload.cnpj);
 
             if (payload.phone) payload.phone = formatPhone(payload.phone);
             if (payload.whatsapp) payload.whatsapp = formatPhone(payload.whatsapp);
@@ -1735,12 +1775,6 @@ export default function ProfessoresPage() {
                                     </h2>
                                 </div>
                             </div>
-                            <button
-                                onClick={closeModal}
-                                className="rounded-full bg-red-600 px-4 py-2 text-sm font-black uppercase tracking-[0.3em] text-white shadow-sm shadow-red-600/30 transition hover:bg-red-700"
-                            >
-                                Fechar
-                            </button>
                         </div>
                         <div className="border-b border-slate-100 bg-white px-6 py-3">
                             <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
@@ -1802,7 +1836,14 @@ export default function ProfessoresPage() {
                                         {teacherFieldAccess.sensitive ? (
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">CPF</label>
-                                                <input type="text" value={formData.cpf} onChange={(event) => handleTeacherCpfChange(event.target.value)} onBlur={handleCpfBlur} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" placeholder="Somente números" />
+                                            <input
+                                                type="text"
+                                                value={formatCpfInput(formData.cpf)}
+                                                onChange={(event) => handleTeacherCpfChange(event.target.value)}
+                                                onBlur={handleCpfBlur}
+                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                placeholder="Somente números"
+                                            />
                                                 {!editingTeacherId && existingCpfAlert ? (
                                                     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
                                                         <div className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">CPF já cadastrado</div>
@@ -1886,7 +1927,17 @@ export default function ProfessoresPage() {
                                                 </div>
                                                 <div>
                                                     <label className="text-xs font-bold text-slate-600 mb-1 block">CNPJ (PJ / MEI se houver)</label>
-                                                    <input type="text" value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                                    <input
+                                                        type="text"
+                                                        value={formatCnpjInput(formData.cnpj)}
+                                                        onChange={(e) =>
+                                                            setFormData({
+                                                                ...formData,
+                                                                cnpj: limitNumericDigits(e.target.value, 14),
+                                                            })
+                                                        }
+                                                        className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                    />
                                                 </div>
                                             </>
                                         ) : null}
@@ -1897,11 +1948,31 @@ export default function ProfessoresPage() {
                                                     <>
                                                         <div>
                                                             <label className="text-xs font-bold text-slate-600 mb-1 block">Celular 1 (WhatsApp)</label>
-                                                            <input type="text" value={formData.whatsapp} onChange={e => setFormData({ ...formData, whatsapp: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                                            <input
+                                                                type="text"
+                                                                value={formatPhoneInput(formData.whatsapp)}
+                                                                onChange={(e) =>
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        whatsapp: limitNumericDigits(e.target.value, 11),
+                                                                    })
+                                                                }
+                                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                            />
                                                         </div>
                                                         <div>
                                                             <label className="text-xs font-bold text-slate-600 mb-1 block">Telefone Secundário</label>
-                                                            <input type="text" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                                            <input
+                                                                type="text"
+                                                                value={formatPhoneInput(formData.phone)}
+                                                                onChange={(e) =>
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        phone: limitNumericDigits(e.target.value, 11),
+                                                                    })
+                                                                }
+                                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                            />
                                                         </div>
                                                     </>
                                                 ) : null}
@@ -1931,7 +2002,18 @@ export default function ProfessoresPage() {
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">CEP</label>
                                                 <div className="flex gap-2">
-                                                    <input type="text" value={formData.zipCode} onChange={e => setFormData({ ...formData, zipCode: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" placeholder="00000-000" />
+                                                    <input
+                                                        type="text"
+                                                        value={formatCepInput(formData.zipCode)}
+                                                        onChange={(e) =>
+                                                            setFormData({
+                                                                ...formData,
+                                                                zipCode: limitNumericDigits(e.target.value, 8),
+                                                            })
+                                                        }
+                                                        className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                        placeholder="00000-000"
+                                                    />
                                                     <button type="button" onClick={handleCepSearch} className="bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200 rounded-lg px-3 transition-colors font-bold shadow-sm">
                                                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                                                     </button>
@@ -2215,14 +2297,8 @@ export default function ProfessoresPage() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap gap-3">
                                 <button type="button" onClick={closeModal} className="px-6 py-3 font-semibold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 text-sm">Sair sem Gravar</button>
-                                {activeTab > 1 ? (
-                                    <button type="button" onClick={() => setActiveTab((prev) => prev - 1)} className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Voltar</button>
-                                ) : null}
                             </div>
                             <div className="flex flex-wrap justify-end gap-3">
-                                {activeTab < 4 ? (
-                                    <button type="button" onClick={() => setActiveTab((prev) => prev + 1)} className="bg-[#153a6a] hover:bg-blue-800 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-900/30 text-sm tracking-wide transition-all">Próxima Etapa →</button>
-                                ) : null}
                                 <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                                                 {editingTeacherId ? 'Salvar' : 'Registrar Professor'}
@@ -2265,6 +2341,84 @@ export default function ProfessoresPage() {
                                         <span key={i} className="block mb-1">{line}</span>
                                     ))}
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {teacherCpfConflictAlert && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 px-4">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200 relative">
+                        <div className="px-6 pb-4 pt-6">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img
+                                            src={currentTenantBranding.logoUrl}
+                                            alt={`Logotipo de ${currentTenantBranding.schoolName}`}
+                                            className="h-full w-full object-contain p-1.5"
+                                        />
+                                    ) : (
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">CPF</span>
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <div className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800">
+                                        <svg className="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
+                                        </svg>
+                                        ATENÇÃO
+                                    </div>
+                                    <div className="text-sm font-semibold text-slate-700">
+                                        CPF JÁ USADO POR:
+                                    </div>
+                                    <div className="mt-1 text-base font-bold text-slate-900">
+                                        {teacherCpfConflictAlert.name}
+                                    </div>
+                                    <div className="mt-1 text-sm font-medium text-slate-600">
+                                        CPF INFORMADO: {teacherCpfConflictAlert.cpf}
+                                    </div>
+                                    {teacherCpfConflictRoles.length > 0 ? (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {teacherCpfConflictRoles.map((role) => (
+                                                <span
+                                                    key={role}
+                                                    className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                                >
+                                                    {role}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                    <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                                        RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 pb-4">
+                            <div className="flex justify-end">
+                                <div className="w-full max-w-[300px]">
+                                    <ScreenNameCopy
+                                        screenId={PROFESSORES_CPF_CONFLICT_SCREEN_ID}
+                                        label="Tela"
+                                        className="mt-0 justify-end"
+                                        disableMargin
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-4 text-right">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTeacherCpfConflictAlert(null);
+                                        setTeacherCpfConflictRoles([]);
+                                    }}
+                                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition-colors"
+                                >
+                                    Fechar
+                                </button>
                             </div>
                         </div>
                     </div>

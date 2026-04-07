@@ -20,14 +20,19 @@ import {
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
     formatCnpj,
+    formatCnpjInput,
     formatCpf,
+    formatCpfInput,
     formatPhone,
+    formatPhoneInput,
+    formatCepInput,
     getAllowedDashboardFields,
     getDashboardAuthContext,
     hasDashboardPermission,
     isValidCnpj,
     isValidCpf,
     mergeSharedPersonIntoForm,
+    normalizeDocumentDigits,
     type EmailUsageRecord,
     type SharedNameSuggestion,
 } from '@/app/lib/dashboard-crud-utils';
@@ -41,6 +46,7 @@ import {
     type AccessProfileCode,
 } from '@/app/lib/access-profiles';
 const RESPONSAVEIS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_STATUS_MODAL';
+const RESPONSAVEIS_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_POPUP_CPF_CONFLICT';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 
 const API_BASE_URL = 'http://localhost:3001/api/v1';
@@ -102,6 +108,7 @@ const EMPTY_FORM: GuardianFormState = {
     accessProfile: DEFAULT_GUARDIAN_PROFILE, permissions: getProfilePermissions(DEFAULT_GUARDIAN_PROFILE),
 };
 
+const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 
@@ -291,6 +298,9 @@ export default function ResponsaveisPage() {
     const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
     const [debouncedGuardianNameQuery, setDebouncedGuardianNameQuery] = useState('');
     const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
+    const [originalGuardianCpf, setOriginalGuardianCpf] = useState('');
+    const [guardianCpfConflictAlert, setGuardianCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+    const [guardianCpfConflictRoles, setGuardianCpfConflictRoles] = useState<string[]>([]);
 
     const canViewGuardians = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_GUARDIANS');
     const canManageGuardians = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_GUARDIANS');
@@ -485,6 +495,9 @@ export default function ResponsaveisPage() {
         setIsLoadingNameSuggestions(false);
         setNameSuggestionError(null);
         setEmailUsageAlert(null);
+        setGuardianCpfConflictAlert(null);
+        setGuardianCpfConflictRoles([]);
+        setOriginalGuardianCpf('');
     };
 
     const openModal = () => {
@@ -497,6 +510,9 @@ export default function ResponsaveisPage() {
         setIsLoadingNameSuggestions(false);
         setNameSuggestionError(null);
         setIsModalOpen(true);
+        setGuardianCpfConflictAlert(null);
+        setGuardianCpfConflictRoles([]);
+        setOriginalGuardianCpf('');
     };
 
     const handleEdit = (guardian: GuardianRecord) => {
@@ -505,17 +521,17 @@ export default function ResponsaveisPage() {
         setFormData({
             name: guardian.name || '',
             birthDate: guardian.birthDate ? new Date(guardian.birthDate).toISOString().split('T')[0] : '',
-            cpf: guardian.cpf || '',
+            cpf: guardian.cpf ? limitNumericDigits(guardian.cpf, 11) : '',
             rg: guardian.rg || '',
-            cnpj: guardian.cnpj || '',
+            cnpj: guardian.cnpj ? limitNumericDigits(guardian.cnpj, 14) : '',
             nickname: guardian.nickname || '',
             corporateName: guardian.corporateName || '',
-            phone: guardian.phone || '',
-            whatsapp: guardian.whatsapp || '',
-            cellphone1: guardian.cellphone1 || '',
-            cellphone2: guardian.cellphone2 || '',
+            phone: guardian.phone ? limitNumericDigits(guardian.phone, 11) : '',
+            whatsapp: guardian.whatsapp ? limitNumericDigits(guardian.whatsapp, 11) : '',
+            cellphone1: guardian.cellphone1 ? limitNumericDigits(guardian.cellphone1, 11) : '',
+            cellphone2: guardian.cellphone2 ? limitNumericDigits(guardian.cellphone2, 11) : '',
             email: guardian.email || '',
-            zipCode: guardian.zipCode || '',
+            zipCode: guardian.zipCode ? limitNumericDigits(guardian.zipCode, 8) : '',
             street: guardian.street || '',
             number: guardian.number || '',
             city: guardian.city || '',
@@ -532,6 +548,9 @@ export default function ResponsaveisPage() {
         setShowNameSuggestions(false);
         setIsLoadingNameSuggestions(false);
         setNameSuggestionError(null);
+        setGuardianCpfConflictAlert(null);
+        setGuardianCpfConflictRoles([]);
+        setOriginalGuardianCpf(guardian.cpf ? limitNumericDigits(guardian.cpf, 11) : '');
         void resolvePersonSystemRoles(guardian.cpf, guardian.email);
         setIsModalOpen(true);
     };
@@ -541,12 +560,47 @@ export default function ResponsaveisPage() {
     };
 
     const handleCpfBlur = async () => {
-        if (!formData.cpf || editingGuardianId) return;
+        if (!formData.cpf) return;
+
+        const normalizedFormCpf = normalizeDocumentDigits(formData.cpf);
+
+        if (editingGuardianId) {
+            const normalizedOriginalCpf = normalizeDocumentDigits(originalGuardianCpf);
+            if (!normalizedFormCpf || normalizedFormCpf === normalizedOriginalCpf) {
+                setGuardianCpfConflictAlert(null);
+                setGuardianCpfConflictRoles([]);
+                return;
+            }
+
+            try {
+                const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
+                if (!profile) {
+                    setGuardianCpfConflictAlert(null);
+                    setGuardianCpfConflictRoles([]);
+                    return;
+                }
+
+                const profileName = String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase();
+                setGuardianCpfConflictAlert({
+                    name: profileName,
+                    cpf: formatCpf(formData.cpf),
+                });
+                setGuardianCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+                setSaveError(null);
+            } catch (error) {
+                setSaveError(errorMessage(error, 'Não foi possível validar o CPF informado.'));
+            }
+
+            return;
+        }
 
         try {
             const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
             if (!profile) {
                 setPersonSystemRoles(['RESPONSAVEL']);
+                setExistingCpfAlert(null);
+                setGuardianCpfConflictAlert(null);
+                setGuardianCpfConflictRoles([]);
                 return;
             }
 
@@ -556,9 +610,22 @@ export default function ResponsaveisPage() {
                     profile,
                 ) as unknown as GuardianFormState
             ));
-            setPersonSystemRoles(buildSystemRoleBadges(profile.roles));
+            const resolvedRoles = buildSystemRoleBadges(profile.roles);
+            setPersonSystemRoles(resolvedRoles);
+            setExistingCpfAlert({
+                name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
+                roles: resolvedRoles,
+            });
+            setGuardianCpfConflictAlert({
+                name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
+                cpf: formatCpf(formData.cpf),
+            });
+            setGuardianCpfConflictRoles(resolvedRoles);
         } catch (error) {
             setSaveError(errorMessage(error, 'Não foi possível reaproveitar os dados deste CPF.'));
+            setExistingCpfAlert(null);
+            setGuardianCpfConflictAlert(null);
+            setGuardianCpfConflictRoles([]);
         }
     };
 
@@ -1109,7 +1176,17 @@ export default function ResponsaveisPage() {
                                     {guardianFieldAccess.sensitive ? (
                                         <div>
                                             <label className={labelClass}>CPF</label>
-                                            <input value={formData.cpf} onChange={(event) => setFormData((current) => ({ ...current, cpf: event.target.value.toUpperCase() }))} onBlur={handleCpfBlur} className={inputClass} />
+                                            <input
+                                                value={formatCpfInput(formData.cpf)}
+                                                onChange={(event) =>
+                                                    setFormData((current) => ({
+                                                        ...current,
+                                                        cpf: limitNumericDigits(event.target.value, 11),
+                                                    }))
+                                                }
+                                                onBlur={handleCpfBlur}
+                                                className={inputClass}
+                                            />
                                         </div>
                                     ) : null}
                                     <div className="relative lg:col-span-2">
@@ -1167,17 +1244,77 @@ export default function ResponsaveisPage() {
                                     {guardianFieldAccess.sensitive ? (
                                         <>
                                             <div><label className={labelClass}>RG</label><input value={formData.rg} onChange={(event) => setFormData((current) => ({ ...current, rg: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>CNPJ</label><input value={formData.cnpj} onChange={(event) => setFormData((current) => ({ ...current, cnpj: event.target.value.toUpperCase() }))} className={inputClass} /></div>
+                                            <div>
+                                                <label className={labelClass}>CNPJ</label>
+                                                <input
+                                                    value={formatCnpjInput(formData.cnpj)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cnpj: limitNumericDigits(event.target.value, 14),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
                                         </>
                                     ) : null}
                                     <div><label className={labelClass}>Apelido</label><input value={formData.nickname} onChange={(event) => setFormData((current) => ({ ...current, nickname: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                     <div className="lg:col-span-2"><label className={labelClass}>Nome empresarial / social</label><input value={formData.corporateName} onChange={(event) => setFormData((current) => ({ ...current, corporateName: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                     {guardianFieldAccess.contact ? (
                                         <>
-                                            <div><label className={labelClass}>WhatsApp</label><input value={formData.whatsapp} onChange={(event) => setFormData((current) => ({ ...current, whatsapp: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Telefone</label><input value={formData.phone} onChange={(event) => setFormData((current) => ({ ...current, phone: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Celular 1</label><input value={formData.cellphone1} onChange={(event) => setFormData((current) => ({ ...current, cellphone1: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Celular 2</label><input value={formData.cellphone2} onChange={(event) => setFormData((current) => ({ ...current, cellphone2: event.target.value.toUpperCase() }))} className={inputClass} /></div>
+                                            <div>
+                                                <label className={labelClass}>WhatsApp</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.whatsapp)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            whatsapp: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Telefone</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.phone)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            phone: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Celular 1</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.cellphone1)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cellphone1: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Celular 2</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.cellphone2)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cellphone2: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
                                         </>
                                     ) : null}
                                 </div>
@@ -1185,7 +1322,22 @@ export default function ResponsaveisPage() {
                             {activeTab === 2 ? (
                                 guardianFieldAccess.contact ? (
                                     <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
-                                        <div><label className={labelClass}>CEP</label><div className="flex gap-2"><input value={formData.zipCode} onChange={(event) => setFormData((current) => ({ ...current, zipCode: event.target.value.toUpperCase() }))} className={inputClass} /><button type="button" onClick={handleCepSearch} className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700">OK</button></div></div>
+                                        <div>
+                                            <label className={labelClass}>CEP</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={formatCepInput(formData.zipCode)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            zipCode: limitNumericDigits(event.target.value, 8),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                                <button type="button" onClick={handleCepSearch} className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700">OK</button>
+                                            </div>
+                                        </div>
                                         <div className="md:col-span-2"><label className={labelClass}>Logradouro</label><input value={formData.street} onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                         <div><label className={labelClass}>Número</label><input value={formData.number} onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                         <div className="md:col-span-2"><label className={labelClass}>Bairro</label><input value={formData.neighborhood} onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))} className={inputClass} /></div>
@@ -1326,6 +1478,77 @@ export default function ResponsaveisPage() {
                         <div className="border-t border-slate-100 bg-white px-6 py-3">
                             <div className="flex justify-end">
                                 <ScreenNameCopy screenId="PRINCIPAL_RESPONSAVEIS_ALUNOS_VINCULADOS" disableMargin className="w-auto" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {guardianCpfConflictAlert ? (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
+                        <div className="flex items-start gap-4 border-b border-amber-100 bg-amber-50 px-6 py-5">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
+                                {currentTenantBranding?.logoUrl ? (
+                                    <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                ) : (
+                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">
+                                        {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">ATENÇÃO</div>
+                                <div className="mt-1 text-lg font-bold text-slate-900">
+                                    CPF JÁ USADO POR:
+                                </div>
+                                <div className="mt-1 text-base font-bold text-slate-900">
+                                    {guardianCpfConflictAlert.name}
+                                </div>
+                                <div className="mt-1 text-sm font-medium text-slate-600">
+                                    CPF INFORMADO: {guardianCpfConflictAlert.cpf}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-3 px-6 py-4">
+                            {guardianCpfConflictRoles.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {guardianCpfConflictRoles.map((role) => (
+                                        <span
+                                            key={role}
+                                            className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                        >
+                                            {role}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : null}
+                            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-900">
+                                RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setGuardianCpfConflictAlert(null);
+                                        setGuardianCpfConflictRoles([]);
+                                    }}
+                                    className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-bold text-white hover:bg-rose-700"
+                                >
+                                    FECHAR
+                                </button>
+                            </div>
+                        </div>
+                        <div className="border-t border-slate-100 bg-white px-6 py-3">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy
+                                    screenId={RESPONSAVEIS_CPF_CONFLICT_SCREEN_ID}
+                                    label="Tela"
+                                    disableMargin
+                                    className="w-auto"
+                                />
                             </div>
                         </div>
                     </div>

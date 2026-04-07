@@ -6,10 +6,12 @@
 /backend/prisma/tmp-e2e.db-journal
 /backend/prisma/tmp-e2e.db-wal
 /backend/prisma/tmp-e2e.db-shm
+/backend/prisma/dev.db
 /backend/.env
 /frontend/node_modules/
 /frontend/.next/
 /frontend/frontend_runtime.log
 /DOCUMENTACAO/AI/*.log
 /DOCUMENTACAO/AI/*.tmp
+/tmp/
 /temp_update.py

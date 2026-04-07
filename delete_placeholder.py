@@ -1,0 +1,10 @@
+import sqlite3
+conn = sqlite3.connect('backend/prisma/dev.db')
+cur = conn.cursor()
+cur.execute("DELETE FROM people WHERE name='PESSOA SEM NOME';")
+print('deleted', cur.rowcount)
+conn.commit()
+cur.execute("SELECT id,name FROM people WHERE name='PESSOA SEM NOME';")
+print('remaining', cur.fetchall())
+cur.close()
+conn.close()

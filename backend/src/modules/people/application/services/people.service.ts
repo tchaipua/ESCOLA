@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
@@ -21,45 +23,76 @@ import {
 } from "../../../../common/auth/access-profiles";
 import { serializePermissions } from "../../../../common/auth/user-permissions";
 
+type GuardianContact = {
+  id: string;
+  name: string;
+  phone: string | null;
+  whatsapp: string | null;
+  cellphone1: string | null;
+  cellphone2: string | null;
+};
+
+type GuardianLink = {
+  guardian: GuardianContact | null;
+};
+
 type LinkedRoleRecord = {
   id: string;
-  canceledAt: Date | null;
+  canceledAt?: Date | null;
+  canceledBy?: string | null;
   accessProfile: string | null;
   permissions: string | null;
   photoUrl?: string | null;
+  guardians?: GuardianLink[];
 };
 
 type PersonWithRoles = {
   id: string;
   tenantId: string;
   name: string;
-  birthDate: Date | null;
-  rg: string | null;
-  cpf: string | null;
-  cnpj: string | null;
-  nickname: string | null;
-  corporateName: string | null;
-  phone: string | null;
-  whatsapp: string | null;
-  cellphone1: string | null;
-  cellphone2: string | null;
-  email: string | null;
-  password: string | null;
-  resetPasswordToken: string | null;
-  resetPasswordExpires: Date | null;
-  zipCode: string | null;
-  street: string | null;
-  number: string | null;
-  city: string | null;
-  state: string | null;
-  neighborhood: string | null;
-  complement: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  canceledAt: Date | null;
+  birthDate?: Date | null;
+  rg?: string | null;
+  cpf?: string | null;
+  cnpj?: string | null;
+  nickname?: string | null;
+  corporateName?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  cellphone1?: string | null;
+  cellphone2?: string | null;
+  email?: string | null;
+  password?: string | null;
+  resetPasswordToken?: string | null;
+  resetPasswordExpires?: Date | null;
+  zipCode?: string | null;
+  street?: string | null;
+  number?: string | null;
+  city?: string | null;
+  state?: string | null;
+  neighborhood?: string | null;
+  complement?: string | null;
+  createdAt?: Date | null;
+  updatedAt?: Date | null;
+  canceledAt?: Date | null;
+  canceledBy?: string | null;
   teachers: LinkedRoleRecord[];
-  students: LinkedRoleRecord[];
+  students: Array<LinkedRoleRecord & { guardians: GuardianLink[] }>;
   guardians: LinkedRoleRecord[];
+  guardianAssignments?: {
+    guardianId: string;
+    studentId: string;
+    studentName: string;
+    kinship: string;
+    kinshipDescription: string | null;
+  }[];
+};
+
+type BasicPersonIdentity = {
+  id: string;
+  tenantId: string;
+  name: string;
+  email?: string | null;
+  cpf?: string | null;
 };
 
 @Injectable()
@@ -153,12 +186,72 @@ export class PeopleService {
     return null;
   }
 
+  private normalizeIdentityText(value?: string | null) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toUpperCase();
+  }
+
+  private normalizeIdentityDocument(value?: string | null) {
+    return this.sharedProfilesService.normalizeDocument(value) || "";
+  }
+
+  private resolveRolePersonId<
+    T extends {
+      personId?: string | null;
+      name?: string | null;
+      email?: string | null;
+      cpf?: string | null;
+    },
+  >(roleRecord: T, peopleById: Map<string, BasicPersonIdentity>) {
+    if (roleRecord.personId && peopleById.has(roleRecord.personId)) {
+      return roleRecord.personId;
+    }
+
+    const normalizedRoleCpf = this.normalizeIdentityDocument(roleRecord.cpf);
+    const normalizedRoleEmail = this.normalizeIdentityText(roleRecord.email);
+    const normalizedRoleName = this.normalizeIdentityText(roleRecord.name);
+
+    for (const person of peopleById.values()) {
+      const normalizedPersonCpf = this.normalizeIdentityDocument(person.cpf);
+      if (
+        normalizedRoleCpf &&
+        normalizedPersonCpf &&
+        normalizedRoleCpf === normalizedPersonCpf
+      ) {
+        return person.id;
+      }
+
+      const normalizedPersonEmail = this.normalizeIdentityText(person.email);
+      if (
+        normalizedRoleEmail &&
+        normalizedPersonEmail &&
+        normalizedRoleEmail === normalizedPersonEmail
+      ) {
+        return person.id;
+      }
+
+      const normalizedPersonName = this.normalizeIdentityText(person.name);
+      if (
+        normalizedRoleName &&
+        normalizedPersonName &&
+        normalizedRoleName === normalizedPersonName
+      ) {
+        return person.id;
+      }
+    }
+
+    return null;
+  }
+
   private mapRoleSummary(role: PersonRoleValue, roleRecord: LinkedRoleRecord) {
     return {
       role,
       roleLabel: this.getRoleLabel(role),
       recordId: roleRecord.id,
-      active: !roleRecord.canceledAt,
+      active: !roleRecord.canceledAt && !roleRecord.canceledBy,
       accessProfile:
         this.getRoleAccessProfile(role, roleRecord.accessProfile) || null,
       permissions: this.getRolePermissions(role, roleRecord),
@@ -169,7 +262,61 @@ export class PeopleService {
     return records[0] || null;
   }
 
-  private mapPersonResponse(person: PersonWithRoles) {
+  private collectGuardianContacts(person: PersonWithRoles) {
+    const guardians = new Map<string, GuardianContact>();
+    for (const student of person.students) {
+      for (const link of student.guardians ?? []) {
+        const guardian = link.guardian;
+        if (!guardian || guardians.has(guardian.id)) continue;
+        guardians.set(guardian.id, {
+          id: guardian.id,
+          name: guardian.name,
+          phone: guardian.phone,
+          whatsapp: guardian.whatsapp,
+          cellphone1: guardian.cellphone1,
+          cellphone2: guardian.cellphone2,
+        });
+      }
+    }
+
+    return Array.from(guardians.values());
+  }
+
+  private async collectGuardianAssignments(guardianIds: string[]) {
+    if (!guardianIds.length) return [];
+
+    const assignments = await this.prisma.$queryRaw<
+      Array<{
+        guardianId: string;
+        studentId: string;
+        studentName: string;
+        kinship: string;
+        kinshipDescription: string | null;
+      }>
+    >`
+      SELECT
+        gs.guardianId,
+        s.id AS studentId,
+        s.name AS studentName,
+        gs.kinship,
+        gs.kinshipDescription
+      FROM guardian_students gs
+      INNER JOIN students s ON s.id = gs.studentId
+      WHERE gs.tenantId = ${this.tenantId()}
+        AND gs.canceledBy IS NULL
+        AND gs.guardianId IN (${Prisma.join(guardianIds)})
+    `;
+
+    return assignments.map((assignment) => ({
+      guardianId: assignment.guardianId,
+      studentId: assignment.studentId,
+      studentName: assignment.studentName,
+      kinship: assignment.kinship,
+      kinshipDescription: assignment.kinshipDescription,
+    }));
+  }
+
+  private async mapPersonResponse(person: PersonWithRoles) {
     const roles = [
       this.getPrimaryRoleRecord(person.teachers)
         ? this.mapRoleSummary(
@@ -194,34 +341,40 @@ export class PeopleService {
     const primaryStudent = this.getPrimaryRoleRecord(person.students);
     const photoUrl = primaryStudent?.photoUrl ?? null;
     const sharedLoginEnabled = Boolean(person.email && person.password);
+    const guardianContacts = this.collectGuardianContacts(person);
+    const guardianIds = person.guardians.map((record) => record.id);
+    const guardianAssignments =
+      await this.collectGuardianAssignments(guardianIds);
 
     return {
       id: person.id,
       tenantId: person.tenantId,
       name: person.name,
-      birthDate: person.birthDate,
-      rg: person.rg,
-      cpf: person.cpf,
-      cnpj: person.cnpj,
-      nickname: person.nickname,
-      corporateName: person.corporateName,
-      phone: person.phone,
-      whatsapp: person.whatsapp,
-      cellphone1: person.cellphone1,
-      cellphone2: person.cellphone2,
-      email: person.email,
-      zipCode: person.zipCode,
-      street: person.street,
-      number: person.number,
-      city: person.city,
-      state: person.state,
-      neighborhood: person.neighborhood,
-      complement: person.complement,
-      createdAt: person.createdAt,
-      updatedAt: person.updatedAt,
-      canceledAt: person.canceledAt,
+      birthDate: person.birthDate ?? null,
+      rg: person.rg ?? null,
+      cpf: person.cpf ?? null,
+      cnpj: person.cnpj ?? null,
+      nickname: person.nickname ?? null,
+      corporateName: person.corporateName ?? null,
+      phone: person.phone ?? null,
+      whatsapp: person.whatsapp ?? null,
+      cellphone1: person.cellphone1 ?? null,
+      cellphone2: person.cellphone2 ?? null,
+      email: person.email ?? null,
+      zipCode: person.zipCode ?? null,
+      street: person.street ?? null,
+      number: person.number ?? null,
+      city: person.city ?? null,
+      state: person.state ?? null,
+      neighborhood: person.neighborhood ?? null,
+      complement: person.complement ?? null,
+      createdAt: person.createdAt ?? null,
+      updatedAt: person.updatedAt ?? null,
+      canceledAt: person.canceledAt ?? null,
       sharedLoginEnabled,
       photoUrl,
+      guardians: guardianContacts,
+      guardianAssignments,
       roles,
     };
   }
@@ -249,7 +402,6 @@ export class PeopleService {
         );
       }
     }
-
   }
 
   private async findPersonEntity(id: string) {
@@ -275,6 +427,21 @@ export class PeopleService {
             accessProfile: true,
             permissions: true,
             photoUrl: true,
+            guardians: {
+              where: { canceledAt: null },
+              include: {
+                guardian: {
+                  select: {
+                    id: true,
+                    name: true,
+                    phone: true,
+                    whatsapp: true,
+                    cellphone1: true,
+                    cellphone2: true,
+                  },
+                },
+              },
+            },
           },
           orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
         },
@@ -464,45 +631,206 @@ export class PeopleService {
   }
 
   async findAll() {
-    const people = await this.prisma.person.findMany({
-      where: {
-        tenantId: this.tenantId(),
-      },
-      include: {
-        teachers: {
-          select: {
-            id: true,
-            canceledAt: true,
-            accessProfile: true,
-            permissions: true,
-          },
-          orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
-        },
-        students: {
-          select: {
-            id: true,
-            canceledAt: true,
-            accessProfile: true,
-            permissions: true,
-            photoUrl: true,
-          },
-          orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
-        },
-        guardians: {
-          select: {
-            id: true,
-            canceledAt: true,
-            accessProfile: true,
-            permissions: true,
-          },
-          orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
-        },
-      },
-      orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
-    });
+    const tenantId = this.tenantId();
 
-    return people.map((person) =>
-      this.mapPersonResponse(person as PersonWithRoles),
+    const [people, teachers, students, guardians, studentGuardians] =
+      await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            tenantId: string;
+            name: string;
+            rg: string | null;
+            cpf: string | null;
+            cnpj: string | null;
+            nickname: string | null;
+            corporateName: string | null;
+            phone: string | null;
+            whatsapp: string | null;
+            cellphone1: string | null;
+            cellphone2: string | null;
+            email: string | null;
+            password: string | null;
+            zipCode: string | null;
+            street: string | null;
+            number: string | null;
+            city: string | null;
+            state: string | null;
+            neighborhood: string | null;
+            complement: string | null;
+          }>
+        >`
+          SELECT
+            id, tenantId, name, rg, cpf, cnpj, nickname, corporateName,
+            phone, whatsapp, cellphone1, cellphone2, email, password,
+            zipCode, street, number, city, state, neighborhood, complement
+          FROM people
+          WHERE tenantId = ${tenantId}
+          ORDER BY name ASC
+        `,
+        this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            name: string;
+            email: string | null;
+            cpf: string | null;
+            personId: string | null;
+            accessProfile: string | null;
+            permissions: string | null;
+            canceledBy: string | null;
+          }>
+        >`
+          SELECT id, name, email, cpf, personId, accessProfile, permissions, canceledBy
+          FROM teachers
+          WHERE tenantId = ${tenantId}
+          ORDER BY id ASC
+        `,
+        this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            name: string;
+            email: string | null;
+            cpf: string | null;
+            personId: string | null;
+            accessProfile: string | null;
+            permissions: string | null;
+            canceledBy: string | null;
+            photoUrl: string | null;
+          }>
+        >`
+          SELECT id, name, email, cpf, personId, accessProfile, permissions, canceledBy, photoUrl
+          FROM students
+          WHERE tenantId = ${tenantId}
+          ORDER BY id ASC
+        `,
+        this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            name: string;
+            email: string | null;
+            cpf: string | null;
+            personId: string | null;
+            accessProfile: string | null;
+            permissions: string | null;
+            canceledBy: string | null;
+          }>
+        >`
+          SELECT id, name, email, cpf, personId, accessProfile, permissions, canceledBy
+          FROM guardians
+          WHERE tenantId = ${tenantId}
+          ORDER BY id ASC
+        `,
+        this.prisma.$queryRaw<
+          Array<{
+            studentId: string;
+            guardianId: string;
+            guardianName: string;
+            guardianPhone: string | null;
+            guardianWhatsapp: string | null;
+            guardianCellphone1: string | null;
+            guardianCellphone2: string | null;
+          }>
+        >`
+          SELECT
+            gs.studentId,
+            g.id AS guardianId,
+            g.name AS guardianName,
+            g.phone AS guardianPhone,
+            g.whatsapp AS guardianWhatsapp,
+            g.cellphone1 AS guardianCellphone1,
+            g.cellphone2 AS guardianCellphone2
+          FROM guardian_students gs
+          INNER JOIN guardians g ON g.id = gs.guardianId
+          WHERE gs.tenantId = ${tenantId}
+            AND gs.canceledBy IS NULL
+            AND g.tenantId = ${tenantId}
+        `,
+      ]);
+
+    const peopleById = new Map<string, BasicPersonIdentity>();
+    for (const person of people) {
+      peopleById.set(person.id, person);
+    }
+
+    const teachersByPersonId = new Map<string, LinkedRoleRecord[]>();
+    for (const teacher of teachers) {
+      const personId = this.resolveRolePersonId(teacher, peopleById);
+      if (!personId) continue;
+      const current = teachersByPersonId.get(personId) || [];
+      current.push({
+        id: teacher.id,
+        canceledBy: teacher.canceledBy,
+        accessProfile: teacher.accessProfile,
+        permissions: teacher.permissions,
+      });
+      teachersByPersonId.set(personId, current);
+    }
+
+    const studentGuardiansByStudentId = new Map<string, GuardianLink[]>();
+    for (const link of studentGuardians) {
+      const current = studentGuardiansByStudentId.get(link.studentId) || [];
+      current.push({
+        guardian: {
+          id: link.guardianId,
+          name: link.guardianName,
+          phone: link.guardianPhone,
+          whatsapp: link.guardianWhatsapp,
+          cellphone1: link.guardianCellphone1,
+          cellphone2: link.guardianCellphone2,
+        },
+      });
+      studentGuardiansByStudentId.set(link.studentId, current);
+    }
+
+    const studentsByPersonId = new Map<
+      string,
+      Array<LinkedRoleRecord & { guardians: GuardianLink[] }>
+    >();
+    for (const student of students) {
+      const personId = this.resolveRolePersonId(student, peopleById);
+      if (!personId) continue;
+      const current = studentsByPersonId.get(personId) || [];
+      current.push({
+        id: student.id,
+        canceledBy: student.canceledBy,
+        accessProfile: student.accessProfile,
+        permissions: student.permissions,
+        photoUrl: student.photoUrl,
+        guardians: studentGuardiansByStudentId.get(student.id) || [],
+      });
+      studentsByPersonId.set(personId, current);
+    }
+
+    const guardiansByPersonId = new Map<string, LinkedRoleRecord[]>();
+    for (const guardian of guardians) {
+      const personId = this.resolveRolePersonId(guardian, peopleById);
+      if (!personId) continue;
+      const current = guardiansByPersonId.get(personId) || [];
+      current.push({
+        id: guardian.id,
+        canceledBy: guardian.canceledBy,
+        accessProfile: guardian.accessProfile,
+        permissions: guardian.permissions,
+      });
+      guardiansByPersonId.set(personId, current);
+    }
+
+    return Promise.all(
+      people.map((person) =>
+        this.mapPersonResponse({
+          ...person,
+          birthDate: null,
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+          createdAt: null,
+          updatedAt: null,
+          canceledAt: null,
+          canceledBy: null,
+          teachers: teachersByPersonId.get(person.id) || [],
+          students: studentsByPersonId.get(person.id) || [],
+          guardians: guardiansByPersonId.get(person.id) || [],
+        }),
+      ),
     );
   }
 
@@ -569,9 +897,12 @@ export class PeopleService {
           currentUser?.userId || this.userId(),
         );
       } else {
-        await this.sharedProfilesService.ensureEmailCredential(normalizedEmail, {
-          userId: currentUser?.userId || this.userId(),
-        });
+        await this.sharedProfilesService.ensureEmailCredential(
+          normalizedEmail,
+          {
+            userId: currentUser?.userId || this.userId(),
+          },
+        );
       }
     }
 
@@ -582,10 +913,10 @@ export class PeopleService {
 
     const reloadedPerson = await this.findPersonEntity(createdPerson.id);
     await this.syncAllLinkedRoles(reloadedPerson);
+    await this.ensurePersonHasRole(reloadedPerson.id);
 
-    return this.mapPersonResponse(
-      await this.findPersonEntity(createdPerson.id),
-    );
+    const finalPerson = await this.findPersonEntity(createdPerson.id);
+    return this.mapPersonResponse(finalPerson);
   }
 
   async update(
@@ -683,7 +1014,9 @@ export class PeopleService {
           ? normalizedEmail || null
           : undefined,
         password:
-          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
+          hashedPassword || shouldResolvePasswordForEmailChange
+            ? null
+            : undefined,
         zipCode: Object.prototype.hasOwnProperty.call(updateDto, "zipCode")
           ? mutableData.zipCode || null
           : undefined,
@@ -723,9 +1056,12 @@ export class PeopleService {
           currentUser?.userId || this.userId(),
         );
       } else if (shouldResolvePasswordForEmailChange) {
-        await this.sharedProfilesService.ensureEmailCredential(normalizedEmail, {
-          userId: currentUser?.userId || this.userId(),
-        });
+        await this.sharedProfilesService.ensureEmailCredential(
+          normalizedEmail,
+          {
+            userId: currentUser?.userId || this.userId(),
+          },
+        );
       }
     }
 
@@ -735,7 +1071,34 @@ export class PeopleService {
     );
     const reloadedPerson = await this.findPersonEntity(id);
     await this.syncAllLinkedRoles(reloadedPerson);
+    await this.ensurePersonHasRole(reloadedPerson.id);
 
     return this.mapPersonResponse(reloadedPerson);
+  }
+
+  private async ensurePersonHasRole(personId: string) {
+    if (!personId) return;
+
+    const hasStudent = await this.prisma.student.findFirst({
+      where: { personId },
+      select: { id: true },
+    });
+    if (hasStudent) return;
+
+    const hasTeacher = await this.prisma.teacher.findFirst({
+      where: { personId },
+      select: { id: true },
+    });
+    if (hasTeacher) return;
+
+    const hasGuardian = await this.prisma.guardian.findFirst({
+      where: { personId },
+      select: { id: true },
+    });
+    if (hasGuardian) return;
+
+    throw new BadRequestException(
+      "Este cadastro precisa estar vinculado a pelo menos um papel operacional (ALUNO, PROFESSOR ou RESPONSÁVEL).",
+    );
   }
 }

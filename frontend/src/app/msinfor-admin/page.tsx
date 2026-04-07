@@ -5,7 +5,7 @@ import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import { MSINFOR_MASTER_SESSION_KEY } from '@/app/lib/auth-storage';
-import { readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
+import { fetchAddressByCep, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
@@ -1064,37 +1064,20 @@ export default function MsinforAdminPage() {
     };
 
     const handleCepSearch = async () => {
-        const cep = formData.zipCode.replace(/\D/g, ''); // Remove todos os não dígitos
-        if (cep.length !== 8) {
-            alert('CEP inválido! Digite os 8 números.');
-            return;
-        }
-
         try {
-            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-            if (!response.ok) throw new Error('Erro na requisição do CEP');
+            const address = await fetchAddressByCep(formData.zipCode);
+            if (!address) return;
 
-            const data = await response.json();
-
-            if (data.erro) {
-                alert('O CEP informado não foi encontrado.');
-                return;
-            }
-
-            setFormData(prev => ({
-                ...prev,
-                street: data.logradouro ? data.logradouro.toUpperCase() : '',
-                neighborhood: data.bairro ? data.bairro.toUpperCase() : '',
-                city: data.localidade ? data.localidade.toUpperCase() : '',
-                state: data.uf || '' // A UF da API do ViaCEP vem como sigla ex: 'SP', 'RS'
+            setFormData((current) => ({
+                ...current,
+                street: address.street,
+                neighborhood: address.neighborhood,
+                city: address.city,
+                state: address.state,
             }));
-
-            // Opcional: Se quiser dar foco para o número:
-            // document.getElementById('numero_input')?.focus();
-
-        } catch (error) {
-            console.error('Falha ao consultar viaCEP:', error);
-            alert('Falha ao consultar CEP. Serviço viacep pode estar oscilando.');
+        } catch (error: any) {
+            console.error('Falha ao consultar Cep via padrão:', error);
+            alert(error?.message || 'Falha ao consultar o CEP. Serviço viacep pode estar oscilando.');
         }
     };
 

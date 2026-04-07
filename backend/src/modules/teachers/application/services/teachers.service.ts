@@ -23,10 +23,63 @@ import {
 
 @Injectable()
 export class TeachersService {
+  private readonly normalizedTeacherDateTimeTenants = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
   ) {}
+
+  private async normalizeLegacyTeacherDateTimes(tenantId: string) {
+    if (this.normalizedTeacherDateTimeTenants.has(tenantId)) {
+      return;
+    }
+
+    const dateTimeColumns = [
+      "birthDate",
+      "resetPasswordExpires",
+      "createdAt",
+      "updatedAt",
+      "canceledAt",
+    ] as const;
+
+    for (const column of dateTimeColumns) {
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE teachers
+          SET ${column} = REPLACE(${column}, ' ', 'T') || '.000Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-?? ??:??:??'
+        `,
+        tenantId,
+      );
+
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE teachers
+          SET ${column} = ${column} || '.000Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-??T??:??:??'
+        `,
+        tenantId,
+      );
+
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE teachers
+          SET ${column} = SUBSTR(${column}, 1, 23) || 'Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-??T??:??:??.??????'
+        `,
+        tenantId,
+      );
+    }
+
+    this.normalizedTeacherDateTimeTenants.add(tenantId);
+  }
 
   private normalizeDocument(value?: string | null): string {
     return String(value || "").replace(/\D/g, "");
@@ -130,10 +183,13 @@ export class TeachersService {
   }
 
   private async findTeacherEntity(id: string) {
+    const tenantId = getTenantContext()!.tenantId;
+    await this.normalizeLegacyTeacherDateTimes(tenantId);
+
     const teacher = await this.prisma.teacher.findFirst({
       where: {
         id,
-        tenantId: getTenantContext()!.tenantId,
+        tenantId,
       },
       include: {
         teacherSubjects: {
@@ -253,9 +309,12 @@ export class TeachersService {
   }
 
   async findAll(currentUser?: ICurrentUser) {
+    const tenantId = getTenantContext()!.tenantId;
+    await this.normalizeLegacyTeacherDateTimes(tenantId);
+
     const teachers = await this.prisma.teacher.findMany({
       where: {
-        tenantId: getTenantContext()!.tenantId,
+        tenantId,
       },
       orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
       include: {
@@ -291,6 +350,8 @@ export class TeachersService {
   }
 
   async findMe(userId: string, tenantId: string, currentUser?: ICurrentUser) {
+    await this.normalizeLegacyTeacherDateTimes(tenantId);
+
     const teacher = await this.prisma.teacher.findFirst({
       where: {
         id: userId,
@@ -331,12 +392,13 @@ export class TeachersService {
     updateDto: UpdateTeacherDto,
     currentUser?: ICurrentUser,
   ) {
+    const tenantId = getTenantContext()!.tenantId;
+    await this.normalizeLegacyTeacherDateTimes(tenantId);
     const teacher = await this.findTeacherEntity(id);
     const sanitizedDto = this.sanitizeTeacherMutationDto(
       updateDto,
       currentUser,
     );
-    const tenantId = getTenantContext()!.tenantId;
 
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
@@ -405,7 +467,9 @@ export class TeachersService {
       data: {
         ...rawData,
         password:
-          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
+          hashedPassword || shouldResolvePasswordForEmailChange
+            ? null
+            : undefined,
         accessProfile,
         permissions: explicitPermissions,
         birthDate: sanitizedDto.birthDate

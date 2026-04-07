@@ -65,7 +65,10 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Post("confirm-shared-password")
-  @ApiOperation({ summary: "Confirma a senha compartilhada do e-mail em todos os perfis vinculados" })
+  @ApiOperation({
+    summary:
+      "Confirma a senha compartilhada do e-mail em todos os perfis vinculados",
+  })
   async confirmSharedPassword(
     @CurrentUser() user: ICurrentUser,
     @Body() payload: ConfirmPasswordDto,
@@ -80,7 +83,10 @@ export class AuthController {
 
   @ApiBearerAuth()
   @Post("change-shared-password")
-  @ApiOperation({ summary: "Altera a senha compartilhada e sincroniza em todos os perfis vinculados" })
+  @ApiOperation({
+    summary:
+      "Altera a senha compartilhada e sincroniza em todos os perfis vinculados",
+  })
   async changeSharedPassword(
     @CurrentUser() user: ICurrentUser,
     @Body()

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
@@ -29,9 +29,26 @@ type PersonRecord = {
   state?: string | null;
   updatedAt?: string | null;
   sharedLoginEnabled?: boolean;
+  guardians?: Array<{
+    id: string;
+    name: string;
+    whatsapp?: string | null;
+    phone?: string | null;
+    cellphone1?: string | null;
+    cellphone2?: string | null;
+  }>;
+  guardianAssignments?: Array<{
+    guardianId: string;
+    studentId: string;
+    studentName: string;
+    kinship: string;
+    kinshipDescription?: string | null;
+  }>;
   roles: Array<{
     role: PersonRole;
     roleLabel: string;
+    active: boolean;
+    accessProfile: string | null;
   }>;
 };
 
@@ -54,7 +71,7 @@ export default function PessoasPage() {
     setCurrentTenantId(auth.tenantId);
   }, []);
 
-  const reloadPeople = async () => {
+  const reloadPeople = useCallback(async () => {
     if (!token) return;
     const response = await fetch(`${API_BASE_URL}/people`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -64,7 +81,7 @@ export default function PessoasPage() {
       throw new Error(data?.message || 'Não foi possível carregar os cadastros.');
     }
     setPeople(Array.isArray(data) ? data : []);
-  };
+  }, [token]);
 
   useEffect(() => {
     if (!token || !canView) {
@@ -85,25 +102,37 @@ export default function PessoasPage() {
     };
 
     void run();
-  }, [token, canView]);
+  }, [token, canView, reloadPeople]);
+
+  const uniquePeople = useMemo(() => {
+    const seenIds = new Set<string>();
+    return people.filter((person) => {
+      if (seenIds.has(person.id)) return false;
+      seenIds.add(person.id);
+      return true;
+    });
+  }, [people]);
 
   const filteredPeople = useMemo(() => {
     const term = searchTerm.trim().toUpperCase();
-    return people.filter((person) => {
+    return uniquePeople.filter((person) => {
       const matchesName = !term || person.name.toUpperCase().includes(term);
       const matchesRole = selectedRoleFilter === 'ALL'
         ? true
         : person.roles.some((role) => role.role === selectedRoleFilter);
       return matchesName && matchesRole;
     });
-  }, [people, searchTerm, selectedRoleFilter]);
+  }, [uniquePeople, searchTerm, selectedRoleFilter]);
 
-  const metrics = useMemo(() => ({
-    total: people.length,
-    professores: people.filter((person) => person.roles.some((role) => role.role === 'PROFESSOR')).length,
-    alunos: people.filter((person) => person.roles.some((role) => role.role === 'ALUNO')).length,
-    responsaveis: people.filter((person) => person.roles.some((role) => role.role === 'RESPONSAVEL')).length,
-  }), [people]);
+  const metrics = useMemo(() => {
+    const base = uniquePeople;
+    return {
+      total: base.length,
+      professores: base.filter((person) => person.roles.some((role) => role.role === 'PROFESSOR')).length,
+      alunos: base.filter((person) => person.roles.some((role) => role.role === 'ALUNO')).length,
+      responsaveis: base.filter((person) => person.roles.some((role) => role.role === 'RESPONSAVEL')).length,
+    };
+  }, [uniquePeople]);
 
   const currentTenantBranding = useMemo(
     () => readCachedTenantBranding(currentTenantId),
@@ -207,50 +236,112 @@ export default function PessoasPage() {
           </div>
         ) : (
           <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {filteredPeople.map((person) => (
-              <article key={person.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_45%,#eff6ff_100%)] p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Pessoa compartilhada</div>
-                      <h3 className="mt-2 text-xl font-black text-slate-800">{person.name}</h3>
-                      <div className="mt-2 text-sm font-medium text-slate-500">
-                        {person.email || 'Sem login configurado'}
+            {filteredPeople.map((person) => {
+              const isAluno = person.roles.some((role) => role.role === 'ALUNO');
+              const isGuardian = person.roles.some((role) => role.role === 'RESPONSAVEL');
+              const guardianAssignments = person.guardianAssignments || [];
+
+              return (
+                <article key={person.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_45%,#eff6ff_100%)] p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="mt-2 text-xl font-black text-slate-800">{person.name}</h3>
+                        <div className="mt-2 text-sm font-medium text-slate-500">
+                          {person.email || 'Sem login configurado'}
+                        </div>
+                      </div>
+                      <div className={`rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${person.sharedLoginEnabled ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
+                        {person.sharedLoginEnabled ? 'Login ativo' : 'Sem login'}
                       </div>
                     </div>
-                    <div className={`rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${person.sharedLoginEnabled ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
-                      {person.sharedLoginEnabled ? 'Login ativo' : 'Sem login'}
+                    <div className="mt-4 flex flex-col gap-2">
+                      <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Origem</div>
+                      <div className="flex flex-wrap gap-2">
+                        {person.roles.map((role) => (
+                          <span
+                            key={`${person.id}-${role.role}`}
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.15em] ${ROLE_CONFIG[role.role]?.color || 'border-slate-200 bg-slate-50 text-slate-600'}`}
+                          >
+                            {role.roleLabel}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="space-y-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        {person.roles.map((role) => (
+                          <div key={`${person.id}-${role.role}-info`} className="flex flex-wrap items-center gap-2">
+                            <span className="text-slate-600">{role.role}</span>
+                            <span className="text-slate-400">•</span>
+                            <span>{role.active ? 'ATIVO' : 'INATIVO'}</span>
+                            {role.accessProfile && (
+                              <>
+                                <span className="text-slate-400">•</span>
+                                <span>{role.accessProfile}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
+                    {isGuardian && guardianAssignments.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 text-sm text-slate-700">
+                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-600">Alunos vinculados</div>
+                        <div className="mt-3 space-y-3 text-sm font-semibold text-slate-700">
+                          {guardianAssignments.map((assignment) => (
+                            <div key={`${assignment.guardianId}-${assignment.studentId}`} className="flex flex-col gap-1 rounded-xl border border-emerald-200 bg-white/80 p-3">
+                              <div className="text-[13px] font-black text-emerald-700">{assignment.studentName}</div>
+                              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                {assignment.kinship}
+                                {assignment.kinshipDescription ? ` (${assignment.kinshipDescription})` : ''}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {person.roles.map((role) => (
-                      <span key={`${person.id}-${role.role}`} className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.15em] ${ROLE_CONFIG[role.role]?.color || 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                        {role.roleLabel}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-4 p-5 text-sm text-slate-600">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">CPF</div>
-                      <div className="mt-1 font-semibold text-slate-700">{person.cpf || 'Não informado'}</div>
+                  <div className="space-y-4 p-5 text-sm text-slate-600">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">CPF</div>
+                        <div className="mt-1 font-semibold text-slate-700">{person.cpf || 'Não informado'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Telefone</div>
+                        <div className="mt-1 font-semibold text-slate-700">{person.whatsapp || person.phone || 'Não informado'}</div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Endereço base</div>
+                        <div className="mt-1 font-semibold text-slate-700">{[person.street, person.number, person.neighborhood, person.city, person.state].filter(Boolean).join(', ') || 'Não informado'}</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Telefone</div>
-                      <div className="mt-1 font-semibold text-slate-700">{person.whatsapp || person.phone || 'Não informado'}</div>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Endereço base</div>
-                      <div className="mt-1 font-semibold text-slate-700">{[person.street, person.number, person.neighborhood, person.city, person.state].filter(Boolean).join(', ') || 'Não informado'}</div>
-                    </div>
+                    {isAluno && person.guardians && person.guardians.length > 0 && (
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-slate-600">
+                        <div className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-400">Responsáveis</div>
+                        <div className="mt-3 space-y-3 text-sm font-semibold text-slate-700">
+                          {person.guardians.map((guardian) => {
+                            const whatsappText = guardian.whatsapp || 'Não informado';
+                            const phoneList = [guardian.phone, guardian.cellphone1, guardian.cellphone2].filter(Boolean);
+                            const phoneText = phoneList.length ? phoneList.join(' / ') : 'Não informado';
+
+                            return (
+                              <div key={guardian.id} className="space-y-1">
+                                <div className="text-sm font-bold text-slate-800">{guardian.name}</div>
+                                <div className="text-[11px] font-black uppercase tracking-[0.15em] text-slate-500">
+                                  WhatsApp: {whatsappText}
+                                  <span className="mx-2 text-slate-300">•</span>
+                                  Telefone: {phoneText}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.15em] text-slate-500">
-                    Última atualização: <span className="text-slate-700">{person.updatedAt ? new Date(person.updatedAt).toLocaleString() : 'Sem registro recente'}</span>
-                  </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

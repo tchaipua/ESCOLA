@@ -78,12 +78,10 @@ export class ClassScheduleItemsService {
   }
 
   private formatSeriesClassLabel(
-    seriesClass?:
-      | {
-          series?: { name?: string | null } | null;
-          class?: { name?: string | null } | null;
-        }
-      | null,
+    seriesClass?: {
+      series?: { name?: string | null } | null;
+      class?: { name?: string | null } | null;
+    } | null,
   ) {
     const seriesName = seriesClass?.series?.name || "SEM SÉRIE";
     const className = seriesClass?.class?.name || "SEM TURMA";
@@ -209,12 +207,7 @@ export class ClassScheduleItemsService {
     });
 
     const classConflict = classItems.find((item) =>
-      this.timeRangesOverlap(
-        startTime,
-        endTime,
-        item.startTime,
-        item.endTime,
-      ),
+      this.timeRangesOverlap(startTime, endTime, item.startTime, item.endTime),
     );
 
     if (classConflict) {
@@ -261,12 +254,7 @@ export class ClassScheduleItemsService {
     });
 
     const teacherConflict = teacherItems.find((item) =>
-      this.timeRangesOverlap(
-        startTime,
-        endTime,
-        item.startTime,
-        item.endTime,
-      ),
+      this.timeRangesOverlap(startTime, endTime, item.startTime, item.endTime),
     );
 
     if (teacherConflict) {
@@ -428,12 +416,13 @@ export class ClassScheduleItemsService {
   }
 
   private async attachDeletionMetadata<T extends { id: string }>(item: T) {
-    const linkedLessonCalendarItems = await this.prisma.lessonCalendarItem.count({
-      where: {
-        tenantId: this.tenantId(),
-        classScheduleItemId: item.id,
-      },
-    });
+    const linkedLessonCalendarItems =
+      await this.prisma.lessonCalendarItem.count({
+        where: {
+          tenantId: this.tenantId(),
+          classScheduleItemId: item.id,
+        },
+      });
 
     return {
       ...item,
@@ -642,42 +631,42 @@ export class ClassScheduleItemsService {
     );
 
     try {
-        const item = await this.prisma.classScheduleItem.create({
-          data: {
-            tenantId: this.tenantId(),
-            schoolYearId: createDto.schoolYearId,
-            seriesClassId: createDto.seriesClassId,
+      const item = await this.prisma.classScheduleItem.create({
+        data: {
+          tenantId: this.tenantId(),
+          schoolYearId: createDto.schoolYearId,
+          seriesClassId: createDto.seriesClassId,
           teacherSubjectId,
           dayOfWeek,
           startTime,
           endTime,
           createdBy: this.userId(),
-          },
-          include: this.includeRelations(),
-        });
-
-        return this.attachDeletionMetadata(item);
-      } catch (error) {
-        this.rethrowPersistenceError(error);
-      }
-    }
-
-    async findAll() {
-      const items = await this.prisma.classScheduleItem.findMany({
-        where: {
-          tenantId: this.tenantId(),
         },
         include: this.includeRelations(),
+      });
+
+      return this.attachDeletionMetadata(item);
+    } catch (error) {
+      this.rethrowPersistenceError(error);
+    }
+  }
+
+  async findAll() {
+    const items = await this.prisma.classScheduleItem.findMany({
+      where: {
+        tenantId: this.tenantId(),
+      },
+      include: this.includeRelations(),
       orderBy: [
         { canceledAt: "asc" },
         { schoolYear: { year: "desc" } },
         { dayOfWeek: "asc" },
-          { startTime: "asc" },
-        ],
-      });
+        { startTime: "asc" },
+      ],
+    });
 
-      return Promise.all(items.map((item) => this.attachDeletionMetadata(item)));
-    }
+    return Promise.all(items.map((item) => this.attachDeletionMetadata(item)));
+  }
 
   async findOne(id: string) {
     const item = await this.prisma.classScheduleItem.findFirst({
@@ -694,8 +683,8 @@ export class ClassScheduleItemsService {
       );
     }
 
-      return this.attachDeletionMetadata(item);
-    }
+    return this.attachDeletionMetadata(item);
+  }
 
   async update(id: string, updateDto: UpdateClassScheduleItemDto) {
     const currentItem = await this.findOne(id);
@@ -819,11 +808,11 @@ export class ClassScheduleItemsService {
       );
     }
 
-      await this.prisma.classScheduleItem.update({
-        where: { id },
-        data: active
-          ? {
-              canceledAt: null,
+    await this.prisma.classScheduleItem.update({
+      where: { id },
+      data: active
+        ? {
+            canceledAt: null,
             canceledBy: null,
             updatedBy: this.userId(),
           }
@@ -832,14 +821,14 @@ export class ClassScheduleItemsService {
             canceledBy: this.userId(),
             updatedBy: this.userId(),
           },
-      });
+    });
 
-      const updatedItem = await this.findOne(id);
+    const updatedItem = await this.findOne(id);
 
-      return {
-        message: active
-          ? "Lançamento ativado com sucesso."
-          : "Lançamento inativado com sucesso.",
+    return {
+      message: active
+        ? "Lançamento ativado com sucesso."
+        : "Lançamento inativado com sucesso.",
       item: updatedItem,
     };
   }

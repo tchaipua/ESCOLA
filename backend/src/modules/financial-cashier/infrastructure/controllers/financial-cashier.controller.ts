@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { CurrentUser, type ICurrentUser } from "../../../../common/decorators/current-user.decorator";
+import {
+  CurrentUser,
+  type ICurrentUser,
+} from "../../../../common/decorators/current-user.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import {

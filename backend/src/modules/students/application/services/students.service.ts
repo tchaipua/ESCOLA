@@ -26,10 +26,95 @@ import {
 
 @Injectable()
 export class StudentsService {
+  private readonly normalizedStudentDateTimeTenants = new Set<string>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
   ) {}
+
+  private async normalizeLegacyTableDateTimes(
+    tenantId: string,
+    tableName: "students" | "guardians" | "guardian_students" | "people",
+  ) {
+    const dateTimeColumnsByTable = {
+      students: [
+        "birthDate",
+        "resetPasswordExpires",
+        "createdAt",
+        "updatedAt",
+        "canceledAt",
+      ],
+      guardians: [
+        "birthDate",
+        "resetPasswordExpires",
+        "createdAt",
+        "updatedAt",
+        "canceledAt",
+      ],
+      guardian_students: ["createdAt", "updatedAt", "canceledAt"],
+      people: ["birthDate", "createdAt", "updatedAt", "canceledAt"],
+    } as const;
+
+    for (const column of dateTimeColumnsByTable[tableName]) {
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE ${tableName}
+          SET ${column} = REPLACE(${column}, ' ', 'T') || '.000Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-?? ??:??:??'
+        `,
+        tenantId,
+      );
+
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE ${tableName}
+          SET ${column} = ${column} || '.000Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-??T??:??:??'
+        `,
+        tenantId,
+      );
+
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE ${tableName}
+          SET ${column} = SUBSTR(${column}, 1, 23) || 'Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-??T??:??:??.??????'
+        `,
+        tenantId,
+      );
+
+      await this.prisma.$executeRawUnsafe(
+        `
+          UPDATE ${tableName}
+          SET ${column} = ${column} || 'T00:00:00.000Z'
+          WHERE tenantId = ?
+            AND ${column} IS NOT NULL
+            AND ${column} GLOB '????-??-??'
+        `,
+        tenantId,
+      );
+    }
+  }
+
+  private async normalizeLegacyStudentDateTimes(tenantId: string) {
+    if (this.normalizedStudentDateTimeTenants.has(tenantId)) {
+      return;
+    }
+
+    await this.normalizeLegacyTableDateTimes(tenantId, "students");
+    await this.normalizeLegacyTableDateTimes(tenantId, "guardians");
+    await this.normalizeLegacyTableDateTimes(tenantId, "guardian_students");
+    await this.normalizeLegacyTableDateTimes(tenantId, "people");
+
+    this.normalizedStudentDateTimeTenants.add(tenantId);
+  }
 
   private normalizeDocument(value?: string | null): string {
     return String(value || "").replace(/\D/g, "");
@@ -98,7 +183,9 @@ export class StudentsService {
   private normalizeBillingPayerType(
     value?: string | null,
   ): "ALUNO" | "RESPONSAVEL" {
-    return String(value || "").trim().toUpperCase() === "RESPONSAVEL"
+    return String(value || "")
+      .trim()
+      .toUpperCase() === "RESPONSAVEL"
       ? "RESPONSAVEL"
       : "ALUNO";
   }
@@ -151,7 +238,9 @@ export class StudentsService {
   }
 
   private async resolveCreateBillingSettings(dto: CreateStudentDto) {
-    const requestedPayerType = this.normalizeBillingPayerType(dto.billingPayerType);
+    const requestedPayerType = this.normalizeBillingPayerType(
+      dto.billingPayerType,
+    );
     const requestedGuardianId = this.normalizeRelationId(dto.billingGuardianId);
 
     if (requestedPayerType === "RESPONSAVEL" || requestedGuardianId) {
@@ -284,6 +373,8 @@ export class StudentsService {
   }
 
   private async findStudentEntity(id: string) {
+    await this.normalizeLegacyStudentDateTimes(this.tenantId());
+
     const student = await this.prisma.student.findFirst({
       where: {
         id,
@@ -369,7 +460,8 @@ export class StudentsService {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
-    const billingSettings = await this.resolveCreateBillingSettings(sanitizedDto);
+    const billingSettings =
+      await this.resolveCreateBillingSettings(sanitizedDto);
 
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
@@ -423,6 +515,11 @@ export class StudentsService {
       this.userId(),
     );
 
+    await this.ensureStudentPersonLink(createdStudent.id, {
+      cpf: sanitizedDto.cpf ?? null,
+      email: sanitizedDto.email ?? null,
+    });
+
     if (sanitizedDto.email) {
       if (hashedPassword) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
@@ -445,6 +542,8 @@ export class StudentsService {
   }
 
   async findAll(currentUser?: ICurrentUser) {
+    await this.normalizeLegacyStudentDateTimes(this.tenantId());
+
     const students = await this.prisma.student.findMany({
       where: {
         tenantId: this.tenantId(),
@@ -490,6 +589,8 @@ export class StudentsService {
   }
 
   async findMe(userId: string, tenantId: string, currentUser?: ICurrentUser) {
+    await this.normalizeLegacyStudentDateTimes(tenantId);
+
     const student = await this.prisma.student.findFirst({
       where: {
         id: userId,
@@ -532,6 +633,8 @@ export class StudentsService {
     tenantId: string,
     currentUser?: ICurrentUser,
   ) {
+    await this.normalizeLegacyStudentDateTimes(tenantId);
+
     const student = await this.prisma.student.findFirst({
       where: {
         id: userId,
@@ -856,6 +959,7 @@ export class StudentsService {
     updateDto: UpdateStudentDto,
     currentUser?: ICurrentUser,
   ) {
+    await this.normalizeLegacyStudentDateTimes(this.tenantId());
     const currentStudent = await this.findStudentEntity(id);
     const sanitizedDto = this.sanitizeStudentMutationDto(
       updateDto,
@@ -940,7 +1044,9 @@ export class StudentsService {
         ...rawData,
         name: resolvedStudentName,
         password:
-          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
+          hashedPassword || shouldResolvePasswordForEmailChange
+            ? null
+            : undefined,
         accessProfile,
         permissions: explicitPermissions,
         photoUrl: Object.prototype.hasOwnProperty.call(sanitizedDto, "photoUrl")
@@ -1179,5 +1285,37 @@ export class StudentsService {
       student: this.mapStudentAccess(updatedStudent),
     };
   }
-}
 
+  private async ensureStudentPersonLink(
+    studentId: string,
+    source: { cpf?: string | null; email?: string | null },
+  ) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { personId: true },
+    });
+    if (!student || student.personId) return;
+
+    const tenantId = this.tenantId();
+    const normalizedCpf = this.normalizeDocument(source.cpf);
+    const where: Record<string, any> = { tenantId };
+    if (normalizedCpf) {
+      where.cpfDigits = normalizedCpf;
+    } else if (source.email) {
+      where.email = source.email.toUpperCase();
+    } else {
+      return;
+    }
+
+    const person = await this.prisma.person.findFirst({
+      where,
+      select: { id: true },
+    });
+    if (!person) return;
+
+    await this.prisma.student.update({
+      where: { id: studentId },
+      data: { personId: person.id },
+    });
+  }
+}
