@@ -7,7 +7,7 @@ import { clearStoredSession } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const CACHE_KEY = '@Escola-PWA-Teacher-Cache:v1';
 const ACTION_QUEUE_KEY = '@Escola-PWA-Teacher-Action-Queue:v1';
 const READ_QUEUE_KEY = '@Escola-PWA-Teacher-Read-Queue:v1';

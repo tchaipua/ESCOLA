@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.vps
+    container_name: escola-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: file:./dev.db
+      JWT_SECRET: super-secret-escolar-key-2026
+      PORT: 3001
+      FRONTEND_URL: http://212.56.42.45:3010
+      FINANCEIRO_API_URL: http://212.56.42.45:3002/api/v1
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend/dev.db:/app/backend/dev.db
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.vps
+    container_name: escola-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://212.56.42.45:3001/api/v1
+      NODE_ENV: development
+    ports:
+      - "3010:3000"
+    depends_on:
+      - backend

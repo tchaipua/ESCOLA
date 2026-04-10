@@ -15,7 +15,7 @@ import { getDashboardAuthContext, hasDashboardPermission } from '@/app/lib/dashb
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const GRADE_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_STATUS_MODAL';
 const PERIOD_OPTIONS = [
     { value: 'MANHA', label: 'Manhã' },

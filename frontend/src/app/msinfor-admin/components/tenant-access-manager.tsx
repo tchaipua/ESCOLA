@@ -15,15 +15,13 @@ import {
 
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
 const CPF_CONFLICT_SCREEN_ID = `${SCREEN_NAME}_POPUP_CPF_CONFLICT`;
 
 const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 const inputClass =
   'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
-const cepInputClass =
-  'flex-1 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
 const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
 
 type TenantSummary = {
@@ -224,6 +222,7 @@ export default function TenantAccessManager({
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [users, setUsers] = useState<AccessUser[]>([]);
   const [formData, setFormData] = useState<AccessFormState>(EMPTY_FORM);
+  const [activeTab, setActiveTab] = useState<'DADOS' | 'FOTO' | 'ENDERECO' | 'PERFIL'>('DADOS');
   const [formStep, setFormStep] = useState<'BASICO' | 'PERMISSOES'>('BASICO');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -270,6 +269,7 @@ export default function TenantAccessManager({
     setIsCreatingNew(false);
     setEditingUserId(null);
     setFormData(EMPTY_FORM);
+    setActiveTab('DADOS');
     void loadUsers();
   }, [tenant?.id]);
 
@@ -294,6 +294,19 @@ export default function TenantAccessManager({
     return () => window.clearTimeout(timer);
   }, [copyFeedback]);
 
+  useEffect(() => {
+    if (!tenant) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose, tenant]);
+
   if (!tenant) return null;
 
   const resetForm = (options?: { announce?: boolean }) => {
@@ -301,6 +314,7 @@ export default function TenantAccessManager({
     setEditingUserId(null);
     setFormStep('BASICO');
     setFormData(EMPTY_FORM);
+    setActiveTab('DADOS');
     setErrorMessage(null);
     setSuccessMessage(null);
     setPhotoError(null);
@@ -324,6 +338,7 @@ export default function TenantAccessManager({
     setEditingUserId(null);
     setFormStep('BASICO');
     setFormData(EMPTY_FORM);
+    setActiveTab('DADOS');
     setErrorMessage(null);
     setSuccessMessage(null);
     setHelperMessage('Preencha o formulario para criar um novo acesso.');
@@ -341,6 +356,7 @@ export default function TenantAccessManager({
     setIsCreatingNew(false);
     setEditingUserId(user.id);
     setFormStep(user.role === 'ADMIN' ? 'BASICO' : 'PERMISSOES');
+    setActiveTab('DADOS');
     setFormData({
       name: user.name || '',
       email: user.email || '',
@@ -610,6 +626,265 @@ export default function TenantAccessManager({
   const showPermissionScreen = formData.role !== 'ADMIN' && formStep === 'PERMISSOES';
   const showFocusedEditor = editingUserId !== null;
   const showFocusedCreate = isCreatingNew && editingUserId === null;
+  const renderAddressTab = () => (
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
+      <div>
+        <label className={labelClass}>CEP</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={formatCepInput(formData.zipCode)}
+            onChange={(event) =>
+              setFormData((current) => ({ ...current, zipCode: limitNumericDigits(event.target.value, 8) }))
+            }
+            className={inputClass}
+          />
+          <button
+            type="button"
+            onClick={handleCepLookup}
+            className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+      <div className="md:col-span-2">
+        <label className={labelClass}>Logradouro</label>
+        <input
+          type="text"
+          value={formData.street || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div>
+        <label className={labelClass}>Numero</label>
+        <input
+          type="text"
+          value={formData.number || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className={labelClass}>Bairro</label>
+        <input
+          type="text"
+          value={formData.neighborhood || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className={labelClass}>Complemento</label>
+        <input
+          type="text"
+          value={formData.complement || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, complement: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div className="md:col-span-3">
+        <label className={labelClass}>Cidade</label>
+        <input
+          type="text"
+          value={formData.city || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, city: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div>
+        <label className={labelClass}>UF</label>
+        <input
+          type="text"
+          value={formData.state || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, state: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+    </div>
+  );
+
+  const renderPhotoTab = () => (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white">
+          {formData.photoUrl ? (
+            <img
+              src={formData.photoUrl}
+              alt={`Foto de ${formData.name || 'usuário de acesso'}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Sem foto
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Foto do usuário</div>
+          <p className="mt-1 text-sm text-slate-500">
+            Grave uma foto para identificar melhor este acesso administrativo da escola.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoSelected}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+            >
+              Escolher foto
+            </button>
+            {formData.photoUrl ? (
+              <button
+                type="button"
+                onClick={clearPhoto}
+                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-100"
+              >
+                Remover foto
+              </button>
+            ) : null}
+          </div>
+          {photoError ? (
+            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              {photoError}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+  const renderProfileTab = () => (
+    <>
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => applyRolePreset('ADMIN')}
+          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+            formData.role === 'ADMIN'
+              ? 'border-fuchsia-300 bg-fuchsia-50'
+              : 'border-slate-200 bg-white hover:border-fuchsia-200'
+          }`}
+        >
+          <div className="font-bold text-slate-800">ADMIN</div>
+          <div className="mt-1 text-sm text-slate-500">{getRoleDescription('ADMIN')}</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => applyRolePreset('SECRETARIA')}
+          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+            formData.role === 'SECRETARIA'
+              ? 'border-indigo-300 bg-indigo-50'
+              : 'border-slate-200 bg-white hover:border-indigo-200'
+          }`}
+        >
+          <div className="font-bold text-slate-800">SECRETARIA</div>
+          <div className="mt-1 text-sm text-slate-500">{getRoleDescription('SECRETARIA')}</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => applyRolePreset('COORDENACAO')}
+          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+            formData.role === 'COORDENACAO'
+              ? 'border-violet-300 bg-violet-50'
+              : 'border-slate-200 bg-white hover:border-violet-200'
+          }`}
+        >
+          <div className="font-bold text-slate-800">COORDENAÇÃO</div>
+          <div className="mt-1 text-sm text-slate-500">{getRoleDescription('COORDENACAO')}</div>
+        </button>
+      </div>
+
+      {formData.role !== 'ADMIN' ? (
+        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Perfis complementares</div>
+          <p className="mt-2 text-sm text-emerald-800">
+            Somente <span className="font-bold">FINANCEIRO</span> e <span className="font-bold">CAIXA</span> podem ser acumulados com o perfil principal desta tela.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {(Object.entries(COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS) as Array<[ComplementaryAccessProfileCode, { label: string; permissions: string[] }]>).map(([profileCode, profile]) => {
+              const isSelected = formData.complementaryProfiles.includes(profileCode);
+              return (
+                <button
+                  key={profileCode}
+                  type="button"
+                  onClick={() => toggleComplementaryProfile(profileCode)}
+                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+                    isSelected
+                      ? 'border-emerald-300 bg-white shadow-sm'
+                      : 'border-emerald-100 bg-white/70 hover:border-emerald-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-bold text-slate-800">{profile.label}</div>
+                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${
+                      isSelected ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                    }`}>
+                      {isSelected ? '✓' : 'X'}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-500">
+                    {profileCode === 'FINANCEIRO'
+                      ? 'Emite boletos, lança mensalidades e opera o financeiro sem receber valores.'
+                      : 'Recebe valores, baixa mensalidades e controla as rotinas de caixa.'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 text-xs font-medium text-emerald-700">
+            Complementares ativos: {formatComplementaryProfiles(formData.complementaryProfiles)}
+          </div>
+        </div>
+      ) : null}
+
+      {formData.role === 'ADMIN' ? (
+        <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 text-sm text-indigo-700">
+          Este perfil tera autorizacao completa na escola.
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setFormStep('BASICO')}
+              className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                formStep === 'BASICO'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              1. Dados do acesso
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (canAdvanceToPermissions) {
+                  setErrorMessage(null);
+                  setFormStep('PERMISSOES');
+                } else {
+                  setErrorMessage('Preencha nome e e-mail antes de configurar as permissões.');
+                }
+              }}
+              className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100"
+            >
+              2. Permissões do perfil
+            </button>
+          </div>
+          <div className="mt-3 text-xs font-medium text-slate-500">
+            Entre na tela de permissões para ajustar visualização e manutenção deste usuário.
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   const handleDelete = async (user: AccessUser) => {
     if (!window.confirm(`Desativar o acesso de ${user.name}?`)) return;
@@ -653,8 +928,17 @@ export default function TenantAccessManager({
   });
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -696,6 +980,60 @@ export default function TenantAccessManager({
                 ) : null}
 
                 <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap gap-2 border-b border-slate-200 bg-slate-50/50 px-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('DADOS')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'DADOS'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    1. DADOS BÁSICOS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('FOTO')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'FOTO'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    2. FOTO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ENDERECO')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'ENDERECO'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    3. ENDEREÇO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('PERFIL')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'PERFIL'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    4. PERFIL
+                  </button>
+                </div>
+                {activeTab === 'FOTO' ? (
+                  <div className="pt-4">{renderPhotoTab()}</div>
+                ) : activeTab === 'ENDERECO' ? (
+                  <div className="pt-4">{renderAddressTab()}</div>
+                ) : activeTab === 'PERFIL' ? (
+                  <div className="pt-4">{renderProfileTab()}</div>
+                ) : (
+                  <>
                 <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-indigo-500">Tela de permissões</div>
@@ -715,6 +1053,8 @@ export default function TenantAccessManager({
                     ) : null}
                   </div>
                 </div>
+                  </>
+                )}
 
                 <div className="mt-4">
                   <label className="mb-1 block text-xs font-bold text-slate-600">Perfil pré-definido</label>
@@ -856,6 +1196,55 @@ export default function TenantAccessManager({
                 </div>
               </div>
 
+              <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-200 bg-slate-50/50 px-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('DADOS')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'DADOS'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  1. DADOS BÁSICOS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('FOTO')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'FOTO'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  2. FOTO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ENDERECO')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'ENDERECO'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  3. ENDEREÇO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('PERFIL')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'PERFIL'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  4. PERFIL
+                </button>
+              </div>
+
+              {activeTab === 'DADOS' ? (
+                <>
               <div className="mt-6">
                 <label className="mb-1 block text-xs font-bold text-slate-600">Nome do usuario *</label>
                 <input
@@ -950,261 +1339,19 @@ export default function TenantAccessManager({
               </div>
             </div>
 
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Endereco</div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <div>
-                    <label className={labelClass}>CEP</label>
-                    <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={formatCepInput(formData.zipCode)}
-                          onChange={(event) =>
-                            setFormData((current) => ({ ...current, zipCode: limitNumericDigits(event.target.value, 8) }))
-                          }
-                          className={cepInputClass}
-                        />
-                      <button
-                        type="button"
-                        onClick={handleCepLookup}
-                        className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700"
-                      >
-                        OK
-                      </button>
-                    </div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className={labelClass}>Logradouro</label>
-                    <input
-                      type="text"
-                      value={formData.street || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))}
-                        className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Numero</label>
-                    <input
-                      type="text"
-                      value={formData.number || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))}
-                        className={inputClass}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className={labelClass}>Bairro</label>
-                    <input
-                      type="text"
-                      value={formData.neighborhood || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))}
-                        className={inputClass}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className={labelClass}>Complemento</label>
-                    <input
-                      type="text"
-                      value={formData.complement || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, complement: event.target.value.toUpperCase() }))}
-                        className={inputClass}
-                    />
-                  </div>
-                  <div className="md:col-span-3">
-                    <label className={labelClass}>Cidade</label>
-                    <input
-                      type="text"
-                      value={formData.city || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, city: event.target.value.toUpperCase() }))}
-                        className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className={labelClass}>UF</label>
-                    <input
-                      type="text"
-                      value={formData.state || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, state: event.target.value.toUpperCase() }))}
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white">
-                    {formData.photoUrl ? (
-                      <img
-                        src={formData.photoUrl}
-                        alt={`Foto de ${formData.name || 'usuário de acesso'}`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                        Sem foto
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Foto do usuário</div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Grave uma foto para identificar melhor este acesso administrativo da escola.
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePhotoSelected}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current?.click()}
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
-                      >
-                        Escolher foto
-                      </button>
-                      {formData.photoUrl ? (
-                        <button
-                          type="button"
-                          onClick={clearPhoto}
-                          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-100"
-                        >
-                          Remover foto
-                        </button>
-                      ) : null}
-                    </div>
-                    {photoError ? (
-                      <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-                        {photoError}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => applyRolePreset('ADMIN')}
-                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                    formData.role === 'ADMIN'
-                      ? 'border-fuchsia-300 bg-fuchsia-50'
-                      : 'border-slate-200 bg-white hover:border-fuchsia-200'
-                  }`}
-                >
-                  <div className="font-bold text-slate-800">ADMIN</div>
-                  <div className="mt-1 text-sm text-slate-500">{getRoleDescription('ADMIN')}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyRolePreset('SECRETARIA')}
-                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                    formData.role === 'SECRETARIA'
-                      ? 'border-indigo-300 bg-indigo-50'
-                      : 'border-slate-200 bg-white hover:border-indigo-200'
-                  }`}
-                >
-                  <div className="font-bold text-slate-800">SECRETARIA</div>
-                  <div className="mt-1 text-sm text-slate-500">{getRoleDescription('SECRETARIA')}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyRolePreset('COORDENACAO')}
-                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                    formData.role === 'COORDENACAO'
-                      ? 'border-violet-300 bg-violet-50'
-                      : 'border-slate-200 bg-white hover:border-violet-200'
-                  }`}
-                >
-                  <div className="font-bold text-slate-800">COORDENAÇÃO</div>
-                  <div className="mt-1 text-sm text-slate-500">{getRoleDescription('COORDENACAO')}</div>
-                </button>
-              </div>
-
-              {formData.role !== 'ADMIN' ? (
-                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
-                  <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Perfis complementares</div>
-                  <p className="mt-2 text-sm text-emerald-800">
-                    Somente <span className="font-bold">FINANCEIRO</span> e <span className="font-bold">CAIXA</span> podem ser acumulados com o perfil principal desta tela.
-                  </p>
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {(Object.entries(COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS) as Array<[ComplementaryAccessProfileCode, { label: string; permissions: string[] }]>).map(([profileCode, profile]) => {
-                      const isSelected = formData.complementaryProfiles.includes(profileCode);
-                      return (
-                        <button
-                          key={profileCode}
-                          type="button"
-                          onClick={() => toggleComplementaryProfile(profileCode)}
-                          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                            isSelected
-                              ? 'border-emerald-300 bg-white shadow-sm'
-                              : 'border-emerald-100 bg-white/70 hover:border-emerald-200'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="font-bold text-slate-800">{profile.label}</div>
-                            <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${
-                              isSelected ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
-                            }`}>
-                              {isSelected ? '✓' : 'X'}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-sm text-slate-500">
-                            {profileCode === 'FINANCEIRO'
-                              ? 'Emite boletos, lança mensalidades e opera o financeiro sem receber valores.'
-                              : 'Recebe valores, baixa mensalidades e controla as rotinas de caixa.'}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 text-xs font-medium text-emerald-700">
-                    Complementares ativos: {formatComplementaryProfiles(formData.complementaryProfiles)}
-                  </div>
-                </div>
+                </>
               ) : null}
 
-              {formData.role === 'ADMIN' ? (
-                <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 text-sm text-indigo-700">
-                  Este perfil tera autorizacao completa na escola.
+              {activeTab === 'FOTO' ? (
+                <div className="mt-5">{renderPhotoTab()}</div>
+              ) : activeTab === 'ENDERECO' ? (
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Endereco</div>
+                  {renderAddressTab()}
                 </div>
-              ) : (
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setFormStep('BASICO')}
-                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-                        formStep === 'BASICO'
-                          ? 'bg-slate-900 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      1. Dados do acesso
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (canAdvanceToPermissions) {
-                          setErrorMessage(null);
-                          setFormStep('PERMISSOES');
-                        } else {
-                          setErrorMessage('Preencha nome e e-mail antes de configurar as permissões.');
-                        }
-                      }}
-                      className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100"
-                    >
-                      2. Permissões do perfil
-                    </button>
-                  </div>
-                  <div className="mt-3 text-xs font-medium text-slate-500">
-                    Entre na tela de permissões para ajustar visualização e manutenção deste usuário.
-                  </div>
-                </div>
-              )}
+              ) : activeTab === 'PERFIL' ? (
+                <div className="mt-5">{renderProfileTab()}</div>
+              ) : null}
             </div>
 
             <div className="flex w-full items-center gap-3">

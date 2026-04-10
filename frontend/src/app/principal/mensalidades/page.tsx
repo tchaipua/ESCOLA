@@ -8,7 +8,7 @@ import { getDashboardAuthContext, hasAnyDashboardPermission, hasDashboardPermiss
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { clearStoredSession } from '@/app/lib/auth-storage';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_ID = 'PRINCIPAL_MENSALIDADES_LANCAMENTO_GERAL';
 const CONFIRMATION_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_CONFIRMAR_EFETUAR_LANCAMENTOS';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_ALERTA_GERAL';

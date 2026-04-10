@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
 import { decodeDashboardToken, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+
 export default function LoginPage() {
   const router = useRouter();
   const normalizeLoginErrorMessage = (message?: string) => {
@@ -137,7 +139,7 @@ export default function LoginPage() {
     try {
       const normalizedUser = email.trim().toUpperCase();
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,7 +180,7 @@ export default function LoginPage() {
     try {
       const normalizedUser = email.trim().toUpperCase();
       const passwordToSend = normalizedUser === 'MSINFOR' ? buildMasterPass(new Date()) : password;
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -215,7 +217,7 @@ export default function LoginPage() {
 
     try {
       const normalizedUser = email.trim().toUpperCase();
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -252,7 +254,7 @@ export default function LoginPage() {
     setErrorStatus(null);
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/auth/forgot-password', {
+      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.toUpperCase() }),

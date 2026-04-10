@@ -49,7 +49,7 @@ const RESPONSAVEIS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_STATUS_MODAL
 const RESPONSAVEIS_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_POPUP_CPF_CONFLICT';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type GuardianStudentLink = {
     id: string;

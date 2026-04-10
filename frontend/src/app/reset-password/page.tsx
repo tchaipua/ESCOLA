@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+
 function ResetPasswordContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -37,7 +39,7 @@ function ResetPasswordContent() {
         setLoading(true);
 
         try {
-            const response = await fetch('http://localhost:3001/api/v1/auth/reset-password', {
+            const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

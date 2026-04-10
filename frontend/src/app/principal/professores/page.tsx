@@ -36,6 +36,8 @@ import {
     type SharedNameSuggestion,
 } from '@/app/lib/dashboard-crud-utils';
 import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRole, PERMISSION_OPTIONS, type AccessProfileCode } from '@/app/lib/access-profiles';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
@@ -575,12 +577,12 @@ export default function ProfessoresPage() {
             setCurrentTenantId(tenantId);
 
             const [teachersResponse, subjectsResponse] = await Promise.all([
-                fetch('http://localhost:3001/api/v1/teachers', {
+                fetch(`${API_BASE_URL}/teachers`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 }),
-                fetch('http://localhost:3001/api/v1/subjects?activeOnly=1', {
+                fetch(`${API_BASE_URL}/subjects?activeOnly=1`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -1181,7 +1183,7 @@ export default function ProfessoresPage() {
             const token = getStoredToken();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
-            const response = await fetch(`http://localhost:3001/api/v1/teachers/${teacherStatusToggleTarget.id}/status`, {
+            const response = await fetch(`${API_BASE_URL}/teachers/${teacherStatusToggleTarget.id}/status`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1250,7 +1252,7 @@ export default function ProfessoresPage() {
                 payload.effectiveFrom = effectiveFromForTeacher || todayDateInput;
             }
 
-            const response = await fetch(`http://localhost:3001/api/v1/teachers/${selectedTeacherForSubjects.id}/subjects`, {
+            const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1288,7 +1290,7 @@ export default function ProfessoresPage() {
             const token = getStoredToken();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
-            const response = await fetch(`http://localhost:3001/api/v1/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
+            const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -1348,7 +1350,7 @@ export default function ProfessoresPage() {
             const token = getStoredToken();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
-            const response = await fetch(`http://localhost:3001/api/v1/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
+            const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1457,8 +1459,8 @@ export default function ProfessoresPage() {
         try {
             const token = getStoredToken();
             const url = editingTeacherId
-                ? `http://localhost:3001/api/v1/teachers/${editingTeacherId}`
-                : 'http://localhost:3001/api/v1/teachers';
+                ? `${API_BASE_URL}/teachers/${editingTeacherId}`
+                : `${API_BASE_URL}/teachers`;
             const method = editingTeacherId ? 'PATCH' : 'POST';
 
             const payload = { ...formData, permissions: formData.permissions };

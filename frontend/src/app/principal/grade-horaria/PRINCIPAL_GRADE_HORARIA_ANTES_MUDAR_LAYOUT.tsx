@@ -16,7 +16,7 @@ import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnCo
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const GRADE_HORARIA_ANTES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_ANTES_STATUS_MODAL';
 const SCHOOL_YEAR_START = 2025;
 const DAY_OPTIONS = [

@@ -14,6 +14,8 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import GlobalSettingsModal, { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsForm, type GeneralSettingsTab } from './components/global-settings-modal';
 import TenantAccessManager from './components/tenant-access-manager';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+
 type TenantRecord = {
     id: string;
     name: string;
@@ -244,7 +246,7 @@ export default function MsinforAdminPage() {
     const fetchEscolas = useCallback(async () => {
         try {
             setIsLoading(true);
-            const response = await fetch('http://localhost:3001/api/v1/tenants', {
+            const response = await fetch(`${API_BASE_URL}/tenants`, {
                 headers: { 'x-msinfor-master-pass': getMasterPassForRequest() }
             });
 
@@ -275,7 +277,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsLoading(true);
             setGeneralSettingsStatus(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings', {
+            const response = await fetch(`${API_BASE_URL}/global-settings`, {
                 headers: { 'x-msinfor-master-pass': getMasterPassForRequest() },
             });
 
@@ -583,7 +585,7 @@ export default function MsinforAdminPage() {
         try {
             setEmailUsageLoading(true);
             setEmailUsageError(null);
-            const response = await fetch(`http://localhost:3001/api/v1/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
+            const response = await fetch(`${API_BASE_URL}/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
                 headers: { 'x-msinfor-master-pass': getMasterPassForRequest() }
             });
 
@@ -627,7 +629,7 @@ export default function MsinforAdminPage() {
             setAdminEmailCheckError(null);
 
             try {
-                const response = await fetch(`http://localhost:3001/api/v1/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
+                const response = await fetch(`${API_BASE_URL}/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
                     headers: { 'x-msinfor-master-pass': getMasterPassForRequest() },
                 });
 
@@ -717,7 +719,7 @@ export default function MsinforAdminPage() {
         try {
             setEmailUpdateLoading(true);
             setEmailUsageError(null);
-            const response = await fetch('http://localhost:3001/api/v1/tenants/email-usage', {
+            const response = await fetch(`${API_BASE_URL}/tenants/email-usage`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -775,8 +777,8 @@ export default function MsinforAdminPage() {
         e.preventDefault();
         try {
             const url = editingTenantId
-                ? `http://localhost:3001/api/v1/tenants/${editingTenantId}`
-                : 'http://localhost:3001/api/v1/tenants';
+                ? `${API_BASE_URL}/tenants/${editingTenantId}`
+                : `${API_BASE_URL}/tenants`;
             const method = editingTenantId ? 'PUT' : 'POST';
             // Converte os dados financeiros de string para number, caso existam e não sejam vazios
             const payload: any = {
@@ -860,7 +862,7 @@ export default function MsinforAdminPage() {
         setDeleteSuccess(null);
 
         try {
-            const response = await fetch(`http://localhost:3001/api/v1/tenants/${tenantToDelete.id}/purge`, {
+            const response = await fetch(`${API_BASE_URL}/tenants/${tenantToDelete.id}/purge`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -965,7 +967,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsLoading(true);
             setGeneralSettingsStatus(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings', {
+            const response = await fetch(`${API_BASE_URL}/global-settings`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -996,7 +998,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsTesting(true);
             setGeneralSettingsTestResult(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings/test-s3', {
+            const response = await fetch(`${API_BASE_URL}/global-settings/test-s3`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1032,7 +1034,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsTesting(true);
             setGeneralSettingsTestResult(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings/test-email', {
+            const response = await fetch(`${API_BASE_URL}/global-settings/test-email`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

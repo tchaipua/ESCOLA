@@ -1,12 +1,14 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type CurrentTenant = {
     id: string;
@@ -142,6 +144,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [isChangingPassword, setIsChangingPassword] = useState(false);
     const [changePasswordAlertType, setChangePasswordAlertType] = useState<'error' | 'success' | null>(null);
     const userMenuRef = useRef<HTMLDivElement>(null);
+    const hasInvalidatedSessionRef = useRef(false);
     const CHANGE_PASSWORD_SCREEN_ID = 'PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL';
 
     const isPersonalRole = currentRole === 'PROFESSOR' || currentRole === 'ALUNO' || currentRole === 'RESPONSAVEL';
@@ -188,12 +191,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
     };
 
+    const invalidateSession = useCallback(() => {
+        if (hasInvalidatedSessionRef.current) return;
+        hasInvalidatedSessionRef.current = true;
+        clearStoredSession();
+        setCurrentRole(null);
+        setCurrentPermissions([]);
+        setCurrentUserName(null);
+        setCurrentUserEmail(null);
+        setCurrentTenant(null);
+        setUnreadSummary(null);
+        router.replace('/');
+    }, [router]);
+
     useEffect(() => {
         const token = getStoredToken();
         if (!token) {
-            router.push('/');
+            router.replace('/');
             return;
         }
+
+        hasInvalidatedSessionRef.current = false;
 
         const { role, permissions, name } = getDashboardAuthContext();
         setCurrentRole(role);
@@ -210,13 +228,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     return;
                 }
 
-                const response = await fetch('http://localhost:3001/api/v1/auth/me', {
+                const response = await fetch(`${API_BASE_URL}/auth/me`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
                 });
 
                 const data = await response.json().catch(() => null);
+                if (response.status === 401) {
+                    invalidateSession();
+                    return;
+                }
+
                 if (!response.ok) {
                     throw new Error(data?.message || 'Não foi possível carregar o e-mail do usuário.');
                 }
@@ -228,7 +251,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         };
 
         void loadCurrentUserEmail();
-    }, []);
+    }, [invalidateSession]);
 
     useEffect(() => {
         const loadCurrentTenant = async () => {
@@ -236,13 +259,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 const { token } = getDashboardAuthContext();
                 if (!token) return;
 
-                const response = await fetch('http://localhost:3001/api/v1/tenants/current', {
+                const response = await fetch(`${API_BASE_URL}/tenants/current`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
                 });
 
                 const data = await response.json().catch(() => null);
+                if (response.status === 401) {
+                    invalidateSession();
+                    return;
+                }
+
                 if (!response.ok) {
                     throw new Error(data?.message || 'Não foi possível carregar a escola logada.');
                 }
@@ -259,7 +287,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         };
 
         void loadCurrentTenant();
-    }, []);
+    }, [invalidateSession]);
 
     useEffect(() => {
         const loadUnreadNotifications = async () => {
@@ -270,13 +298,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     return;
                 }
 
-                const response = await fetch('http://localhost:3001/api/v1/notifications/my/unread-summary', {
+                const response = await fetch(`${API_BASE_URL}/notifications/my/unread-summary`, {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
                 });
 
                 const data = await response.json().catch(() => null);
+                if (response.status === 401) {
+                    invalidateSession();
+                    return;
+                }
+
                 if (!response.ok) {
                     throw new Error(data?.message || 'Não foi possível carregar o resumo de notificações.');
                 }
@@ -294,7 +327,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         window.addEventListener('notifications-updated', handleNotificationsUpdated);
         return () => window.removeEventListener('notifications-updated', handleNotificationsUpdated);
-    }, [pathname]);
+    }, [invalidateSession, pathname]);
 
     useEffect(() => {
         if (!isUserMenuOpen) return;
@@ -310,37 +343,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }, [isUserMenuOpen]);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        let frameId = 0;
-        const scheduleCleanup = () => {
-            cancelAnimationFrame(frameId);
-            frameId = window.requestAnimationFrame(() => clearOrphanBackdrops());
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsChangePasswordOpen(false);
+                setChangePasswordAlertType(null);
+                setChangePasswordError(null);
+                setChangePasswordErrorVariant(null);
+                setChangePasswordStatus(null);
+            }
         };
 
-        scheduleCleanup();
+        window.addEventListener('keydown', handleEscape);
+        return () => window.removeEventListener('keydown', handleEscape);
+    }, []);
 
-        const observer = new MutationObserver(() => {
-            scheduleCleanup();
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        if (isChangePasswordOpen || changePasswordAlertType) return;
+
+        const cleanupTimers: number[] = [];
+        const scheduleCleanup = () => {
+            clearOrphanBackdrops();
+        };
+
+        const frameId = window.requestAnimationFrame(scheduleCleanup);
+        [120, 400, 1200].forEach((delay) => {
+            cleanupTimers.push(window.setTimeout(scheduleCleanup, delay));
         });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['class', 'style'],
-        });
-
-        const intervalId = window.setInterval(() => {
-            scheduleCleanup();
-        }, 1200);
 
         return () => {
             cancelAnimationFrame(frameId);
-            observer.disconnect();
-            window.clearInterval(intervalId);
+            cleanupTimers.forEach((timerId) => {
+                window.clearTimeout(timerId);
+            });
         };
-    }, [pathname]);
+    }, [pathname, isChangePasswordOpen, changePasswordAlertType]);
 
     const handleLogout = () => {
         clearStoredSession();
@@ -406,7 +443,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         try {
             setIsChangingPassword(true);
-            const confirmResponse = await fetch('http://localhost:3001/api/v1/auth/confirm-shared-password', {
+            const confirmResponse = await fetch(`${API_BASE_URL}/auth/confirm-shared-password`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -439,7 +476,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 return;
             }
 
-            const response = await fetch('http://localhost:3001/api/v1/auth/change-shared-password', {
+            const response = await fetch(`${API_BASE_URL}/auth/change-shared-password`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -955,8 +992,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
 
             {isChangePasswordOpen ? (
-                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-                    <div className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]">
+                <div
+                    className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+                    onClick={closeChangePassword}
+                    role="presentation"
+                >
+                    <div
+                        className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                    >
                         <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 px-6 py-5">
                             <div className="flex items-center gap-4">
                                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white bg-white shadow-md">
@@ -1117,11 +1163,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ) : null}
 
             {changePasswordAlertType && (changePasswordError || changePasswordStatus) ? (
-                <div className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md">
+                <div
+                    className="fixed inset-0 z-[96] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md"
+                    onClick={() => {
+                        setChangePasswordAlertType(null);
+                        setChangePasswordError(null);
+                        setChangePasswordErrorVariant(null);
+                        setChangePasswordStatus(null);
+                    }}
+                    role="presentation"
+                >
                     <div
                         className={`w-full max-w-lg overflow-hidden rounded-[30px] border bg-white shadow-[0_30px_90px_rgba(15,23,42,0.45)] ${
                             changePasswordAlertType === 'error' ? 'border-rose-200' : 'border-emerald-200'
                         }`}
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
                     >
                         <div
                             className={`flex items-start gap-4 px-6 py-5 ${
