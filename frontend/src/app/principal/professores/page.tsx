@@ -97,6 +97,11 @@ type TeacherRecord = {
     teacherSubjects?: TeacherSubjectAssignment[];
 };
 
+type DisciplineBadgeTone = {
+    chip: string;
+    dot: string;
+};
+
 type TeacherFormState = {
     name: string;
     rg: string;
@@ -238,10 +243,39 @@ function formatTeacherSubjects(row: TeacherRecord) {
     return subjects.length ? subjects.join(' | ') : null;
 }
 
+const DISCIPLINE_BADGE_TONES: DisciplineBadgeTone[] = [
+    { chip: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-500' },
+    { chip: 'bg-sky-100 text-sky-800 border-sky-200', dot: 'bg-sky-500' },
+    { chip: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500' },
+    { chip: 'bg-violet-100 text-violet-800 border-violet-200', dot: 'bg-violet-500' },
+    { chip: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-500' },
+    { chip: 'bg-cyan-100 text-cyan-800 border-cyan-200', dot: 'bg-cyan-500' },
+    { chip: 'bg-orange-100 text-orange-800 border-orange-200', dot: 'bg-orange-500' },
+    { chip: 'bg-lime-100 text-lime-800 border-lime-200', dot: 'bg-lime-500' },
+];
+
 function getTeacherSubjectNames(row: TeacherRecord) {
     return row.teacherSubjects
         ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
         .filter(Boolean) || [];
+}
+
+function getTeacherSubjects(row: TeacherRecord) {
+    return row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name)
+        .filter((name): name is string => Boolean(name)) || [];
+}
+
+function buildDisciplineToneMap(disciplineNames: string[]) {
+    return disciplineNames.reduce<Record<string, DisciplineBadgeTone>>((accumulator, disciplineName, index) => {
+        const normalized = normalizeTeacherSubjectName(disciplineName);
+        if (!normalized || accumulator[normalized]) {
+            return accumulator;
+        }
+
+        accumulator[normalized] = DISCIPLINE_BADGE_TONES[index % DISCIPLINE_BADGE_TONES.length];
+        return accumulator;
+    }, {});
 }
 
 function normalizeTeacherSubjectName(value?: string | null) {
@@ -444,6 +478,7 @@ export default function ProfessoresPage() {
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('ALL');
     const [selectedTeacherForSubjects, setSelectedTeacherForSubjects] = useState<TeacherRecord | null>(null);
     const [selectedSubjectIdForTeacher, setSelectedSubjectIdForTeacher] = useState('');
     const [hourlyRateForTeacher, setHourlyRateForTeacher] = useState('');
@@ -528,6 +563,24 @@ export default function ProfessoresPage() {
         () => readCachedTenantBranding(currentTenantId),
         [currentTenantId],
     );
+    const disciplineOptions = useMemo(() => {
+        const items = new Map<string, string>();
+        professores.forEach((prof) => {
+            getTeacherSubjects(prof).forEach((subjectName) => {
+                const normalized = normalizeTeacherSubjectName(subjectName);
+                if (!normalized || items.has(normalized)) return;
+                items.set(normalized, subjectName);
+            });
+        });
+
+        return Array.from(items.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((left, right) => left.label.localeCompare(right.label, 'pt-BR'));
+    }, [professores]);
+    const disciplineToneMap = useMemo(
+        () => buildDisciplineToneMap(disciplineOptions.map((discipline) => discipline.label)),
+        [disciplineOptions],
+    );
     const filteredProfessores = professores.filter((prof) => {
         const term = searchTerm.trim().toUpperCase();
         const matchesSearch = !term || [prof.name, prof.email, prof.cpf, prof.phone, prof.whatsapp]
@@ -539,8 +592,12 @@ export default function ProfessoresPage() {
                 : statusFilter === 'ACTIVE'
                     ? isActive
                     : !isActive;
+        const matchesSubject =
+            selectedSubjectFilter === 'ALL'
+                ? true
+                : getTeacherSubjects(prof).some((subjectName) => normalizeTeacherSubjectName(subjectName) === selectedSubjectFilter);
 
-        return matchesSearch && matchesStatus;
+        return matchesSearch && matchesStatus && matchesSubject;
     });
     const sortedFilteredProfessores = useMemo(
         () => sortGridRows(filteredProfessores, TEACHER_COLUMNS, sortState),
@@ -1107,13 +1164,21 @@ export default function ProfessoresPage() {
                                 <RecordStatusIndicator active={!prof.canceledAt} />
                             </div>
                             {(() => {
-                                const subjectList = formatTeacherSubjects(prof);
-                                return subjectList ? (
+                                const subjectList = getTeacherSubjects(prof);
+                                return subjectList.length > 0 ? (
                                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                                        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
-                                            DISCIPLINAS
-                                        </span>
-                                        <span className="text-xs font-semibold text-slate-500">{subjectList}</span>
+                                        {subjectList.map((subjectName) => {
+                                            const tone = disciplineToneMap[normalizeTeacherSubjectName(subjectName)] || DISCIPLINE_BADGE_TONES[0];
+                                            return (
+                                                <span
+                                                    key={subjectName}
+                                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${tone.chip}`}
+                                                >
+                                                    <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+                                                    <span className="max-w-[140px] truncate">{subjectName}</span>
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 ) : null;
                             })()}
@@ -1576,11 +1641,38 @@ export default function ProfessoresPage() {
             {/* Tabela */}
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="dashboard-band px-6 py-4 border-b">
-                    <div className="relative w-full max-w-xs">
-                        <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} type="text" placeholder="Buscar docente..." className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all" />
-                        <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative w-full max-w-xs">
+                            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} type="text" placeholder="Buscar docente..." className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all" />
+                            <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Disciplina</span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedSubjectFilter('ALL')}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${selectedSubjectFilter === 'ALL' ? 'border-[#153a6a] bg-[#153a6a] text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                            >
+                                Todas
+                            </button>
+                            {disciplineOptions.map((discipline) => {
+                                const tone = disciplineToneMap[discipline.value] || DISCIPLINE_BADGE_TONES[0];
+                                const isSelected = selectedSubjectFilter === discipline.value;
+                                return (
+                                    <button
+                                        key={discipline.value}
+                                        type="button"
+                                        onClick={() => setSelectedSubjectFilter(discipline.value)}
+                                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${isSelected ? `${tone.chip}` : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? tone.dot : 'bg-slate-400'}`} />
+                                        <span className="max-w-[140px] truncate">{discipline.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
 

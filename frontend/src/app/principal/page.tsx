@@ -562,7 +562,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
-                <div className="grid grid-cols-1 gap-4 px-8 py-8 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 px-8 py-8 md:grid-cols-5">
                     <Link href="/principal/pessoas" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
                         <h3 className="flex items-center justify-between font-bold text-slate-800">
                             Pessoas e Perfis
@@ -590,6 +590,13 @@ export default function DashboardPage() {
                             <span className="font-bold text-blue-500">→</span>
                         </h3>
                         <p className="mt-2 text-sm text-slate-500">Acompanhe a operação da escola com visão centralizada do sistema.</p>
+                    </Link>
+                    <Link href="/principal/financeiro" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
+                        <h3 className="flex items-center justify-between font-bold text-slate-800">
+                            Financeiro
+                            <span className="font-bold text-blue-500">→</span>
+                        </h3>
+                        <p className="mt-2 text-sm text-slate-500">Abra o portal financeiro integrado para contas, caixa e mensalidades da escola.</p>
                     </Link>
                 </div>
             </div>

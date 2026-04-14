@@ -1,0 +1,12 @@
+{
+  "name": "escola-financeiro-ecossistema",
+  "private": true,
+  "scripts": {
+    "setup:ecossistema": "npm install --prefix backend && npm install --prefix frontend && npm install --prefix ..\\Financeiro && npm install --prefix ..\\Financeiro\\backend && npm install --prefix ..\\Financeiro\\frontend",
+    "dev:ecossistema": "concurrently -n escola-backend,escola-frontend,financeiro-backend,financeiro-frontend -c blue,green,magenta,cyan \"npm run start:dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run start:dev --prefix ..\\Financeiro\\backend\" \"npm run dev --prefix ..\\Financeiro\\frontend\"",
+    "build:ecossistema": "npm run build --prefix backend && npm run build --prefix frontend && npm run build --prefix ..\\Financeiro\\backend && npm run build --prefix ..\\Financeiro\\frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

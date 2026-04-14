@@ -87,6 +87,14 @@ type PersonWithRoles = {
   }[];
 };
 
+type AdministrativeRoleRecord = {
+  id: string;
+  canceledAt?: Date | null;
+  canceledBy?: string | null;
+  accessProfile: string | null;
+  permissions: string | null;
+};
+
 type BasicPersonIdentity = {
   id: string;
   tenantId: string;
@@ -258,6 +266,17 @@ export class PeopleService {
     };
   }
 
+  private mapAdministrativeRoleSummary(roleRecord: AdministrativeRoleRecord) {
+    return {
+      role: "ADMINISTRADOR",
+      roleLabel: "ADMINISTRADOR",
+      recordId: roleRecord.id,
+      active: !roleRecord.canceledAt && !roleRecord.canceledBy,
+      accessProfile: roleRecord.accessProfile || null,
+      permissions: roleRecord.permissions || null,
+    };
+  }
+
   private getPrimaryRoleRecord(records: LinkedRoleRecord[]) {
     return records[0] || null;
   }
@@ -316,8 +335,14 @@ export class PeopleService {
     }));
   }
 
-  private async mapPersonResponse(person: PersonWithRoles) {
+  private async mapPersonResponse(
+    person: PersonWithRoles,
+    administrativeRoles: AdministrativeRoleRecord[] = [],
+  ) {
     const roles = [
+      ...administrativeRoles.map((roleRecord) =>
+        this.mapAdministrativeRoleSummary(roleRecord),
+      ),
       this.getPrimaryRoleRecord(person.teachers)
         ? this.mapRoleSummary(
             "PROFESSOR",
@@ -633,8 +658,8 @@ export class PeopleService {
   async findAll() {
     const tenantId = this.tenantId();
 
-    const [people, teachers, students, guardians, studentGuardians] =
-      await Promise.all([
+    const [people, teachers, students, guardians, studentGuardians, users] =
+        await Promise.all([
         this.prisma.$queryRaw<
           Array<{
             id: string;
@@ -720,10 +745,10 @@ export class PeopleService {
           WHERE tenantId = ${tenantId}
           ORDER BY id ASC
         `,
-        this.prisma.$queryRaw<
-          Array<{
-            studentId: string;
-            guardianId: string;
+          this.prisma.$queryRaw<
+            Array<{
+              studentId: string;
+              guardianId: string;
             guardianName: string;
             guardianPhone: string | null;
             guardianWhatsapp: string | null;
@@ -739,13 +764,28 @@ export class PeopleService {
             g.whatsapp AS guardianWhatsapp,
             g.cellphone1 AS guardianCellphone1,
             g.cellphone2 AS guardianCellphone2
-          FROM guardian_students gs
-          INNER JOIN guardians g ON g.id = gs.guardianId
-          WHERE gs.tenantId = ${tenantId}
-            AND gs.canceledBy IS NULL
-            AND g.tenantId = ${tenantId}
-        `,
-      ]);
+            FROM guardian_students gs
+            INNER JOIN guardians g ON g.id = gs.guardianId
+            WHERE gs.tenantId = ${tenantId}
+              AND gs.canceledBy IS NULL
+              AND g.tenantId = ${tenantId}
+          `,
+          this.prisma.$queryRaw<
+            Array<{
+              id: string;
+              name: string;
+              email: string | null;
+              role: string;
+              canceledAt: Date | null;
+              canceledBy: string | null;
+            }>
+          >`
+            SELECT id, name, email, role, canceledAt, canceledBy
+            FROM users
+            WHERE tenantId = ${tenantId}
+              AND canceledAt IS NULL
+          `,
+        ]);
 
     const peopleById = new Map<string, BasicPersonIdentity>();
     for (const person of people) {
@@ -802,41 +842,85 @@ export class PeopleService {
     }
 
     const guardiansByPersonId = new Map<string, LinkedRoleRecord[]>();
-    for (const guardian of guardians) {
-      const personId = this.resolveRolePersonId(guardian, peopleById);
-      if (!personId) continue;
-      const current = guardiansByPersonId.get(personId) || [];
+      for (const guardian of guardians) {
+        const personId = this.resolveRolePersonId(guardian, peopleById);
+        if (!personId) continue;
+        const current = guardiansByPersonId.get(personId) || [];
       current.push({
         id: guardian.id,
         canceledBy: guardian.canceledBy,
         accessProfile: guardian.accessProfile,
         permissions: guardian.permissions,
       });
-      guardiansByPersonId.set(personId, current);
-    }
+        guardiansByPersonId.set(personId, current);
+      }
 
-    return Promise.all(
-      people.map((person) =>
-        this.mapPersonResponse({
-          ...person,
-          birthDate: null,
-          resetPasswordToken: null,
-          resetPasswordExpires: null,
-          createdAt: null,
-          updatedAt: null,
-          canceledAt: null,
-          canceledBy: null,
-          teachers: teachersByPersonId.get(person.id) || [],
-          students: studentsByPersonId.get(person.id) || [],
-          guardians: guardiansByPersonId.get(person.id) || [],
-        }),
-      ),
-    );
+      const administrativeRolesByEmail = new Map<string, AdministrativeRoleRecord[]>();
+      for (const user of users) {
+        const normalizedEmail = this.sharedProfilesService.normalizeEmail(user.email);
+        if (!normalizedEmail || user.role !== "ADMIN") continue;
+
+        const current = administrativeRolesByEmail.get(normalizedEmail) || [];
+        current.push({
+          id: user.id,
+          canceledAt: user.canceledAt,
+          canceledBy: user.canceledBy,
+          accessProfile: "ADMINISTRADOR",
+          permissions: null,
+        });
+        administrativeRolesByEmail.set(normalizedEmail, current);
+      }
+
+      return Promise.all(
+        people.map((person) =>
+          this.mapPersonResponse(
+            {
+              ...person,
+              birthDate: null,
+              resetPasswordToken: null,
+              resetPasswordExpires: null,
+              createdAt: null,
+              updatedAt: null,
+              canceledAt: null,
+              canceledBy: null,
+              teachers: teachersByPersonId.get(person.id) || [],
+              students: studentsByPersonId.get(person.id) || [],
+              guardians: guardiansByPersonId.get(person.id) || [],
+            },
+            administrativeRolesByEmail.get(
+              this.sharedProfilesService.normalizeEmail(person.email) || "",
+            ) || [],
+          ),
+        ),
+      );
   }
 
   async findOne(id: string) {
     const person = await this.findPersonEntity(id);
-    return this.mapPersonResponse(person);
+    const administrativeRoleRecords = person.email
+      ? await this.prisma.user.findMany({
+          where: {
+            tenantId: person.tenantId,
+            email: this.sharedProfilesService.normalizeEmail(person.email) || "",
+            role: "ADMIN",
+            canceledAt: null,
+          },
+          select: {
+            id: true,
+            canceledAt: true,
+            canceledBy: true,
+          },
+        }).then((users) =>
+          users.map((user) => ({
+            id: user.id,
+            canceledAt: user.canceledAt,
+            canceledBy: user.canceledBy,
+            accessProfile: "ADMINISTRADOR",
+            permissions: null,
+          })),
+        )
+      : [];
+    return this.mapPersonResponse(person, administrativeRoleRecords);
   }
 
   async create(createDto: CreatePersonDto, currentUser?: ICurrentUser) {

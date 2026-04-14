@@ -809,6 +809,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showDashboardBase = pathname.startsWith('/principal/dashboard');
     const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';
     const showSummaryNav = showDashboardProgram;
+    const showFinanceiroEmbeddedNav = pathname.startsWith('/principal/financeiro');
     const summaryHrefSet = new Set(['/principal', '/principal/dashboard', ...summaryNavPaths]);
     const menuPrincipalItem = navItems.find((item) => item.href === '/principal');
     const menuDashboardItem = navItems.find((item) => item.href === '/principal/dashboard');
@@ -826,7 +827,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const topLinks: NavItem[] = [];
     if (menuPrincipalItem) topLinks.push(menuPrincipalItem);
     if (showSummaryNav && menuDashboardItem) topLinks.push(menuDashboardItem);
-    const filteredNavItems = showSummaryNav ? [...topLinks, ...summaryLinks] : [...topLinks, ...generalLinks];
+    const filteredNavItems = showFinanceiroEmbeddedNav
+        ? topLinks
+        : showSummaryNav
+            ? [...topLinks, ...summaryLinks]
+            : [...topLinks, ...generalLinks];
 
     return (
         <div className="min-h-screen bg-[#f3f4f6] flex font-sans text-slate-800">

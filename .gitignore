@@ -11,6 +11,15 @@
 /frontend/node_modules/
 /frontend/.next/
 /frontend/frontend_runtime.log
+/financeiro-backend/node_modules/
+/financeiro-backend/dist/
+/financeiro-backend/dev.db
+/financeiro-backend/.env
+/financeiro-backend/*.log
+/financeiro-frontend/node_modules/
+/financeiro-frontend/.next/
+/financeiro-frontend/*.log
+/node_modules/
 /DOCUMENTACAO/AI/*.log
 /DOCUMENTACAO/AI/*.tmp
 /tmp/

@@ -156,22 +156,22 @@ export function hasAnyDashboardPermission(role: string | null, permissions: stri
     return requiredPermissions.some((permission) => hasDashboardPermission(role, permissions, permission));
 }
 
-function isMobileViewport() {
+function isPwaViewport() {
     if (typeof window === 'undefined') return false;
 
-    const mobileMedia = window.matchMedia?.('(max-width: 768px)').matches;
+    const compactViewport = window.matchMedia?.('(max-width: 1024px)').matches;
     const touchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints || 0 : 0;
     const mobileUserAgent = typeof navigator !== 'undefined'
         ? /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
         : false;
 
-    return mobileMedia || mobileUserAgent || touchPoints > 1;
+    return compactViewport || mobileUserAgent || touchPoints > 1;
 }
 
 export function getHomeRouteForRole(role: string | null) {
-    if (role === 'ALUNO') return isMobileViewport() ? '/aluno' : '/principal';
-    if (role === 'PROFESSOR') return isMobileViewport() ? '/professor' : '/principal';
-    if (role === 'RESPONSAVEL') return isMobileViewport() ? '/responsavel' : '/principal';
+    if (role === 'ALUNO') return isPwaViewport() ? '/aluno' : '/principal';
+    if (role === 'PROFESSOR') return isPwaViewport() ? '/professor' : '/principal';
+    if (role === 'RESPONSAVEL') return isPwaViewport() ? '/responsavel' : '/principal';
     return '/principal';
 }
 

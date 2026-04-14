@@ -8,6 +8,7 @@ import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
+  ADMINISTRADOR: { label: 'Administrador', color: 'border-violet-200 bg-violet-50 text-violet-700' },
   PROFESSOR: { label: 'Professor', color: 'border-blue-200 bg-blue-50 text-blue-700' },
   ALUNO: { label: 'Aluno', color: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   RESPONSAVEL: { label: 'Responsavel', color: 'border-amber-200 bg-amber-50 text-amber-700' },
@@ -128,6 +129,7 @@ export default function PessoasPage() {
     const base = uniquePeople;
     return {
       total: base.length,
+      administradores: base.filter((person) => person.roles.some((role) => role.role === 'ADMINISTRADOR')).length,
       professores: base.filter((person) => person.roles.some((role) => role.role === 'PROFESSOR')).length,
       alunos: base.filter((person) => person.roles.some((role) => role.role === 'ALUNO')).length,
       responsaveis: base.filter((person) => person.roles.some((role) => role.role === 'RESPONSAVEL')).length,
@@ -173,6 +175,14 @@ export default function PessoasPage() {
         >
           <div className="text-xs font-black uppercase tracking-[0.28em] text-slate-500">Total</div>
           <div className="mt-3 text-3xl font-black text-slate-900">{metrics.total}</div>
+        </div>
+        <div
+          role="button"
+          onClick={() => setSelectedRoleFilter('ADMINISTRADOR' as PersonRole)}
+          className={`rounded-[28px] border px-5 py-6 transition ${selectedRoleFilter === 'ADMINISTRADOR' ? 'border-violet-500 bg-violet-50/80 shadow' : 'border-slate-200 bg-white'}`}
+        >
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-violet-600">Administradores</div>
+          <div className="mt-3 text-3xl font-black text-slate-900">{metrics.administradores}</div>
         </div>
         <div
           role="button"

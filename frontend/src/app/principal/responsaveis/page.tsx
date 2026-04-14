@@ -299,6 +299,7 @@ export default function ResponsaveisPage() {
     const [debouncedGuardianNameQuery, setDebouncedGuardianNameQuery] = useState('');
     const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
     const [originalGuardianCpf, setOriginalGuardianCpf] = useState('');
+    const [, setExistingCpfAlert] = useState<{ name: string; roles: string[] } | null>(null);
     const [guardianCpfConflictAlert, setGuardianCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
     const [guardianCpfConflictRoles, setGuardianCpfConflictRoles] = useState<string[]>([]);
 
