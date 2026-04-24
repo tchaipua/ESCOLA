@@ -152,6 +152,7 @@ Comportamento oficial atual:
 - novos lancamentos: deixam de ser gravados localmente e passam a ser enviados direto para o `Financeiro`
 - tabelas locais antigas: foram removidas do schema e do banco SQLite da `Escola`
 - o usuario entra apenas pela `Escola`, e o frontend financeiro e embutido nela sem nova autenticacao
+- o cadastro de `Banco (BA)` deixa de existir como CRUD proprio da `Escola` e passa a existir somente no projeto `Financeiro`
 
 Contrato aplicado agora no backend da `Escola`:
 

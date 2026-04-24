@@ -108,7 +108,6 @@ Cadastros principais:
 - Aluno (`F-AL`)
 - Responsavel x aluno (`RA`) com parentesco
 - Usuario do sistema (`US`) com funcoes
-- Banco (`BA`) para integracao
 - Grade curricular (`GC`) por AL x serie x materia
 - Calendario letivo com agenda completa de aula
 
@@ -138,6 +137,7 @@ Funcionalidades complementares:
 
 ## Modulo 5 - Financeiro
 
+- Cadastro de bancos e contas para integracao bancaria
 - Geracao de contas a receber em lote por ano letivo
 - Lancamentos avulsos (uniforme, apostila, etc.)
 - Integracao com bancos (Sicoob/Sicredi) para boletos/Pix

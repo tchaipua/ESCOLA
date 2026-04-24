@@ -503,3 +503,12 @@ Resposta resumida:
 - Permissao: `SETTLE_RECEIVABLES`
 - Uso: registra baixa em dinheiro no `Financeiro`
 - Regra obrigatoria: o usuario precisa ter caixa aberto na escola atual
+
+## Bancos financeiros integrados
+
+Regra oficial atual:
+
+- a `Escola` nao possui CRUD proprio de bancos
+- o cadastro de bancos e contas bancarias existe somente no projeto `Financeiro`
+- o acesso operacional ocorre pela rota integrada `/principal/financeiro`, na aba `Bancos`
+- a persistencia acontece no banco dedicado do `Financeiro`, sem gravacao no banco SQLite da `Escola`

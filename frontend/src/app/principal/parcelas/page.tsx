@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { getStoredToken } from '@/app/lib/auth-storage';
 import {
-    getDashboardAuthContext,
+    decodeDashboardToken,
     hasAnyDashboardPermission,
     hasDashboardPermission,
+    type DashboardAuthContext,
 } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
@@ -16,6 +18,7 @@ const CONFIRM_SCREEN_ID = 'POPUP_PRINCIPAL_PARCELAS_CONFIRMAR_BAIXA';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_PARCELAS_ALERTA_GERAL';
 
 type InstallmentListStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'ALL';
+type ManualPaymentMethod = 'CASH' | 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'CHECK';
 
 type InstallmentFilters = {
     status: InstallmentListStatus;
@@ -29,6 +32,20 @@ type AlertModalState = {
     message: string;
 };
 
+type InstallmentSettlementDraft = {
+    discountAmount: string;
+    interestAmount: string;
+    penaltyAmount: string;
+};
+
+type CashSessionReceivedByPaymentMethod = {
+    cash: number;
+    pix: number;
+    creditCard: number;
+    debitCard: number;
+    check: number;
+};
+
 type CashSessionResponse = {
     id: string;
     cashierDisplayName: string;
@@ -39,6 +56,7 @@ type CashSessionResponse = {
     openedAt: string;
     movementCount: number;
     settlementCount: number;
+    receivedByPaymentMethod?: CashSessionReceivedByPaymentMethod;
 };
 
 type InstallmentResponse = {
@@ -53,9 +71,22 @@ type InstallmentResponse = {
     amount: number;
     openAmount: number;
     paidAmount: number;
+    interestRate?: number | null;
+    interestGracePeriod?: number | null;
+    penaltyRate?: number | null;
+    penaltyValue?: number | null;
+    penaltyGracePeriod?: number | null;
+    suggestedDiscountAmount?: number | null;
+    suggestedInterestAmount?: number | null;
+    suggestedPenaltyAmount?: number | null;
+    suggestedReceivedAmount?: number | null;
+    overdueDays?: number | null;
+    interestDays?: number | null;
+    penaltyApplied?: boolean | null;
     status: string;
     settledAt?: string | null;
     settlementMethod?: string | null;
+    bankSlipOurNumber?: string | null;
     isOverdue: boolean;
 };
 
@@ -72,11 +103,34 @@ const STATUS_OPTIONS: Array<{ value: InstallmentListStatus; label: string }> = [
     { value: 'ALL', label: 'TODAS' },
 ];
 
+const PAYMENT_METHOD_OPTIONS: Array<{
+    value: ManualPaymentMethod;
+    label: string;
+    messageLabel: string;
+}> = [
+    { value: 'CASH', label: 'DINHEIRO', messageLabel: 'em dinheiro' },
+    { value: 'PIX', label: 'PIX', messageLabel: 'por PIX' },
+    { value: 'CREDIT_CARD', label: 'CARTÃO CRÉDITO', messageLabel: 'no cartão de crédito' },
+    { value: 'DEBIT_CARD', label: 'CARTÃO DÉBITO', messageLabel: 'no cartão de débito' },
+    { value: 'CHECK', label: 'CHEQUE', messageLabel: 'por cheque' },
+];
+
+const EMPTY_RECEIVED_BY_PAYMENT_METHOD: CashSessionReceivedByPaymentMethod = {
+    cash: 0,
+    pix: 0,
+    creditCard: 0,
+    debitCard: 0,
+    check: 0,
+};
+
 const inputClass =
     'w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white';
 const labelClass =
     'mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-slate-500';
 const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
+const subscribeAuthToken = () => () => {};
+const getServerAuthToken = () => null;
+const getClientAuthToken = () => getStoredToken();
 
 function formatCurrency(value?: number | null) {
     return new Intl.NumberFormat('pt-BR', {
@@ -90,6 +144,20 @@ function formatDateLabel(value?: string | null) {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return value;
     return parsed.toLocaleDateString('pt-BR');
+}
+
+function formatDecimalInput(value?: number | null) {
+    const normalized = typeof value === 'number' ? value : 0;
+    return normalized > 0 ? String(Number(normalized.toFixed(2))) : '';
+}
+
+function parseDecimalInput(value?: string | null) {
+    const normalized = String(value || '').trim().replace(',', '.');
+    if (!normalized) return 0;
+
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 0) return 0;
+    return Number(parsed.toFixed(2));
 }
 
 function getFriendlyRequestErrorMessage(error: unknown, fallbackMessage: string) {
@@ -131,12 +199,49 @@ function getInstallmentStatusClasses(item: InstallmentResponse) {
     return 'border-blue-200 bg-blue-50 text-blue-700';
 }
 
+function getPaymentMethodLabel(value?: string | null) {
+    return PAYMENT_METHOD_OPTIONS.find((option) => option.value === value)?.label || value || '---';
+}
+
+function buildAuthContextFromToken(token: string | null): DashboardAuthContext | null {
+    if (!token) return null;
+
+    const payload = decodeDashboardToken(token);
+
+    return {
+        token,
+        userId: typeof payload?.userId === 'string' ? payload.userId : null,
+        role: typeof payload?.role === 'string' ? payload.role : null,
+        permissions: Array.isArray(payload?.permissions)
+            ? payload.permissions.filter((permission): permission is string => typeof permission === 'string')
+            : [],
+        tenantId: typeof payload?.tenantId === 'string' ? payload.tenantId : null,
+        name: typeof payload?.name === 'string' ? payload.name : null,
+        modelType: typeof payload?.modelType === 'string' ? payload.modelType : null,
+    };
+}
+
 export default function PrincipalParcelasPage() {
-    const authContext = getDashboardAuthContext();
-    const canViewCashier = hasAnyDashboardPermission(authContext.role, authContext.permissions, ['VIEW_CASHIER', 'SETTLE_RECEIVABLES']);
-    const canOpenCashier = hasDashboardPermission(authContext.role, authContext.permissions, 'VIEW_CASHIER');
-    const canSettleInstallments = hasDashboardPermission(authContext.role, authContext.permissions, 'SETTLE_RECEIVABLES');
-    const tenantBranding = readCachedTenantBranding(authContext.tenantId);
+    const authToken = useSyncExternalStore(
+        subscribeAuthToken,
+        getClientAuthToken,
+        getServerAuthToken,
+    );
+    const authContext = useMemo(() => buildAuthContextFromToken(authToken), [authToken]);
+    const [isHydrated, setIsHydrated] = useState(false);
+    const canViewCashier = authContext
+        ? hasAnyDashboardPermission(authContext.role, authContext.permissions, ['VIEW_CASHIER', 'SETTLE_RECEIVABLES'])
+        : false;
+    const canOpenCashier = authContext
+        ? hasDashboardPermission(authContext.role, authContext.permissions, 'VIEW_CASHIER')
+        : false;
+    const canSettleInstallments = authContext
+        ? hasDashboardPermission(authContext.role, authContext.permissions, 'SETTLE_RECEIVABLES')
+        : false;
+    const tenantBranding = useMemo(
+        () => (authContext ? readCachedTenantBranding(authContext.tenantId) : null),
+        [authContext],
+    );
 
     const [filters, setFilters] = useState<InstallmentFilters>(DEFAULT_FILTERS);
     const [appliedFilters, setAppliedFilters] = useState<InstallmentFilters>(DEFAULT_FILTERS);
@@ -150,10 +255,16 @@ export default function PrincipalParcelasPage() {
     const [isOpeningSession, setIsOpeningSession] = useState(false);
     const [isSettling, setIsSettling] = useState(false);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<ManualPaymentMethod>('CASH');
+    const [settlementDrafts, setSettlementDrafts] = useState<Record<string, InstallmentSettlementDraft>>({});
     const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
 
+    useEffect(() => {
+        setIsHydrated(true);
+    }, []);
+
     async function loadCurrentSession() {
-        if (!authContext.token || !canViewCashier) {
+        if (!authContext?.token || !canViewCashier) {
             setCurrentSession(null);
             setIsLoadingSession(false);
             return;
@@ -187,7 +298,7 @@ export default function PrincipalParcelasPage() {
     }
 
     async function loadInstallments(nextFilters: InstallmentFilters) {
-        if (!authContext.token || !canViewCashier) {
+        if (!authContext?.token || !canViewCashier) {
             setInstallments([]);
             setIsLoadingInstallments(false);
             return;
@@ -235,12 +346,12 @@ export default function PrincipalParcelasPage() {
     useEffect(() => {
         void loadCurrentSession();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [authContext.token, canViewCashier]);
+    }, [authContext?.token, canViewCashier]);
 
     useEffect(() => {
         void loadInstallments(appliedFilters);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [authContext.token, canViewCashier, appliedFilters.status, appliedFilters.studentName, appliedFilters.payerName]);
+    }, [authContext?.token, canViewCashier, appliedFilters.status, appliedFilters.studentName, appliedFilters.payerName]);
 
     useEffect(() => {
         const visibleSelectableIds = new Set(
@@ -256,9 +367,36 @@ export default function PrincipalParcelasPage() {
     const selectedInstallments = installments.filter((item) => selectedIds.includes(item.id));
     const selectedTotalAmount = selectedInstallments.reduce((total, item) => total + Number(item.openAmount || 0), 0);
     const allSelectableChecked = selectableInstallments.length > 0 && selectableInstallments.every((item) => selectedIds.includes(item.id));
+    const selectedPaymentMethodOption =
+        PAYMENT_METHOD_OPTIONS.find((option) => option.value === selectedPaymentMethod) || PAYMENT_METHOD_OPTIONS[0];
+    const currentSessionReceivedByPaymentMethod = currentSession?.receivedByPaymentMethod || EMPTY_RECEIVED_BY_PAYMENT_METHOD;
+    const selectedInstallmentDraftRows = selectedInstallments.map((item) => {
+        const draft = settlementDrafts[item.id] || {
+            discountAmount: formatDecimalInput(item.suggestedDiscountAmount),
+            interestAmount: formatDecimalInput(item.suggestedInterestAmount),
+            penaltyAmount: formatDecimalInput(item.suggestedPenaltyAmount),
+        };
+        const discountAmount = parseDecimalInput(draft.discountAmount);
+        const interestAmount = parseDecimalInput(draft.interestAmount);
+        const penaltyAmount = parseDecimalInput(draft.penaltyAmount);
+        const receivedAmount = Number((item.openAmount - discountAmount + interestAmount + penaltyAmount).toFixed(2));
+
+        return {
+            installment: item,
+            draft,
+            discountAmount,
+            interestAmount,
+            penaltyAmount,
+            receivedAmount,
+        };
+    });
+    const selectedTotalDiscountAmount = selectedInstallmentDraftRows.reduce((total, item) => total + item.discountAmount, 0);
+    const selectedTotalInterestAmount = selectedInstallmentDraftRows.reduce((total, item) => total + item.interestAmount, 0);
+    const selectedTotalPenaltyAmount = selectedInstallmentDraftRows.reduce((total, item) => total + item.penaltyAmount, 0);
+    const selectedTotalReceivedAmount = selectedInstallmentDraftRows.reduce((total, item) => total + item.receivedAmount, 0);
 
     async function handleOpenCashSession() {
-        if (!authContext.token || !canOpenCashier || isOpeningSession) return;
+        if (!authContext?.token || !canOpenCashier || isOpeningSession) return;
 
         const normalizedOpeningAmount = openingAmount.trim();
         const parsedOpeningAmount = normalizedOpeningAmount ? Number(normalizedOpeningAmount.replace(',', '.')) : undefined;
@@ -298,7 +436,7 @@ export default function PrincipalParcelasPage() {
             setAlertModal({
                 type: 'success',
                 title: 'Caixa aberto com sucesso',
-                message: 'O caixa do usuário foi aberto e já está pronto para receber baixas em dinheiro.',
+                message: 'O caixa do usuário foi aberto e já está pronto para receber parcelas.',
             });
         } catch (error) {
             setAlertModal({
@@ -312,8 +450,18 @@ export default function PrincipalParcelasPage() {
     }
 
     async function handleConfirmSettlement() {
-        if (!authContext.token || !currentSession || !selectedInstallments.length || isSettling) {
+        if (!authContext?.token || !currentSession || !selectedInstallments.length || isSettling) {
             setIsConfirmOpen(false);
+            return;
+        }
+
+        const invalidDraft = selectedInstallmentDraftRows.find((item) => item.receivedAmount < 0);
+        if (invalidDraft) {
+            setAlertModal({
+                type: 'warning',
+                title: 'Valor final inválido',
+                message: `A parcela de ${invalidDraft.installment.sourceEntityName} ficou com valor final negativo. Ajuste desconto, juros e multa antes de confirmar.`,
+            });
             return;
         }
 
@@ -325,19 +473,30 @@ export default function PrincipalParcelasPage() {
             const failureMessages: string[] = [];
 
             for (const installment of selectedInstallments) {
+                const currentDraft = settlementDrafts[installment.id] || {
+                    discountAmount: formatDecimalInput(installment.suggestedDiscountAmount),
+                    interestAmount: formatDecimalInput(installment.suggestedInterestAmount),
+                    penaltyAmount: formatDecimalInput(installment.suggestedPenaltyAmount),
+                };
+
                 try {
-                    const response = await fetch(`${API_BASE_URL}/financial-cashier/installments/${installment.id}/settle-cash`, {
+                    const response = await fetch(`${API_BASE_URL}/financial-cashier/installments/${installment.id}/settle-manual`, {
                         method: 'POST',
                         headers: {
                             Authorization: `Bearer ${authContext.token}`,
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({}),
+                        body: JSON.stringify({
+                            paymentMethod: selectedPaymentMethod,
+                            discountAmount: parseDecimalInput(currentDraft.discountAmount),
+                            interestAmount: parseDecimalInput(currentDraft.interestAmount),
+                            penaltyAmount: parseDecimalInput(currentDraft.penaltyAmount),
+                        }),
                     });
 
                     const payload = await response.json().catch(() => null);
                     if (!response.ok) {
-                        throw new Error(payload?.message || `Não foi possível baixar a parcela de ${installment.sourceEntityName}.`);
+                        throw new Error(payload?.message || `Não foi possível receber a parcela de ${installment.sourceEntityName}.`);
                     }
 
                     successCount += 1;
@@ -345,20 +504,21 @@ export default function PrincipalParcelasPage() {
                     failureMessages.push(
                         getFriendlyRequestErrorMessage(
                             error,
-                            `Não foi possível baixar a parcela de ${installment.sourceEntityName}.`,
+                            `Não foi possível receber a parcela de ${installment.sourceEntityName}.`,
                         ),
                     );
                 }
             }
 
             setSelectedIds([]);
+            setSettlementDrafts({});
             await Promise.all([loadCurrentSession(), loadInstallments(appliedFilters)]);
 
             if (failureMessages.length === 0) {
                 setAlertModal({
                     type: 'success',
-                    title: 'Baixa realizada com sucesso',
-                    message: `${successCount} parcela(s) foram baixadas em dinheiro no Financeiro.`,
+                    title: 'Recebimento realizado com sucesso',
+                    message: `${successCount} parcela(s) foram recebidas ${selectedPaymentMethodOption.messageLabel} no Financeiro.`,
                 });
                 return;
             }
@@ -366,16 +526,16 @@ export default function PrincipalParcelasPage() {
             if (successCount > 0) {
                 setAlertModal({
                     type: 'warning',
-                    title: 'Baixa concluída parcialmente',
-                    message: `${successCount} parcela(s) foram baixadas. A primeira falha retornada foi: ${failureMessages[0]}`,
+                    title: 'Recebimento concluído parcialmente',
+                    message: `${successCount} parcela(s) foram recebidas ${selectedPaymentMethodOption.messageLabel}. A primeira falha retornada foi: ${failureMessages[0]}`,
                 });
                 return;
             }
 
             setAlertModal({
                 type: 'error',
-                title: 'Nenhuma parcela foi baixada',
-                message: failureMessages[0] || 'Não foi possível registrar a baixa das parcelas selecionadas.',
+                title: 'Nenhuma parcela foi recebida',
+                message: failureMessages[0] || 'Não foi possível registrar o recebimento das parcelas selecionadas.',
             });
         } finally {
             setIsSettling(false);
@@ -416,12 +576,34 @@ export default function PrincipalParcelasPage() {
         setSelectedIds(selectableInstallments.map((item) => item.id));
     }
 
+    function handleChangeSettlementDraft(
+        installmentId: string,
+        field: keyof InstallmentSettlementDraft,
+        value: string,
+    ) {
+        setSettlementDrafts((current) => ({
+            ...current,
+            [installmentId]: {
+                discountAmount:
+                    current[installmentId]?.discountAmount ??
+                    formatDecimalInput(selectedInstallments.find((item) => item.id === installmentId)?.suggestedDiscountAmount),
+                interestAmount:
+                    current[installmentId]?.interestAmount ??
+                    formatDecimalInput(selectedInstallments.find((item) => item.id === installmentId)?.suggestedInterestAmount),
+                penaltyAmount:
+                    current[installmentId]?.penaltyAmount ??
+                    formatDecimalInput(selectedInstallments.find((item) => item.id === installmentId)?.suggestedPenaltyAmount),
+                [field]: value,
+            },
+        }));
+    }
+
     function handleStartSettlement() {
         if (!selectedInstallments.length) {
             setAlertModal({
                 type: 'warning',
                 title: 'Nenhuma parcela selecionada',
-                message: 'Selecione pelo menos uma parcela em aberto para registrar a baixa.',
+                message: 'Selecione pelo menos uma parcela em aberto para registrar o recebimento.',
             });
             return;
         }
@@ -430,19 +612,51 @@ export default function PrincipalParcelasPage() {
             setAlertModal({
                 type: 'warning',
                 title: 'Caixa fechado',
-                message: 'Antes de dar baixa, abra o caixa do usuário nesta mesma tela.',
+                message: 'Antes de receber, abra o caixa do usuário nesta mesma tela.',
             });
             return;
         }
 
+        setSettlementDrafts(
+            Object.fromEntries(
+                selectedInstallments.map((item) => [
+                    item.id,
+                    {
+                        discountAmount: formatDecimalInput(item.suggestedDiscountAmount),
+                        interestAmount: formatDecimalInput(item.suggestedInterestAmount),
+                        penaltyAmount: formatDecimalInput(item.suggestedPenaltyAmount),
+                    },
+                ]),
+            ),
+        );
+        setSelectedPaymentMethod('CASH');
         setIsConfirmOpen(true);
+    }
+
+    if (!isHydrated) {
+        return (
+            <section className={`${cardClass} p-6`}>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-600">
+                    Carregando a rotina de parcelas...
+                </div>
+            </section>
+        );
+    }
+
+    if (!authContext) {
+        return (
+            <DashboardAccessDenied
+                title="Sessão indisponível"
+                message="Não foi possível identificar a sessão atual. Faça login novamente para continuar."
+            />
+        );
     }
 
     if (!canViewCashier) {
         return (
             <DashboardAccessDenied
                 title="Caixa indisponível"
-                message="Seu perfil não possui permissão para visualizar a rotina de parcelas e baixa em dinheiro."
+                message="Seu perfil não possui permissão para visualizar a rotina de parcelas e recebimento manual."
             />
         );
     }
@@ -456,7 +670,7 @@ export default function PrincipalParcelasPage() {
                             <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">Financeiro integrado</div>
                             <h1 className="mt-2 text-3xl font-black tracking-tight">Parcelas</h1>
                             <p className="mt-2 max-w-3xl text-sm font-medium text-blue-100/90">
-                                Consulte parcelas abertas, fechadas ou vencidas, filtre por aluno ou responsável pagador e faça a baixa em dinheiro direto nesta tela.
+                                Consulte parcelas abertas, fechadas ou vencidas, filtre por aluno ou responsável pagador e registre o recebimento manual direto nesta tela.
                             </p>
                         </div>
                         <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-blue-50">
@@ -543,29 +757,56 @@ export default function PrincipalParcelasPage() {
                                         : 'border-amber-200 bg-amber-50 text-amber-700'
                                 }`}
                             >
-                                {currentSession ? 'Pronto para baixa' : 'Abertura necessária'}
+                                {currentSession ? 'Pronto para receber' : 'Abertura necessária'}
                             </div>
                         </div>
 
                         {currentSession ? (
-                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Operador</div>
-                                    <div className="mt-2 text-sm font-black text-slate-900">{currentSession.cashierDisplayName}</div>
+                            <>
+                                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Operador</div>
+                                        <div className="mt-2 text-sm font-black text-slate-900">{currentSession.cashierDisplayName}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Abertura</div>
+                                        <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSession.openingAmount)}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Recebido</div>
+                                        <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSession.totalReceivedAmount)}</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Fechamento esperado</div>
+                                        <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSession.expectedClosingAmount)}</div>
+                                    </div>
                                 </div>
-                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Abertura</div>
-                                    <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSession.openingAmount)}</div>
+                                <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Separação por pagamento</div>
+                                    <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Dinheiro</div>
+                                            <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSessionReceivedByPaymentMethod.cash)}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Pix</div>
+                                            <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSessionReceivedByPaymentMethod.pix)}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Cartão crédito</div>
+                                            <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSessionReceivedByPaymentMethod.creditCard)}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Cartão débito</div>
+                                            <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSessionReceivedByPaymentMethod.debitCard)}</div>
+                                        </div>
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Cheque</div>
+                                            <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSessionReceivedByPaymentMethod.check)}</div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Recebido</div>
-                                    <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSession.totalReceivedAmount)}</div>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Fechamento esperado</div>
-                                    <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(currentSession.expectedClosingAmount)}</div>
-                                </div>
-                            </div>
+                            </>
                         ) : canOpenCashier ? (
                             <div className="mt-4 grid gap-4 md:grid-cols-[0.7fr_1.3fr_auto]">
                                 <label>
@@ -602,13 +843,13 @@ export default function PrincipalParcelasPage() {
                             </div>
                         ) : (
                             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-800">
-                                Seu usuário não possui permissão para abrir caixa. Para dar baixa em dinheiro, é necessário operar com acesso de caixa.
+                                Seu usuário não possui permissão para abrir caixa. Para receber parcelas, é necessário operar com acesso de caixa.
                             </div>
                         )}
                     </div>
 
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 px-5 py-5">
-                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Seleção para baixa</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Seleção para recebimento</div>
                         <h2 className="mt-1 text-xl font-black text-slate-900">
                             {selectedInstallments.length
                                 ? `${selectedInstallments.length} parcela(s) selecionada(s)`
@@ -627,7 +868,7 @@ export default function PrincipalParcelasPage() {
                             </div>
                         </div>
                         <p className="mt-4 text-sm font-medium text-slate-500">
-                            A baixa em dinheiro só é liberada para usuário com função de caixa e com caixa aberto nesta escola.
+                            O recebimento manual só é liberado para usuário com função de caixa e com caixa aberto nesta escola.
                         </p>
                         <button
                             type="button"
@@ -635,7 +876,7 @@ export default function PrincipalParcelasPage() {
                             disabled={!canSettleInstallments || !selectedInstallments.length || isSettling}
                             className="mt-4 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
                         >
-                            {isSettling ? 'Baixando...' : 'Dar baixa em dinheiro'}
+                            {isSettling ? 'Processando...' : 'Escolher pagamento'}
                         </button>
                     </div>
                 </div>
@@ -708,10 +949,15 @@ export default function PrincipalParcelasPage() {
                                         <td className="px-4 py-4 font-semibold text-slate-700">{item.payerNameSnapshot}</td>
                                         <td className="px-4 py-4">
                                             <div className="font-semibold text-slate-700">{item.description}</div>
+                                            {item.bankSlipOurNumber ? (
+                                                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                                    Nº BOLETO {item.bankSlipOurNumber}
+                                                </div>
+                                            ) : null}
                                             {item.settledAt ? (
                                                 <div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
                                                     BAIXADA EM {formatDateLabel(item.settledAt)}
-                                                    {item.settlementMethod ? ` - ${item.settlementMethod}` : ''}
+                                                    {item.settlementMethod ? ` - ${getPaymentMethodLabel(item.settlementMethod)}` : ''}
                                                 </div>
                                             ) : null}
                                         </td>
@@ -741,7 +987,7 @@ export default function PrincipalParcelasPage() {
 
             {isConfirmOpen ? (
                 <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-                    <div className="w-full max-w-xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.4)]">
+                    <div className="w-full max-w-5xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.4)]">
                         <div className="border-b border-slate-100 bg-slate-50 px-6 py-5">
                             <div className="flex items-start gap-4">
                                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -758,10 +1004,10 @@ export default function PrincipalParcelasPage() {
                                     )}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Confirmação de baixa</div>
-                                    <h3 className="mt-1 text-xl font-black text-slate-900">Confirmar baixa em dinheiro</h3>
+                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Confirmação de recebimento</div>
+                                    <h3 className="mt-1 text-xl font-black text-slate-900">Confirmar recebimento manual</h3>
                                     <p className="mt-2 text-sm font-medium text-slate-500">
-                                        As parcelas selecionadas serão baixadas no Financeiro usando o caixa atualmente aberto para este usuário.
+                                        As parcelas selecionadas serão recebidas no Financeiro usando o caixa atualmente aberto para este usuário.
                                     </p>
                                 </div>
                                 <button
@@ -776,21 +1022,165 @@ export default function PrincipalParcelasPage() {
                         </div>
 
                         <div className="space-y-4 px-6 py-6 text-sm font-semibold text-slate-600">
-                            <div className="grid gap-4 md:grid-cols-2">
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                                     <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Parcelas selecionadas</div>
                                     <div className="mt-2 text-lg font-black text-slate-900">{selectedInstallments.length}</div>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Valor total</div>
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Valor original</div>
                                     <div className="mt-2 text-lg font-black text-slate-900">{formatCurrency(selectedTotalAmount)}</div>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Acréscimos</div>
+                                    <div className="mt-2 text-lg font-black text-slate-900">
+                                        {formatCurrency(selectedTotalInterestAmount + selectedTotalPenaltyAmount)}
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Valor final</div>
+                                    <div className="mt-2 text-lg font-black text-slate-900">{formatCurrency(selectedTotalReceivedAmount)}</div>
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
-                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">Caixa em uso</div>
-                                <div className="mt-2 text-sm font-semibold text-slate-700">
-                                    {currentSession?.cashierDisplayName || 'CAIXA NÃO IDENTIFICADO'}
+                            <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+                                <div className="space-y-4">
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">Caixa em uso</div>
+                                        <div className="mt-2 text-sm font-semibold text-slate-700">
+                                            {currentSession?.cashierDisplayName || 'CAIXA NÃO IDENTIFICADO'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Forma de pagamento</div>
+                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                            {PAYMENT_METHOD_OPTIONS.map((option) => {
+                                                const isSelected = selectedPaymentMethod === option.value;
+
+                                                return (
+                                                    <button
+                                                        key={option.value}
+                                                        type="button"
+                                                        onClick={() => setSelectedPaymentMethod(option.value)}
+                                                        disabled={isSettling}
+                                                        className={`rounded-2xl border px-4 py-4 text-left transition ${
+                                                            isSelected
+                                                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                                                        }`}
+                                                    >
+                                                        <div className="text-[11px] font-black uppercase tracking-[0.18em]">
+                                                            {option.label}
+                                                        </div>
+                                                        <div className="mt-2 text-xs font-semibold text-inherit">
+                                                            Recebimento imediato no Financeiro.
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-black uppercase tracking-[0.18em] text-emerald-700">
+                                            Forma selecionada: {selectedPaymentMethodOption.label}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                        <div className="grid gap-3 md:grid-cols-3">
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Desconto</div>
+                                                <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(selectedTotalDiscountAmount)}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Juros</div>
+                                                <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(selectedTotalInterestAmount)}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Multa</div>
+                                                <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(selectedTotalPenaltyAmount)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Conferência por parcela</div>
+                                    <div className="mt-3 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                                        {selectedInstallmentDraftRows.map((row) => (
+                                            <div key={row.installment.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                                                    <div className="min-w-0 xl:max-w-[280px]">
+                                                        <div className="text-sm font-black text-slate-900">{row.installment.sourceEntityName}</div>
+                                                        <div className="mt-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
+                                                            PARCELA {row.installment.installmentNumber}/{row.installment.installmentCount}
+                                                        </div>
+                                                        <div className="mt-1 text-xs font-semibold text-slate-500">{row.installment.description}</div>
+                                                        {row.installment.overdueDays ? (
+                                                            <div className="mt-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">
+                                                                {row.installment.overdueDays} dia(s) em atraso
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                                                                Em dia
+                                                            </div>
+                                                        )}
+                                                        <div className="mt-2 text-xs font-semibold text-slate-500">
+                                                            Base: {formatCurrency(row.installment.openAmount)}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid flex-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                                        <label>
+                                                            <span className={labelClass}>Desconto</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={row.draft.discountAmount}
+                                                                onChange={(event) => handleChangeSettlementDraft(row.installment.id, 'discountAmount', event.target.value)}
+                                                                className={inputClass}
+                                                                placeholder="0,00"
+                                                            />
+                                                        </label>
+                                                        <label>
+                                                            <span className={labelClass}>Juros</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={row.draft.interestAmount}
+                                                                onChange={(event) => handleChangeSettlementDraft(row.installment.id, 'interestAmount', event.target.value)}
+                                                                className={inputClass}
+                                                                placeholder="0,00"
+                                                            />
+                                                        </label>
+                                                        <label>
+                                                            <span className={labelClass}>Multa</span>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={row.draft.penaltyAmount}
+                                                                onChange={(event) => handleChangeSettlementDraft(row.installment.id, 'penaltyAmount', event.target.value)}
+                                                                className={inputClass}
+                                                                placeholder="0,00"
+                                                            />
+                                                        </label>
+                                                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Valor final</div>
+                                                            <div className="mt-2 text-sm font-black text-slate-900">{formatCurrency(row.receivedAmount)}</div>
+                                                            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                                Juros sugerido {formatCurrency(row.installment.suggestedInterestAmount)}
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                                                                Multa sugerida {formatCurrency(row.installment.suggestedPenaltyAmount)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -812,7 +1202,7 @@ export default function PrincipalParcelasPage() {
                                         disabled={isSettling}
                                         className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
                                     >
-                                        {isSettling ? 'Processando...' : 'Confirmar'}
+                                        {isSettling ? 'Processando...' : 'Confirmar recebimento'}
                                     </button>
                                 </div>
                                 <div className="flex justify-end">

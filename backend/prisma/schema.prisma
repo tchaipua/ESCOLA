@@ -41,12 +41,7 @@ model Tenant {
   neighborhood String?
   complement   String?
 
-  // (DF) DADOS FINANCEIROS
-  interestRate        Float?
-  penaltyRate         Float?
-  penaltyValue        Float?
-  penaltyGracePeriod  Int?
-  interestGracePeriod Int?  // (SMTP) GATEWAY DE MENSAGERIA E EMAILS
+  // (SMTP) GATEWAY DE MENSAGERIA E EMAILS
   smtpHost            String?
   smtpPort            Int?
   smtpTimeout         Int?

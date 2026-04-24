@@ -11,13 +11,40 @@ type ScreenNameCopyProps = {
   label?: string;
   className?: string;
   disableMargin?: boolean;
+  alignRight?: boolean;
 };
+
+function copyTextWithLegacyCommand(value: string) {
+  if (typeof document === 'undefined' || !document.body) return false;
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', 'true');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-1000px';
+  textarea.style.left = '-1000px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+
+  try {
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
 
 export default function ScreenNameCopy({
   screenId,
   label = 'Tela',
   className = '',
   disableMargin = false,
+  alignRight = false,
 }: ScreenNameCopyProps) {
   const [status, setStatus] = useState<CopyStatus>('idle');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,18 +65,20 @@ export default function ScreenNameCopy({
   }, []);
 
   const handleCopy = useCallback(async () => {
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-      setStatus('error');
-      resetStatus();
-      return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(screenId);
+        setStatus('copied');
+        resetStatus();
+        return;
+      }
+    } catch {
+      // Alguns contextos embutidos bloqueiam a Clipboard API por policy.
     }
 
     try {
-      await navigator.clipboard.writeText(screenId);
-      setStatus('copied');
-    } catch (error) {
-      console.error('Falha ao copiar nome da tela', error);
-      setStatus('error');
+      const copied = copyTextWithLegacyCommand(screenId);
+      setStatus(copied ? 'copied' : 'error');
     } finally {
       resetStatus();
     }
@@ -60,6 +89,7 @@ export default function ScreenNameCopy({
   const containerClasses = [
     disableMargin ? '' : 'mt-3',
     'flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.4em] text-slate-400',
+    alignRight ? 'ml-auto w-fit justify-end' : '',
     className,
   ]
     .filter(Boolean)
@@ -67,7 +97,7 @@ export default function ScreenNameCopy({
 
   return (
     <div className={containerClasses}>
-      <span className="flex-1 truncate">
+      <span className={alignRight ? 'flex-none truncate' : 'flex-1 truncate'}>
         {label}: <span className="font-normal text-[10px] tracking-[0.35em] text-slate-500">{screenId}</span>
       </span>
       <button

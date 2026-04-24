@@ -719,15 +719,31 @@ export default function PrincipalMensalidadesPage() {
                                                 >
                                                     Ver quais
                                                 </Link>
+                                                {item.totalInstallments > 0 ? (
+                                                    <Link
+                                                        href={`/principal/mensalidades/envio-boletos/${item.id}`}
+                                                        className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 transition hover:bg-amber-100"
+                                                    >
+                                                        Envio boletos
+                                                    </Link>
+                                                ) : null}
                                             </div>
                                         ) : (
-                                            <div className="mt-1">
+                                            <div className="mt-1 flex items-center gap-2">
                                                 <Link
                                                     href={`/principal/mensalidades/detalhes/${item.id}`}
                                                     className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700 transition hover:bg-emerald-100"
                                                 >
                                                     Ver gerados
                                                 </Link>
+                                                {item.totalInstallments > 0 ? (
+                                                    <Link
+                                                        href={`/principal/mensalidades/envio-boletos/${item.id}`}
+                                                        className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 transition hover:bg-amber-100"
+                                                    >
+                                                        Envio boletos
+                                                    </Link>
+                                                ) : null}
                                             </div>
                                         )}
                                     </td>

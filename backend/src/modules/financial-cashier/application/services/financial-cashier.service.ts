@@ -8,6 +8,7 @@ import {
   ListOpenCashierInstallmentsDto,
   OpenCashSessionDto,
   SettleCashInstallmentDto,
+  SettleManualInstallmentDto,
 } from "../dto/cashier.dto";
 
 @Injectable()
@@ -127,13 +128,25 @@ export class FinancialCashierService {
     installmentId: string,
     payload: SettleCashInstallmentDto,
   ) {
+    return this.settleManualInstallment(currentUser, installmentId, {
+      ...payload,
+      paymentMethod: "CASH",
+    });
+  }
+
+  async settleManualInstallment(
+    currentUser: ICurrentUser,
+    installmentId: string,
+    payload: SettleManualInstallmentDto,
+  ) {
     const operator = await this.resolveOperatorIdentity(currentUser);
 
-    return this.financeiroService.settleCashInstallment(installmentId, {
+    return this.financeiroService.settleManualInstallment(installmentId, {
       requestedBy: currentUser.userId,
       ...this.financeFilters(currentUser),
       cashierUserId: operator.userId,
       cashierDisplayName: operator.displayName,
+      paymentMethod: payload.paymentMethod,
       receivedAt: payload.receivedAt,
       discountAmount: payload.discountAmount,
       interestAmount: payload.interestAmount,

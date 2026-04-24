@@ -185,3 +185,4 @@ Regra oficial:
 
 - `students` e `classes` continuam definindo valor e pagador
 - titulos, parcelas e historico operacional de lancamentos ficam exclusivamente no projeto `Financeiro`
+- bancos, contas bancarias e chaves de integracao tambem ficam exclusivamente no projeto `Financeiro`

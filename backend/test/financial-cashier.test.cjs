@@ -25,9 +25,16 @@ function createService() {
     listInstallments: [],
     listOpenInstallments: [],
     settleCashInstallment: [],
+    settleManualInstallment: [],
   };
 
   const prisma = {
+    tenant: {
+      findFirst: async () => ({
+        name: "ESCOLA TESTE",
+        document: "12345678000199",
+      }),
+    },
     user: {
       findFirst: async () => ({ name: "Caixa Teste" }),
     },
@@ -66,6 +73,10 @@ function createService() {
     settleCashInstallment: async (installmentId, payload) => {
       calls.settleCashInstallment.push({ installmentId, payload });
       return { installmentId, status: "PAID", paymentMethod: "CASH" };
+    },
+    settleManualInstallment: async (installmentId, payload) => {
+      calls.settleManualInstallment.push({ installmentId, payload });
+      return { installmentId, status: "PAID", paymentMethod: payload.paymentMethod };
     },
   };
 
@@ -145,8 +156,8 @@ async function testSettleCashInstallmentSendsCashierIdentityToFinanceiro() {
   });
 
   assert.equal(result.status, "PAID");
-  assert.equal(calls.settleCashInstallment.length, 1);
-  assert.deepEqual(calls.settleCashInstallment[0], {
+  assert.equal(calls.settleManualInstallment.length, 1);
+  assert.deepEqual(calls.settleManualInstallment[0], {
     installmentId: "inst-1",
     payload: {
       requestedBy: "user-1",
@@ -154,11 +165,42 @@ async function testSettleCashInstallmentSendsCashierIdentityToFinanceiro() {
       sourceTenantId: "tenant-1",
       cashierUserId: "user-1",
       cashierDisplayName: "CAIXA TESTE",
+      paymentMethod: "CASH",
       receivedAt: undefined,
       discountAmount: 5,
       interestAmount: 2,
       penaltyAmount: undefined,
       notes: "RECEBIMENTO NO BALCAO",
+    },
+  });
+}
+
+async function testSettleManualInstallmentSendsChosenPaymentMethodToFinanceiro() {
+  const { service, calls } = createService();
+  const currentUser = createCurrentUser();
+
+  const result = await service.settleManualInstallment(currentUser, "inst-2", {
+    paymentMethod: "PIX",
+    notes: "RECEBIMENTO PIX",
+  });
+
+  assert.equal(result.status, "PAID");
+  assert.equal(result.paymentMethod, "PIX");
+  assert.equal(calls.settleManualInstallment.length, 1);
+  assert.deepEqual(calls.settleManualInstallment[0], {
+    installmentId: "inst-2",
+    payload: {
+      requestedBy: "user-1",
+      sourceSystem: "ESCOLA",
+      sourceTenantId: "tenant-1",
+      cashierUserId: "user-1",
+      cashierDisplayName: "CAIXA TESTE",
+      paymentMethod: "PIX",
+      receivedAt: undefined,
+      discountAmount: undefined,
+      interestAmount: undefined,
+      penaltyAmount: undefined,
+      notes: "RECEBIMENTO PIX",
     },
   });
 }
@@ -202,6 +244,10 @@ async function main() {
     {
       name: "financial cashier settle sends cashier identity to Financeiro",
       fn: testSettleCashInstallmentSendsCashierIdentityToFinanceiro,
+    },
+    {
+      name: "financial cashier settle manual sends chosen payment method to Financeiro",
+      fn: testSettleManualInstallmentSendsChosenPaymentMethodToFinanceiro,
     },
     {
       name: "financial cashier close session sends closing payload",
