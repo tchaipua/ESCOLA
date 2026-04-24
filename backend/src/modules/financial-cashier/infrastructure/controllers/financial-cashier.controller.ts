@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   CurrentUser,
@@ -12,6 +12,7 @@ import {
   ListOpenCashierInstallmentsDto,
   OpenCashSessionDto,
   SettleCashInstallmentDto,
+  UpdateCashierInstallmentDto,
 } from "../../application/dto/cashier.dto";
 import { FinancialCashierService } from "../../application/services/financial-cashier.service";
 
@@ -82,6 +83,24 @@ export class FinancialCashierController {
     return this.financialCashierService.listOpenInstallments(
       currentUser,
       query,
+    );
+  }
+
+  @Patch("installments/:installmentId")
+  @Permissions("MANAGE_MONTHLY_FEES")
+  @ApiOperation({
+    summary:
+      "Atualiza vencimento e valor de uma parcela em aberto e notifica administradores da escola",
+  })
+  updateInstallment(
+    @CurrentUser() currentUser: ICurrentUser,
+    @Param("installmentId") installmentId: string,
+    @Body() payload: UpdateCashierInstallmentDto,
+  ) {
+    return this.financialCashierService.updateInstallment(
+      currentUser,
+      installmentId,
+      payload,
     );
   }
 

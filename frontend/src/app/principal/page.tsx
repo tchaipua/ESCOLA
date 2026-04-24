@@ -591,6 +591,13 @@ export default function DashboardPage() {
                         </h3>
                         <p className="mt-2 text-sm text-slate-500">Acompanhe a operação da escola com visão centralizada do sistema.</p>
                     </Link>
+                    <Link href="/principal/caixa" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
+                        <h3 className="flex items-center justify-between font-bold text-slate-800">
+                            Caixa
+                            <span className="font-bold text-blue-500">→</span>
+                        </h3>
+                        <p className="mt-2 text-sm text-slate-500">Consulte o caixa do usuário logado ou todos os caixas conforme a permissão de acesso.</p>
+                    </Link>
                     <Link href="/principal/financeiro" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
                         <h3 className="flex items-center justify-between font-bold text-slate-800">
                             Financeiro

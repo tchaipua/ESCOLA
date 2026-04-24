@@ -186,6 +186,14 @@ export type FinanceiroInstallment = {
   isOverdue: boolean;
 };
 
+export type FinanceiroUpdateInstallmentPayload = {
+  requestedBy?: string;
+  sourceSystem: string;
+  sourceTenantId: string;
+  dueDate?: string;
+  amount?: number;
+};
+
 export type FinanceiroOpenInstallment = FinanceiroInstallment;
 
 export type FinanceiroOpenCashSessionPayload = {
@@ -441,6 +449,21 @@ export class FinanceiroService {
         body: JSON.stringify(payload),
         fallbackMessage:
           "Não foi possível registrar a baixa em dinheiro no sistema Financeiro.",
+      },
+    );
+  }
+
+  async updateInstallment(
+    installmentId: string,
+    payload: FinanceiroUpdateInstallmentPayload,
+  ) {
+    return this.request<FinanceiroInstallment>(
+      `/receivables/installments/${installmentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+        fallbackMessage:
+          "Não foi possível atualizar a parcela no sistema Financeiro.",
       },
     );
   }

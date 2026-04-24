@@ -11,8 +11,9 @@ import {
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const FINANCEIRO_FRONTEND_URL =
+    process.env.NEXT_PUBLIC_FINANCEIRO_FRONTEND_URL || 'http://localhost:3003';
 const SCREEN_ID = 'PRINCIPAL_PARCELAS_CAIXA_GERAL';
-const CONFIRM_SCREEN_ID = 'POPUP_PRINCIPAL_PARCELAS_CONFIRMAR_BAIXA';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_PARCELAS_ALERTA_GERAL';
 
 type InstallmentListStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'ALL';
@@ -27,6 +28,16 @@ type AlertModalState = {
     type: 'warning' | 'success' | 'error';
     title: string;
     message: string;
+};
+
+type EditInstallmentModalState = {
+    installmentId: string;
+    sourceEntityName: string;
+    installmentLabel: string;
+    originalDueDateInput: string;
+    originalAmountInput: string;
+    dueDateInput: string;
+    amountInput: string;
 };
 
 type CashSessionResponse = {
@@ -92,6 +103,36 @@ function formatDateLabel(value?: string | null) {
     return parsed.toLocaleDateString('pt-BR');
 }
 
+function formatDateInputValue(value?: string | null) {
+    if (!value) return '';
+    const normalized = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return normalized;
+
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+}
+
+function formatCurrencyInput(value?: number | null) {
+    return Number(value || 0).toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function parseCurrencyInput(value: string) {
+    const normalized = String(value || '')
+        .replace(/\s+/g, '')
+        .replace(/\./g, '')
+        .replace(',', '.')
+        .trim();
+
+    if (!normalized) return 0;
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
 function getFriendlyRequestErrorMessage(error: unknown, fallbackMessage: string) {
     if (!(error instanceof Error)) return fallbackMessage;
 
@@ -132,12 +173,7 @@ function getInstallmentStatusClasses(item: InstallmentResponse) {
 }
 
 export default function PrincipalParcelasPage() {
-    const authContext = getDashboardAuthContext();
-    const canViewCashier = hasAnyDashboardPermission(authContext.role, authContext.permissions, ['VIEW_CASHIER', 'SETTLE_RECEIVABLES']);
-    const canOpenCashier = hasDashboardPermission(authContext.role, authContext.permissions, 'VIEW_CASHIER');
-    const canSettleInstallments = hasDashboardPermission(authContext.role, authContext.permissions, 'SETTLE_RECEIVABLES');
-    const tenantBranding = readCachedTenantBranding(authContext.tenantId);
-
+    const [isMounted, setIsMounted] = useState(false);
     const [filters, setFilters] = useState<InstallmentFilters>(DEFAULT_FILTERS);
     const [appliedFilters, setAppliedFilters] = useState<InstallmentFilters>(DEFAULT_FILTERS);
     const [installments, setInstallments] = useState<InstallmentResponse[]>([]);
@@ -148,9 +184,20 @@ export default function PrincipalParcelasPage() {
     const [isLoadingInstallments, setIsLoadingInstallments] = useState(true);
     const [isLoadingSession, setIsLoadingSession] = useState(true);
     const [isOpeningSession, setIsOpeningSession] = useState(false);
-    const [isSettling, setIsSettling] = useState(false);
-    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [financeSettlementUrl, setFinanceSettlementUrl] = useState<string | null>(null);
+    const [isUpdatingInstallment, setIsUpdatingInstallment] = useState(false);
+    const [editInstallmentModal, setEditInstallmentModal] = useState<EditInstallmentModalState | null>(null);
     const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
+    const authContext = getDashboardAuthContext();
+    const canViewCashier = hasAnyDashboardPermission(authContext.role, authContext.permissions, ['VIEW_CASHIER', 'SETTLE_RECEIVABLES']);
+    const canOpenCashier = hasDashboardPermission(authContext.role, authContext.permissions, 'VIEW_CASHIER');
+    const canSettleInstallments = hasDashboardPermission(authContext.role, authContext.permissions, 'SETTLE_RECEIVABLES');
+    const canEditInstallments = hasDashboardPermission(authContext.role, authContext.permissions, 'MANAGE_MONTHLY_FEES');
+    const tenantBranding = readCachedTenantBranding(authContext.tenantId);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     async function loadCurrentSession() {
         if (!authContext.token || !canViewCashier) {
@@ -252,10 +299,41 @@ export default function PrincipalParcelasPage() {
         setSelectedIds((current) => current.filter((id) => visibleSelectableIds.has(id)));
     }, [installments]);
 
+    useEffect(() => {
+        function handleFinancePopupMessage(event: MessageEvent) {
+            const messageType = event.data?.type;
+
+            if (messageType === 'FINANCEIRO_RECEBIVEIS_BAIXA_MANUAL_CLOSE') {
+                setFinanceSettlementUrl(null);
+                return;
+            }
+
+            if (messageType === 'FINANCEIRO_RECEBIVEIS_BAIXA_MANUAL_REFRESH') {
+                setFinanceSettlementUrl(null);
+                void loadCurrentSession();
+                void loadInstallments(appliedFilters);
+            }
+        }
+
+        window.addEventListener('message', handleFinancePopupMessage);
+        return () => window.removeEventListener('message', handleFinancePopupMessage);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [appliedFilters]);
+
     const selectableInstallments = installments.filter((item) => item.status !== 'PAID' && item.openAmount > 0);
     const selectedInstallments = installments.filter((item) => selectedIds.includes(item.id));
     const selectedTotalAmount = selectedInstallments.reduce((total, item) => total + Number(item.openAmount || 0), 0);
     const allSelectableChecked = selectableInstallments.length > 0 && selectableInstallments.every((item) => selectedIds.includes(item.id));
+    if (!isMounted) {
+        return (
+            <div className="mx-auto flex min-h-[55vh] w-full max-w-3xl items-center justify-center">
+                <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+                    <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Carregando</div>
+                    <div className="mt-2 text-xl font-black text-slate-900">Aguarde...</div>
+                </div>
+            </div>
+        );
+    }
 
     async function handleOpenCashSession() {
         if (!authContext.token || !canOpenCashier || isOpeningSession) return;
@@ -311,77 +389,6 @@ export default function PrincipalParcelasPage() {
         }
     }
 
-    async function handleConfirmSettlement() {
-        if (!authContext.token || !currentSession || !selectedInstallments.length || isSettling) {
-            setIsConfirmOpen(false);
-            return;
-        }
-
-        try {
-            setIsSettling(true);
-            setIsConfirmOpen(false);
-
-            let successCount = 0;
-            const failureMessages: string[] = [];
-
-            for (const installment of selectedInstallments) {
-                try {
-                    const response = await fetch(`${API_BASE_URL}/financial-cashier/installments/${installment.id}/settle-cash`, {
-                        method: 'POST',
-                        headers: {
-                            Authorization: `Bearer ${authContext.token}`,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({}),
-                    });
-
-                    const payload = await response.json().catch(() => null);
-                    if (!response.ok) {
-                        throw new Error(payload?.message || `Não foi possível baixar a parcela de ${installment.sourceEntityName}.`);
-                    }
-
-                    successCount += 1;
-                } catch (error) {
-                    failureMessages.push(
-                        getFriendlyRequestErrorMessage(
-                            error,
-                            `Não foi possível baixar a parcela de ${installment.sourceEntityName}.`,
-                        ),
-                    );
-                }
-            }
-
-            setSelectedIds([]);
-            await Promise.all([loadCurrentSession(), loadInstallments(appliedFilters)]);
-
-            if (failureMessages.length === 0) {
-                setAlertModal({
-                    type: 'success',
-                    title: 'Baixa realizada com sucesso',
-                    message: `${successCount} parcela(s) foram baixadas em dinheiro no Financeiro.`,
-                });
-                return;
-            }
-
-            if (successCount > 0) {
-                setAlertModal({
-                    type: 'warning',
-                    title: 'Baixa concluída parcialmente',
-                    message: `${successCount} parcela(s) foram baixadas. A primeira falha retornada foi: ${failureMessages[0]}`,
-                });
-                return;
-            }
-
-            setAlertModal({
-                type: 'error',
-                title: 'Nenhuma parcela foi baixada',
-                message: failureMessages[0] || 'Não foi possível registrar a baixa das parcelas selecionadas.',
-            });
-        } finally {
-            setIsSettling(false);
-        }
-    }
-
     function handleApplyFilters() {
         const nextFilters = {
             status: filters.status,
@@ -416,6 +423,90 @@ export default function PrincipalParcelasPage() {
         setSelectedIds(selectableInstallments.map((item) => item.id));
     }
 
+    function handleOpenEditInstallment(item: InstallmentResponse) {
+        setEditInstallmentModal({
+            installmentId: item.id,
+            sourceEntityName: item.sourceEntityName,
+            installmentLabel: `${item.installmentNumber}/${item.installmentCount}`,
+            originalDueDateInput: formatDateInputValue(item.dueDate),
+            originalAmountInput: formatCurrencyInput(item.amount),
+            dueDateInput: formatDateInputValue(item.dueDate),
+            amountInput: formatCurrencyInput(item.amount),
+        });
+    }
+
+    async function handleSaveInstallmentChanges() {
+        if (!authContext.token || !editInstallmentModal || isUpdatingInstallment) return;
+
+        const parsedAmount = parseCurrencyInput(editInstallmentModal.amountInput);
+        if (!editInstallmentModal.dueDateInput) {
+            setAlertModal({
+                type: 'warning',
+                title: 'Vencimento obrigatório',
+                message: 'Informe a nova data de vencimento da parcela.',
+            });
+            return;
+        }
+
+        if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+            setAlertModal({
+                type: 'warning',
+                title: 'Valor inválido',
+                message: 'Informe um valor maior que zero para a parcela.',
+            });
+            return;
+        }
+
+        if (
+            editInstallmentModal.dueDateInput === editInstallmentModal.originalDueDateInput &&
+            formatCurrencyInput(parsedAmount) === editInstallmentModal.originalAmountInput
+        ) {
+            setAlertModal({
+                type: 'warning',
+                title: 'Nenhuma alteração detectada',
+                message: 'Altere o vencimento ou o valor da parcela antes de salvar.',
+            });
+            return;
+        }
+
+        try {
+            setIsUpdatingInstallment(true);
+
+            const response = await fetch(`${API_BASE_URL}/financial-cashier/installments/${editInstallmentModal.installmentId}`, {
+                method: 'PATCH',
+                headers: {
+                    Authorization: `Bearer ${authContext.token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    dueDate: new Date(`${editInstallmentModal.dueDateInput}T00:00:00.000Z`).toISOString(),
+                    amount: parsedAmount,
+                }),
+            });
+
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(payload?.message || 'Não foi possível atualizar a parcela.');
+            }
+
+            setEditInstallmentModal(null);
+            await loadInstallments(appliedFilters);
+            setAlertModal({
+                type: 'success',
+                title: 'Parcela atualizada',
+                message: 'O vencimento e o valor foram atualizados, e os administradores da escola foram notificados.',
+            });
+        } catch (error) {
+            setAlertModal({
+                type: 'error',
+                title: 'Erro ao atualizar parcela',
+                message: getFriendlyRequestErrorMessage(error, 'Não foi possível atualizar a parcela selecionada.'),
+            });
+        } finally {
+            setIsUpdatingInstallment(false);
+        }
+    }
+
     function handleStartSettlement() {
         if (!selectedInstallments.length) {
             setAlertModal({
@@ -435,7 +526,38 @@ export default function PrincipalParcelasPage() {
             return;
         }
 
-        setIsConfirmOpen(true);
+        const params = new URLSearchParams({
+            embedded: '1',
+            modal: '1',
+            sourceSystem: 'ESCOLA',
+            installmentIds: selectedInstallments.map((item) => item.id).join(','),
+        });
+
+        if (authContext.tenantId) {
+            params.set('sourceTenantId', authContext.tenantId.toUpperCase());
+        }
+
+        if (authContext.userId) {
+            params.set('cashierUserId', authContext.userId.toUpperCase());
+        }
+
+        if (authContext.name) {
+            params.set('cashierDisplayName', authContext.name.toUpperCase());
+        }
+
+        if (tenantBranding?.schoolName) {
+            params.set('companyName', tenantBranding.schoolName.toUpperCase());
+        }
+
+        if (tenantBranding?.logoUrl) {
+            params.set('companyLogoUrl', tenantBranding.logoUrl);
+        }
+
+        const normalizedBaseUrl = FINANCEIRO_FRONTEND_URL.endsWith('/')
+            ? FINANCEIRO_FRONTEND_URL.slice(0, -1)
+            : FINANCEIRO_FRONTEND_URL;
+
+        setFinanceSettlementUrl(`${normalizedBaseUrl}/recebiveis/baixa-manual?${params.toString()}`);
     }
 
     if (!canViewCashier) {
@@ -627,15 +749,15 @@ export default function PrincipalParcelasPage() {
                             </div>
                         </div>
                         <p className="mt-4 text-sm font-medium text-slate-500">
-                            A baixa em dinheiro só é liberada para usuário com função de caixa e com caixa aberto nesta escola.
+                            A baixa manual so e liberada para usuario com funcao de caixa e com caixa aberto nesta escola.
                         </p>
                         <button
                             type="button"
                             onClick={handleStartSettlement}
-                            disabled={!canSettleInstallments || !selectedInstallments.length || isSettling}
+                            disabled={!canSettleInstallments || !selectedInstallments.length}
                             className="mt-4 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
                         >
-                            {isSettling ? 'Baixando...' : 'Dar baixa em dinheiro'}
+                            Escolher pagamento
                         </button>
                     </div>
                 </div>
@@ -668,7 +790,7 @@ export default function PrincipalParcelasPage() {
                                         type="checkbox"
                                         checked={allSelectableChecked}
                                         onChange={handleToggleAllVisible}
-                                        disabled={!canSettleInstallments || !selectableInstallments.length || isSettling}
+                                        disabled={!canSettleInstallments || !selectableInstallments.length}
                                         aria-label="Selecionar todas as parcelas em aberto"
                                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                     />
@@ -694,7 +816,7 @@ export default function PrincipalParcelasPage() {
                                                 type="checkbox"
                                                 checked={selectedIds.includes(item.id)}
                                                 onChange={() => handleToggleInstallment(item.id)}
-                                                disabled={!canSettleInstallments || !isSelectable || isSettling}
+                                                disabled={!canSettleInstallments || !isSelectable}
                                                 aria-label={`Selecionar parcela de ${item.sourceEntityName}`}
                                                 className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                                             />
@@ -717,7 +839,18 @@ export default function PrincipalParcelasPage() {
                                         </td>
                                         <td className="px-4 py-4 font-semibold text-slate-700">{item.classLabel || '---'}</td>
                                         <td className="px-4 py-4 font-semibold text-slate-700">{formatDateLabel(item.dueDate)}</td>
-                                        <td className="px-4 py-4 font-black text-slate-900">{formatCurrency(rowValue)}</td>
+                                        <td className="px-4 py-4">
+                                            <div className="font-black text-slate-900">{formatCurrency(rowValue)}</div>
+                                            {canEditInstallments && isSelectable ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEditInstallment(item)}
+                                                    className="mt-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600 transition hover:bg-slate-100"
+                                                >
+                                                    Editar
+                                                </button>
+                                            ) : null}
+                                        </td>
                                         <td className="px-4 py-4">
                                             <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${getInstallmentStatusClasses(item)}`}>
                                                 {getInstallmentStatusLabel(item)}
@@ -739,8 +872,8 @@ export default function PrincipalParcelasPage() {
                 </div>
             </section>
 
-            {isConfirmOpen ? (
-                <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+            {editInstallmentModal ? (
+                <div className="fixed inset-0 z-[92] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-xl overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.4)]">
                         <div className="border-b border-slate-100 bg-slate-50 px-6 py-5">
                             <div className="flex items-start gap-4">
@@ -758,16 +891,17 @@ export default function PrincipalParcelasPage() {
                                     )}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Confirmação de baixa</div>
-                                    <h3 className="mt-1 text-xl font-black text-slate-900">Confirmar baixa em dinheiro</h3>
+                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">Alteração de parcela</div>
+                                    <h3 className="mt-1 text-xl font-black text-slate-900">
+                                        {editInstallmentModal.sourceEntityName} - PARCELA {editInstallmentModal.installmentLabel}
+                                    </h3>
                                     <p className="mt-2 text-sm font-medium text-slate-500">
-                                        As parcelas selecionadas serão baixadas no Financeiro usando o caixa atualmente aberto para este usuário.
+                                        Altere o vencimento e o valor da parcela em aberto. Ao salvar, os administradores da escola serão notificados.
                                     </p>
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => setIsConfirmOpen(false)}
-                                    disabled={isSettling}
+                                    onClick={() => !isUpdatingInstallment && setEditInstallmentModal(null)}
                                     className="rounded-full bg-white px-3 py-2 text-sm font-black text-slate-500 shadow-sm hover:text-slate-900"
                                 >
                                     ×
@@ -775,49 +909,47 @@ export default function PrincipalParcelasPage() {
                             </div>
                         </div>
 
-                        <div className="space-y-4 px-6 py-6 text-sm font-semibold text-slate-600">
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Parcelas selecionadas</div>
-                                    <div className="mt-2 text-lg font-black text-slate-900">{selectedInstallments.length}</div>
-                                </div>
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Valor total</div>
-                                    <div className="mt-2 text-lg font-black text-slate-900">{formatCurrency(selectedTotalAmount)}</div>
-                                </div>
-                            </div>
+                        <div className="grid gap-4 px-6 py-6 md:grid-cols-2">
+                            <label>
+                                <span className={labelClass}>Novo vencimento</span>
+                                <input
+                                    type="date"
+                                    value={editInstallmentModal.dueDateInput}
+                                    onChange={(event) => setEditInstallmentModal((current) => current ? { ...current, dueDateInput: event.target.value } : current)}
+                                    className={inputClass}
+                                />
+                            </label>
 
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4">
-                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">Caixa em uso</div>
-                                <div className="mt-2 text-sm font-semibold text-slate-700">
-                                    {currentSession?.cashierDisplayName || 'CAIXA NÃO IDENTIFICADO'}
-                                </div>
-                            </div>
+                            <label>
+                                <span className={labelClass}>Novo valor</span>
+                                <input
+                                    value={editInstallmentModal.amountInput}
+                                    onChange={(event) => setEditInstallmentModal((current) => current ? { ...current, amountInput: event.target.value } : current)}
+                                    inputMode="decimal"
+                                    className={inputClass}
+                                    placeholder="0,00"
+                                />
+                            </label>
                         </div>
 
                         <div className="border-t border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex flex-col gap-3">
-                                <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsConfirmOpen(false)}
-                                        disabled={isSettling}
-                                        className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-slate-600 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70"
-                                    >
-                                        Fechar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleConfirmSettlement()}
-                                        disabled={isSettling}
-                                        className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
-                                    >
-                                        {isSettling ? 'Processando...' : 'Confirmar'}
-                                    </button>
-                                </div>
-                                <div className="flex justify-end">
-                                    <ScreenNameCopy screenId={CONFIRM_SCREEN_ID} className="justify-end text-slate-500" disableMargin />
-                                </div>
+                            <div className="flex flex-wrap justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditInstallmentModal(null)}
+                                    disabled={isUpdatingInstallment}
+                                    className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-slate-600 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSaveInstallmentChanges()}
+                                    disabled={isUpdatingInstallment}
+                                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70"
+                                >
+                                    {isUpdatingInstallment ? 'Salvando...' : 'Salvar alteração'}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -897,6 +1029,27 @@ export default function PrincipalParcelasPage() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {financeSettlementUrl ? (
+                <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+                    <div className="relative flex h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.4)]">
+                        <div className="flex items-center justify-end border-b border-slate-100 bg-slate-50 px-4 py-3">
+                            <button
+                                type="button"
+                                onClick={() => setFinanceSettlementUrl(null)}
+                                className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.22em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                        <iframe
+                            src={financeSettlementUrl}
+                            title="FINANCEIRO_RECEBIVEIS_BAIXA_MANUAL"
+                            className="h-full w-full border-0 bg-white"
+                        />
                     </div>
                 </div>
             ) : null}
