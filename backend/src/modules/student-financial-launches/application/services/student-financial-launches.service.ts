@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import {
-  FinanceiroBank,
   FinanceiroBatchDetails,
   FinanceiroBatchSummary,
   FinanceiroImportPayload,
@@ -9,7 +8,6 @@ import {
 } from "../../../../integrations/financeiro/financeiro.service";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
-import { AssignStudentFinancialLaunchBankDto } from "../dto/assign-student-financial-launch-bank.dto";
 import { CreateStudentFinancialLaunchDto } from "../dto/create-student-financial-launch.dto";
 
 type LaunchScope = "ALL" | "SERIES" | "SERIES_CLASS";
@@ -34,30 +32,6 @@ type LaunchBatchDetailsItem = {
   amount: number | null;
   description: string | null;
   reason: string | null;
-};
-
-type LaunchBankDispatchInstallment = {
-  id: string;
-  batchId: string;
-  studentId: string;
-  studentName: string;
-  payerName: string;
-  classLabel: string | null;
-  description: string;
-  installmentNumber: number;
-  installmentCount: number;
-  dueDate: string;
-  amount: number;
-  openAmount: number;
-  paidAmount: number;
-  status: string;
-  settlementMethod?: string | null;
-  settledAt?: string | null;
-  bankAccountId?: string | null;
-  bankAccountLabel?: string | null;
-  bankAssignedAt?: string | null;
-  bankAssignedBy?: string | null;
-  isOverdue: boolean;
 };
 
 type ParsedFinancePayload = FinanceiroImportPayload & {
@@ -217,12 +191,6 @@ export class StudentFinancialLaunchesService {
       .map((item) => item.trim())
       .filter(Boolean)
       .join(" / ");
-  }
-
-  private buildBankLabel(bank: FinanceiroBank) {
-    const agencyLabel = `${bank.branchNumber}${bank.branchDigit ? `-${bank.branchDigit}` : ""}`;
-    const accountLabel = `${bank.accountNumber}${bank.accountDigit ? `-${bank.accountDigit}` : ""}`;
-    return `${bank.bankName} - AG ${agencyLabel} - CC ${accountLabel}`;
   }
 
   private roundMoney(value: number) {
@@ -488,24 +456,6 @@ export class StudentFinancialLaunchesService {
     return batches.map((batch) => this.mapFinanceBatchToHistoryItem(batch));
   }
 
-  private async loadActiveBanks() {
-    const banks = await this.financeiroService.listBanks({
-      ...this.financeFilters(),
-      status: "ACTIVE",
-    });
-
-    return banks.map((bank) => ({
-      id: bank.id,
-      bankCode: bank.bankCode,
-      bankName: bank.bankName,
-      branchNumber: bank.branchNumber,
-      branchDigit: bank.branchDigit || null,
-      accountNumber: bank.accountNumber,
-      accountDigit: bank.accountDigit || null,
-      label: this.buildBankLabel(bank),
-    }));
-  }
-
   private async mapFinanceBatchToDetailsResponse(
     batch: FinanceiroBatchDetails,
   ) {
@@ -712,95 +662,6 @@ export class StudentFinancialLaunchesService {
 
       throw error;
     }
-  }
-
-  async bankDispatch(batchId: string) {
-    const normalizedBatchId = String(batchId || "").trim();
-    if (!normalizedBatchId) {
-      throw new BadRequestException("Lote de lançamento inválido.");
-    }
-
-    try {
-      const [financeBatch, installments, banks] = await Promise.all([
-        this.financeiroService.getReceivableBatch(
-          normalizedBatchId,
-          this.financeFilters(),
-        ),
-        this.financeiroService.listInstallments({
-          ...this.financeFilters(),
-          batchId: normalizedBatchId,
-          status: "ALL",
-        }),
-        this.loadActiveBanks(),
-      ]);
-
-      return {
-        batch: this.mapFinanceBatchToHistoryItem(financeBatch),
-        banks,
-        installments: installments.map(
-          (item): LaunchBankDispatchInstallment => ({
-            id: item.id,
-            batchId: item.batchId,
-            studentId: item.sourceEntityId,
-            studentName: item.sourceEntityName,
-            payerName: item.payerNameSnapshot,
-            classLabel: item.classLabel || null,
-            description: item.description,
-            installmentNumber: item.installmentNumber,
-            installmentCount: item.installmentCount,
-            dueDate: item.dueDate,
-            amount: item.amount,
-            openAmount: item.openAmount,
-            paidAmount: item.paidAmount,
-            status: item.status,
-            settlementMethod: item.settlementMethod || null,
-            settledAt: item.settledAt || null,
-            bankAccountId: item.bankAccountId || null,
-            bankAccountLabel: item.bankAccountLabel || null,
-            bankAssignedAt: item.bankAssignedAt || null,
-            bankAssignedBy: item.bankAssignedBy || null,
-            isOverdue: item.isOverdue,
-          }),
-        ),
-      };
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        /LOTE (NAO|NÃO) ENCONTRADO/i.test(error.message)
-      ) {
-        throw new BadRequestException("Lançamento não encontrado.");
-      }
-
-      throw error;
-    }
-  }
-
-  async assignBank(batchId: string, payload: AssignStudentFinancialLaunchBankDto) {
-    const normalizedBatchId = String(batchId || "").trim();
-    if (!normalizedBatchId) {
-      throw new BadRequestException("Lote de lançamento inválido.");
-    }
-
-    const installmentIds = Array.from(
-      new Set(
-        (payload.installmentIds || [])
-          .map((item) => String(item || "").trim())
-          .filter(Boolean),
-      ),
-    );
-
-    if (!installmentIds.length) {
-      throw new BadRequestException(
-        "Selecione ao menos uma parcela para vincular ao banco.",
-      );
-    }
-
-    return this.financeiroService.assignBankToInstallments(normalizedBatchId, {
-      requestedBy: this.userId(),
-      ...this.financeFilters(),
-      bankAccountId: String(payload.bankAccountId || "").trim(),
-      installmentIds,
-    });
   }
 
   async bootstrap() {

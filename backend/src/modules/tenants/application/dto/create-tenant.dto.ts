@@ -48,6 +48,13 @@ export class CreateTenantDto {
   @IsOptional() @IsString() neighborhood?: string;
   @IsOptional() @IsString() complement?: string;
 
+  // (DF) DADOS FINANCEIROS
+  @IsOptional() interestRate?: number;
+  @IsOptional() penaltyRate?: number;
+  @IsOptional() penaltyValue?: number;
+  @IsOptional() penaltyGracePeriod?: number;
+  @IsOptional() interestGracePeriod?: number;
+
   // (SMTP) GATEWAY DE MENSAGERIA E EMAILS
   @IsOptional() @IsString() smtpHost?: string;
   @IsOptional() @IsInt() @Min(1) @Max(65535) smtpPort?: number;

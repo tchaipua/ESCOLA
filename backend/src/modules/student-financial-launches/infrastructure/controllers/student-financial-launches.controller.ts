@@ -2,7 +2,6 @@ import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
-import { AssignStudentFinancialLaunchBankDto } from "../../application/dto/assign-student-financial-launch-bank.dto";
 import { CreateStudentFinancialLaunchDto } from "../../application/dto/create-student-financial-launch.dto";
 import { StudentFinancialLaunchesService } from "../../application/services/student-financial-launches.service";
 
@@ -33,29 +32,6 @@ export class StudentFinancialLaunchesController {
   })
   details(@Param("id") id: string) {
     return this.studentFinancialLaunchesService.details(id);
-  }
-
-  @Get(":id/bank-dispatch")
-  @Permissions("VIEW_FINANCIAL")
-  @ApiOperation({
-    summary:
-      "Carrega as parcelas do lote para vinculação do banco de envio de boletos",
-  })
-  bankDispatch(@Param("id") id: string) {
-    return this.studentFinancialLaunchesService.bankDispatch(id);
-  }
-
-  @Post(":id/bank-dispatch")
-  @Permissions("MANAGE_MONTHLY_FEES")
-  @ApiOperation({
-    summary:
-      "Vincula um banco às parcelas selecionadas do lote de mensalidades",
-  })
-  assignBank(
-    @Param("id") id: string,
-    @Body() payload: AssignStudentFinancialLaunchBankDto,
-  ) {
-    return this.studentFinancialLaunchesService.assignBank(id, payload);
   }
 
   @Post()

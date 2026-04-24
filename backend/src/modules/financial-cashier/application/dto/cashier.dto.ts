@@ -63,15 +63,7 @@ export class ListCashierInstallmentsDto {
 
 export class ListOpenCashierInstallmentsDto extends ListCashierInstallmentsDto {}
 
-export const CASHIER_PAYMENT_METHODS = [
-  "CASH",
-  "PIX",
-  "CREDIT_CARD",
-  "DEBIT_CARD",
-  "CHECK",
-] as const;
-
-class BaseSettleInstallmentDto {
+export class SettleCashInstallmentDto {
   @IsOptional()
   @IsDateString()
   receivedAt?: string;
@@ -97,11 +89,4 @@ class BaseSettleInstallmentDto {
   @IsOptional()
   @IsString()
   notes?: string;
-}
-
-export class SettleCashInstallmentDto extends BaseSettleInstallmentDto {}
-
-export class SettleManualInstallmentDto extends BaseSettleInstallmentDto {
-  @IsIn(CASHIER_PAYMENT_METHODS)
-  paymentMethod!: (typeof CASHIER_PAYMENT_METHODS)[number];
 }

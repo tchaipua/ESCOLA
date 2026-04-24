@@ -14,7 +14,6 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "test:attendance-notifications": "npm run build && node test/attendance-notifications.test.cjs",
     "test:student-billing": "npm run build && node test/student-billing.test.cjs",
-    "test:student-financial-launches": "npm run build && node test/student-financial-launches.test.cjs",
     "test:financial-cashier": "npm run build && node test/financial-cashier.test.cjs",
     "test:change-shared-password": "npm run build && node test/change-shared-password.test.cjs",
     "start": "nest start",

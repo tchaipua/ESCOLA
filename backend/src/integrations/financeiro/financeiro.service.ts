@@ -70,33 +70,6 @@ export type FinanceiroExistingBusinessKeysResponse = {
   existingBusinessKeys: string[];
 };
 
-export type FinanceiroBank = {
-  id: string;
-  companyId: string;
-  companyName?: string | null;
-  sourceSystem?: string | null;
-  sourceTenantId?: string | null;
-  status: string;
-  bankCode: string;
-  bankName: string;
-  branchNumber: string;
-  branchDigit?: string | null;
-  accountNumber: string;
-  accountDigit?: string | null;
-  walletCode?: string | null;
-  agreementCode?: string | null;
-  pixKey?: string | null;
-  beneficiaryName?: string | null;
-  beneficiaryDocument?: string | null;
-  notes?: string | null;
-  createdAt: string;
-  createdBy?: string | null;
-  updatedAt: string;
-  updatedBy?: string | null;
-  canceledAt?: string | null;
-  canceledBy?: string | null;
-};
-
 export type FinanceiroBatchSummary = {
   id: string;
   companyId: string;
@@ -141,10 +114,6 @@ export type FinanceiroBatchDetails = FinanceiroBatchSummary & {
       amount: number;
       descriptionSnapshot: string;
       payerNameSnapshot: string;
-      bankAccountId?: string | null;
-      bankAccountLabel?: string | null;
-      bankAssignedAt?: string | null;
-      bankAssignedBy?: string | null;
       payerDocumentSnapshot?: string | null;
     }>;
   }>;
@@ -160,14 +129,6 @@ export type FinanceiroCashMovement = {
   occurredAt: string;
   referenceType?: string | null;
   referenceId?: string | null;
-};
-
-export type FinanceiroCashSessionReceivedByPaymentMethod = {
-  cash: number;
-  pix: number;
-  creditCard: number;
-  debitCard: number;
-  check: number;
 };
 
 export type FinanceiroCashSession = {
@@ -189,7 +150,6 @@ export type FinanceiroCashSession = {
   createdBy?: string | null;
   updatedAt: string;
   updatedBy?: string | null;
-  receivedByPaymentMethod?: FinanceiroCashSessionReceivedByPaymentMethod;
   movementCount: number;
   settlementCount: number;
   movements: FinanceiroCashMovement[];
@@ -220,37 +180,13 @@ export type FinanceiroInstallment = {
   amount: number;
   openAmount: number;
   paidAmount: number;
-  interestRate?: number | null;
-  interestGracePeriod?: number | null;
-  penaltyRate?: number | null;
-  penaltyValue?: number | null;
-  penaltyGracePeriod?: number | null;
-  suggestedDiscountAmount?: number | null;
-  suggestedInterestAmount?: number | null;
-  suggestedPenaltyAmount?: number | null;
-  suggestedReceivedAmount?: number | null;
-  overdueDays?: number | null;
-  interestDays?: number | null;
-  penaltyApplied?: boolean | null;
   status: string;
   settlementMethod?: string | null;
   settledAt?: string | null;
-  bankAccountId?: string | null;
-  bankAccountLabel?: string | null;
-  bankAssignedAt?: string | null;
-  bankAssignedBy?: string | null;
-  bankSlipOurNumber?: string | null;
   isOverdue: boolean;
 };
 
 export type FinanceiroOpenInstallment = FinanceiroInstallment;
-
-export type FinanceiroSettlementPaymentMethod =
-  | "CASH"
-  | "PIX"
-  | "CREDIT_CARD"
-  | "DEBIT_CARD"
-  | "CHECK";
 
 export type FinanceiroOpenCashSessionPayload = {
   requestedBy?: string;
@@ -285,12 +221,7 @@ export type FinanceiroSettleCashInstallmentPayload = {
   notes?: string;
 };
 
-export type FinanceiroSettleManualInstallmentPayload =
-  FinanceiroSettleCashInstallmentPayload & {
-    paymentMethod: FinanceiroSettlementPaymentMethod;
-  };
-
-export type FinanceiroSettleInstallmentResponse = {
+export type FinanceiroSettleCashInstallmentResponse = {
   installmentId: string;
   settlementId: string;
   cashSessionId: string;
@@ -299,29 +230,10 @@ export type FinanceiroSettleInstallmentResponse = {
   paidAmount: number;
   receivedAmount: number;
   settledAt: string;
-  paymentMethod: FinanceiroSettlementPaymentMethod;
+  paymentMethod: string;
   discountAmount: number;
   interestAmount: number;
   penaltyAmount: number;
-  message: string;
-};
-
-export type FinanceiroSettleCashInstallmentResponse =
-  FinanceiroSettleInstallmentResponse;
-
-export type FinanceiroAssignBankToInstallmentsPayload = {
-  requestedBy?: string;
-  sourceSystem: string;
-  sourceTenantId: string;
-  bankAccountId: string;
-  installmentIds: string[];
-};
-
-export type FinanceiroAssignBankToInstallmentsResponse = {
-  batchId: string;
-  bankAccountId: string;
-  bankAccountLabel: string;
-  updatedCount: number;
   message: string;
 };
 
@@ -373,31 +285,6 @@ export class FinanceiroService {
       body: JSON.stringify(payload),
       fallbackMessage:
         "Não foi possível gravar os lançamentos no sistema Financeiro.",
-    });
-  }
-
-  async listBanks(filters: {
-    sourceSystem: string;
-    sourceTenantId: string;
-    status?: string;
-    search?: string;
-  }) {
-    const query = new URLSearchParams({
-      sourceSystem: filters.sourceSystem,
-      sourceTenantId: filters.sourceTenantId,
-    });
-
-    if (filters.status?.trim()) {
-      query.set("status", filters.status.trim().toUpperCase());
-    }
-
-    if (filters.search?.trim()) {
-      query.set("search", filters.search.trim());
-    }
-
-    return this.request<FinanceiroBank[]>(`/banks?${query.toString()}`, {
-      fallbackMessage:
-        "Não foi possível carregar os bancos cadastrados no sistema Financeiro.",
     });
   }
 
@@ -497,7 +384,6 @@ export class FinanceiroService {
   async listOpenInstallments(filters: {
     sourceSystem: string;
     sourceTenantId: string;
-    batchId?: string;
     status?: FinanceiroInstallmentFilterStatus;
     studentName?: string;
     payerName?: string;
@@ -510,10 +396,6 @@ export class FinanceiroService {
 
     if (filters.status?.trim()) {
       query.set("status", filters.status.trim().toUpperCase());
-    }
-
-    if (filters.batchId?.trim()) {
-      query.set("batchId", filters.batchId.trim());
     }
 
     if (filters.studentName?.trim()) {
@@ -540,28 +422,12 @@ export class FinanceiroService {
   async listInstallments(filters: {
     sourceSystem: string;
     sourceTenantId: string;
-    batchId?: string;
     status?: FinanceiroInstallmentFilterStatus;
     studentName?: string;
     payerName?: string;
     search?: string;
   }) {
     return this.listOpenInstallments(filters);
-  }
-
-  async assignBankToInstallments(
-    batchId: string,
-    payload: FinanceiroAssignBankToInstallmentsPayload,
-  ) {
-    return this.request<FinanceiroAssignBankToInstallmentsResponse>(
-      `/receivables/batches/${batchId}/assign-bank`,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-        fallbackMessage:
-          "Não foi possível vincular o banco às parcelas no sistema Financeiro.",
-      },
-    );
   }
 
   async settleCashInstallment(
@@ -575,21 +441,6 @@ export class FinanceiroService {
         body: JSON.stringify(payload),
         fallbackMessage:
           "Não foi possível registrar a baixa em dinheiro no sistema Financeiro.",
-      },
-    );
-  }
-
-  async settleManualInstallment(
-    installmentId: string,
-    payload: FinanceiroSettleManualInstallmentPayload,
-  ) {
-    return this.request<FinanceiroSettleInstallmentResponse>(
-      `/receivables/installments/${installmentId}/settle-manual`,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-        fallbackMessage:
-          "Não foi possível registrar a baixa manual no sistema Financeiro.",
       },
     );
   }

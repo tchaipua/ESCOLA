@@ -12,7 +12,6 @@ import {
   ListOpenCashierInstallmentsDto,
   OpenCashSessionDto,
   SettleCashInstallmentDto,
-  SettleManualInstallmentDto,
 } from "../../application/dto/cashier.dto";
 import { FinancialCashierService } from "../../application/services/financial-cashier.service";
 
@@ -98,24 +97,6 @@ export class FinancialCashierController {
     @Body() payload: SettleCashInstallmentDto,
   ) {
     return this.financialCashierService.settleCashInstallment(
-      currentUser,
-      installmentId,
-      payload,
-    );
-  }
-
-  @Post("installments/:installmentId/settle-manual")
-  @Permissions("SETTLE_RECEIVABLES")
-  @ApiOperation({
-    summary:
-      "Registra baixa manual no Financeiro usando o caixa aberto do usuário logado",
-  })
-  settleManualInstallment(
-    @CurrentUser() currentUser: ICurrentUser,
-    @Param("installmentId") installmentId: string,
-    @Body() payload: SettleManualInstallmentDto,
-  ) {
-    return this.financialCashierService.settleManualInstallment(
       currentUser,
       installmentId,
       payload,
