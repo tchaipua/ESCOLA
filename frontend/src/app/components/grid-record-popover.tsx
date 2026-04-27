@@ -24,6 +24,7 @@ type GridRecordPopoverProps = {
     badges?: string[];
     disciplines?: string[];
     contextLabel?: string;
+    subjectBadges?: string[];
 };
 
 function getVisibleSections(sections: GridRecordPopoverSection[]) {
@@ -43,10 +44,12 @@ export default function GridRecordPopover({
     avatarUrl,
     disciplines,
     contextLabel,
+    subjectBadges,
 }: GridRecordPopoverProps) {
     const [isOpen, setIsOpen] = useState(false);
 
     const visibleDisciplines = useMemo(() => (disciplines || []).filter(Boolean), [disciplines]);
+    const visibleSubjectBadges = useMemo(() => (subjectBadges || []).filter(Boolean), [subjectBadges]);
 
     const visibleSections = useMemo(() => getVisibleSections(sections), [sections]);
     const brandingLogoUrl = useMemo(() => {
@@ -156,6 +159,23 @@ export default function GridRecordPopover({
 
                         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                             <div className="flex min-h-[220px] min-w-0 flex-col gap-5">
+                                {visibleSubjectBadges.length ? (
+                                    <section className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                                        <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                            Matérias lecionadas
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {visibleSubjectBadges.map((subject) => (
+                                                <span
+                                                    key={`subject-${subject}`}
+                                                    className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-800"
+                                                >
+                                                    {subject}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </section>
+                                ) : null}
                                 <div className="space-y-5">
                                     {visibleSections.map((section, sectionIndex) => (
                                         <section key={`${section.title || 'section'}-${sectionIndex}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">

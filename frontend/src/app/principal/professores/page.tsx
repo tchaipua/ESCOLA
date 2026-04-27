@@ -108,6 +108,59 @@ type EmailUsageAlert = {
     currentTenantName: string;
 };
 
+function buildTeacherSubjectAssignmentsMap(rawData: unknown): Record<string, TeacherSubjectAssignment[]> {
+    if (!Array.isArray(rawData)) {
+        return {};
+    }
+
+    return rawData.reduce<Record<string, TeacherSubjectAssignment[]>>((accumulator, entry) => {
+        if (!entry || typeof entry !== 'object') return accumulator;
+
+        const teacherId = typeof (entry as Record<string, unknown>).teacherId === 'string'
+            ? (entry as Record<string, unknown>).teacherId
+            : null;
+        const assignmentId = typeof (entry as Record<string, unknown>).id === 'string'
+            ? (entry as Record<string, unknown>).id
+            : null;
+        const subjectId = typeof (entry as Record<string, unknown>).subjectId === 'string'
+            ? (entry as Record<string, unknown>).subjectId
+            : null;
+
+        if (!teacherId || !assignmentId || !subjectId) return accumulator;
+
+        const subjectData = (entry as Record<string, unknown>).subject;
+        const normalizedSubject: SubjectRecord | null = subjectData && typeof subjectData === 'object'
+            ? {
+                id: typeof (subjectData as Record<string, unknown>).id === 'string'
+                    ? (subjectData as Record<string, unknown>).id
+                    : subjectId,
+                name: typeof (subjectData as Record<string, unknown>).name === 'string'
+                    ? (subjectData as Record<string, unknown>).name
+                    : 'DISCIPLINA',
+                canceledAt: typeof (subjectData as Record<string, unknown>).canceledAt === 'string'
+                    ? (subjectData as Record<string, unknown>).canceledAt
+                    : undefined,
+            }
+            : null;
+
+        const normalizedAssignment: TeacherSubjectAssignment = {
+            id: assignmentId,
+            subjectId,
+            hourlyRate: typeof (entry as Record<string, unknown>).hourlyRate === 'number'
+                ? (entry as Record<string, unknown>).hourlyRate as number
+                : null,
+            subject: normalizedSubject,
+        };
+
+        if (!accumulator[teacherId]) {
+            accumulator[teacherId] = [];
+        }
+
+        accumulator[teacherId].push(normalizedAssignment);
+        return accumulator;
+    }, {});
+}
+
 const DEFAULT_TEACHER_PROFILE = getDefaultAccessProfileForRole('PROFESSOR');
 
 type TeacherColumnKey =
@@ -217,6 +270,14 @@ function getTeacherSubjectNames(row: TeacherRecord) {
     return row.teacherSubjects
         ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
         .filter(Boolean) || [];
+}
+
+function getTeacherSubjectBadges(row: TeacherRecord) {
+    const subjects = row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
+        .filter(Boolean);
+    if (!subjects || subjects.length === 0) return [];
+    return subjects.map((subject) => subject.toUpperCase());
 }
 
 function normalizeTeacherSubjectName(value?: string | null) {
@@ -456,6 +517,7 @@ export default function ProfessoresPage() {
     const canViewTeachers = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']);
     const canManageTeachers = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_TEACHERS');
     const canManageTeacherSubjects = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SUBJECTS');
+    const canViewTeacherSubjects = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SUBJECTS');
     const teacherFieldAccess = getAllowedDashboardFields(currentRole, currentPermissions, {
         contact: 'VIEW_TEACHER_CONTACT_DATA',
         academic: 'VIEW_TEACHER_ACADEMIC_DATA',
@@ -538,13 +600,18 @@ export default function ProfessoresPage() {
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
 
-            const [teachersResponse, subjectsResponse] = await Promise.all([
+            const [teachersResponse, subjectsResponse, teacherSubjectsResponse] = await Promise.all([
                 fetch('http://localhost:3001/api/v1/teachers', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
                 }),
                 fetch('http://localhost:3001/api/v1/subjects?activeOnly=1', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                }),
+                fetch('http://localhost:3001/api/v1/teacher-subjects', {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
@@ -561,12 +628,34 @@ export default function ProfessoresPage() {
                 throw new Error(errData?.message || 'Falha ao buscar disciplinas');
             }
 
+            if (!teacherSubjectsResponse.ok) {
+                console.warn(
+                    'Falha ao buscar vínculos professor x matéria',
+                    teacherSubjectsResponse.status,
+                    teacherSubjectsResponse.statusText,
+                );
+            }
+
             const [teachersData, subjectsData] = await Promise.all([
                 teachersResponse.json(),
-                subjectsResponse.json()
+                subjectsResponse.json(),
             ]);
 
-            setProfessores(teachersData);
+            let teacherSubjectsData: unknown[] = [];
+            if (teacherSubjectsResponse.ok) {
+                teacherSubjectsData = await teacherSubjectsResponse.json();
+            }
+
+            const teacherSubjectAssignmentsMap = buildTeacherSubjectAssignmentsMap(teacherSubjectsData);
+            const teachersWithSubjects = (teachersData as TeacherRecord[]).map((teacher) => ({
+                ...teacher,
+                teacherSubjects:
+                    Array.isArray(teacher.teacherSubjects) && teacher.teacherSubjects.length > 0
+                        ? teacher.teacherSubjects
+                        : teacherSubjectAssignmentsMap[teacher.id] ?? [],
+            }));
+
+            setProfessores(teachersWithSubjects);
             setSubjects(
                 Array.isArray(subjectsData)
                     ? subjectsData.filter((subject: SubjectRecord) => !subject.canceledAt)
@@ -574,7 +663,7 @@ export default function ProfessoresPage() {
             );
             setSelectedTeacherForSubjects((current) => {
                 if (!current) return null;
-                return teachersData.find((teacher: TeacherRecord) => teacher.id === current.id) || null;
+                return teachersWithSubjects.find((teacher) => teacher.id === current.id) || null;
             });
         } catch (err: any) {
             console.error(err);
@@ -934,6 +1023,7 @@ export default function ProfessoresPage() {
             title={teacher.name}
             subtitle={teacher.birthDate ? `Nascimento: ${formatTeacherDate(teacher.birthDate)}` : 'Docente sem data de nascimento informada'}
             buttonLabel={`Ver detalhes do professor ${teacher.name}`}
+            subjectBadges={getTeacherSubjectBadges(teacher)}
             badges={[
                 teacher.canceledAt ? 'INATIVO' : 'ATIVO',
             ]}
