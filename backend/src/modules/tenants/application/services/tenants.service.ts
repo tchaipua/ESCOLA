@@ -321,6 +321,21 @@ export class TenantsService {
     };
   }
 
+  async findSharedProfileByCpf(tenantId: string, cpf: string) {
+    return this.runAsMasterTenantContext(tenantId, async () => {
+      const profile = await this.sharedProfilesService.findSharedProfileByCpf(
+        tenantId,
+        cpf,
+      );
+      if (!profile) {
+        throw new NotFoundException(
+          "Nenhum cadastro compartilhável encontrado.",
+        );
+      }
+      return profile;
+    });
+  }
+
   async create(createTenantDto: CreateTenantDto) {
     if (createTenantDto.email)
       createTenantDto.email = createTenantDto.email.toUpperCase();
@@ -483,9 +498,12 @@ export class TenantsService {
 
   async findEmailUsage(email: string) {
     const normalizedEmail = this.assertEmailForLookup(email);
-    const prismaClient = (this.prisma as PrismaService & {
-      getUnscopedClient?: () => PrismaService;
-    }).getUnscopedClient?.() || this.prisma;
+    const prismaClient =
+      (
+        this.prisma as PrismaService & {
+          getUnscopedClient?: () => PrismaService;
+        }
+      ).getUnscopedClient?.() || this.prisma;
 
     const [tenants, users, teachers, students, guardians] = await Promise.all([
       prismaClient.tenant.findMany({
@@ -584,56 +602,68 @@ export class TenantsService {
     ]);
 
     return [
-      ...tenants.map((record: {
-        id: string;
-        name: string;
-        email: string | null;
-        document?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-      }) => this.mapTenantEmailUsage(record)),
-      ...users.map((record: {
-        id: string;
-        name: string;
-        email: string | null;
-        role: string;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant: { id: string; name: string; document?: string | null };
-      }) => this.mapUserEmailUsage(record)),
-      ...teachers.map((record: {
-        id: string;
-        name: string;
-        email: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant: { id: string; name: string; document?: string | null };
-      }) => this.mapTeacherEmailUsage(record)),
-      ...students.map((record: {
-        id: string;
-        name: string;
-        email: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant: { id: string; name: string; document?: string | null };
-      }) => this.mapStudentEmailUsage(record)),
-      ...guardians.map((record: {
-        id: string;
-        name: string;
-        email: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant: { id: string; name: string; document?: string | null };
-      }) => this.mapGuardianEmailUsage(record)),
+      ...tenants.map(
+        (record: {
+          id: string;
+          name: string;
+          email: string | null;
+          document?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+        }) => this.mapTenantEmailUsage(record),
+      ),
+      ...users.map(
+        (record: {
+          id: string;
+          name: string;
+          email: string | null;
+          role: string;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }) => this.mapUserEmailUsage(record),
+      ),
+      ...teachers.map(
+        (record: {
+          id: string;
+          name: string;
+          email: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }) => this.mapTeacherEmailUsage(record),
+      ),
+      ...students.map(
+        (record: {
+          id: string;
+          name: string;
+          email: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }) => this.mapStudentEmailUsage(record),
+      ),
+      ...guardians.map(
+        (record: {
+          id: string;
+          name: string;
+          email: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant: { id: string; name: string; document?: string | null };
+        }) => this.mapGuardianEmailUsage(record),
+      ),
     ]
-      .filter((item) => this.normalizeEmail(item.currentEmail) === normalizedEmail)
+      .filter(
+        (item) => this.normalizeEmail(item.currentEmail) === normalizedEmail,
+      )
       .sort((left, right) => {
-      return (
-        left.tenantName.localeCompare(right.tenantName) ||
-        left.entityLabel.localeCompare(right.entityLabel) ||
-        left.recordName.localeCompare(right.recordName)
-      );
-    });
+        return (
+          left.tenantName.localeCompare(right.tenantName) ||
+          left.entityLabel.localeCompare(right.entityLabel) ||
+          left.recordName.localeCompare(right.recordName)
+        );
+      });
   }
 
   async updateEmailUsage(payload: {
@@ -1385,7 +1415,9 @@ export class TenantsService {
         name,
         email,
         password:
-          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
+          hashedPassword || shouldResolvePasswordForEmailChange
+            ? null
+            : undefined,
         photoUrl,
         complementaryProfiles:
           role === "ADMIN"
@@ -1921,7 +1953,10 @@ export class TenantsService {
             email: updateTenantDto.adminEmail || adminUser.email,
           };
 
-          if (shouldResolvePasswordForAdminEmailChange && finalAdminEmailForPassword) {
+          if (
+            shouldResolvePasswordForAdminEmailChange &&
+            finalAdminEmailForPassword
+          ) {
             adminsToSync.push({
               userId: adminUser.id,
               tenantId: id,

@@ -104,7 +104,12 @@ export class StudentFinancialLaunchesService {
 
     const year = Number(match[1]);
     const month = Number(match[2]);
-    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    if (
+      !Number.isInteger(year) ||
+      !Number.isInteger(month) ||
+      month < 1 ||
+      month > 12
+    ) {
       throw new BadRequestException("Competência mensal inválida.");
     }
 
@@ -246,13 +251,17 @@ export class StudentFinancialLaunchesService {
 
     const seriesName = batch.targetSeriesClass?.series?.name || "SÉRIE";
     const className = batch.targetSeriesClass?.class?.name || "TURMA";
-    const shiftLabel = this.getShiftLabel(batch.targetSeriesClass?.class?.shift);
+    const shiftLabel = this.getShiftLabel(
+      batch.targetSeriesClass?.class?.shift,
+    );
     return shiftLabel
       ? `${seriesName} - ${className} (${shiftLabel})`
       : `${seriesName} - ${className}`;
   }
 
-  private extractInstallmentCountFromPayload(payload?: ParsedFinancePayload | null) {
+  private extractInstallmentCountFromPayload(
+    payload?: ParsedFinancePayload | null,
+  ) {
     if (!payload?.items?.length) return null;
 
     for (const item of payload.items) {
@@ -265,7 +274,9 @@ export class StudentFinancialLaunchesService {
     return null;
   }
 
-  private extractFirstDueDateFromPayload(payload?: ParsedFinancePayload | null) {
+  private extractFirstDueDateFromPayload(
+    payload?: ParsedFinancePayload | null,
+  ) {
     if (!payload?.items?.length) return null;
 
     const allDueDates = payload.items
@@ -354,7 +365,11 @@ export class StudentFinancialLaunchesService {
     batch: FinanceiroBatchSummary | FinanceiroBatchDetails,
     payload?: ParsedFinancePayload | null,
   ) {
-    return batch.metadata?.targetLabel || payload?.metadata?.targetLabel || "TODOS OS ALUNOS";
+    return (
+      batch.metadata?.targetLabel ||
+      payload?.metadata?.targetLabel ||
+      "TODOS OS ALUNOS"
+    );
   }
 
   private inferSkippedStudents(
@@ -387,7 +402,8 @@ export class StudentFinancialLaunchesService {
   }) {
     return this.roundMoney(
       (batch.receivableTitles || []).reduce(
-        (accumulator, current) => accumulator + Number(current.totalAmount || 0),
+        (accumulator, current) =>
+          accumulator + Number(current.totalAmount || 0),
         0,
       ),
     );
@@ -548,7 +564,10 @@ export class StudentFinancialLaunchesService {
     });
   }
 
-  private async resolveTarget(scope: LaunchScope, payload: CreateStudentFinancialLaunchDto) {
+  private async resolveTarget(
+    scope: LaunchScope,
+    payload: CreateStudentFinancialLaunchDto,
+  ) {
     if (scope === "ALL") {
       return {
         targetSeries: null,
@@ -646,44 +665,45 @@ export class StudentFinancialLaunchesService {
   }
 
   async bootstrap() {
-    const [activeSchoolYear, series, seriesClasses, history] = await Promise.all([
-      this.activeSchoolYear(),
-      this.prisma.series.findMany({
-        where: {
-          tenantId: this.tenantId(),
-          canceledAt: null,
-        },
-        select: {
-          id: true,
-          name: true,
-          sortOrder: true,
-        },
-        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      }),
-      this.prisma.seriesClass.findMany({
-        where: {
-          tenantId: this.tenantId(),
-          canceledAt: null,
-        },
-        include: {
-          series: {
-            select: {
-              id: true,
-              name: true,
-              sortOrder: true,
+    const [activeSchoolYear, series, seriesClasses, history] =
+      await Promise.all([
+        this.activeSchoolYear(),
+        this.prisma.series.findMany({
+          where: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            sortOrder: true,
+          },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        }),
+        this.prisma.seriesClass.findMany({
+          where: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+          },
+          include: {
+            series: {
+              select: {
+                id: true,
+                name: true,
+                sortOrder: true,
+              },
+            },
+            class: {
+              select: {
+                id: true,
+                name: true,
+                shift: true,
+              },
             },
           },
-          class: {
-            select: {
-              id: true,
-              name: true,
-              shift: true,
-            },
-          },
-        },
-      }),
-      this.loadHistory(),
-    ]);
+        }),
+        this.loadHistory(),
+      ]);
 
     return {
       activeSchoolYear,
@@ -691,8 +711,7 @@ export class StudentFinancialLaunchesService {
       seriesClasses: seriesClasses
         .sort((left, right) => {
           const leftOrder = left.series?.sortOrder ?? Number.MAX_SAFE_INTEGER;
-          const rightOrder =
-            right.series?.sortOrder ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder = right.series?.sortOrder ?? Number.MAX_SAFE_INTEGER;
           if (leftOrder !== rightOrder) return leftOrder - rightOrder;
 
           const leftSeries = left.series?.name || "";
@@ -700,7 +719,9 @@ export class StudentFinancialLaunchesService {
           const seriesComparison = leftSeries.localeCompare(rightSeries);
           if (seriesComparison !== 0) return seriesComparison;
 
-          return (left.class?.name || "").localeCompare(right.class?.name || "");
+          return (left.class?.name || "").localeCompare(
+            right.class?.name || "",
+          );
         })
         .map((item) => ({
           id: item.id,
@@ -733,7 +754,11 @@ export class StudentFinancialLaunchesService {
       );
     }
 
-    if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 24) {
+    if (
+      !Number.isInteger(installmentCount) ||
+      installmentCount < 1 ||
+      installmentCount > 24
+    ) {
       throw new BadRequestException(
         "Informe uma quantidade de parcelas entre 1 e 24.",
       );
@@ -746,12 +771,15 @@ export class StudentFinancialLaunchesService {
       );
     }
 
-    const [{ targetSeries, targetSeriesClass, enrollmentWhere }, tenant, activeSchoolYear] =
-      await Promise.all([
-        this.resolveTarget(scope, payload),
-        this.findTenantIdentity(),
-        this.activeSchoolYear(),
-      ]);
+    const [
+      { targetSeries, targetSeriesClass, enrollmentWhere },
+      tenant,
+      activeSchoolYear,
+    ] = await Promise.all([
+      this.resolveTarget(scope, payload),
+      this.findTenantIdentity(),
+      this.activeSchoolYear(),
+    ]);
 
     const candidateStudents = await this.prisma.student.findMany({
       where: {
@@ -813,8 +841,7 @@ export class StudentFinancialLaunchesService {
 
     if (candidateStudents.length === 0) {
       return {
-        message:
-          "Nenhum aluno ativo foi encontrado para o filtro informado.",
+        message: "Nenhum aluno ativo foi encontrado para o filtro informado.",
         batch: null,
         createdStudentsCount: 0,
         createdInstallmentsCount: 0,
@@ -852,7 +879,8 @@ export class StudentFinancialLaunchesService {
       });
       const businessKey = businessKeyMap.get(student.id)!;
       const effectiveAmount =
-        typeof student.monthlyFee === "number" && Number.isFinite(student.monthlyFee)
+        typeof student.monthlyFee === "number" &&
+        Number.isFinite(student.monthlyFee)
           ? student.monthlyFee
           : typeof classEntity?.defaultMonthlyFee === "number" &&
               Number.isFinite(classEntity.defaultMonthlyFee)
@@ -882,20 +910,23 @@ export class StudentFinancialLaunchesService {
       }
 
       const payerType =
-        String(student.billingPayerType || "").trim().toUpperCase() ===
-        "RESPONSAVEL"
+        String(student.billingPayerType || "")
+          .trim()
+          .toUpperCase() === "RESPONSAVEL"
           ? "RESPONSAVEL"
           : "ALUNO";
       const payerGuardian =
         payerType === "RESPONSAVEL" ? student.billingGuardian : null;
 
-      if (payerType === "RESPONSAVEL" && (!payerGuardian || payerGuardian.canceledAt)) {
+      if (
+        payerType === "RESPONSAVEL" &&
+        (!payerGuardian || payerGuardian.canceledAt)
+      ) {
         skippedStudents.push({
           studentId: student.id,
           studentName: student.name,
           classLabel,
-          reason:
-            "Aluno sem responsável pagador válido definido no cadastro.",
+          reason: "Aluno sem responsável pagador válido definido no cadastro.",
         });
         return;
       }

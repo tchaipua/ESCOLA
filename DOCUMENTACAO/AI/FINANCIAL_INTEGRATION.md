@@ -138,11 +138,20 @@ Fase 3:
 
 Em 2026-04-05, o fluxo de `student-financial-launches` passou a operar com fonte exclusiva no `Financeiro`.
 
+Em 2026-04-14, o workspace passou a incluir tambem o projeto separado do `Financeiro`, com:
+
+- `C:\Sistemas\IA\Financeiro\backend`: API em `localhost:3002`
+- `C:\Sistemas\IA\Financeiro\frontend`: painel web proprio em `localhost:3003`
+- banco dedicado do `Financeiro`, separado do banco da `Escola`
+- integracao visual transparente pela rota `/principal/financeiro` dentro da `Escola`
+- script raiz `npm run dev:ecossistema` para subir `Escola` + `Financeiro` juntos
+
 Comportamento oficial atual:
 
 - historico: a tela consulta somente o `Financeiro`
 - novos lancamentos: deixam de ser gravados localmente e passam a ser enviados direto para o `Financeiro`
 - tabelas locais antigas: foram removidas do schema e do banco SQLite da `Escola`
+- o usuario entra apenas pela `Escola`, e o frontend financeiro e embutido nela sem nova autenticacao
 
 Contrato aplicado agora no backend da `Escola`:
 

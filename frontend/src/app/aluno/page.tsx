@@ -14,7 +14,7 @@ import {
     type StudentPwaPayload,
 } from '@/app/lib/student-pwa-cache';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type CurrentTenant = { id: string; name: string; logoUrl?: string | null };
 type Summary = NonNullable<StudentPwaPayload['studentSummary']>;

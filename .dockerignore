@@ -1,0 +1,13 @@
+.git
+.vs
+tmp
+backend/node_modules
+backend/dist
+frontend/node_modules
+frontend/.next
+frontend/test-results
+backend/codex-backend.err.log
+backend/codex-backend.out.log
+frontend/codex-frontend.err.log
+frontend/codex-frontend.out.log
+frontend/*.log

@@ -17,7 +17,7 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const GRADE_HORARIA_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_STATUS_MODAL';
 const GRADE_HORARIA_NEW_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_NEW_MODAL';
 const GRADE_HORARIA_EDIT_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_EDIT_MODAL';

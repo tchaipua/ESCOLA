@@ -1,0 +1,13 @@
+import sqlite3
+conn=sqlite3.connect('backend/prisma/dev.db')
+cur=conn.cursor()
+cur.execute("SELECT id,name,email,personId FROM students WHERE name LIKE '%MARÇAL SACCARDO FILHO%';")
+print('students', cur.fetchall())
+cur.execute("SELECT id,name,personId FROM teachers WHERE name LIKE '%MARÇAL SACCARDO FILHO%';")
+print('teachers', cur.fetchall())
+cur.execute("SELECT id,name,personId FROM guardians WHERE name LIKE '%MARÇAL SACCARDO FILHO%';")
+print('guardians', cur.fetchall())
+cur.execute("SELECT id,email FROM users WHERE name LIKE '%MARÇAL SACCARDO FILHO%';")
+print('users', cur.fetchall())
+cur.close()
+conn.close()

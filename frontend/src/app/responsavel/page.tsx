@@ -7,7 +7,7 @@ import { clearStoredSession } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const CACHE_KEY = '@Escola-PWA-Guardian-Cache:v1';
 const READ_QUEUE_KEY = '@Escola-PWA-Guardian-Read-Queue:v1';
 const DELETE_QUEUE_KEY = '@Escola-PWA-Guardian-Delete-Queue:v1';

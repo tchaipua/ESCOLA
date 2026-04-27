@@ -101,4 +101,3 @@ export class CreateStudentDto {
   @ApiPropertyOptional() @IsString() @IsOptional() neighborhood?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() complement?: string;
 }
-

@@ -229,7 +229,9 @@ export class SharedProfilesService {
     const clean = String(value || "").trim();
     if (!clean) return [] as string[];
 
-    return Array.from(new Set([clean, clean.toUpperCase(), clean.toLowerCase()]));
+    return Array.from(
+      new Set([clean, clean.toUpperCase(), clean.toLowerCase()]),
+    );
   }
 
   private getCrossTenantPrisma(): any {
@@ -288,9 +290,7 @@ export class SharedProfilesService {
 
     if (options?.verified !== undefined) {
       data.emailVerified = options.verified;
-      data.verifiedAt = options.verified
-        ? existing.verifiedAt || now
-        : null;
+      data.verifiedAt = options.verified ? existing.verifiedAt || now : null;
       if (options.verified) {
         data.verificationToken = null;
         data.verificationExpires = null;
@@ -316,11 +316,12 @@ export class SharedProfilesService {
     const existing = await this.findEmailCredential(normalizedEmail);
     if (existing) return existing;
 
-    const legacyPasswordHash = await this.findSharedPasswordByEmailAcrossTenants(
-      normalizedEmail,
-      options?.exclude,
-      options?.userId,
-    );
+    const legacyPasswordHash =
+      await this.findSharedPasswordByEmailAcrossTenants(
+        normalizedEmail,
+        options?.exclude,
+        options?.userId,
+      );
 
     return this.ensureEmailCredential(normalizedEmail, {
       passwordHash: legacyPasswordHash || null,
@@ -426,10 +427,9 @@ export class SharedProfilesService {
     });
   }
 
-  private filterByNormalizedEmail<T extends { id: string; email?: string | null }>(
-    records: T[],
-    normalizedEmail: string,
-  ) {
+  private filterByNormalizedEmail<
+    T extends { id: string; email?: string | null },
+  >(records: T[], normalizedEmail: string) {
     return records.filter(
       (record) => this.normalizeEmail(record.email) === normalizedEmail,
     );
@@ -1696,7 +1696,9 @@ export class SharedProfilesService {
         record,
       })),
     ]
-      .filter(({ record }) => this.normalizeEmail(record.email) === normalizedEmail)
+      .filter(
+        ({ record }) => this.normalizeEmail(record.email) === normalizedEmail,
+      )
       .filter(({ record }) => !!record.password)
       .sort(
         (left, right) =>
@@ -1965,67 +1967,99 @@ export class SharedProfilesService {
     };
 
     const result: EmailUsageRecord[] = [
-      ...tenants.map((record: {
-        id: string;
-        name: string;
-        document?: string | null;
-        logoUrl?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        email?: string | null;
-      }) => ({
-        entityType: "TENANT" as const,
-        entityLabel: "ESCOLA",
-        recordId: record.id,
-        recordName: record.name,
-        email: record.email || "",
-        tenantId: record.id,
-        tenantName: record.name,
-        tenantDocument: record.document ?? null,
-        tenantLogoUrl: record.logoUrl ?? null,
-        updatedAt: record.updatedAt,
-        updatedBy: record.updatedBy ?? null,
-      })),
-      ...users.map((record: {
-        id: string;
-        name: string;
-        email?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant?: { id: string; name: string; document?: string | null } | null;
-      }) => mapUsage("USER", "USUÁRIO", record)),
-      ...teachers.map((record: {
-        id: string;
-        name: string;
-        email?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant?: { id: string; name: string; document?: string | null } | null;
-      }) => mapUsage("TEACHER", "PROFESSOR", record)),
-      ...students.map((record: {
-        id: string;
-        name: string;
-        email?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant?: { id: string; name: string; document?: string | null } | null;
-      }) => mapUsage("STUDENT", "ALUNO", record)),
-      ...guardians.map((record: {
-        id: string;
-        name: string;
-        email?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant?: { id: string; name: string; document?: string | null } | null;
-      }) => mapUsage("GUARDIAN", "RESPONSÁVEL", record)),
-      ...people.map((record: {
-        id: string;
-        name: string;
-        email?: string | null;
-        updatedAt: Date;
-        updatedBy?: string | null;
-        tenant?: { id: string; name: string; document?: string | null } | null;
-      }) => mapUsage("PERSON", "PESSOA", record)),
+      ...tenants.map(
+        (record: {
+          id: string;
+          name: string;
+          document?: string | null;
+          logoUrl?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          email?: string | null;
+        }) => ({
+          entityType: "TENANT" as const,
+          entityLabel: "ESCOLA",
+          recordId: record.id,
+          recordName: record.name,
+          email: record.email || "",
+          tenantId: record.id,
+          tenantName: record.name,
+          tenantDocument: record.document ?? null,
+          tenantLogoUrl: record.logoUrl ?? null,
+          updatedAt: record.updatedAt,
+          updatedBy: record.updatedBy ?? null,
+        }),
+      ),
+      ...users.map(
+        (record: {
+          id: string;
+          name: string;
+          email?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant?: {
+            id: string;
+            name: string;
+            document?: string | null;
+          } | null;
+        }) => mapUsage("USER", "USUÁRIO", record),
+      ),
+      ...teachers.map(
+        (record: {
+          id: string;
+          name: string;
+          email?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant?: {
+            id: string;
+            name: string;
+            document?: string | null;
+          } | null;
+        }) => mapUsage("TEACHER", "PROFESSOR", record),
+      ),
+      ...students.map(
+        (record: {
+          id: string;
+          name: string;
+          email?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant?: {
+            id: string;
+            name: string;
+            document?: string | null;
+          } | null;
+        }) => mapUsage("STUDENT", "ALUNO", record),
+      ),
+      ...guardians.map(
+        (record: {
+          id: string;
+          name: string;
+          email?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant?: {
+            id: string;
+            name: string;
+            document?: string | null;
+          } | null;
+        }) => mapUsage("GUARDIAN", "RESPONSÁVEL", record),
+      ),
+      ...people.map(
+        (record: {
+          id: string;
+          name: string;
+          email?: string | null;
+          updatedAt: Date;
+          updatedBy?: string | null;
+          tenant?: {
+            id: string;
+            name: string;
+            document?: string | null;
+          } | null;
+        }) => mapUsage("PERSON", "PESSOA", record),
+      ),
     ]
       .filter((item): item is EmailUsageRecord => !!item)
       .filter((item) => this.normalizeEmail(item.email) === normalizedEmail);

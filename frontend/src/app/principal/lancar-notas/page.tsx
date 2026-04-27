@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type CurrentTenant = {
     id: string;

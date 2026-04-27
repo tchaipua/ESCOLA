@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+
 function ConfirmEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -21,7 +23,7 @@ function ConfirmEmailContent() {
 
     const run = async () => {
       try {
-        const response = await fetch(`http://localhost:3001/api/v1/auth/verify-email?token=${encodeURIComponent(token)}`);
+        const response = await fetch(`${API_BASE_URL}/auth/verify-email?token=${encodeURIComponent(token)}`);
         const data = await response.json().catch(() => null);
 
         if (!response.ok) {

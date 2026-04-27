@@ -7,7 +7,7 @@ import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import { getDashboardAuthContext, hasAnyDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_ID = 'PRINCIPAL_MENSALIDADES_DETALHES_LANCAMENTO';
 const COPY_FEEDBACK_TIMEOUT = 1800;
 

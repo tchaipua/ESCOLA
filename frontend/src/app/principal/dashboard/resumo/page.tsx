@@ -5,7 +5,7 @@ import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type PersonRole = 'PROFESSOR' | 'ALUNO' | 'RESPONSAVEL';
 type ViewOption = PersonRole | 'ALL' | 'USERS';

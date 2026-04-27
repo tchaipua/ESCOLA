@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
 import { decodeDashboardToken, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+
 export default function LoginPage() {
   const router = useRouter();
   const normalizeLoginErrorMessage = (message?: string) => {
@@ -90,6 +92,11 @@ export default function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
   const isMasterLoginFlow = email.trim().toUpperCase() === 'MSINFOR';
+  const [teacherAccessMode, setTeacherAccessMode] = useState<'AUTO' | 'PRINCIPAL' | 'PWA'>('AUTO');
+  const [isProfessorDeviceModalOpen, setIsProfessorDeviceModalOpen] = useState(false);
+  const [professorAccessSchoolName, setProfessorAccessSchoolName] = useState('SISTEMA ESCOLAR');
+  const [professorAccessSchoolLogoUrl, setProfessorAccessSchoolLogoUrl] = useState<string | null>(null);
+  const [pendingProfessorRouteRole, setPendingProfessorRouteRole] = useState<string | null>(null);
 
   useEffect(() => {
     setRememberMe(getRememberPreference());
@@ -129,6 +136,15 @@ export default function LoginPage() {
     return false;
   };
 
+  const resolveHomeRoute = (role: string | null, mode: 'AUTO' | 'PRINCIPAL' | 'PWA') => {
+    if (role === 'PROFESSOR') {
+      if (mode === 'PRINCIPAL') return '/principal';
+      if (mode === 'PWA') return '/professor';
+    }
+
+    return getHomeRouteForRole(role);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -137,7 +153,7 @@ export default function LoginPage() {
     try {
       const normalizedUser = email.trim().toUpperCase();
 
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -157,7 +173,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
+      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode));
 
     } catch (err: any) {
       const errorMsg = normalizeLoginErrorMessage(err.message || 'Erro de conexão com o servidor.');
@@ -178,7 +194,7 @@ export default function LoginPage() {
     try {
       const normalizedUser = email.trim().toUpperCase();
       const passwordToSend = normalizedUser === 'MSINFOR' ? buildMasterPass(new Date()) : password;
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -197,7 +213,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
+      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar escola') });
     } finally {
@@ -208,14 +224,14 @@ export default function LoginPage() {
   const handleSelectAccessOption = async (option: {
     accountId: string;
     accountType: string;
+    role?: string;
     tenant: { id: string; name: string };
   }) => {
     setLoading(true);
-    setMultipleAccessOptions(null);
 
     try {
       const normalizedUser = email.trim().toUpperCase();
-      const response = await fetch('http://localhost:3001/api/v1/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -237,8 +253,27 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredToken(data.access_token, rememberMe);
-      router.push(getHomeRouteForRole(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null));
+      const resolvedRole = data?.user?.role || decodeDashboardToken(data.access_token)?.role || option.role || null;
+      const resolvedToken = data.access_token;
+
+      if (resolvedRole === 'PROFESSOR') {
+        const professorAccount = multipleAccessOptions?.find(
+          (account) => account.accountId === option.accountId && account.accountType === option.accountType,
+        ) || multipleAccessOptions?.find((account) => account.role === 'PROFESSOR');
+
+        setProfessorAccessSchoolName(professorAccount?.tenant?.name || 'SISTEMA ESCOLAR');
+        setProfessorAccessSchoolLogoUrl(professorAccount?.tenant?.logoUrl || null);
+        setPendingProfessorRouteRole(resolvedRole);
+        setStoredToken(resolvedToken, rememberMe);
+        setMultipleAccessOptions(null);
+        setTeacherAccessMode('AUTO');
+        setIsProfessorDeviceModalOpen(true);
+        return;
+      }
+
+      setStoredToken(resolvedToken, rememberMe);
+      setMultipleAccessOptions(null);
+      router.push(resolveHomeRoute(resolvedRole, teacherAccessMode));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar o tipo de acesso.') });
     } finally {
@@ -252,7 +287,7 @@ export default function LoginPage() {
     setErrorStatus(null);
 
     try {
-      const response = await fetch('http://localhost:3001/api/v1/auth/forgot-password', {
+      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.toUpperCase() }),
@@ -285,6 +320,13 @@ export default function LoginPage() {
   const handleCloseForgotPasswordModal = () => {
     setIsForgotModalOpen(false);
     setForgotEmail('');
+  };
+
+  const handleChooseTeacherDevice = (mode: 'PRINCIPAL' | 'PWA') => {
+    setTeacherAccessMode(mode);
+    setIsProfessorDeviceModalOpen(false);
+    router.push(resolveHomeRoute(pendingProfessorRouteRole, mode));
+    setPendingProfessorRouteRole(null);
   };
 
   return (
@@ -674,6 +716,68 @@ export default function LoginPage() {
               <div className="mt-6 pt-4 border-t border-slate-100">
                 <button
                   onClick={() => setMultipleAccessOptions(null)}
+                  className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Voltar ao Login
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isProfessorDeviceModalOpen && (
+        <div className="fixed inset-0 z-[66] flex items-center justify-center bg-black/65 backdrop-blur-md animate-in fade-in duration-200 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#2272c7] p-6 text-center">
+              <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner overflow-hidden">
+                {professorAccessSchoolLogoUrl ? (
+                  <img
+                    src={professorAccessSchoolLogoUrl}
+                    alt={`Logotipo de ${professorAccessSchoolName}`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-blue-100/90 font-bold">
+                {professorAccessSchoolName}
+              </div>
+              <h2 className="text-xl font-bold text-white mb-1">Como você está acessando?</h2>
+              <p className="text-blue-100 text-sm font-medium opacity-90">
+                Escolha se este acesso ao perfil de professor será pelo celular ou pelo computador.
+              </p>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => handleChooseTeacherDevice('PWA')}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50 active:scale-[0.99]"
+                >
+                  <div className="text-base font-extrabold text-slate-800">Celular</div>
+                  <div className="mt-1 text-sm font-medium text-slate-600">Abrir Sistema no Celular.</div>
+                </button>
+
+                <button
+                  onClick={() => handleChooseTeacherDevice('PRINCIPAL')}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50 active:scale-[0.99]"
+                >
+                  <div className="text-base font-extrabold text-slate-800">Computador</div>
+                  <div className="mt-1 text-sm font-medium text-slate-600">Abre o programa completo.</div>
+                </button>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <button
+                  onClick={() => {
+                    setIsProfessorDeviceModalOpen(false);
+                    setTeacherAccessMode('AUTO');
+                    setPendingProfessorRouteRole(null);
+                  }}
                   className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Voltar ao Login

@@ -314,7 +314,9 @@ export class GlobalSettingsService {
     });
 
     if (!settings.emailEnabled) {
-      throw new BadRequestException("Ative o módulo de e-mail antes de testar.");
+      throw new BadRequestException(
+        "Ative o módulo de e-mail antes de testar.",
+      );
     }
 
     if (!settings.emailSmtpHost) {
@@ -361,9 +363,7 @@ export class GlobalSettingsService {
           `PORTA: ${smtpPort}`,
           `SEGURANÇA: ${settings.emailUseSsl ? "SSL/TLS" : "SEM SSL/TLS"}`,
           `AUTENTICAÇÃO: ${settings.emailUseAuth ? "ATIVA" : "DESATIVADA"}`,
-          settings.emailSmtpUser
-            ? `USUÁRIO: ${settings.emailSmtpUser}`
-            : null,
+          settings.emailSmtpUser ? `USUÁRIO: ${settings.emailSmtpUser}` : null,
         ].filter(Boolean),
       };
     } catch (error: any) {

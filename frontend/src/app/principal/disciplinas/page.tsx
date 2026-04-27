@@ -37,7 +37,7 @@ type Teacher = {
     teacherSubjects: TeacherSubjectAssignment[];
 };
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const DISCIPLINAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS_STATUS_MODAL';
 
 type SubjectColumnKey = 'name' | 'recordStatus';

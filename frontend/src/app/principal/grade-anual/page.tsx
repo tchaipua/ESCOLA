@@ -14,7 +14,7 @@ import { type ConfigurableGridColumn } from '@/app/lib/grid-column-config-utils'
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const GRADE_ANUAL_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_ANUAL_STATUS_MODAL';
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20';
 

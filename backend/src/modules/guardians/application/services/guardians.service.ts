@@ -479,7 +479,9 @@ export class GuardiansService {
       data: {
         ...rawData,
         password:
-          hashedPassword || shouldResolvePasswordForEmailChange ? null : undefined,
+          hashedPassword || shouldResolvePasswordForEmailChange
+            ? null
+            : undefined,
         accessProfile,
         permissions: explicitPermissions,
         birthDate: sanitizedDto.birthDate
@@ -640,10 +642,7 @@ export class GuardiansService {
       );
     }
 
-    await this.assertGuardianIsNotBillingPayer(
-      guardianId,
-      "remover o vínculo",
-    );
+    await this.assertGuardianIsNotBillingPayer(guardianId, "remover o vínculo");
 
     return this.prisma.guardianStudent.updateMany({
       where: {
@@ -660,4 +659,3 @@ export class GuardiansService {
     });
   }
 }
-

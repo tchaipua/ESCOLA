@@ -19,15 +19,20 @@ import {
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
+    formatCepInput,
     formatCnpj,
+    formatCnpjInput,
     formatCpf,
+    formatCpfInput,
     formatPhone,
+    formatPhoneInput,
     getAllowedDashboardFields,
     getDashboardAuthContext,
     hasDashboardPermission,
     isValidCnpj,
     isValidCpf,
     mergeSharedPersonIntoForm,
+    normalizeDocumentDigits,
     readImageFileAsDataUrl,
     type EmailUsageRecord,
     type SharedNameSuggestion,
@@ -52,10 +57,12 @@ import {
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const ALUNOS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_ALUNOS_STATUS_MODAL';
 
 const normalizeCpfDigits = (value: string) => String(value || '').replace(/\D/g, '');
+const limitNumericDigits = (value: string, maxLength: number) =>
+    normalizeDocumentDigits(value).slice(0, maxLength);
 
 const KINSHIP_OPTIONS = [
     { value: 'PAI', label: 'PAI' },
@@ -248,6 +255,7 @@ const EMPTY_GUARDIAN_LINK_FORM: GuardianLinkFormState = {
     guardianQuery: '',
 };
 
+const CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_ALUNOS_POPUP_CPF_CONFLICT';
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 
@@ -512,6 +520,8 @@ export default function AlunosPage() {
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
+    const [seriesFilter, setSeriesFilter] = useState('ALL');
+    const [classFilter, setClassFilter] = useState('ALL');
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [formData, setFormData] = useState<StudentFormState>(EMPTY_FORM);
@@ -523,6 +533,7 @@ export default function AlunosPage() {
     const [guardiansError, setGuardiansError] = useState<string | null>(null);
     const [guardiansStatus, setGuardiansStatus] = useState<string | null>(null);
     const [cpfConflictAlert, setCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+    const [cpfConflictRoles, setCpfConflictRoles] = useState<string[]>([]);
     const [selectedGuardianDetails, setSelectedGuardianDetails] = useState<GuardianSummary | null>(null);
     const [isGuardiansViewOpen, setIsGuardiansViewOpen] = useState(false);
     const [guardiansViewStudentName, setGuardiansViewStudentName] = useState('');
@@ -602,6 +613,33 @@ export default function AlunosPage() {
     );
     const linkedGuardianIds = new Set(studentGuardians.map((link) => link.guardian?.id).filter(Boolean));
     const availableGuardians = guardiansCatalog.filter((guardian) => !linkedGuardianIds.has(guardian.id));
+    const currentEnrollmentForStudent = (student: StudentRecord) => {
+        if (!Array.isArray(student.enrollments) || student.enrollments.length === 0) return null;
+        return student.enrollments.find((item) => item.schoolYearId === activeSchoolYearId) || student.enrollments[0] || null;
+    };
+    const seriesOptions = useMemo(() => {
+        const labels = new Map<string, string>();
+        seriesClassesCatalog.forEach((seriesClass) => {
+            const seriesName = seriesClass.series?.name?.trim();
+            if (seriesName) labels.set(seriesName.toUpperCase(), seriesName);
+        });
+        return Array.from(labels.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((left, right) => left.label.localeCompare(right.label, 'pt-BR'));
+    }, [seriesClassesCatalog]);
+    const classOptions = useMemo(() => {
+        const labels = new Map<string, string>();
+        const seriesFilterValue = seriesFilter === 'ALL' ? '' : seriesFilter;
+        seriesClassesCatalog.forEach((seriesClass) => {
+            const seriesName = seriesClass.series?.name?.trim().toUpperCase() || '';
+            if (seriesFilterValue && seriesName !== seriesFilterValue) return;
+            const className = seriesClass.class?.name?.trim();
+            if (className) labels.set(className.toUpperCase(), className);
+        });
+        return Array.from(labels.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((left, right) => left.label.localeCompare(right.label, 'pt-BR'));
+    }, [seriesClassesCatalog, seriesFilter]);
     const filteredStudents = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
         return students.filter((student) => {
@@ -612,13 +650,18 @@ export default function AlunosPage() {
                     : statusFilter === 'ACTIVE'
                         ? isActive
                         : !isActive;
-            const matchesSearch =
-                !term ||
-                [student.name, student.email, student.cpf, student.whatsapp, student.phone]
-                    .some((value) => String(value || '').toUpperCase().includes(term));
-            return matchesStatus && matchesSearch;
-        });
-    }, [searchTerm, statusFilter, students]);
+              const matchesSearch =
+                  !term ||
+                  [student.name, student.email, student.cpf, student.whatsapp, student.phone]
+                      .some((value) => String(value || '').toUpperCase().includes(term));
+              const currentEnrollment = currentEnrollmentForStudent(student);
+              const currentSeriesName = currentEnrollment?.seriesClass?.series?.name?.trim().toUpperCase() || '';
+              const currentClassName = currentEnrollment?.seriesClass?.class?.name?.trim().toUpperCase() || '';
+              const matchesSeries = seriesFilter === 'ALL' || currentSeriesName === seriesFilter;
+              const matchesClass = classFilter === 'ALL' || currentClassName === classFilter;
+              return matchesStatus && matchesSearch && matchesSeries && matchesClass;
+          });
+    }, [classFilter, currentEnrollmentForStudent, searchTerm, seriesFilter, statusFilter, students]);
     const sortedFilteredStudents = useMemo(
         () => sortGridRows(filteredStudents, STUDENT_COLUMNS, sortState),
         [filteredStudents, sortState],
@@ -628,16 +671,31 @@ export default function AlunosPage() {
         [columnAggregations, sortedFilteredStudents, visibleStudentColumns],
     );
     const availableSeriesClasses = useMemo(() => {
-        const activeYearSeriesClasses = activeSchoolYearId
-            ? seriesClassesCatalog.filter((item) => item.schoolYearId === activeSchoolYearId)
-            : [];
+        const activeYearSeriesClasses = seriesFilter === 'ALL'
+            ? (activeSchoolYearId
+                ? seriesClassesCatalog.filter((item) => item.schoolYearId === activeSchoolYearId)
+                : seriesClassesCatalog)
+            : seriesClassesCatalog.filter((item) => (item.series?.name || '').trim().toUpperCase() === seriesFilter);
         const currentStudentSeriesClass = seriesClassesCatalog.find((item) => item.id === formData.seriesClassId);
         const filteredSeriesClasses = activeYearSeriesClasses.length > 0 ? activeYearSeriesClasses : seriesClassesCatalog;
         const baseSeriesClasses = currentStudentSeriesClass && !filteredSeriesClasses.some((item) => item.id === currentStudentSeriesClass.id)
             ? [...filteredSeriesClasses, currentStudentSeriesClass]
             : filteredSeriesClasses;
         return dedupeSeriesClassOptions(baseSeriesClasses, getSeriesClassLabel, formData.seriesClassId);
-    }, [activeSchoolYearId, formData.seriesClassId, seriesClassesCatalog]);
+    }, [activeSchoolYearId, formData.seriesClassId, seriesClassesCatalog, seriesFilter]);
+
+    useEffect(() => {
+        if (classFilter === 'ALL') return;
+        if (seriesFilter === 'ALL') return;
+        const classMatchesSelectedSeries = seriesClassesCatalog.some((seriesClass) => {
+            const seriesName = (seriesClass.series?.name || '').trim().toUpperCase();
+            const className = (seriesClass.class?.name || '').trim().toUpperCase();
+            return seriesName === seriesFilter && className === classFilter;
+        });
+        if (!classMatchesSelectedSeries) {
+            setClassFilter('ALL');
+        }
+    }, [classFilter, seriesClassesCatalog, seriesFilter]);
     const currentTenantBranding = useMemo(
         () => readCachedTenantBranding(currentTenantId),
         [currentTenantId],
@@ -894,6 +952,9 @@ export default function AlunosPage() {
         setOriginalStudentPersonId(null);
         setOriginalStudentSeriesClassId('');
         setCpfConflictAlert(null);
+        setCpfConflictRoles([]);
+        setCpfConflictRoles([]);
+        setCpfConflictRoles([]);
         setActiveTab(1);
         setFormData(EMPTY_FORM);
         setPersonSystemRoles(['ALUNO']);
@@ -1161,6 +1222,7 @@ export default function AlunosPage() {
                             name: profileName,
                             cpf: formattedCpf,
                         });
+                        setCpfConflictRoles(buildSystemRoleBadges(profile.roles));
                         setSaveError(null);
                     }
                 } catch (error) {
@@ -1364,6 +1426,7 @@ export default function AlunosPage() {
                             name: profileName,
                             cpf: formatCpf(formData.cpf),
                         });
+                        setCpfConflictRoles(buildSystemRoleBadges(profile.roles));
                         setSaveError(null);
                         return;
                     }
@@ -1632,11 +1695,42 @@ export default function AlunosPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band border-b px-6 py-4">
-                    <div className="relative w-full max-w-xs">
-                        <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar aluno..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
-                        <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                            <div className="relative w-full max-w-xs">
+                                <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar aluno..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
+                            <select
+                                value={seriesFilter}
+                                onChange={(event) => {
+                                    const nextSeries = event.target.value;
+                                    setSeriesFilter(nextSeries);
+                                    setClassFilter('ALL');
+                                }}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 lg:w-56"
+                            >
+                                <option value="ALL">Todas as séries</option>
+                                {seriesOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                            <select
+                                value={classFilter}
+                                onChange={(event) => setClassFilter(event.target.value)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 lg:w-56"
+                            >
+                                <option value="ALL">Todas as turmas</option>
+                                {classOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            Filtros por série e turma
+                        </div>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -1855,7 +1949,17 @@ export default function AlunosPage() {
                                     {studentFieldAccess.sensitive ? (
                                         <div>
                                             <label className={labelClass}>CPF (opcional)</label>
-                                            <input value={formData.cpf} onChange={(event) => setFormData((current) => ({ ...current, cpf: event.target.value.toUpperCase() }))} onBlur={handleCpfBlur} className={inputClass} />
+                                            <input
+                                                value={formatCpfInput(formData.cpf)}
+                                                onChange={(event) =>
+                                                    setFormData((current) => ({
+                                                        ...current,
+                                                        cpf: limitNumericDigits(event.target.value, 11),
+                                                    }))
+                                                }
+                                                onBlur={handleCpfBlur}
+                                                className={inputClass}
+                                            />
                                         </div>
                                     ) : null}
                                     <div className="relative lg:col-span-2">
@@ -1968,17 +2072,77 @@ export default function AlunosPage() {
                                     {studentFieldAccess.sensitive ? (
                                         <>
                                             <div><label className={labelClass}>RG</label><input value={formData.rg} onChange={(event) => setFormData((current) => ({ ...current, rg: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>CNPJ</label><input value={formData.cnpj} onChange={(event) => setFormData((current) => ({ ...current, cnpj: event.target.value.toUpperCase() }))} className={inputClass} /></div>
+                                            <div>
+                                                <label className={labelClass}>CNPJ</label>
+                                                <input
+                                                    value={formatCnpjInput(formData.cnpj)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cnpj: limitNumericDigits(event.target.value, 14),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
                                         </>
                                     ) : null}
                                     <div><label className={labelClass}>Apelido</label><input value={formData.nickname} onChange={(event) => setFormData((current) => ({ ...current, nickname: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                     <div className="lg:col-span-2"><label className={labelClass}>Nome empresarial / social</label><input value={formData.corporateName} onChange={(event) => setFormData((current) => ({ ...current, corporateName: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                     {studentFieldAccess.contact ? (
                                         <>
-                                            <div><label className={labelClass}>WhatsApp</label><input value={formData.whatsapp} onChange={(event) => setFormData((current) => ({ ...current, whatsapp: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Telefone</label><input value={formData.phone} onChange={(event) => setFormData((current) => ({ ...current, phone: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Celular 1</label><input value={formData.cellphone1} onChange={(event) => setFormData((current) => ({ ...current, cellphone1: event.target.value.toUpperCase() }))} className={inputClass} /></div>
-                                            <div><label className={labelClass}>Celular 2</label><input value={formData.cellphone2} onChange={(event) => setFormData((current) => ({ ...current, cellphone2: event.target.value.toUpperCase() }))} className={inputClass} /></div>
+                                            <div>
+                                                <label className={labelClass}>WhatsApp</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.whatsapp)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            whatsapp: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Telefone</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.phone)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            phone: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Celular 1</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.cellphone1)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cellphone1: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Celular 2</label>
+                                                <input
+                                                    value={formatPhoneInput(formData.cellphone2)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            cellphone2: limitNumericDigits(event.target.value, 11),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                            </div>
                                         </>
                                     ) : null}
                                 </div>
@@ -1986,7 +2150,24 @@ export default function AlunosPage() {
                             {activeTab === 2 ? (
                                 studentFieldAccess.contact ? (
                                     <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
-                                        <div><label className={labelClass}>CEP</label><div className="flex gap-2"><input value={formData.zipCode} onChange={(event) => setFormData((current) => ({ ...current, zipCode: event.target.value.toUpperCase() }))} className={inputClass} /><button type="button" onClick={handleCepSearch} className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700">OK</button></div></div>
+                                        <div>
+                                            <label className={labelClass}>CEP</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    value={formatCepInput(formData.zipCode)}
+                                                    onChange={(event) =>
+                                                        setFormData((current) => ({
+                                                            ...current,
+                                                            zipCode: limitNumericDigits(event.target.value, 8),
+                                                        }))
+                                                    }
+                                                    className={inputClass}
+                                                />
+                                                <button type="button" onClick={handleCepSearch} className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700">
+                                                    OK
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div className="md:col-span-2"><label className={labelClass}>Logradouro</label><input value={formData.street} onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                         <div><label className={labelClass}>Número</label><input value={formData.number} onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))} className={inputClass} /></div>
                                         <div className="md:col-span-2"><label className={labelClass}>Bairro</label><input value={formData.neighborhood} onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))} className={inputClass} /></div>
@@ -2560,16 +2741,41 @@ export default function AlunosPage() {
                                 <div className="mt-1 text-sm font-medium text-slate-600">
                                     CPF INFORMADO: {cpfConflictAlert.cpf}
                                 </div>
+                                {cpfConflictRoles.length > 0 ? (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {cpfConflictRoles.map((role) => (
+                                            <span
+                                                key={role}
+                                                className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                            >
+                                                {role}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
                                 <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
                                     RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
                                 </div>
                             </div>
                         </div>
+                        <div className="mt-4 flex justify-end">
+                            <div className="w-full max-w-[300px]">
+                                <ScreenNameCopy
+                                    screenId={CPF_CONFLICT_SCREEN_ID}
+                                    label="Tela"
+                                    className="mt-0 justify-end"
+                                    disableMargin
+                                />
+                            </div>
+                        </div>
                         <div className="mt-5 text-right">
                             <button
                                 type="button"
-                                onClick={() => setCpfConflictAlert(null)}
-                                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                                onClick={() => {
+                                    setCpfConflictAlert(null);
+                                    setCpfConflictRoles([]);
+                                }}
+                                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
                             >
                                 Fechar
                             </button>

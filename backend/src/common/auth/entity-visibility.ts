@@ -204,4 +204,3 @@ export function sanitizeTeacherForViewer<T extends Record<string, any>>(
 
   return result as T;
 }
-

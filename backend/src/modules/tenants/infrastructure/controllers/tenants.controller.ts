@@ -100,6 +100,20 @@ export class TenantsController {
   }
 
   @Public()
+  @Get(":id/shared-profiles/cpf/:cpf")
+  @ApiOperation({
+    summary: "Consulta dados compartilhados de CPF para uma escola específica",
+  })
+  async findSharedProfileByCpf(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Param("cpf") cpf: string,
+  ) {
+    this.assertMasterPass(req);
+    return this.tenantsService.findSharedProfileByCpf(id, cpf);
+  }
+
+  @Public()
   @Post(":id/access-users")
   @ApiOperation({
     summary: "Cria um novo usuário de acesso administrativo na escola",

@@ -5,7 +5,7 @@ import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import { MSINFOR_MASTER_SESSION_KEY } from '@/app/lib/auth-storage';
-import { readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
+import { fetchAddressByCep, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
@@ -13,6 +13,8 @@ import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnCo
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import GlobalSettingsModal, { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsForm, type GeneralSettingsTab } from './components/global-settings-modal';
 import TenantAccessManager from './components/tenant-access-manager';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type TenantRecord = {
     id: string;
@@ -244,7 +246,7 @@ export default function MsinforAdminPage() {
     const fetchEscolas = useCallback(async () => {
         try {
             setIsLoading(true);
-            const response = await fetch('http://localhost:3001/api/v1/tenants', {
+            const response = await fetch(`${API_BASE_URL}/tenants`, {
                 headers: { 'x-msinfor-master-pass': getMasterPassForRequest() }
             });
 
@@ -275,7 +277,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsLoading(true);
             setGeneralSettingsStatus(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings', {
+            const response = await fetch(`${API_BASE_URL}/global-settings`, {
                 headers: { 'x-msinfor-master-pass': getMasterPassForRequest() },
             });
 
@@ -583,7 +585,7 @@ export default function MsinforAdminPage() {
         try {
             setEmailUsageLoading(true);
             setEmailUsageError(null);
-            const response = await fetch(`http://localhost:3001/api/v1/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
+            const response = await fetch(`${API_BASE_URL}/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
                 headers: { 'x-msinfor-master-pass': getMasterPassForRequest() }
             });
 
@@ -627,7 +629,7 @@ export default function MsinforAdminPage() {
             setAdminEmailCheckError(null);
 
             try {
-                const response = await fetch(`http://localhost:3001/api/v1/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
+                const response = await fetch(`${API_BASE_URL}/tenants/email-usage?email=${encodeURIComponent(normalizedEmail)}`, {
                     headers: { 'x-msinfor-master-pass': getMasterPassForRequest() },
                 });
 
@@ -717,7 +719,7 @@ export default function MsinforAdminPage() {
         try {
             setEmailUpdateLoading(true);
             setEmailUsageError(null);
-            const response = await fetch('http://localhost:3001/api/v1/tenants/email-usage', {
+            const response = await fetch(`${API_BASE_URL}/tenants/email-usage`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -775,8 +777,8 @@ export default function MsinforAdminPage() {
         e.preventDefault();
         try {
             const url = editingTenantId
-                ? `http://localhost:3001/api/v1/tenants/${editingTenantId}`
-                : 'http://localhost:3001/api/v1/tenants';
+                ? `${API_BASE_URL}/tenants/${editingTenantId}`
+                : `${API_BASE_URL}/tenants`;
             const method = editingTenantId ? 'PUT' : 'POST';
             // Converte os dados financeiros de string para number, caso existam e não sejam vazios
             const payload: any = {
@@ -860,7 +862,7 @@ export default function MsinforAdminPage() {
         setDeleteSuccess(null);
 
         try {
-            const response = await fetch(`http://localhost:3001/api/v1/tenants/${tenantToDelete.id}/purge`, {
+            const response = await fetch(`${API_BASE_URL}/tenants/${tenantToDelete.id}/purge`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -965,7 +967,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsLoading(true);
             setGeneralSettingsStatus(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings', {
+            const response = await fetch(`${API_BASE_URL}/global-settings`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -996,7 +998,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsTesting(true);
             setGeneralSettingsTestResult(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings/test-s3', {
+            const response = await fetch(`${API_BASE_URL}/global-settings/test-s3`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1032,7 +1034,7 @@ export default function MsinforAdminPage() {
             setIsGeneralSettingsTesting(true);
             setGeneralSettingsTestResult(null);
 
-            const response = await fetch('http://localhost:3001/api/v1/global-settings/test-email', {
+            const response = await fetch(`${API_BASE_URL}/global-settings/test-email`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1064,37 +1066,20 @@ export default function MsinforAdminPage() {
     };
 
     const handleCepSearch = async () => {
-        const cep = formData.zipCode.replace(/\D/g, ''); // Remove todos os não dígitos
-        if (cep.length !== 8) {
-            alert('CEP inválido! Digite os 8 números.');
-            return;
-        }
-
         try {
-            const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-            if (!response.ok) throw new Error('Erro na requisição do CEP');
+            const address = await fetchAddressByCep(formData.zipCode);
+            if (!address) return;
 
-            const data = await response.json();
-
-            if (data.erro) {
-                alert('O CEP informado não foi encontrado.');
-                return;
-            }
-
-            setFormData(prev => ({
-                ...prev,
-                street: data.logradouro ? data.logradouro.toUpperCase() : '',
-                neighborhood: data.bairro ? data.bairro.toUpperCase() : '',
-                city: data.localidade ? data.localidade.toUpperCase() : '',
-                state: data.uf || '' // A UF da API do ViaCEP vem como sigla ex: 'SP', 'RS'
+            setFormData((current) => ({
+                ...current,
+                street: address.street,
+                neighborhood: address.neighborhood,
+                city: address.city,
+                state: address.state,
             }));
-
-            // Opcional: Se quiser dar foco para o número:
-            // document.getElementById('numero_input')?.focus();
-
-        } catch (error) {
-            console.error('Falha ao consultar viaCEP:', error);
-            alert('Falha ao consultar CEP. Serviço viacep pode estar oscilando.');
+        } catch (error: any) {
+            console.error('Falha ao consultar Cep via padrão:', error);
+            alert(error?.message || 'Falha ao consultar o CEP. Serviço viacep pode estar oscilando.');
         }
     };
 

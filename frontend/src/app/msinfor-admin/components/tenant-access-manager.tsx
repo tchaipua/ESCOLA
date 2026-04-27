@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
+import { fetchAddressByCep, formatCepInput, normalizeDocumentDigits, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 import {
   COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS,
   getDefaultAccessProfileForRole,
@@ -13,8 +13,16 @@ import {
   type ComplementaryAccessProfileCode,
 } from '@/app/lib/access-profiles';
 
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
+const CPF_CONFLICT_SCREEN_ID = `${SCREEN_NAME}_POPUP_CPF_CONFLICT`;
+
+const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
+const inputClass =
+  'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
+const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
 
 type TenantSummary = {
   id: string;
@@ -170,6 +178,40 @@ function formatBrazilPhone(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
 }
 
+function sanitizeCpf(value: string) {
+  return value.replace(/\D/g, '').slice(0, 11);
+}
+
+function formatCpf(value: string) {
+  const digits = sanitizeCpf(value);
+  if (!digits) return '';
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+}
+
+function normalizeSystemRoleLabel(role: string) {
+  const key = String(role || '').toUpperCase().trim();
+  if (!key) return null;
+  if (key === 'TEACHER' || key === 'PROFESSOR') return 'PROFESSOR';
+  if (key === 'STUDENT' || key === 'ALUNO') return 'ALUNO';
+  if (key === 'GUARDIAN' || key === 'RESPONSAVEL') return 'RESPONSAVEL';
+  if (['ADMIN', 'ADMINISTRADOR', 'SCHOOL_ADMIN', 'TENANT_ADMIN', 'ADMIN_ESCOLA'].includes(key)) return 'ADMINISTRADOR';
+  if (key === 'SECRETARIA') return 'SECRETARIA';
+  if (key === 'COORDENACAO') return 'COORDENACAO';
+  if (['USUARIO_ESCOLA', 'USER'].includes(key)) return 'ADMINISTRATIVO';
+  return key.replaceAll('_', ' ');
+}
+
+function buildSystemRoleBadges(roles?: string[]) {
+  const normalizedRoles = (roles || [])
+    .map((role) => normalizeSystemRoleLabel(role))
+    .filter((role): role is string => Boolean(role));
+
+  return Array.from(new Set(normalizedRoles));
+}
+
 export default function TenantAccessManager({
   tenant,
   getMasterPass,
@@ -180,6 +222,7 @@ export default function TenantAccessManager({
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [users, setUsers] = useState<AccessUser[]>([]);
   const [formData, setFormData] = useState<AccessFormState>(EMPTY_FORM);
+  const [activeTab, setActiveTab] = useState<'DADOS' | 'FOTO' | 'ENDERECO' | 'PERFIL'>('DADOS');
   const [formStep, setFormStep] = useState<'BASICO' | 'PERMISSOES'>('BASICO');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -192,6 +235,9 @@ export default function TenantAccessManager({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [cpfConflictAlert, setCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+  const [cpfConflictRoles, setCpfConflictRoles] = useState<string[]>([]);
+  const [originalCpf, setOriginalCpf] = useState('');
 
   const loadUsers = async () => {
     if (!tenant) return;
@@ -223,6 +269,7 @@ export default function TenantAccessManager({
     setIsCreatingNew(false);
     setEditingUserId(null);
     setFormData(EMPTY_FORM);
+    setActiveTab('DADOS');
     void loadUsers();
   }, [tenant?.id]);
 
@@ -247,6 +294,19 @@ export default function TenantAccessManager({
     return () => window.clearTimeout(timer);
   }, [copyFeedback]);
 
+  useEffect(() => {
+    if (!tenant) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose, tenant]);
+
   if (!tenant) return null;
 
   const resetForm = (options?: { announce?: boolean }) => {
@@ -254,9 +314,13 @@ export default function TenantAccessManager({
     setEditingUserId(null);
     setFormStep('BASICO');
     setFormData(EMPTY_FORM);
+    setActiveTab('DADOS');
     setErrorMessage(null);
     setSuccessMessage(null);
     setPhotoError(null);
+    setCpfConflictAlert(null);
+    setCpfConflictRoles([]);
+    setOriginalCpf('');
 
     if (options?.announce) {
       setHelperMessage('Preencha o formulario ao lado para criar um novo acesso.');
@@ -274,10 +338,14 @@ export default function TenantAccessManager({
     setEditingUserId(null);
     setFormStep('BASICO');
     setFormData(EMPTY_FORM);
+    setActiveTab('DADOS');
     setErrorMessage(null);
     setSuccessMessage(null);
     setHelperMessage('Preencha o formulario para criar um novo acesso.');
     setPhotoError(null);
+    setCpfConflictAlert(null);
+    setCpfConflictRoles([]);
+    setOriginalCpf('');
 
     window.setTimeout(() => {
       nameInputRef.current?.focus();
@@ -288,12 +356,13 @@ export default function TenantAccessManager({
     setIsCreatingNew(false);
     setEditingUserId(user.id);
     setFormStep(user.role === 'ADMIN' ? 'BASICO' : 'PERMISSOES');
+    setActiveTab('DADOS');
     setFormData({
       name: user.name || '',
       email: user.email || '',
       birthDate: user.birthDate || '',
       rg: user.rg || '',
-      cpf: user.cpf || '',
+      cpf: user.cpf ? sanitizeCpf(user.cpf) : '',
       cnpj: user.cnpj || '',
       nickname: user.nickname || '',
       corporateName: user.corporateName || '',
@@ -318,6 +387,9 @@ export default function TenantAccessManager({
     setSuccessMessage(null);
     setHelperMessage('Modo edicao ativo. Altere os dados e clique em salvar.');
     setPhotoError(null);
+    setCpfConflictAlert(null);
+    setCpfConflictRoles([]);
+    setOriginalCpf(user.cpf ? sanitizeCpf(user.cpf) : '');
   };
 
   const applyRolePreset = (role: AccessFormState['role']) => {
@@ -452,6 +524,80 @@ export default function TenantAccessManager({
     }
   };
 
+  const handleCepLookup = async () => {
+    try {
+      const address = await fetchAddressByCep(formData.zipCode);
+      if (!address) return;
+      setFormData((current) => ({
+        ...current,
+        street: address.street,
+        neighborhood: address.neighborhood,
+        city: address.city,
+        state: address.state,
+      }));
+    } catch (error: any) {
+      alert(error?.message || 'Falha ao consultar o CEP.');
+    }
+  };
+
+  const requestSharedPersonProfile = async (cpf: string) => {
+    if (!getMasterPass || !tenant?.id) return null;
+    const normalizedCpf = sanitizeCpf(cpf);
+    if (normalizedCpf.length !== 11) return null;
+
+    const response = await fetch(
+      `${API_BASE_URL}/tenants/${tenant.id}/shared-profiles/cpf/${normalizedCpf}`,
+      {
+        headers: { "x-msinfor-master-pass": getMasterPass() },
+      },
+    );
+
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null);
+      throw new Error(
+        errorPayload?.message ||
+          "Não foi possível consultar os dados compartilhados deste CPF.",
+      );
+    }
+
+    return response.json();
+  };
+
+  const handleCpfBlur = async () => {
+    const sanitizedCpf = sanitizeCpf(formData.cpf);
+    if (!sanitizedCpf) {
+      setCpfConflictAlert(null);
+      setCpfConflictRoles([]);
+      return;
+    }
+
+    if (editingUserId && originalCpf && sanitizedCpf === originalCpf) {
+      setCpfConflictAlert(null);
+      setCpfConflictRoles([]);
+      return;
+    }
+
+    try {
+      const profile = await requestSharedPersonProfile(sanitizedCpf);
+      if (!profile) {
+        setCpfConflictAlert(null);
+        setCpfConflictRoles([]);
+        return;
+      }
+
+      const profileName = String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase();
+      setCpfConflictAlert({
+        name: profileName,
+        cpf: formatCpf(sanitizedCpf),
+      });
+      setCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+      setErrorMessage(null);
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Não foi possível validar o CPF informado.');
+    }
+  };
+
   const clearPhoto = () => {
     setFormData((current) => ({ ...current, photoUrl: '' }));
     setPhotoError(null);
@@ -480,6 +626,265 @@ export default function TenantAccessManager({
   const showPermissionScreen = formData.role !== 'ADMIN' && formStep === 'PERMISSOES';
   const showFocusedEditor = editingUserId !== null;
   const showFocusedCreate = isCreatingNew && editingUserId === null;
+  const renderAddressTab = () => (
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
+      <div>
+        <label className={labelClass}>CEP</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={formatCepInput(formData.zipCode)}
+            onChange={(event) =>
+              setFormData((current) => ({ ...current, zipCode: limitNumericDigits(event.target.value, 8) }))
+            }
+            className={inputClass}
+          />
+          <button
+            type="button"
+            onClick={handleCepLookup}
+            className="rounded-lg border border-blue-200 bg-blue-100 px-3 font-bold text-blue-700"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+      <div className="md:col-span-2">
+        <label className={labelClass}>Logradouro</label>
+        <input
+          type="text"
+          value={formData.street || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div>
+        <label className={labelClass}>Numero</label>
+        <input
+          type="text"
+          value={formData.number || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className={labelClass}>Bairro</label>
+        <input
+          type="text"
+          value={formData.neighborhood || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className={labelClass}>Complemento</label>
+        <input
+          type="text"
+          value={formData.complement || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, complement: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div className="md:col-span-3">
+        <label className={labelClass}>Cidade</label>
+        <input
+          type="text"
+          value={formData.city || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, city: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+      <div>
+        <label className={labelClass}>UF</label>
+        <input
+          type="text"
+          value={formData.state || ''}
+          onChange={(event) => setFormData((current) => ({ ...current, state: event.target.value.toUpperCase() }))}
+          className={inputClass}
+        />
+      </div>
+    </div>
+  );
+
+  const renderPhotoTab = () => (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white">
+          {formData.photoUrl ? (
+            <img
+              src={formData.photoUrl}
+              alt={`Foto de ${formData.name || 'usuário de acesso'}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <span className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+              Sem foto
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Foto do usuário</div>
+          <p className="mt-1 text-sm text-slate-500">
+            Grave uma foto para identificar melhor este acesso administrativo da escola.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoSelected}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+            >
+              Escolher foto
+            </button>
+            {formData.photoUrl ? (
+              <button
+                type="button"
+                onClick={clearPhoto}
+                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-100"
+              >
+                Remover foto
+              </button>
+            ) : null}
+          </div>
+          {photoError ? (
+            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              {photoError}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+  const renderProfileTab = () => (
+    <>
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => applyRolePreset('ADMIN')}
+          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+            formData.role === 'ADMIN'
+              ? 'border-fuchsia-300 bg-fuchsia-50'
+              : 'border-slate-200 bg-white hover:border-fuchsia-200'
+          }`}
+        >
+          <div className="font-bold text-slate-800">ADMIN</div>
+          <div className="mt-1 text-sm text-slate-500">{getRoleDescription('ADMIN')}</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => applyRolePreset('SECRETARIA')}
+          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+            formData.role === 'SECRETARIA'
+              ? 'border-indigo-300 bg-indigo-50'
+              : 'border-slate-200 bg-white hover:border-indigo-200'
+          }`}
+        >
+          <div className="font-bold text-slate-800">SECRETARIA</div>
+          <div className="mt-1 text-sm text-slate-500">{getRoleDescription('SECRETARIA')}</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => applyRolePreset('COORDENACAO')}
+          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+            formData.role === 'COORDENACAO'
+              ? 'border-violet-300 bg-violet-50'
+              : 'border-slate-200 bg-white hover:border-violet-200'
+          }`}
+        >
+          <div className="font-bold text-slate-800">COORDENAÇÃO</div>
+          <div className="mt-1 text-sm text-slate-500">{getRoleDescription('COORDENACAO')}</div>
+        </button>
+      </div>
+
+      {formData.role !== 'ADMIN' ? (
+        <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Perfis complementares</div>
+          <p className="mt-2 text-sm text-emerald-800">
+            Somente <span className="font-bold">FINANCEIRO</span> e <span className="font-bold">CAIXA</span> podem ser acumulados com o perfil principal desta tela.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {(Object.entries(COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS) as Array<[ComplementaryAccessProfileCode, { label: string; permissions: string[] }]>).map(([profileCode, profile]) => {
+              const isSelected = formData.complementaryProfiles.includes(profileCode);
+              return (
+                <button
+                  key={profileCode}
+                  type="button"
+                  onClick={() => toggleComplementaryProfile(profileCode)}
+                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+                    isSelected
+                      ? 'border-emerald-300 bg-white shadow-sm'
+                      : 'border-emerald-100 bg-white/70 hover:border-emerald-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-bold text-slate-800">{profile.label}</div>
+                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${
+                      isSelected ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                    }`}>
+                      {isSelected ? '✓' : 'X'}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-sm text-slate-500">
+                    {profileCode === 'FINANCEIRO'
+                      ? 'Emite boletos, lança mensalidades e opera o financeiro sem receber valores.'
+                      : 'Recebe valores, baixa mensalidades e controla as rotinas de caixa.'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 text-xs font-medium text-emerald-700">
+            Complementares ativos: {formatComplementaryProfiles(formData.complementaryProfiles)}
+          </div>
+        </div>
+      ) : null}
+
+      {formData.role === 'ADMIN' ? (
+        <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 text-sm text-indigo-700">
+          Este perfil tera autorizacao completa na escola.
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setFormStep('BASICO')}
+              className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+                formStep === 'BASICO'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              1. Dados do acesso
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (canAdvanceToPermissions) {
+                  setErrorMessage(null);
+                  setFormStep('PERMISSOES');
+                } else {
+                  setErrorMessage('Preencha nome e e-mail antes de configurar as permissões.');
+                }
+              }}
+              className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100"
+            >
+              2. Permissões do perfil
+            </button>
+          </div>
+          <div className="mt-3 text-xs font-medium text-slate-500">
+            Entre na tela de permissões para ajustar visualização e manutenção deste usuário.
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   const handleDelete = async (user: AccessUser) => {
     if (!window.confirm(`Desativar o acesso de ${user.name}?`)) return;
@@ -523,8 +928,17 @@ export default function TenantAccessManager({
   });
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -566,6 +980,60 @@ export default function TenantAccessManager({
                 ) : null}
 
                 <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap gap-2 border-b border-slate-200 bg-slate-50/50 px-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('DADOS')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'DADOS'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    1. DADOS BÁSICOS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('FOTO')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'FOTO'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    2. FOTO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ENDERECO')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'ENDERECO'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    3. ENDEREÇO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('PERFIL')}
+                    className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                      activeTab === 'PERFIL'
+                        ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    4. PERFIL
+                  </button>
+                </div>
+                {activeTab === 'FOTO' ? (
+                  <div className="pt-4">{renderPhotoTab()}</div>
+                ) : activeTab === 'ENDERECO' ? (
+                  <div className="pt-4">{renderAddressTab()}</div>
+                ) : activeTab === 'PERFIL' ? (
+                  <div className="pt-4">{renderProfileTab()}</div>
+                ) : (
+                  <>
                 <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 md:flex-row md:items-start md:justify-between">
                   <div>
                     <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-indigo-500">Tela de permissões</div>
@@ -585,6 +1053,8 @@ export default function TenantAccessManager({
                     ) : null}
                   </div>
                 </div>
+                  </>
+                )}
 
                 <div className="mt-4">
                   <label className="mb-1 block text-xs font-bold text-slate-600">Perfil pré-definido</label>
@@ -726,6 +1196,55 @@ export default function TenantAccessManager({
                 </div>
               </div>
 
+              <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-200 bg-slate-50/50 px-1 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('DADOS')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'DADOS'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  1. DADOS BÁSICOS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('FOTO')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'FOTO'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  2. FOTO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('ENDERECO')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'ENDERECO'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  3. ENDEREÇO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('PERFIL')}
+                  className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${
+                    activeTab === 'PERFIL'
+                      ? 'border border-slate-200 border-b-white bg-white text-blue-700'
+                      : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  4. PERFIL
+                </button>
+              </div>
+
+              {activeTab === 'DADOS' ? (
+                <>
               <div className="mt-6">
                 <label className="mb-1 block text-xs font-bold text-slate-600">Nome do usuario *</label>
                 <input
@@ -757,16 +1276,19 @@ export default function TenantAccessManager({
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-xs font-bold text-slate-600">CPF</label>
-                  <input
-                    type="text"
-                    value={formData.cpf || ''}
-                    onChange={(event) => setFormData((current) => ({ ...current, cpf: event.target.value.toUpperCase() }))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    placeholder="000.000.000-00"
-                  />
+                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs font-bold text-slate-600">CPF</label>
+                    <input
+                      type="text"
+                      value={formatCpf(formData.cpf)}
+                      onChange={(event) =>
+                        setFormData((current) => ({ ...current, cpf: sanitizeCpf(event.target.value) }))
+                      }
+                      onBlur={handleCpfBlur}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
+                      placeholder="000.000.000-00"
+                    />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-600">Data de nascimento</label>
@@ -817,250 +1339,19 @@ export default function TenantAccessManager({
               </div>
             </div>
 
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Endereco</div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-600">CEP</label>
-                    <input
-                      type="text"
-                      value={formData.zipCode || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, zipCode: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Logradouro</label>
-                    <input
-                      type="text"
-                      value={formData.street || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, street: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Numero</label>
-                    <input
-                      type="text"
-                      value={formData.number || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, number: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Bairro</label>
-                    <input
-                      type="text"
-                      value={formData.neighborhood || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, neighborhood: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Complemento</label>
-                    <input
-                      type="text"
-                      value={formData.complement || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, complement: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div className="md:col-span-3">
-                    <label className="mb-1 block text-xs font-bold text-slate-600">Cidade</label>
-                    <input
-                      type="text"
-                      value={formData.city || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, city: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-600">UF</label>
-                    <input
-                      type="text"
-                      value={formData.state || ''}
-                      onChange={(event) => setFormData((current) => ({ ...current, state: event.target.value.toUpperCase() }))}
-                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-slate-200 bg-white">
-                    {formData.photoUrl ? (
-                      <img
-                        src={formData.photoUrl}
-                        alt={`Foto de ${formData.name || 'usuário de acesso'}`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                        Sem foto
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Foto do usuário</div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Grave uma foto para identificar melhor este acesso administrativo da escola.
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePhotoSelected}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current?.click()}
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
-                      >
-                        Escolher foto
-                      </button>
-                      {formData.photoUrl ? (
-                        <button
-                          type="button"
-                          onClick={clearPhoto}
-                          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-600 hover:bg-rose-100"
-                        >
-                          Remover foto
-                        </button>
-                      ) : null}
-                    </div>
-                    {photoError ? (
-                      <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-                        {photoError}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <button
-                  type="button"
-                  onClick={() => applyRolePreset('ADMIN')}
-                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                    formData.role === 'ADMIN'
-                      ? 'border-fuchsia-300 bg-fuchsia-50'
-                      : 'border-slate-200 bg-white hover:border-fuchsia-200'
-                  }`}
-                >
-                  <div className="font-bold text-slate-800">ADMIN</div>
-                  <div className="mt-1 text-sm text-slate-500">{getRoleDescription('ADMIN')}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyRolePreset('SECRETARIA')}
-                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                    formData.role === 'SECRETARIA'
-                      ? 'border-indigo-300 bg-indigo-50'
-                      : 'border-slate-200 bg-white hover:border-indigo-200'
-                  }`}
-                >
-                  <div className="font-bold text-slate-800">SECRETARIA</div>
-                  <div className="mt-1 text-sm text-slate-500">{getRoleDescription('SECRETARIA')}</div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyRolePreset('COORDENACAO')}
-                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                    formData.role === 'COORDENACAO'
-                      ? 'border-violet-300 bg-violet-50'
-                      : 'border-slate-200 bg-white hover:border-violet-200'
-                  }`}
-                >
-                  <div className="font-bold text-slate-800">COORDENAÇÃO</div>
-                  <div className="mt-1 text-sm text-slate-500">{getRoleDescription('COORDENACAO')}</div>
-                </button>
-              </div>
-
-              {formData.role !== 'ADMIN' ? (
-                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
-                  <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">Perfis complementares</div>
-                  <p className="mt-2 text-sm text-emerald-800">
-                    Somente <span className="font-bold">FINANCEIRO</span> e <span className="font-bold">CAIXA</span> podem ser acumulados com o perfil principal desta tela.
-                  </p>
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {(Object.entries(COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS) as Array<[ComplementaryAccessProfileCode, { label: string; permissions: string[] }]>).map(([profileCode, profile]) => {
-                      const isSelected = formData.complementaryProfiles.includes(profileCode);
-                      return (
-                        <button
-                          key={profileCode}
-                          type="button"
-                          onClick={() => toggleComplementaryProfile(profileCode)}
-                          className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
-                            isSelected
-                              ? 'border-emerald-300 bg-white shadow-sm'
-                              : 'border-emerald-100 bg-white/70 hover:border-emerald-200'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="font-bold text-slate-800">{profile.label}</div>
-                            <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${
-                              isSelected ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
-                            }`}>
-                              {isSelected ? '✓' : 'X'}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-sm text-slate-500">
-                            {profileCode === 'FINANCEIRO'
-                              ? 'Emite boletos, lança mensalidades e opera o financeiro sem receber valores.'
-                              : 'Recebe valores, baixa mensalidades e controla as rotinas de caixa.'}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-3 text-xs font-medium text-emerald-700">
-                    Complementares ativos: {formatComplementaryProfiles(formData.complementaryProfiles)}
-                  </div>
-                </div>
+                </>
               ) : null}
 
-              {formData.role === 'ADMIN' ? (
-                <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 text-sm text-indigo-700">
-                  Este perfil tera autorizacao completa na escola.
+              {activeTab === 'FOTO' ? (
+                <div className="mt-5">{renderPhotoTab()}</div>
+              ) : activeTab === 'ENDERECO' ? (
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-4 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Endereco</div>
+                  {renderAddressTab()}
                 </div>
-              ) : (
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setFormStep('BASICO')}
-                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-                        formStep === 'BASICO'
-                          ? 'bg-slate-900 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      1. Dados do acesso
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (canAdvanceToPermissions) {
-                          setErrorMessage(null);
-                          setFormStep('PERMISSOES');
-                        } else {
-                          setErrorMessage('Preencha nome e e-mail antes de configurar as permissões.');
-                        }
-                      }}
-                      className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 hover:bg-indigo-100"
-                    >
-                      2. Permissões do perfil
-                    </button>
-                  </div>
-                  <div className="mt-3 text-xs font-medium text-slate-500">
-                    Entre na tela de permissões para ajustar visualização e manutenção deste usuário.
-                  </div>
-                </div>
-              )}
+              ) : activeTab === 'PERFIL' ? (
+                <div className="mt-5">{renderProfileTab()}</div>
+              ) : null}
             </div>
 
             <div className="flex w-full items-center gap-3">
@@ -1230,6 +1521,76 @@ export default function TenantAccessManager({
           </div>
         </div>
       </div>
+      {cpfConflictAlert ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
+            <div className="flex items-start gap-4 border-b border-amber-100 bg-amber-50 px-6 py-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
+                {tenant?.logoUrl ? (
+                  <img src={tenant.logoUrl} alt={tenant.name || 'Escola'} className="h-full w-full object-contain" />
+                ) : (
+                  <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">
+                    {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">ATENÇÃO</div>
+                <div className="mt-1 text-lg font-bold text-slate-900">
+                  CPF JÁ USADO POR:
+                </div>
+                <div className="mt-1 text-base font-bold text-slate-900">
+                  {cpfConflictAlert.name}
+                </div>
+                <div className="mt-1 text-sm font-medium text-slate-600">
+                  CPF INFORMADO: {cpfConflictAlert.cpf}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3 px-6 py-4">
+              {cpfConflictRoles.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {cpfConflictRoles.map((role) => (
+                    <span
+                      key={role}
+                      className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                    >
+                      {role}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-900">
+                RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCpfConflictAlert(null);
+                    setCpfConflictRoles([]);
+                  }}
+                  className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-bold text-white hover:bg-rose-700"
+                >
+                  FECHAR
+                </button>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 bg-white px-6 py-3">
+              <div className="flex justify-end">
+                <ScreenNameCopy
+                  screenId={CPF_CONFLICT_SCREEN_ID}
+                  label="Tela"
+                  disableMargin
+                  className="w-auto"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

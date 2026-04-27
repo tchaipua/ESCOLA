@@ -90,3 +90,15 @@ export class SettleCashInstallmentDto {
   @IsString()
   notes?: string;
 }
+
+export class UpdateCashierInstallmentDto {
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount?: number;
+}

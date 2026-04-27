@@ -1,7 +1,7 @@
 import { getStoredToken } from '@/app/lib/auth-storage';
 
 export const MASTER_ROLE = 'SOFTHOUSE_ADMIN';
-const API_BASE_URL = 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 export type DashboardTokenPayload = {
     userId?: string;
@@ -156,22 +156,22 @@ export function hasAnyDashboardPermission(role: string | null, permissions: stri
     return requiredPermissions.some((permission) => hasDashboardPermission(role, permissions, permission));
 }
 
-function isMobileViewport() {
+function isPwaViewport() {
     if (typeof window === 'undefined') return false;
 
-    const mobileMedia = window.matchMedia?.('(max-width: 768px)').matches;
+    const compactViewport = window.matchMedia?.('(max-width: 1024px)').matches;
     const touchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints || 0 : 0;
     const mobileUserAgent = typeof navigator !== 'undefined'
         ? /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
         : false;
 
-    return mobileMedia || mobileUserAgent || touchPoints > 1;
+    return compactViewport || mobileUserAgent || touchPoints > 1;
 }
 
 export function getHomeRouteForRole(role: string | null) {
-    if (role === 'ALUNO') return isMobileViewport() ? '/aluno' : '/principal';
-    if (role === 'PROFESSOR') return isMobileViewport() ? '/professor' : '/principal';
-    if (role === 'RESPONSAVEL') return isMobileViewport() ? '/responsavel' : '/principal';
+    if (role === 'ALUNO') return isPwaViewport() ? '/aluno' : '/principal';
+    if (role === 'PROFESSOR') return isPwaViewport() ? '/professor' : '/principal';
+    if (role === 'RESPONSAVEL') return isPwaViewport() ? '/responsavel' : '/principal';
     return '/principal';
 }
 
@@ -274,6 +274,53 @@ export function formatPhone(value: string) {
     }
 
     return value;
+}
+
+export function formatCpfInput(value: string) {
+    const digits = normalizeDocumentDigits(value).slice(0, 11);
+    if (!digits) return '';
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) {
+        return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    }
+    if (digits.length <= 9) {
+        return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    }
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+export function formatCnpjInput(value: string) {
+    const digits = normalizeDocumentDigits(value).slice(0, 14);
+    if (!digits) return '';
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) {
+        return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    }
+    if (digits.length <= 8) {
+        return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+    }
+    if (digits.length <= 12) {
+        return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+    }
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+export function formatPhoneInput(value: string) {
+    const digits = normalizeDocumentDigits(value).slice(0, 11);
+    if (!digits) return '';
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) {
+        return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+export function formatCepInput(value: string) {
+    const digits = normalizeDocumentDigits(value).slice(0, 8);
+    if (!digits) return '';
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 }
 
 export function normalizeDocumentDigits(value: string) {

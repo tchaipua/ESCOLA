@@ -156,10 +156,10 @@ export type FinanceiroCashSession = {
 };
 
 export type FinanceiroInstallmentFilterStatus =
-  | 'OPEN'
-  | 'PAID'
-  | 'OVERDUE'
-  | 'ALL';
+  | "OPEN"
+  | "PAID"
+  | "OVERDUE"
+  | "ALL";
 
 export type FinanceiroInstallment = {
   id: string;
@@ -184,6 +184,14 @@ export type FinanceiroInstallment = {
   settlementMethod?: string | null;
   settledAt?: string | null;
   isOverdue: boolean;
+};
+
+export type FinanceiroUpdateInstallmentPayload = {
+  requestedBy?: string;
+  sourceSystem: string;
+  sourceTenantId: string;
+  dueDate?: string;
+  amount?: number;
 };
 
 export type FinanceiroOpenInstallment = FinanceiroInstallment;
@@ -241,8 +249,7 @@ export type FinanceiroSettleCashInstallmentResponse = {
 export class FinanceiroService {
   private getBaseUrl() {
     return (
-      process.env.FINANCEIRO_API_URL?.trim() ||
-      "http://localhost:3002/api/v1"
+      process.env.FINANCEIRO_API_URL?.trim() || "http://localhost:3002/api/v1"
     ).replace(/\/+$/, "");
   }
 
@@ -365,22 +372,20 @@ export class FinanceiroService {
   }
 
   async openCashSession(payload: FinanceiroOpenCashSessionPayload) {
-    return this.request<FinanceiroCashSession>('/cash-sessions/open', {
-      method: 'POST',
+    return this.request<FinanceiroCashSession>("/cash-sessions/open", {
+      method: "POST",
       body: JSON.stringify(payload),
-      fallbackMessage:
-        'Não foi possível abrir o caixa no sistema Financeiro.',
+      fallbackMessage: "Não foi possível abrir o caixa no sistema Financeiro.",
     });
   }
 
   async closeCurrentCashSession(
     payload: FinanceiroCloseCurrentCashSessionPayload,
   ) {
-    return this.request<FinanceiroCashSession>('/cash-sessions/close-current', {
-      method: 'POST',
+    return this.request<FinanceiroCashSession>("/cash-sessions/close-current", {
+      method: "POST",
       body: JSON.stringify(payload),
-      fallbackMessage:
-        'Não foi possível fechar o caixa no sistema Financeiro.',
+      fallbackMessage: "Não foi possível fechar o caixa no sistema Financeiro.",
     });
   }
 
@@ -398,26 +403,26 @@ export class FinanceiroService {
     });
 
     if (filters.status?.trim()) {
-      query.set('status', filters.status.trim().toUpperCase());
+      query.set("status", filters.status.trim().toUpperCase());
     }
 
     if (filters.studentName?.trim()) {
-      query.set('studentName', filters.studentName.trim());
+      query.set("studentName", filters.studentName.trim());
     }
 
     if (filters.payerName?.trim()) {
-      query.set('payerName', filters.payerName.trim());
+      query.set("payerName", filters.payerName.trim());
     }
 
     if (filters.search?.trim()) {
-      query.set('search', filters.search.trim());
+      query.set("search", filters.search.trim());
     }
 
     return this.request<FinanceiroInstallment[]>(
       `/receivables/installments?${query.toString()}`,
       {
         fallbackMessage:
-          'Não foi possível carregar as parcelas no sistema Financeiro.',
+          "Não foi possível carregar as parcelas no sistema Financeiro.",
       },
     );
   }
@@ -440,10 +445,25 @@ export class FinanceiroService {
     return this.request<FinanceiroSettleCashInstallmentResponse>(
       `/receivables/installments/${installmentId}/settle-cash`,
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(payload),
         fallbackMessage:
-          'Não foi possível registrar a baixa em dinheiro no sistema Financeiro.',
+          "Não foi possível registrar a baixa em dinheiro no sistema Financeiro.",
+      },
+    );
+  }
+
+  async updateInstallment(
+    installmentId: string,
+    payload: FinanceiroUpdateInstallmentPayload,
+  ) {
+    return this.request<FinanceiroInstallment>(
+      `/receivables/installments/${installmentId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+        fallbackMessage:
+          "Não foi possível atualizar a parcela no sistema Financeiro.",
       },
     );
   }

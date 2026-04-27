@@ -129,3 +129,10 @@ Preencha este arquivo quando for trazer um projeto iniciado no Gemini para conti
   - reorganizacao do modal de acessos especiais em abas funcionais, com campos de dados, endereço e foto/perfis separados, formatação de telefone/WhatsApp, indicador explícito de perfil `CAIXA` e rodapé com o identificador `ACESSOS_ESPECIAIS_GESTAO_ESCOLA` copiable.
   - reforco visual no card da lista para exibir que o usuário atua como caixa, além de manter o botão de edição e exclusão.
 - Pendências/risco: validar o build local (não houve execução de testes nesta rodada) e acompanhar outras alterações em andamento na mesma tela (mesmo modal sendo editado em paralelo).
+
+## 12) Handoff Codex (abr 07 2026)
+
+- Contexto: retomando após queda do micro e seguindo a instrução de manter layout aprovado. Iniciei esta sessão como Codex, confirmei que os arquivos de documentação obrigatórios foram lidos e o repositório já possui modificações em andamento que não devem ser revertidas.
+- O que já foi feito nesta sessão: li todos os documentos oficiais de `DOCUMENTACAO/AI`, registrei o handoff e preparei o ambiente para receber novas tarefas. Ainda não executei builds ou testes.
+- Pendências/itens urgentes: aguardar direcionamento do próximo requisito funcional, evitar alterações de layout não solicitadas, preservar logs e arquivos no `tmp/` e não tocar nos ajustes já em andamento de dashboards e PWA.
+- Observação: manter as regras imutáveis (multi-tenant por `schoolId`, soft delete em `canceledAt`, auditoria, textos em uppercase exceto senha, login via `VIEWUSUARIOS`) e lembrar de documentar contexto, regra aplicada, arquivos afetados e riscos/pontos pendentes ao finalizar qualquer pequena entrega.
