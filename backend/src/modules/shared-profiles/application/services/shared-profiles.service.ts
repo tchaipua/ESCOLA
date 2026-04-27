@@ -789,7 +789,6 @@ export class SharedProfilesService {
     return this.prisma.person.update({
       where: { id: basePerson.id },
       data: updateData,
-      select: this.selectPersonFields(),
     });
   }
 

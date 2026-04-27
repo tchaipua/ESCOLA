@@ -21,6 +21,7 @@ type GridRecordPopoverProps = {
     buttonLabel: string;
     avatarUrl?: string | null;
     badges?: string[];
+    subjectBadges?: string[];
 };
 
 function getVisibleSections(sections: GridRecordPopoverSection[]) {
@@ -38,6 +39,7 @@ export default function GridRecordPopover({
     sections,
     buttonLabel,
     avatarUrl,
+    subjectBadges,
 }: GridRecordPopoverProps) {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -119,18 +121,36 @@ export default function GridRecordPopover({
                                     </div>
                                 </div>
 
-                                <button
-                                    type="button"
-                                    onClick={() => setIsOpen(false)}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsOpen(false)}
+                                            className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 transition-colors hover:bg-rose-100"
+                                        >
+                                            Fechar
+                                        </button>
+                                    </div>
+                                </div>
 
                         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                             <div className="space-y-5">
+                                {subjectBadges && subjectBadges.length > 0 ? (
+                                    <section className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                                        <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                            Matérias lecionadas
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {subjectBadges.map((subject) => (
+                                                <span
+                                                    key={`subject-${subject}`}
+                                                    className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-800"
+                                                >
+                                                    {subject}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </section>
+                                ) : null}
+
                                 {visibleSections.map((section, sectionIndex) => (
                                     <section key={`${section.title || 'section'}-${sectionIndex}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
                                         {section.title ? (
