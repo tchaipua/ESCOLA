@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Pessoas e perfis">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#dbeafe"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="164" cy="144" r="58" fill="#2563eb" opacity=".92"/>
+  <circle cx="318" cy="122" r="72" fill="#0f766e" opacity=".9"/>
+  <circle cx="476" cy="154" r="54" fill="#7c3aed" opacity=".88"/>
+  <path d="M70 300c22-64 70-94 134-94s112 30 134 94H70z" fill="#1d4ed8" opacity=".9"/>
+  <path d="M192 306c28-82 86-122 156-122s128 40 156 122H192z" fill="#0f766e" opacity=".9"/>
+  <path d="M372 300c20-60 66-90 126-90s104 30 124 90H372z" fill="#6d28d9" opacity=".86"/>
+</svg>

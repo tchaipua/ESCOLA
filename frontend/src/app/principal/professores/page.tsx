@@ -146,29 +146,34 @@ function buildTeacherSubjectAssignmentsMap(rawData: unknown): Record<string, Tea
     return rawData.reduce<Record<string, TeacherSubjectAssignment[]>>((accumulator, entry) => {
         if (!entry || typeof entry !== 'object') return accumulator;
 
-        const teacherId = typeof (entry as Record<string, unknown>).teacherId === 'string'
-            ? (entry as Record<string, unknown>).teacherId
+        const entryRecord = entry as Record<string, unknown>;
+        const teacherId = typeof entryRecord.teacherId === 'string'
+            ? entryRecord.teacherId
             : null;
-        const assignmentId = typeof (entry as Record<string, unknown>).id === 'string'
-            ? (entry as Record<string, unknown>).id
+        const assignmentId = typeof entryRecord.id === 'string'
+            ? entryRecord.id
             : null;
-        const subjectId = typeof (entry as Record<string, unknown>).subjectId === 'string'
-            ? (entry as Record<string, unknown>).subjectId
+        const subjectId = typeof entryRecord.subjectId === 'string'
+            ? entryRecord.subjectId
             : null;
 
         if (!teacherId || !assignmentId || !subjectId) return accumulator;
 
-        const subjectData = (entry as Record<string, unknown>).subject;
+        const subjectData = entryRecord.subject;
+        const subjectRecord =
+            subjectData && typeof subjectData === 'object'
+                ? (subjectData as Record<string, unknown>)
+                : null;
         const normalizedSubject: SubjectRecord | null = subjectData && typeof subjectData === 'object'
             ? {
-                id: typeof (subjectData as Record<string, unknown>).id === 'string'
-                    ? (subjectData as Record<string, unknown>).id
+                id: typeof subjectRecord?.id === 'string'
+                    ? subjectRecord.id
                     : subjectId,
-                name: typeof (subjectData as Record<string, unknown>).name === 'string'
-                    ? (subjectData as Record<string, unknown>).name
+                name: typeof subjectRecord?.name === 'string'
+                    ? subjectRecord.name
                     : 'DISCIPLINA',
-                canceledAt: typeof (subjectData as Record<string, unknown>).canceledAt === 'string'
-                    ? (subjectData as Record<string, unknown>).canceledAt
+                canceledAt: typeof subjectRecord?.canceledAt === 'string'
+                    ? subjectRecord.canceledAt
                     : undefined,
             }
             : null;
@@ -176,8 +181,8 @@ function buildTeacherSubjectAssignmentsMap(rawData: unknown): Record<string, Tea
         const normalizedAssignment: TeacherSubjectAssignment = {
             id: assignmentId,
             subjectId,
-            hourlyRate: typeof (entry as Record<string, unknown>).hourlyRate === 'number'
-                ? (entry as Record<string, unknown>).hourlyRate as number
+            hourlyRate: typeof entryRecord.hourlyRate === 'number'
+                ? entryRecord.hourlyRate
                 : null,
             subject: normalizedSubject,
         };
@@ -695,7 +700,6 @@ export default function ProfessoresPage() {
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
 
-                fetch(`${API_BASE_URL}/teachers`, {
             const [teachersResponse, subjectsResponse, teacherSubjectsResponse] = await Promise.all([
                 fetch(`${API_BASE_URL}/teachers`, {
                     headers: {

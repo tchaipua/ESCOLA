@@ -324,6 +324,45 @@ export default function DashboardPage() {
         void loadDashboard();
     }, []);
 
+    const adminCards = [
+        {
+            href: '/principal/pessoas',
+            title: 'Pessoas e Perfis',
+            description: 'Consulta somente leitura do cadastro-base compartilhado entre professores, alunos e responsáveis.',
+            image: '/principal/pessoas.svg',
+        },
+        {
+            href: '/principal/dashboard',
+            title: 'Dashboard',
+            description: 'Abra a nova tela de métricas e atalhos rápidos para tomar decisões.',
+            image: '/principal/dashboard.svg',
+        },
+        {
+            href: '/principal/grade',
+            title: 'Grade Escolar',
+            description: 'Monte a grade semanal e organize os horários da escola.',
+            image: '/principal/grade.svg',
+        },
+        {
+            href: '/principal/relatorios',
+            title: 'Relatórios',
+            description: 'Acompanhe a operação da escola com visão centralizada do sistema.',
+            image: '/principal/relatorios.svg',
+        },
+        {
+            href: '/principal/caixa',
+            title: 'Caixa',
+            description: 'Consulte o caixa do usuário logado ou todos os caixas conforme a permissão de acesso.',
+            image: '/principal/caixa.svg',
+        },
+        {
+            href: '/principal/financeiro',
+            title: 'Financeiro',
+            description: 'Abra o portal financeiro integrado para contas, caixa e mensalidades da escola.',
+            image: '/principal/financeiro.svg',
+        },
+    ];
+
     if (isPersonalRole(currentRole)) {
         const teacherProfile = currentRole === 'PROFESSOR' ? (ownProfile as TeacherMe | null) : null;
         const studentProfile = currentRole === 'ALUNO' ? (ownProfile as StudentMe | null) : null;
@@ -528,8 +567,8 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="mx-auto mt-10 max-w-4xl">
-            <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex min-h-[calc(100vh-12rem)] w-full">
+            <div className="flex w-full flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
                 <div className="bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.18),_transparent_52%),linear-gradient(135deg,#eff6ff_0%,#ffffff_45%,#f8fafc_100%)] px-8 py-14 text-center">
                     <div className="mx-auto flex max-w-2xl flex-col items-center">
                         <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.10)]">
@@ -561,50 +600,30 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
-                <div className="grid grid-cols-1 gap-4 px-8 py-8 md:grid-cols-5">
-                    <Link href="/principal/pessoas" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
-                        <h3 className="flex items-center justify-between font-bold text-slate-800">
-                            Pessoas e Perfis
-                            <span className="font-bold text-blue-500">→</span>
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">Consulta somente leitura do cadastro-base compartilhado entre professores, alunos e responsáveis.</p>
-                    </Link>
-                    <Link href="/principal/dashboard" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
-                        <h3 className="flex items-center justify-between font-bold text-slate-800">
-                            Dashboard
-                            <span className="font-bold text-blue-500">→</span>
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">Abra a nova tela de métricas e atalhos rápidos para tomar decisões.</p>
-                    </Link>
-                    <Link href="/principal/grade" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
-                        <h3 className="flex items-center justify-between font-bold text-slate-800">
-                            Grade Escolar
-                            <span className="font-bold text-blue-500">→</span>
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">Monte a grade semanal e organize os horários da escola.</p>
-                    </Link>
-                    <Link href="/principal/relatorios" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
-                        <h3 className="flex items-center justify-between font-bold text-slate-800">
-                            Relatórios
-                            <span className="font-bold text-blue-500">→</span>
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">Acompanhe a operação da escola com visão centralizada do sistema.</p>
-                    </Link>
-                    <Link href="/principal/caixa" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
-                        <h3 className="flex items-center justify-between font-bold text-slate-800">
-                            Caixa
-                            <span className="font-bold text-blue-500">→</span>
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">Consulte o caixa do usuário logado ou todos os caixas conforme a permissão de acesso.</p>
-                    </Link>
-                    <Link href="/principal/financeiro" className="dashboard-band-soft rounded-2xl border p-5 shadow-sm transition-colors hover:border-blue-300">
-                        <h3 className="flex items-center justify-between font-bold text-slate-800">
-                            Financeiro
-                            <span className="font-bold text-blue-500">→</span>
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-500">Abra o portal financeiro integrado para contas, caixa e mensalidades da escola.</p>
-                    </Link>
+                <div className="flex-1 px-8 py-8">
+                    <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+                        {adminCards.map((card) => (
+                            <Link
+                                key={card.href}
+                                href={card.href}
+                                className="group dashboard-band-soft overflow-hidden rounded-xl border shadow-sm transition-colors hover:border-blue-300"
+                            >
+                                <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
+                                    <img
+                                        src={card.image}
+                                        alt={card.title}
+                                        className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
+                                    />
+                                </div>
+                                <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
+                                    <h3 className="text-sm font-bold text-slate-800">
+                                        {card.title}
+                                    </h3>
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>

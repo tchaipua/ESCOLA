@@ -1910,21 +1910,14 @@ export default function MsinforAdminPage() {
                                     onClick={() => setActiveTab(3)}
                                     className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
                                 >
-                                    3. DADOS FINANCEIROS
+                                    3. ADMINISTRADOR
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setActiveTab(4)}
                                     className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
                                 >
-                                    4. ADMINISTRADOR
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab(5)}
-                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-                                >
-                                    5. SISTEMA DE E-MAILS
+                                    4. SISTEMA DE E-MAILS
                                 </button>
                             </div>
                         </div>
@@ -2105,37 +2098,6 @@ export default function MsinforAdminPage() {
 
                                 {activeTab === 3 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Configurações Base Financeiras</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">% Juros Mensais</label>
-                                                <input type="number" step="0.01" value={formData.interestRate} onChange={e => setFormData({ ...formData, interestRate: e.target.value })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="Ex: 5" />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Dias de Carência (Juros)</label>
-                                                <input type="number" step="1" value={formData.interestGracePeriod} onChange={e => setFormData({ ...formData, interestGracePeriod: e.target.value })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="Ex: 5" />
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">% Multa</label>
-                                                <input type="number" step="0.01" value={formData.penaltyRate} onChange={e => setFormData({ ...formData, penaltyRate: e.target.value, penaltyValue: (Number(e.target.value) > 0) ? '' : formData.penaltyValue })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="% Multa" disabled={Number(formData.penaltyValue) > 0} />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block text-slate-400">R$ Valor Fixo Multa</label>
-                                                <input type="number" step="0.01" value={formData.penaltyValue} onChange={e => setFormData({ ...formData, penaltyValue: e.target.value, penaltyRate: (Number(e.target.value) > 0) ? '' : formData.penaltyRate })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="R$ Valor da Multa" disabled={Number(formData.penaltyRate) > 0} />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Dias de Carência (Multa)</label>
-                                                <input type="number" step="1" value={formData.penaltyGracePeriod} onChange={e => setFormData({ ...formData, penaltyGracePeriod: e.target.value })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="Ex: 5" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 4 && (
-                                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                         <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Conta Limite do Administrador Titular</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">
                                             <div className="md:col-span-2">
@@ -2206,7 +2168,7 @@ export default function MsinforAdminPage() {
                                     </div>
                                 )}
 
-                                {activeTab === 5 && (
+                                {activeTab === 4 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                         <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Configuração de Servidor de E-mail (SMTP)</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">

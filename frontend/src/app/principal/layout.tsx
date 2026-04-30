@@ -130,6 +130,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
     const [unreadSummary, setUnreadSummary] = useState<UnreadNotificationSummary | null>(null);
+    const [embeddedScreenContextLabel, setEmbeddedScreenContextLabel] = useState<string | null>(null);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -218,6 +219,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentPermissions(permissions);
         setCurrentUserName(name);
     }, [router]);
+
+    useEffect(() => {
+        setEmbeddedScreenContextLabel(null);
+    }, [pathname]);
+
+    useEffect(() => {
+        const handleEmbeddedScreenContext = (event: MessageEvent) => {
+            const data = event.data as { type?: string; screenId?: string } | null;
+            if (!data || data.type !== 'MSINFOR_SCREEN_CONTEXT') return;
+
+            const screenId = String(data.screenId || '')
+                .replace(/[^A-Z0-9_]/gi, '_')
+                .replace(/_+/g, '_')
+                .toUpperCase()
+                .slice(0, 120);
+
+            if (screenId) {
+                setEmbeddedScreenContextLabel(screenId);
+            }
+        };
+
+        window.addEventListener('message', handleEmbeddedScreenContext);
+        return () => window.removeEventListener('message', handleEmbeddedScreenContext);
+    }, []);
 
     useEffect(() => {
         const loadCurrentUserEmail = async () => {
@@ -809,7 +834,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showDashboardBase = pathname.startsWith('/principal/dashboard');
     const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';
     const showSummaryNav = showDashboardProgram;
-    const showFinanceiroEmbeddedNav = pathname.startsWith('/principal/financeiro');
+    const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
     const summaryHrefSet = new Set(['/principal', '/principal/dashboard', ...summaryNavPaths]);
     const menuPrincipalItem = navItems.find((item) => item.href === '/principal');
     const menuDashboardItem = navItems.find((item) => item.href === '/principal/dashboard');
@@ -823,12 +848,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   (!item.showAfterDashboardBase || showDashboardProgram),
           )
         : [];
-    const screenContextLabel = useMemo(() => deriveScreenContextLabel(pathname), [pathname]);
+    const screenContextLabel = useMemo(
+        () => embeddedScreenContextLabel || deriveScreenContextLabel(pathname),
+        [embeddedScreenContextLabel, pathname],
+    );
     const topLinks: NavItem[] = [];
     if (menuPrincipalItem) topLinks.push(menuPrincipalItem);
     if (showSummaryNav && menuDashboardItem) topLinks.push(menuDashboardItem);
-    const filteredNavItems = showFinanceiroEmbeddedNav
-        ? topLinks
+    const financeModuleNavItems: NavItem[] = [
+        {
+            href: '/principal',
+            label: 'Principal',
+            allowWhen: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/financeiro',
+            label: 'Financeiro',
+            allowWhen: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-3.314 0-6 1.79-6 4s2.686 4 6 4 6-1.79 6-4-2.686-4-6-4zm0 0V5m0 11v3m-7-7H2m20 0h-3" />
+                </svg>
+            ),
+        },
+    ];
+    const filteredNavItems = showFinanceiroModuleNav
+        ? financeModuleNavItems
         : showSummaryNav
             ? [...topLinks, ...summaryLinks]
             : [...topLinks, ...generalLinks];
@@ -864,7 +914,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
                     {filteredNavItems.map((item) => {
-                        const isCurrent = pathname === item.href;
+                        const isCurrent = item.href === '/principal/financeiro'
+                            ? pathname.startsWith('/principal/financeiro')
+                            : pathname === item.href;
                         return (
                 <Link
                                 key={item.href}

@@ -62,6 +62,49 @@ export default function LoginPage() {
         return String(accountType || 'ACESSO').toUpperCase();
     }
   };
+
+  const getAccessOptionTheme = (accountType: string, role?: string) => {
+    const profile = String(accountType || role || '').trim().toLowerCase();
+    const normalizedRole = String(role || '').trim().toUpperCase();
+
+    if (profile === 'teacher' || normalizedRole === 'PROFESSOR') {
+      return {
+        card: 'border-emerald-200 bg-emerald-50 hover:border-emerald-300 hover:bg-emerald-100/70',
+        avatar: 'bg-emerald-100 text-emerald-700',
+        detail: 'border-emerald-200 bg-white/85',
+        label: 'text-emerald-700',
+        arrow: 'group-hover:text-emerald-700',
+      };
+    }
+
+    if (profile === 'student' || normalizedRole === 'ALUNO') {
+      return {
+        card: 'border-sky-200 bg-sky-50 hover:border-sky-300 hover:bg-sky-100/70',
+        avatar: 'bg-sky-100 text-sky-700',
+        detail: 'border-sky-200 bg-white/85',
+        label: 'text-sky-700',
+        arrow: 'group-hover:text-sky-700',
+      };
+    }
+
+    if (profile === 'guardian' || normalizedRole === 'RESPONSAVEL' || normalizedRole === 'RESPONSÁVEL') {
+      return {
+        card: 'border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100/70',
+        avatar: 'bg-amber-100 text-amber-700',
+        detail: 'border-amber-200 bg-white/85',
+        label: 'text-amber-700',
+        arrow: 'group-hover:text-amber-700',
+      };
+    }
+
+    return {
+      card: 'border-indigo-200 bg-indigo-50 hover:border-indigo-300 hover:bg-indigo-100/70',
+      avatar: 'bg-indigo-100 text-indigo-700',
+      detail: 'border-indigo-200 bg-white/85',
+      label: 'text-indigo-700',
+      arrow: 'group-hover:text-indigo-700',
+    };
+  };
   const buildMasterPass = (date: Date) => {
     const day = date.getDate();
     const month = date.getMonth() + 1;
@@ -678,39 +721,43 @@ export default function LoginPage() {
 
             <div className="p-6">
               <div className="space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1">
-                {multipleAccessOptions.map((option) => (
-                  <button
-                    key={`${option.accountType}-${option.accountId}`}
-                    onClick={() => handleSelectAccessOption(option)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50 active:scale-[0.99]"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-blue-700 shadow-sm">
-                          {option.tenant.logoUrl ? (
-                            <img src={option.tenant.logoUrl} alt={`Logo de ${option.tenant.name}`} className="h-full w-full object-cover" />
-                          ) : (
-                            <span className="text-xs font-bold">{option.tenant.name.substring(0, 2).toUpperCase()}</span>
-                          )}
-                        </div>
-                        <div>
-                          <div className="text-base font-extrabold text-slate-800">{option.roleLabel}</div>
-                          <div className="text-sm font-semibold text-slate-600">{option.tenant.name}</div>
-                        </div>
-                      </div>
-                      <svg className="w-5 h-5 shrink-0 text-slate-300 transition-colors group-hover:text-[#2272c7]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
+                {multipleAccessOptions.map((option) => {
+                  const theme = getAccessOptionTheme(option.accountType, option.role);
 
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-                      <div className="text-sm font-bold text-slate-700">{option.name}</div>
-                      <div className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-blue-600">
-                        Tipo de cadastro: {getAccountTypeLabel(option.accountType)}
+                  return (
+                    <button
+                      key={`${option.accountType}-${option.accountId}`}
+                      onClick={() => handleSelectAccessOption(option)}
+                      className={`group w-full rounded-2xl border p-4 text-left transition-all active:scale-[0.99] ${theme.card}`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-11 w-11 items-center justify-center overflow-hidden rounded-full shadow-sm ${theme.avatar}`}>
+                            {option.tenant.logoUrl ? (
+                              <img src={option.tenant.logoUrl} alt={`Logo de ${option.tenant.name}`} className="h-full w-full object-cover" />
+                            ) : (
+                              <span className="text-xs font-bold">{option.tenant.name.substring(0, 2).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-base font-extrabold text-slate-800">{option.roleLabel}</div>
+                            <div className="text-sm font-semibold text-slate-600">{option.tenant.name}</div>
+                          </div>
+                        </div>
+                        <svg className={`w-5 h-5 shrink-0 text-slate-300 transition-colors ${theme.arrow}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
-                    </div>
-                  </button>
-                ))}
+
+                      <div className={`mt-3 rounded-xl border px-4 py-3 ${theme.detail}`}>
+                        <div className="text-sm font-bold text-slate-700">{option.name}</div>
+                        <div className={`mt-1 text-xs font-medium uppercase tracking-[0.12em] ${theme.label}`}>
+                          Tipo de cadastro: {getAccountTypeLabel(option.accountType)}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="mt-6 pt-4 border-t border-slate-100">

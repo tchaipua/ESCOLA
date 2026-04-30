@@ -1,0 +1,742 @@
+┌─────────────────────────────────────────────────────────┐
+│  Update available 5.22.0 -> 7.8.0                       │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+[31m[Nest] 32656  - [39m23/04/2026, 18:23:58 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `prismaClient.student.findMany()` invocation in
+C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:562:28
+
+  559     tenant: { id: string; name: string; document?: string | null };
+  560   }>
+  561 >,
+→ 562 prismaClient.student.findMany(
+Inconsistent column data: Conversion failed: input contains invalid characters[39m
+PrismaClientKnownRequestError: 
+Invalid `prismaClient.student.findMany()` invocation in
+C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:562:28
+
+  559     tenant: { id: string; name: string; document?: string | null };
+  560   }>
+  561 >,
+→ 562 prismaClient.student.findMany(
+Inconsistent column data: Conversion failed: input contains invalid characters
+    at $n.handleRequestError (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async Promise.all (index 3)
+    at async TenantsService.findEmailUsage (C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:508:61)
+[31m[Nest] 35172  - [39m23/04/2026, 18:47:40 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `prismaClient.guardian.findMany()` invocation in
+C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:582:29
+
+  579     tenant: { id: string; name: string; document?: string | null };
+  580   }>
+  581 >,
+→ 582 prismaClient.guardian.findMany(
+Inconsistent column data: Conversion failed: input contains invalid characters[39m
+PrismaClientKnownRequestError: 
+Invalid `prismaClient.guardian.findMany()` invocation in
+C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:582:29
+
+  579     tenant: { id: string; name: string; document?: string | null };
+  580   }>
+  581 >,
+→ 582 prismaClient.guardian.findMany(
+Inconsistent column data: Conversion failed: input contains invalid characters
+    at $n.handleRequestError (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async Promise.all (index 4)
+    at async TenantsService.findEmailUsage (C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:508:61)
+[31m[Nest] 21084  - [39m24/04/2026, 04:27:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `prismaClient.guardian.findMany()` invocation in
+C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:577:29
+
+  574     tenant: { id: string; name: string; document?: string | null };
+  575   }>
+  576 >,
+→ 577 prismaClient.guardian.findMany(
+Inconsistent column data: Conversion failed: input contains invalid characters[39m
+PrismaClientKnownRequestError: 
+Invalid `prismaClient.guardian.findMany()` invocation in
+C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:577:29
+
+  574     tenant: { id: string; name: string; document?: string | null };
+  575   }>
+  576 >,
+→ 577 prismaClient.guardian.findMany(
+Inconsistent column data: Conversion failed: input contains invalid characters
+    at $n.handleRequestError (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Sistemas\IA\Escola\backend\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async Promise.all (index 4)
+    at async TenantsService.findEmailUsage (C:\Sistemas\IA\Escola\backend\src\modules\tenants\application\services\tenants.service.ts:503:61)
+[31m[Nest] 14572  - [39m24/04/2026, 19:19:30 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 35416  - [39m24/04/2026, 19:19:38 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 44468  - [39m24/04/2026, 19:19:42 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 41452  - [39m27/04/2026, 10:11:51 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:33:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 35360  - [39m27/04/2026, 10:15:29 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 33036  - [39m27/04/2026, 18:19:05 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 6224  - [39m27/04/2026, 18:19:12 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 15660  - [39m27/04/2026, 18:19:19 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 43316  - [39m28/04/2026, 17:13:03 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 30844  - [39m28/04/2026, 17:13:12 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 11952  - [39m28/04/2026, 19:19:34 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 39092  - [39m28/04/2026, 19:19:40 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 13488  - [39m28/04/2026, 19:19:44 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 37032  - [39m28/04/2026, 19:19:46 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 10196  - [39m29/04/2026, 14:59:27 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 1348  - [39m29/04/2026, 15:00:09 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 44540  - [39m29/04/2026, 15:00:12 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 25036  - [39m29/04/2026, 15:00:29 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 1948  - [39m29/04/2026, 19:31:11 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 18572  - [39m29/04/2026, 19:31:17 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 19492  - [39m29/04/2026, 19:31:21 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 31896  - [39m30/04/2026, 05:43:14 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 38720  - [39m30/04/2026, 05:43:17 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 46696  - [39m30/04/2026, 05:43:53 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 51216  - [39m30/04/2026, 05:43:54 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 53868  - [39m30/04/2026, 05:44:04 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 13760  - [39m30/04/2026, 05:48:22 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 43140  - [39m30/04/2026, 05:48:31 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 36124  - [39m30/04/2026, 05:49:43 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
+[31m[Nest] 49956  - [39m30/04/2026, 05:54:16 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3001[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Sistemas\IA\Escola\backend\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Sistemas\IA\Escola\backend\src\main.ts:34:3) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3001
+}
+
+Node.js v22.22.1
