@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const COPY_FEEDBACK_TIMEOUT = 1800;
+const FINANCEIRO_CAIXA_DETALHE_SCREEN_ID = 'PRINCIPAL_FINANCEIRO_CAIXA_DETALHE';
 
 type CopyStatus = 'idle' | 'copied' | 'error';
 
@@ -47,6 +48,17 @@ export default function ScreenNameCopy({
     try {
       await navigator.clipboard.writeText(screenId);
       setStatus('copied');
+      if (screenId === FINANCEIRO_CAIXA_DETALHE_SCREEN_ID && typeof window !== 'undefined') {
+        for (let index = 0; index < window.frames.length; index += 1) {
+          window.frames[index]?.postMessage(
+            {
+              type: 'MSINFOR_OPEN_SCREEN_AUDIT',
+              screenId,
+            },
+            '*',
+          );
+        }
+      }
     } catch (error) {
       console.error('Falha ao copiar nome da tela', error);
       setStatus('error');

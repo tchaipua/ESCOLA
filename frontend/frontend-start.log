@@ -697,3 +697,16 @@
 ✓ Compiled in 39ms
 ✓ Compiled in 80ms
 ✓ Compiled in 77ms
+ GET /principal/financeiro/caixa 200 in 237ms (compile: 132ms, render: 105ms)
+ GET /manifest.webmanifest 200 in 8ms (compile: 2ms, render: 5ms)
+✓ Compiled in 75ms
+ GET /principal/financeiro 200 in 141ms (compile: 111ms, render: 29ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 2ms, render: 3ms)
+ GET / 200 in 24ms (compile: 7ms, render: 17ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1334µs, render: 2ms)
+ GET /principal 200 in 78ms (compile: 59ms, render: 19ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1220µs, render: 1916µs)
+ GET /principal/financeiro 200 in 10ms (compile: 1667µs, render: 9ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1250µs, render: 2ms)
+ GET /principal/financeiro/bancos 200 in 81ms (compile: 62ms, render: 19ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1420µs, render: 2ms)

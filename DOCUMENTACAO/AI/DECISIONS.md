@@ -114,3 +114,12 @@ Para cada decisao, registrar:
 - Impacto: reduz acoplamento entre dominio escolar e dominio financeiro, simplifica a implementacao incremental no sistema escolar atual e preserva compatibilidade futura com outros ramos, como petshop
 - Alternativas consideradas: salvar o pagador diretamente em `guardian_students`; criar um modulo de contrato escolar completo neste momento; replicar a logica financeira inteira dentro do sistema escolar
 - Status: aceita
+
+## DEC-0012
+
+- Data: 2026-04-30
+- Contexto: necessidade de padronizar a auditoria visual e tecnica das telas para suporte, validacao e entendimento da origem dos dados
+- Decisao: toda tela da Escola deve manter no rodape o botao de copiar o nome tecnico da tela; ao clicar, alem de copiar o identificador, deve abrir um popup central com a "Logica Usada nessa Tela"
+- Impacto: cada tela passa a documentar sua propria logica operacional, tabelas fisicas, aliases, relacionamentos, metricas/campos exibidos, filtros, ordenacao e SQL/base logica da consulta
+- Alternativas consideradas: manter apenas copia simples do nome da tela; documentar logica somente em arquivos externos; criar auditoria apenas para telas financeiras
+- Status: aceita
