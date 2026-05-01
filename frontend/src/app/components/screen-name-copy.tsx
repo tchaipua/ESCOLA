@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ScreenAuditModal from './screen-audit-modal';
 
 const COPY_FEEDBACK_TIMEOUT = 1800;
 const FINANCEIRO_CAIXA_DETALHE_SCREEN_ID = 'PRINCIPAL_FINANCEIRO_CAIXA_DETALHE';
@@ -21,6 +22,7 @@ export default function ScreenNameCopy({
   disableMargin = false,
 }: ScreenNameCopyProps) {
   const [status, setStatus] = useState<CopyStatus>('idle');
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resetStatus = useCallback(() => {
@@ -41,6 +43,7 @@ export default function ScreenNameCopy({
   const handleCopy = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
       setStatus('error');
+      setIsAuditOpen(true);
       resetStatus();
       return;
     }
@@ -58,6 +61,8 @@ export default function ScreenNameCopy({
             '*',
           );
         }
+      } else {
+        setIsAuditOpen(true);
       }
     } catch (error) {
       console.error('Falha ao copiar nome da tela', error);
@@ -78,6 +83,7 @@ export default function ScreenNameCopy({
     .join(' ');
 
   return (
+    <>
     <div className={containerClasses}>
       <span className="flex-1 truncate">
         {label}: <span className="font-normal text-[10px] tracking-[0.35em] text-slate-500">{screenId}</span>
@@ -85,7 +91,7 @@ export default function ScreenNameCopy({
       <button
         type="button"
         onClick={handleCopy}
-        title="Copiar nome da tela"
+        title="Copiar nome da tela e abrir lógica usada"
         aria-label={`Copiar o identificador ${screenId}`}
         className="flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 active:scale-95"
       >
@@ -101,5 +107,14 @@ export default function ScreenNameCopy({
         {statusMessage}
       </span>
     </div>
+
+    {isAuditOpen ? (
+      <ScreenAuditModal
+        screenId={screenId}
+        systemName="Sistema Escola"
+        onClose={() => setIsAuditOpen(false)}
+      />
+    ) : null}
+    </>
   );
 }
