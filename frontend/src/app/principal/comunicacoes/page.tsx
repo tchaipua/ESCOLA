@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext, hasAnyDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -174,46 +175,61 @@ export default function CommunicationsPage() {
     }
 
     return (
-        <div className="mx-auto mt-6 max-w-7xl space-y-6">
-            <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
-                <div className="dashboard-band border-b px-6 py-6">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="flex items-start gap-4">
-                            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-[24px] border border-white/70 bg-white shadow-sm">
-                                {scope?.tenant?.logoUrl ? (
-                                    <img
-                                        src={scope.tenant.logoUrl}
-                                        alt={`Logo de ${scope.tenant.name}`}
-                                        className="h-full w-full object-contain p-2"
-                                    />
-                                ) : (
-                                    <div className="text-xs font-extrabold uppercase tracking-[0.22em] text-slate-400">
-                                        Escola
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">Central unificada</div>
-                                <h1 className="mt-2 text-3xl font-extrabold text-slate-800">Comunicações</h1>
-                                <p className="mt-2 text-sm font-medium text-slate-500">
-                                    {scope?.description || 'Envie comunicados por notificação interna, e-mail ou ambos.'}
-                                </p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-extrabold uppercase tracking-[0.14em] text-blue-700">
-                                        Escopo atual: {scope?.label || 'Carregando'}
-                                    </span>
-                                    <span
-                                        className={`rounded-full border px-3 py-1 text-xs font-extrabold uppercase tracking-[0.14em] ${
-                                            scope?.emailConfigured
-                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                : 'border-amber-200 bg-amber-50 text-amber-700'
-                                        }`}
-                                    >
-                                        {scope?.emailConfigured ? 'E-mail da escola configurado' : 'E-mail da escola ainda não configurado'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+            <div className="flex w-full flex-col bg-transparent">
+                <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+                    <PrincipalProgramHeader
+                        eyebrow="Central unificada"
+                        title="Comunicações"
+                        description={scope?.description || 'Envie comunicados por notificação interna, e-mail ou ambos.'}
+                        schoolName={scope?.tenant?.name}
+                        logoUrl={scope?.tenant?.logoUrl}
+                        secondaryAction={
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                    }}
+                                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                    title="Recolher menu lateral"
+                                    aria-label="Recolher menu lateral"
+                                >
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                    </svg>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                    }}
+                                    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                    title="Abrir notificações"
+                                    aria-label="Abrir notificações"
+                                >
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                    </svg>
+                                </button>
+                            </>
+                        }
+                    />
+
+                <div className="border-b border-slate-200 px-6 py-4">
+                    <div className="flex flex-wrap gap-2">
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-extrabold uppercase tracking-[0.14em] text-blue-700">
+                            Escopo atual: {scope?.label || 'Carregando'}
+                        </span>
+                        <span
+                            className={`rounded-full border px-3 py-1 text-xs font-extrabold uppercase tracking-[0.14em] ${
+                                scope?.emailConfigured
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                            }`}
+                        >
+                            {scope?.emailConfigured ? 'E-mail da escola configurado' : 'E-mail da escola ainda não configurado'}
+                        </span>
                     </div>
                 </div>
 
@@ -423,6 +439,7 @@ export default function CommunicationsPage() {
                         </div>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     );

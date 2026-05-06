@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -249,6 +250,7 @@ export default function DashboardPage() {
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [ownProfile, setOwnProfile] = useState<OwnProfile>(null);
     const [ownSchedule, setOwnSchedule] = useState<OwnSchedule>(null);
+    const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
@@ -323,6 +325,51 @@ export default function DashboardPage() {
 
         void loadDashboard();
     }, []);
+
+    useEffect(() => {
+        const loadUnreadNotifications = async () => {
+            try {
+                const { token, userId } = getDashboardAuthContext();
+                if (!token || !userId) {
+                    setUnreadNotificationsCount(null);
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE_URL}/notifications/my/unread-summary`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const data = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    throw new Error(data?.message || 'Não foi possível carregar as notificações.');
+                }
+
+                setUnreadNotificationsCount(typeof data?.count === 'number' ? data.count : null);
+            } catch {
+                setUnreadNotificationsCount(null);
+            }
+        };
+
+        void loadUnreadNotifications();
+
+        const handleNotificationsUpdated = () => {
+            void loadUnreadNotifications();
+        };
+
+        window.addEventListener('notifications-updated', handleNotificationsUpdated);
+        return () => window.removeEventListener('notifications-updated', handleNotificationsUpdated);
+    }, []);
+
+    const effectiveUnreadNotificationsCount = unreadNotificationsCount;
+    const hasAllNotificationsRead = effectiveUnreadNotificationsCount === 0;
+    const notificationsButtonTitle = hasAllNotificationsRead
+        ? 'TODAS NOTIFICAÇÕES FORAM LIDAS'
+        : `EXISTE ${effectiveUnreadNotificationsCount || 0} NOTIFICAÇÕES PARA SEREM LIDAS`;
+    const notificationsButtonClassName = hasAllNotificationsRead
+        ? 'flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300/60 bg-emerald-500/20 text-emerald-200 shadow-lg backdrop-blur-sm transition hover:bg-emerald-500/30'
+        : effectiveUnreadNotificationsCount && effectiveUnreadNotificationsCount > 0
+            ? 'flex h-11 min-w-[72px] items-center justify-center gap-1.5 rounded-2xl border border-red-300/80 bg-red-500 px-3 text-white shadow-lg shadow-red-900/35 backdrop-blur-sm transition hover:bg-red-400 animate-pulse'
+            : 'flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20';
 
     const adminCards = [
         {
@@ -567,62 +614,78 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full">
-            <div className="flex w-full flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
-                <div className="bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.18),_transparent_52%),linear-gradient(135deg,#eff6ff_0%,#ffffff_45%,#f8fafc_100%)] px-8 py-14 text-center">
-                    <div className="mx-auto flex max-w-2xl flex-col items-center">
-                        <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_25px_60px_rgba(15,23,42,0.10)]">
-                            {tenant?.logoUrl ? (
-                                <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-4" />
-                            ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-100 px-6 text-center text-sm font-bold uppercase tracking-[0.25em] text-slate-400">
-                                    Logo da escola
-                                </div>
-                            )}
-                        </div>
-
-                        <h1 className="mt-8 text-3xl font-extrabold text-[#153a6a]">
-                            {isLoading ? 'Carregando escola...' : tenant?.name || 'Gestão Escolar'}
-                        </h1>
-                        <p className="mt-3 max-w-xl text-base font-medium text-slate-500">
-                            {isLoading
-                                ? 'Buscando os dados da escola logada.'
-                                : tenant?.city && tenant?.state
-                                    ? `${tenant.city} - ${tenant.state}`
-                                    : 'Sistema operacional pronto para cadastrar professores, alunos, turmas e toda a rotina escolar.'}
-                        </p>
-
-                        {errorStatus ? (
-                            <div className="mt-6 rounded-2xl border border-red-100 bg-red-50 px-5 py-3 text-sm font-bold text-red-600">
-                                {errorStatus}
-                            </div>
-                        ) : null}
-                    </div>
-                </div>
-
-                <div className="flex-1 px-8 py-8">
-                    <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
-                        {adminCards.map((card) => (
-                            <Link
-                                key={card.href}
-                                href={card.href}
-                                className="group dashboard-band-soft overflow-hidden rounded-xl border shadow-sm transition-colors hover:border-blue-300"
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+            <div className="flex w-full flex-col bg-transparent">
+                <PrincipalProgramHeader
+                    eyebrow="Gestão administrativa"
+                    title="Controle Escolar"
+                    description="Sistema operacional pronto para cadastrar professores, alunos, turmas e toda a rotina escolar."
+                    schoolName={tenant?.name}
+                    logoUrl={tenant?.logoUrl}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
                             >
-                                <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
-                                    <img
-                                        src={card.image}
-                                        alt={card.title}
-                                        className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
-                                    />
-                                </div>
-                                <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
-                                    <h3 className="text-sm font-bold text-slate-800">
-                                        {card.title}
-                                    </h3>
-                                </div>
-                            </Link>
-                        ))}
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className={notificationsButtonClassName}
+                                title={notificationsButtonTitle}
+                                aria-label={notificationsButtonTitle}
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                                {!hasAllNotificationsRead && effectiveUnreadNotificationsCount ? (
+                                    <span className="text-sm font-black leading-none">
+                                        {effectiveUnreadNotificationsCount > 99 ? '99+' : effectiveUnreadNotificationsCount}
+                                    </span>
+                                ) : null}
+                            </button>
+                        </>
+                    }
+                />
+
+                <div className="flex-1 px-5 pb-8 pt-6 sm:px-6 lg:px-8">
+                    <div className="rounded-[30px] bg-[#f8fafc] p-5">
+                        <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
+                        <div className="mt-4 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+                                {adminCards.map((card) => (
+                                    <Link
+                                        key={card.href}
+                                        href={card.href}
+                                        className="group dashboard-band-soft overflow-hidden rounded-xl border shadow-sm transition-colors hover:border-blue-300"
+                                    >
+                                        <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
+                                            <img
+                                                src={card.image}
+                                                alt={card.title}
+                                                className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
+                                            />
+                                        </div>
+                                        <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
+                                            <h3 className="text-sm font-bold text-slate-800">
+                                                {card.title}
+                                            </h3>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

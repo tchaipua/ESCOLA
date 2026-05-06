@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 
@@ -151,22 +152,47 @@ export default function PessoasPage() {
   }
 
   return (
-    <div className="w-full">
-      <div className="flex flex-col gap-3 pb-6">
-        <div className="flex items-center gap-4">
-          <div className="text-sm font-black uppercase tracking-[0.28em] text-blue-600">Central de pessoas</div>
-          {currentTenantBranding?.schoolName && (
-            <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-slate-600">
-              {currentTenantBranding.schoolName.toUpperCase()}
-            </div>
-          )}
-        </div>
-        <h1 className="text-3xl font-black text-slate-900">Consulta global de cadastros</h1>
-        <p className="max-w-3xl text-sm font-medium text-slate-500">
-          Esta tela é apenas de consulta. Todos os cadastros são editados nas áreas específicas de professor, aluno e responsável.
-        </p>
-      </div>
+    <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+      <div className="flex w-full flex-col bg-transparent">
+        <PrincipalProgramHeader
+          eyebrow="Central de pessoas"
+          title="Consulta global de cadastros"
+          description="Esta tela é apenas de consulta. Todos os cadastros são editados nas áreas específicas de professor, aluno e responsável."
+          schoolName={currentTenantBranding?.schoolName}
+          logoUrl={currentTenantBranding?.logoUrl}
+          secondaryAction={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                title="Recolher menu lateral"
+                aria-label="Recolher menu lateral"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                title="Abrir notificações"
+                aria-label="Abrir notificações"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </button>
+            </>
+          }
+        />
 
+        <div className="pt-6">
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div
           role="button"
@@ -355,6 +381,8 @@ export default function PessoasPage() {
           </div>
         )}
       </section>
+      </div>
+      </div>
     </div>
   );
 }

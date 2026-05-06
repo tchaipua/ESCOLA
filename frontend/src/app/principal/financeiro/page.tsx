@@ -60,6 +60,21 @@ const MENU_ITEMS = [
   },
 ] as const;
 
+function normalizeDisplayText(value: string | null | undefined) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+
+  if (!/[ÃÂâ]/.test(trimmed)) {
+    return trimmed;
+  }
+
+  try {
+    return decodeURIComponent(escape(trimmed));
+  } catch {
+    return trimmed;
+  }
+}
+
 export default function PrincipalFinanceiroPage() {
   const [isMounted, setIsMounted] = useState(false);
   const authContext = getDashboardAuthContext();
@@ -135,7 +150,7 @@ export default function PrincipalFinanceiroPage() {
               <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-blue-50">
                 <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Operador</div>
                 <div className="mt-1 text-base font-black">
-                  {authContext.name || 'USUÁRIO DO SISTEMA'}
+                  {normalizeDisplayText(authContext.name) || 'USUÁRIO DO SISTEMA'}
                 </div>
               </div>
             </div>

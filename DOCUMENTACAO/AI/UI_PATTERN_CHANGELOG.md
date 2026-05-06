@@ -153,6 +153,48 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
 - Componentes/Telas:
   - `frontend/src/app/components/screen-name-copy.tsx`
   - popups/modais do painel principal e módulos administrativos
-  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- `frontend/src/app/lib/ui-standards.ts`
+- Status: aprovado
+
+### UIP-0011
+
+- Data: 2026-05-06
+- Padrao: cabecalho padrao de programas Escola/Financeiro
+- Contexto: necessidade de consolidar o cabecalho azul aprovado com botoes laterais, logotipo da escola e bloco do usuario para reaproveitamento controlado tela por tela
+- Alteracao: criacao do componente compartilhado `principal-program-header`, registro do padrao em `UI_PATTERNS.md` e entrada no mapa tecnico `ui-standards.ts`, mantendo o comportamento sem `sticky`
+- Componentes/Telas:
+  - `frontend/src/app/components/principal-program-header.tsx`
   - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0012
+
+- Data: 2026-05-06
+- Padrao: ajuste fino do bloco direito do cabecalho de programas
+- Contexto: durante a validacao visual da `PRINCIPAL`, o bloco de usuario e o botao `VOLTAR` precisaram de mais reserva lateral e reposicionamento vertical para permanecer totalmente dentro da faixa azul
+- Alteracao: o padrao passou a incluir classes compartilhadas para a reserva do lado direito no componente e para o posicionamento aprovado do overlay no layout, evitando novo desalinhamento nas proximas telas
+- Componentes/Telas:
+  - `frontend/src/app/components/principal-program-header.tsx`
+  - `frontend/src/app/principal/layout.tsx`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0013
+
+- Data: 2026-05-06
+- Padrao: toolbar padrao de grid Escola/Financeiro
+- Contexto: necessidade de separar oficialmente o cabecalho principal azul da barra operacional usada apenas em telas com lista, preservando um segundo padrao reutilizavel para Escola e Financeiro
+- Alteracao: registro do padrao de toolbar de grid com distribuicao esquerda/centro/direita, contador `REGISTROS EXIBIDOS (N)` e uso restrito a telas com grid, incluindo entrada propria no mapa tecnico
+- Componentes/Telas:
+  - `frontend/src/app/components/grid-footer-controls.tsx`
+  - `frontend/src/app/components/grid-column-config-modal.tsx`
+  - `frontend/src/app/components/grid-export-modal.tsx`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado

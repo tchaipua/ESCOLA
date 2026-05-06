@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS } from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -120,6 +121,21 @@ function deriveScreenContextLabel(pathnameValue: string | null) {
     return label || 'PRINCIPAL_ROOT';
 }
 
+function normalizeDisplayText(value: string | null | undefined) {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) return null;
+
+    if (!/[ÃÂâ]/.test(trimmed)) {
+        return trimmed;
+    }
+
+    try {
+        return decodeURIComponent(escape(trimmed));
+    } catch {
+        return trimmed;
+    }
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
@@ -217,7 +233,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         const { role, permissions, name } = getDashboardAuthContext();
         setCurrentRole(role);
         setCurrentPermissions(permissions);
-        setCurrentUserName(name);
+        setCurrentUserName(normalizeDisplayText(name));
     }, [router]);
 
     useEffect(() => {
@@ -243,6 +259,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         window.addEventListener('message', handleEmbeddedScreenContext);
         return () => window.removeEventListener('message', handleEmbeddedScreenContext);
     }, []);
+
+    useEffect(() => {
+        const handleFinanceiroToggleSidebar = () => {
+            setSidebarOpen((current) => !current);
+        };
+
+        const handleFinanceiroOpenNotifications = () => {
+            router.push('/principal/notificacoes');
+        };
+
+        const handleFinanceiroToggleUserMenu = () => {
+            setUserMenuOpen((current) => !current);
+        };
+
+        window.addEventListener('msinfor-financeiro-toggle-sidebar', handleFinanceiroToggleSidebar as EventListener);
+        window.addEventListener('msinfor-financeiro-open-notifications', handleFinanceiroOpenNotifications as EventListener);
+        window.addEventListener('msinfor-financeiro-toggle-user-menu', handleFinanceiroToggleUserMenu as EventListener);
+
+        return () => {
+            window.removeEventListener('msinfor-financeiro-toggle-sidebar', handleFinanceiroToggleSidebar as EventListener);
+            window.removeEventListener('msinfor-financeiro-open-notifications', handleFinanceiroOpenNotifications as EventListener);
+            window.removeEventListener('msinfor-financeiro-toggle-user-menu', handleFinanceiroToggleUserMenu as EventListener);
+        };
+    }, [router]);
 
     useEffect(() => {
         const loadCurrentUserEmail = async () => {
@@ -835,6 +875,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';
     const showSummaryNav = showDashboardProgram;
     const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
+    const showPrincipalHeroHeader = pathname === '/principal';
+    const showNotificationsHeroHeader = pathname === '/principal/notificacoes';
+    const showPeopleHeroHeader = pathname === '/principal/pessoas';
+    const showCommunicationsHeroHeader = pathname === '/principal/comunicacoes';
+    const showTeachersHeroHeader = pathname === '/principal/professores';
+    const showCustomHeroHeader =
+        showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showTeachersHeroHeader;
     const summaryHrefSet = new Set(['/principal', '/principal/dashboard', ...summaryNavPaths]);
     const menuPrincipalItem = navItems.find((item) => item.href === '/principal');
     const menuDashboardItem = navItems.find((item) => item.href === '/principal/dashboard');
@@ -876,12 +923,88 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </svg>
             ),
         },
+        {
+            href: '/principal/financeiro/contas-a-pagar',
+            label: 'Contas a Pagar',
+            allowWhen: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h7m-7 4h5M6 4h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/financeiro/estoque',
+            label: 'Estoque',
+            allowWhen: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7l9-4 9 4-9 4-9-4zm0 0v10l9 4 9-4V7m-9 4v10" />
+                </svg>
+            ),
+        },
     ];
     const filteredNavItems = showFinanceiroModuleNav
         ? financeModuleNavItems
         : showSummaryNav
             ? [...topLinks, ...summaryLinks]
             : [...topLinks, ...generalLinks];
+    const hasAllNotificationsRead = unreadSummary?.count === 0;
+    const notificationsButtonTitle = hasAllNotificationsRead
+        ? 'TODAS NOTIFICAÇÕES FORAM LIDAS'
+        : 'ABRIR NOTIFICAÇÕES';
+    const notificationsButtonClassName = hasAllNotificationsRead
+        ? 'relative p-2 text-emerald-600 hover:text-emerald-700 transition-colors'
+        : 'relative p-2 text-slate-400 hover:text-blue-600 transition-colors';
+    const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showTeachersHeroHeader
+        ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
+        : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
+    const userMenuTrigger = (
+        <div ref={userMenuRef} className="relative">
+            <button
+                type="button"
+                aria-haspopup="true"
+                aria-expanded={isUserMenuOpen}
+                onClick={() => setUserMenuOpen((prev) => !prev)}
+                className={userMenuButtonClassName}
+            >
+                <div className="text-right hidden sm:block">
+                    <p className="text-sm font-bold text-slate-700 leading-tight">{userDisplayName}</p>
+                    <p className="text-xs font-medium text-slate-400">{getRoleLabel(currentRole)}</p>
+                </div>
+                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm ring-1 ring-slate-200">
+                    <span className="text-sm font-bold text-blue-700">{userInitials}</span>
+                </div>
+                <svg className={`w-3 h-3 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                </svg>
+            </button>
+            {isUserMenuOpen && (
+                <div className="absolute right-0 mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white py-2 shadow-lg shadow-slate-900/5 z-20">
+                    <button
+                        type="button"
+                        onClick={handleOpenChangePassword}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        <span>ALTERAR SENHA</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleUserMenuLogout}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        <span>SAIR</span>
+                    </button>
+                </div>
+            )}
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-[#f3f4f6] flex font-sans text-slate-800">
@@ -921,6 +1044,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <Link
                                 key={item.href}
                                 href={item.href}
+                                onClick={(event) => {
+                                    if (
+                                        showFinanceiroModuleNav &&
+                                        item.href.startsWith('/principal/financeiro') &&
+                                        pathname === item.href &&
+                                        typeof window !== 'undefined'
+                                    ) {
+                                        event.preventDefault();
+                                        window.location.assign(item.href);
+                                    }
+                                }}
                                 className={`flex items-center rounded-lg px-3 py-2.5 font-medium transition-colors ${
                                     isCurrent
                                         ? 'bg-blue-600/30 text-white shadow-sm border border-blue-500/20'
@@ -937,85 +1071,157 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </aside>
 
             <div className="flex-1 flex flex-col h-screen overflow-hidden">
-                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-10 shrink-0">
+                <header
+                    className={`bg-white flex items-center justify-between shadow-sm z-10 shrink-0 ${
+                        showCustomHeroHeader
+                            ? 'h-0 overflow-hidden border-b-0 px-0'
+                            : 'h-16 border-b border-slate-200 px-6'
+                    }`}
+                >
                     <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setSidebarOpen(!isSidebarOpen)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none"
-                        >
-                            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                            </svg>
-                        </button>
-                        <span className="text-lg font-bold text-[#153a6a] hidden sm:block">{isPersonalRole ? 'Meu Painel' : 'Gestão Administrativa'}</span>
+                        {!showFinanceiroModuleNav ? (
+                            <button
+                                onClick={() => setSidebarOpen(!isSidebarOpen)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none"
+                            >
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                        ) : null}
+                        {!showFinanceiroModuleNav ? (
+                            <span className="text-lg font-bold text-[#153a6a] hidden sm:block">{isPersonalRole ? 'Meu Painel' : 'Gestão Administrativa'}</span>
+                        ) : null}
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button
-                            type="button"
-                            onClick={() => router.push('/principal/notificacoes')}
-                            className="relative p-2 text-slate-400 hover:text-blue-600 transition-colors"
-                        >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                            </svg>
-                            {unreadSummary?.count ? (
-                                <span className="absolute -right-1 top-0 flex min-h-5 min-w-5 items-center justify-center rounded-full border border-white bg-red-500 px-1 text-[10px] font-extrabold leading-none text-white">
-                                    {unreadSummary.count > 9 ? '9+' : unreadSummary.count}
-                                </span>
-                            ) : null}
-                        </button>
-
-                        <div className="h-6 w-px bg-slate-200"></div>
-
-                        <div ref={userMenuRef} className="relative">
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showTeachersHeroHeader ? (
                             <button
                                 type="button"
-                                aria-haspopup="true"
-                                aria-expanded={isUserMenuOpen}
-                                onClick={() => setUserMenuOpen((prev) => !prev)}
-                                className="flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                onClick={() => router.push('/principal/notificacoes')}
+                                title={notificationsButtonTitle}
+                                aria-label={notificationsButtonTitle}
+                                className={notificationsButtonClassName}
                             >
-                                <div className="text-right hidden sm:block">
-                                    <p className="text-sm font-bold text-slate-700 leading-tight">{userDisplayName}</p>
-                                    <p className="text-xs font-medium text-slate-400">{getRoleLabel(currentRole)}</p>
-                                </div>
-                                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm ring-1 ring-slate-200">
-                                    <span className="text-sm font-bold text-blue-700">{userInitials}</span>
-                                </div>
-                                <svg className={`w-3 h-3 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                                 </svg>
+                                {unreadSummary?.count ? (
+                                    <span className="absolute -right-1 top-0 flex min-h-5 min-w-5 items-center justify-center rounded-full border border-white bg-red-500 px-1 text-[10px] font-extrabold leading-none text-white">
+                                        {unreadSummary.count > 9 ? '9+' : unreadSummary.count}
+                                    </span>
+                                ) : null}
                             </button>
-                            {isUserMenuOpen && (
-                                <div className="absolute right-0 mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white py-2 shadow-lg shadow-slate-900/5 z-20">
-                                    <button
-                                        type="button"
-                                        onClick={handleOpenChangePassword}
-                                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                                    >
-                                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
-                                        </svg>
-                                        <span>ALTERAR SENHA</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleUserMenuLogout}
-                                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                                    >
-                                        <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                        </svg>
-                                        <span>SAIR</span>
-                                    </button>
-                                </div>
-                            )}
-                        </div>
+                        ) : null}
+
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showTeachersHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showTeachersHeroHeader ? userMenuTrigger : null}
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
+                <main className="relative flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
+                    {showFinanceiroModuleNav ? (
+                        <div className="pointer-events-none absolute left-6 right-6 top-8 z-20 flex justify-end md:left-8 md:right-12 md:top-10">
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showPrincipalHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showNotificationsHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showPeopleHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showCommunicationsHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showTeachersHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
                     {children}
                 </main>
                 <footer className="bg-white border-t border-slate-200 px-6 py-3 text-xs italic text-slate-500">

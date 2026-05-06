@@ -22,6 +22,14 @@ const SECTION_CONFIG = {
     label: 'Bancos',
     path: '/bancos',
   },
+  'contas-a-pagar': {
+    label: 'Contas a Pagar',
+    path: '/contas-a-pagar',
+  },
+  estoque: {
+    label: 'Estoque',
+    path: '/estoque',
+  },
   lotes: {
     label: 'Lotes',
     path: '/recebiveis/lotes',
@@ -41,6 +49,48 @@ const SECTION_CONFIG = {
 } as const;
 
 type SectionKey = keyof typeof SECTION_CONFIG;
+
+type EmbeddedFinanceHeaderContent = {
+  eyebrow: string;
+  title: string;
+  description: string;
+};
+
+const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
+  eyebrow: 'Financeiro integrado',
+  title: 'Contas a Pagar',
+  description: 'Tela completa do Financeiro aberta dentro do sistema da Escola.',
+};
+
+const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderContent> = {
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS: {
+    eyebrow: 'Contas a Pagar',
+    title: 'IMPORTAÇÃO DE NOTAS',
+    description:
+      'Importe notas por XML manual ou consulte a SEFAZ com certificado fiscal A1.',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_CERTIFICADOS_DIGITAIS: {
+    eyebrow: 'Contas a Pagar',
+    title: 'Certificados Digitais',
+    description:
+      'Cadastre e mantenha os certificados A1 usados na integração fiscal do Financeiro.',
+  },
+};
+
+function normalizeDisplayText(value: string | null | undefined) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+
+  if (!/[ÃÂâ]/.test(trimmed)) {
+    return trimmed;
+  }
+
+  try {
+    return decodeURIComponent(escape(trimmed));
+  } catch {
+    return trimmed;
+  }
+}
 
 function buildFinanceFrameUrl(
   baseUrl: string,
@@ -66,7 +116,10 @@ function buildFinanceFrameUrl(
   }
 
   if (authContext.name) {
-    params.set('cashierDisplayName', authContext.name.toUpperCase());
+    params.set(
+      'cashierDisplayName',
+      String(normalizeDisplayText(authContext.name) || authContext.name).toUpperCase(),
+    );
   }
 
   if (authContext.role) {
@@ -96,6 +149,7 @@ export default function PrincipalFinanceiroSectionPage({
   const [isMounted, setIsMounted] = useState(false);
   const [section, setSection] = useState<string | null>(null);
   const [isFrameLoading, setIsFrameLoading] = useState(true);
+  const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
     authContext.role,
@@ -126,6 +180,57 @@ export default function PrincipalFinanceiroSectionPage({
       return () => window.clearTimeout(timer);
     }
   }, [iframeSrc]);
+
+  useEffect(() => {
+    setEmbeddedScreenId(null);
+  }, [section]);
+
+  useEffect(() => {
+    const handleEmbeddedScreenContext = (
+      event: MessageEvent<{ type?: string; screenId?: string }>,
+    ) => {
+      const data = event.data;
+      if (!data || data.type !== 'MSINFOR_SCREEN_CONTEXT') {
+        return;
+      }
+
+      const normalizedScreenId = String(data.screenId || '')
+        .replace(/[^A-Z0-9_]/gi, '_')
+        .replace(/_+/g, '_')
+        .toUpperCase()
+        .slice(0, 120);
+
+      setEmbeddedScreenId(normalizedScreenId || null);
+    };
+
+    window.addEventListener('message', handleEmbeddedScreenContext);
+    return () => window.removeEventListener('message', handleEmbeddedScreenContext);
+  }, []);
+
+  const headerContent = useMemo(() => {
+    if (section !== 'contas-a-pagar') {
+      return {
+        eyebrow: 'Financeiro integrado',
+        title: sectionConfig?.label || 'Financeiro',
+        description: 'Tela completa do Financeiro aberta dentro do sistema da Escola.',
+      };
+    }
+
+    if (embeddedScreenId) {
+      return (
+        EMBEDDED_FINANCE_SCREEN_HEADER_MAP[embeddedScreenId] ||
+        {
+          ...DEFAULT_EMBEDDED_FINANCE_HEADER,
+          title: sectionConfig?.label || DEFAULT_EMBEDDED_FINANCE_HEADER.title,
+        }
+      );
+    }
+
+    return {
+      ...DEFAULT_EMBEDDED_FINANCE_HEADER,
+      title: sectionConfig?.label || DEFAULT_EMBEDDED_FINANCE_HEADER.title,
+    };
+  }, [embeddedScreenId, section, sectionConfig]);
 
   if (!isMounted) {
     return (
@@ -164,6 +269,34 @@ export default function PrincipalFinanceiroSectionPage({
         <div className="bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-6 text-white">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-4">
+              <div className="flex flex-col gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                  title="Recolher menu lateral"
+                  aria-label="Recolher menu lateral"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                  title="Abrir notificações"
+                  aria-label="Abrir notificações"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </button>
+              </div>
               <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm">
                 {tenantBranding?.logoUrl ? (
                   <img
@@ -179,23 +312,15 @@ export default function PrincipalFinanceiroSectionPage({
               </div>
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">
-                  Financeiro integrado
+                  {headerContent.eyebrow}
                 </div>
-                <h1 className="mt-2 text-3xl font-black tracking-tight">{sectionConfig.label}</h1>
+                <h1 className="mt-2 text-3xl font-black tracking-tight">{headerContent.title}</h1>
                 <p className="mt-2 max-w-3xl text-sm font-medium text-blue-100/90">
-                  Tela completa do Financeiro aberta dentro do sistema da Escola.
+                  {headerContent.description}
                 </p>
               </div>
             </div>
 
-            {section === 'caixa' ? null : (
-              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-blue-50">
-                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Operador</div>
-                <div className="mt-1 text-base font-black">
-                  {authContext.name || 'USUÁRIO DO SISTEMA'}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </section>

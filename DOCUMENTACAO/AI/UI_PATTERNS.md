@@ -267,6 +267,65 @@ Componentes/Telas:
 - `frontend/src/app/lib/tenant-branding-cache.ts`
 - popups e modais do painel principal e demais módulos administrativos
 
+### PAT-014 - Cabecalho padrao de programas Escola e Financeiro
+
+- faixa principal em degradê azul com cantos arredondados
+- cabecalho rola junto com a pagina e nao deve ficar fixo no topo
+- coluna lateral esquerda com:
+  - botao de menu
+  - botao secundario da tela, normalmente notificacoes
+- logotipo da escola imediatamente ao lado da coluna de botoes
+- bloco textual com:
+  - `eyebrow` em uppercase
+  - titulo forte
+  - descricao curta
+- lado direito reservado para:
+  - card branco do usuario
+  - botao `VOLTAR`
+- o lado direito deve ficar encaixado dentro da faixa azul, sem ultrapassar o bloco
+- a reserva horizontal padrao do cabecalho deve proteger o lado direito antes da area textual, evitando sobreposicao com titulo e descricao
+- a posicao vertical do bloco da direita deve ficar mais baixa que o topo do header, respeitando o encaixe visual aprovado na `PRINCIPAL`
+- o componente compartilhado deve permitir reaproveitamento manual tela por tela, sem rollout automatico
+- o mesmo padrao base pode ser usado na Escola e no Financeiro, mudando apenas os textos e o estado dos botoes
+
+Componente base:
+
+- `frontend/src/app/components/principal-program-header.tsx`
+
+Telas referencia:
+
+- `principal`
+- `principal/notificacoes`
+- `principal/pessoas`
+- `principal/financeiro/[section]`
+
+### PAT-015 - Toolbar padrao de grid Escola e Financeiro
+
+- este padrao nao substitui o cabecalho principal azul da tela
+- ele so pode ser usado em telas que possuem grid, lista ou tabela operacional
+- deve ser tratado como barra operacional da listagem
+- estrutura aprovada:
+  - esquerda: acoes principais da grid, como `COLUNAS`, exportacao, impressao ou acao equivalente
+  - centro: controles operacionais visuais da listagem, como semaforo horizontal, toggles ou filtros de status
+  - direita: contador institucional de registros exibidos
+- o contador da direita deve manter leitura forte em uppercase, no estilo `REGISTROS EXIBIDOS (N)`
+- a barra deve funcionar como segundo padrao oficial compartilhado entre Escola e Financeiro
+- o uso continua manual, tela por tela, e nunca deve ser aplicado em paginas sem listagem
+- a toolbar pode variar nas acoes especificas da tela, mas deve preservar a distribuicao visual esquerda/centro/direita aprovada
+
+Componentes base:
+
+- `frontend/src/app/components/grid-footer-controls.tsx`
+- `frontend/src/app/components/grid-column-config-modal.tsx`
+- `frontend/src/app/components/grid-export-modal.tsx`
+
+Telas referencia:
+
+- `principal/professores`
+- `principal/alunos`
+- `principal/responsaveis`
+- telas do `principal/financeiro` que tiverem grid/listagem
+
 ## Telas-modelo para novos sistemas
 
 Usar estas telas como referencia inicial:

@@ -1,4 +1,6 @@
 export type UiPatternId =
+    | 'program-header-school-finance'
+    | 'grid-list-toolbar-school-finance'
     | 'grid-admin'
     | 'grid-column-config'
     | 'grid-export'
@@ -21,6 +23,41 @@ export type UiPatternDefinition = {
 };
 
 export const UI_PATTERNS: UiPatternDefinition[] = [
+    {
+        id: 'program-header-school-finance',
+        name: 'CABECALHO PADRAO DE PROGRAMAS ESCOLA/FINANCEIRO',
+        summary: 'FAIXA AZUL COM BOTOES LATERAIS, LOGOTIPO DA ESCOLA, TITULO, DESCRICAO, BLOCO DO USUARIO E VOLTAR SEM STICKY, COM RESERVA E POSICIONAMENTO PADRONIZADOS DO LADO DIREITO.',
+        documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-014---cabecalho-padrao-de-programas-escola-e-financeiro',
+        componentPaths: [
+            'frontend/src/app/components/principal-program-header.tsx',
+            'frontend/src/app/principal/layout.tsx',
+        ],
+        referenceScreens: [
+            'frontend/src/app/principal/page.tsx',
+            'frontend/src/app/principal/notificacoes/page.tsx',
+            'frontend/src/app/principal/pessoas/page.tsx',
+            'frontend/src/app/principal/financeiro/[section]/page.tsx',
+        ],
+        status: 'approved',
+    },
+    {
+        id: 'grid-list-toolbar-school-finance',
+        name: 'TOOLBAR PADRAO DE GRID ESCOLA/FINANCEIRO',
+        summary: 'BARRA OPERACIONAL DE LISTAGEM COM ACOES PRINCIPAIS A ESQUERDA, CONTROLES/TIPO SEMAFORO NO CENTRO E CONTADOR DE REGISTROS A DIREITA, USADA SOMENTE EM TELAS COM GRID.',
+        documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-015---toolbar-padrao-de-grid-escola-e-financeiro',
+        componentPaths: [
+            'frontend/src/app/components/grid-footer-controls.tsx',
+            'frontend/src/app/components/grid-column-config-modal.tsx',
+            'frontend/src/app/components/grid-export-modal.tsx',
+        ],
+        referenceScreens: [
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/alunos/page.tsx',
+            'frontend/src/app/principal/responsaveis/page.tsx',
+            'frontend/src/app/principal/financeiro/[section]/page.tsx',
+        ],
+        status: 'approved',
+    },
     {
         id: 'grid-admin',
         name: 'GRID ADMINISTRATIVO PADRAO',

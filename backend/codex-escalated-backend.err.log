@@ -960,3 +960,4 @@ Error: listen EADDRINUSE: address already in use :::3001
 }
 
 Node.js v22.22.1
+^C^C

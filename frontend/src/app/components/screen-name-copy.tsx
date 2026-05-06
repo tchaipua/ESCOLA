@@ -15,12 +15,64 @@ type ScreenNameCopyProps = {
   disableMargin?: boolean;
 };
 
+type ScreenAuditMetadata = {
+  systemName: string;
+  originText?: string;
+};
+
+const SCREEN_AUDIT_METADATA: Record<string, ScreenAuditMetadata> = {
+  PRINCIPAL_FINANCEIRO_CAIXA: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\caixa\\page.tsx',
+  },
+  PRINCIPAL_FINANCEIRO_CAIXA_DETALHE: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\caixa\\[sessionId]\\page.tsx',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\contas-a-pagar\\page.tsx',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\contas-a-pagar\\importacao-notas\\page.tsx',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_NOTAS_IMPORTADAS: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\contas-a-pagar\\notas-importadas\\page.tsx',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_APROVACAO_NOTA: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\contas-a-pagar\\notas-importadas\\[importId]\\page.tsx',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_CERTIFICADOS_DIGITAIS: {
+    systemName: 'Sistema Financeiro',
+    originText:
+      'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\contas-a-pagar\\certificados-digitais\\page.tsx',
+  },
+};
+
+function resolveScreenAuditMetadata(screenId: string): ScreenAuditMetadata {
+  return (
+    SCREEN_AUDIT_METADATA[screenId] || {
+      systemName: 'Sistema Escola',
+    }
+  );
+}
+
 export default function ScreenNameCopy({
   screenId,
   label = 'Tela',
   className = '',
   disableMargin = false,
 }: ScreenNameCopyProps) {
+  const auditMetadata = resolveScreenAuditMetadata(screenId);
   const [status, setStatus] = useState<CopyStatus>('idle');
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -111,7 +163,8 @@ export default function ScreenNameCopy({
     {isAuditOpen ? (
       <ScreenAuditModal
         screenId={screenId}
-        systemName="Sistema Escola"
+        systemName={auditMetadata.systemName}
+        originText={auditMetadata.originText}
         onClose={() => setIsAuditOpen(false)}
       />
     ) : null}

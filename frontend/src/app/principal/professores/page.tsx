@@ -11,6 +11,7 @@ import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
@@ -1686,14 +1687,47 @@ export default function ProfessoresPage() {
         toDateInputValue(assignment.rateHistories?.[0]?.effectiveFrom) || todayDateInput;
 
     return (
-        <div className="w-full">
-            {/* Cabeçalho */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-[#153a6a] tracking-tight">Equipe Docente</h1>
-                    <p className="text-slate-500 font-medium mt-1">Gerencie os professores, dados contratuais e acesso ao Sistema.</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+            <div className="flex w-full flex-col bg-transparent">
+                <PrincipalProgramHeader
+                    eyebrow="Central docente"
+                    title="Equipe Docente"
+                    description="Gerencie os professores, dados contratuais e acesso ao Sistema."
+                    schoolName={currentTenantBranding?.schoolName}
+                    logoUrl={currentTenantBranding?.logoUrl}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Abrir notificações"
+                                aria-label="Abrir notificações"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </button>
+                        </>
+                    }
+                />
+
+                <div className="mb-8 flex flex-wrap items-center justify-end gap-3 pt-6">
                     <button
                         type="button"
                         onClick={() => setIsExportModalOpen(true)}
@@ -1704,7 +1738,7 @@ export default function ProfessoresPage() {
                     {canManageTeachers && (
                         <button
                             onClick={openModal}
-                            className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
+                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                         >
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -1713,7 +1747,6 @@ export default function ProfessoresPage() {
                         </button>
                     )}
                 </div>
-            </div>
 
             <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-medium text-blue-800">
                 O cadastro-base compartilhado agora fica em <Link href="/dashboard/pessoas" className="font-black underline">Pessoas</Link>. Use esta area principalmente para operacoes do papel de professor, como disciplinas, valores por aula e ajustes especificos.
@@ -2729,6 +2762,7 @@ export default function ProfessoresPage() {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 }
