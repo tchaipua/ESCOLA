@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridExportModal from '@/app/components/grid-export-modal';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
@@ -1101,6 +1102,11 @@ export default function GradeAnualPage() {
         );
     };
 
+    const openExportModal = () => {
+        setErrorStatus(null);
+        setIsExportModalOpen(true);
+    };
+
     const openLessonEdit = (lesson: AnnualCalendarLessonItem) => {
         setLessonEditError(null);
         setEditingLesson(lesson);
@@ -1188,32 +1194,43 @@ export default function GradeAnualPage() {
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
 
             <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
-                <div className="bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.18),_transparent_45%),linear-gradient(135deg,#eff6ff_0%,#ffffff_42%,#f8fafc_100%)] px-8 py-8">
-                    <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex items-center gap-5">
-                            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.10)]">
-                                {tenant?.logoUrl ? (
-                                    <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-3" />
-                                ) : (
-                                    <span className="text-lg font-black tracking-[0.25em] text-[#153a6a]">
-                                        {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                    </span>
-                                )}
-                            </div>
-                            <div>
-                                <div className="text-xs font-black uppercase tracking-[0.28em] text-blue-600">Grade Anual</div>
-                                <h1 className="mt-2 text-3xl font-extrabold text-[#153a6a]">{tenant?.name || 'Visão geral da escola'}</h1>
-                                <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-slate-500">
-                                    Acompanhe toda a grade anual da escola em cards, com visão geral por turma, períodos cadastrados e total de aulas geradas, usando o mesmo padrão visual do calendário de aulas.
-                                </p>
-                                <div className="mt-4">
-                                    <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL" className="mt-0 text-[11px]" />
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                <PrincipalProgramHeader
+                    eyebrow="Grade anual"
+                    title={tenant?.name || 'Visão geral da escola'}
+                    description="Acompanhe toda a grade anual da escola em cards, com visão geral por turma, períodos cadastrados e total de aulas geradas, usando o mesmo padrão visual do calendário de aulas."
+                    schoolName={tenant?.name}
+                    logoUrl={tenant?.logoUrl || null}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Abrir notificações"
+                                aria-label="Abrir notificações"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </button>
+                        </>
+                    }
+                />
 
                 <div className="sticky top-[72px] z-30 border-b border-slate-200 bg-white/95 px-8 py-6 backdrop-blur-sm">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -1313,6 +1330,19 @@ export default function GradeAnualPage() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3">
+                            {canManage ? (
+                                <button
+                                    type="button"
+                                    onClick={openCreateModal}
+                                    title="Cadastrar nova grade anual"
+                                    aria-label="Cadastrar nova grade anual"
+                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                                >
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                            ) : null}
                             <div className="flex flex-wrap gap-2">
                                 {[
                                     { value: 'ACTIVE', label: 'Ativas' },
@@ -1334,20 +1364,14 @@ export default function GradeAnualPage() {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsExportModalOpen(true)}
+                                onClick={openExportModal}
                                 className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
                             >
                                 Exportar
                             </button>
-                            {canManage ? (
-                                <button
-                                    type="button"
-                                    onClick={openCreateModal}
-                                    className="rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition hover:border-emerald-500 hover:bg-emerald-500"
-                                >
-                                    Nova grade anual
-                                </button>
-                            ) : null}
+                            <div className="text-sm font-extrabold text-slate-700" title={`${new Intl.NumberFormat('pt-BR').format(sortedRecords.length)} registro(s) exibido(s)`}>
+                                Registros exibidos ({new Intl.NumberFormat('pt-BR').format(sortedRecords.length)})
+                            </div>
                         </div>
                     </div>
                 </div>

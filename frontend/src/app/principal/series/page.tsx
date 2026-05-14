@@ -11,6 +11,7 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import {
     buildGridAggregateSummaries,
@@ -22,6 +23,7 @@ import {
     writeGridColumnConfig,
 } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
+import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -149,6 +151,7 @@ export default function SeriesPage() {
 
     const canView = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SERIES');
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SERIES');
+    const currentTenantBranding = useMemo(() => readCachedTenantBranding(currentTenantId), [currentTenantId]);
     const orderedSeriesColumns = useMemo(
         () => columnOrder.map((key) => SERIES_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<SeriesRecord, SeriesColumnKey> => !!column),
         [columnOrder],
@@ -524,44 +527,69 @@ export default function SeriesPage() {
 
     return (
         <div className="w-full space-y-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-[#153a6a] tracking-tight">Séries</h1>
-                    <p className="text-slate-500 font-medium mt-1">Cadastre as séries pedagógicas da escola.</p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => setIsExportModalOpen(true)}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        Exportar
-                    </button>
-                    {canManage ? (
+            <PrincipalProgramHeader
+                eyebrow="Central acadêmica"
+                title="Séries"
+                description="Cadastre as séries pedagógicas da escola."
+                schoolName={currentTenantBranding?.schoolName}
+                logoUrl={currentTenantBranding?.logoUrl}
+                secondaryAction={
+                    <>
                         <button
-                            onClick={openCreateModal}
-                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all active:scale-95 hover:bg-blue-500"
+                            type="button"
+                            onClick={() => {
+                                window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                            title="Recolher menu lateral"
+                            aria-label="Recolher menu lateral"
                         >
                             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                             </svg>
-                            Nova Série
                         </button>
-                    ) : null}
-                </div>
-            </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                            title="Abrir notificações"
+                            aria-label="Abrir notificações"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                        </button>
+                    </>
+                }
+            />
 
             {errorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{errorStatus}</div> : null}
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band border-b px-6 py-4">
-                    <div className="relative w-full max-w-xs">
-                        <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar série..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
-                        <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                    <div className="flex flex-wrap items-center gap-3">
+                        {canManage ? (
+                            <button
+                                type="button"
+                                onClick={openCreateModal}
+                                title="Cadastrar nova série"
+                                aria-label="Cadastrar nova série"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        ) : null}
+                        <div className="relative w-full max-w-xs">
+                            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar série..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -624,6 +652,7 @@ export default function SeriesPage() {
                     key={`series-footer-${sortedFilteredSeries.length}`}
                     recordsCount={Number(sortedFilteredSeries.length)}
                     onOpenColumns={() => setIsGridConfigOpen(true)}
+                    onOpenExport={() => setIsExportModalOpen(true)}
                     statusFilter={statusFilter}
                     onStatusFilterChange={setStatusFilter}
                     activeLabel="Mostrar somente séries ativas"

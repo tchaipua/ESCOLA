@@ -1210,3 +1210,125 @@
  GET /manifest.webmanifest 200 in 3ms (compile: 1270µs, render: 1898µs)
  GET /principal/financeiro/bancos 200 in 16ms (compile: 6ms, render: 9ms)
  GET /manifest.webmanifest 200 in 3ms (compile: 1200µs, render: 1854µs)
+ GET /principal 200 in 12ms (compile: 2ms, render: 10ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 1541µs, render: 4ms)
+ GET /principal/notificacoes 200 in 87ms (compile: 72ms, render: 16ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1743µs, render: 1902µs)
+ GET /principal/pessoas 200 in 78ms (compile: 63ms, render: 14ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1431µs, render: 2ms)
+ GET /principal/comunicacoes 200 in 12ms (compile: 1684µs, render: 10ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1617µs, render: 2ms)
+ GET /principal/professores 200 in 138ms (compile: 129ms, render: 9ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 2ms, render: 2ms)
+ GET /principal 200 in 12ms (compile: 1912µs, render: 10ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 1285µs, render: 4ms)
+ GET /principal/financeiro 200 in 11ms (compile: 1765µs, render: 9ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 1266µs, render: 3ms)
+ GET /principal/financeiro/contas-a-pagar 200 in 19ms (compile: 7ms, render: 12ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1364µs, render: 2ms)
+ GET /principal/financeiro 200 in 11ms (compile: 1513µs, render: 10ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 3ms, render: 1867µs)
+ GET /principal/financeiro/parcelas 200 in 17ms (compile: 6ms, render: 11ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1207µs, render: 2ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1187µs, render: 1627µs)
+ GET /principal/financeiro/bancos 200 in 18ms (compile: 6ms, render: 11ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1480µs, render: 1866µs)
+ GET /principal 200 in 11ms (compile: 1610µs, render: 9ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1390µs, render: 2ms)
+ GET /principal/professores 200 in 131ms (compile: 121ms, render: 10ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1360µs, render: 2ms)
+ GET /principal 200 in 9ms (compile: 1686µs, render: 8ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1537µs, render: 2ms)
+ GET /principal/financeiro 200 in 10ms (compile: 1593µs, render: 8ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1386µs, render: 1988µs)
+ GET /principal/financeiro/bancos 200 in 15ms (compile: 6ms, render: 9ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1389µs, render: 1892µs)
+ GET /principal 200 in 9ms (compile: 1648µs, render: 7ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1397µs, render: 1795µs)
+ GET /principal/professores 200 in 158ms (compile: 147ms, render: 10ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1615µs, render: 2ms)
+✓ Compiled in 58ms
+✓ Compiled in 70ms
+✓ Compiled in 52ms
+ GET /principal/pessoas 200 in 23ms (compile: 5ms, render: 18ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 1543µs, render: 3ms)
+ GET /principal/comunicacoes 200 in 15ms (compile: 1968µs, render: 13ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 3ms, render: 2ms)
+ GET /principal/professores 200 in 281ms (compile: 266ms, render: 15ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1854µs, render: 2ms)
+ GET /principal/alunos 200 in 215ms (compile: 199ms, render: 17ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1413µs, render: 1992µs)
+ GET /principal/professores 200 in 496ms (compile: 474ms, render: 22ms)
+ GET /manifest.webmanifest 200 in 12ms (compile: 8ms, render: 4ms)
+✓ Compiled in 42ms
+✓ Compiled in 46ms
+✓ Compiled in 42ms
+ GET /principal 200 in 104ms (compile: 87ms, render: 17ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1680µs, render: 2ms)
+ GET /principal/grade 200 in 243ms (compile: 230ms, render: 13ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1262µs, render: 2ms)
+ GET /principal/parcelas 200 in 73ms (compile: 58ms, render: 15ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1523µs, render: 2ms)
+ GET /principal 200 in 10ms (compile: 1695µs, render: 8ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1459µs, render: 2ms)
+ GET /principal/financeiro 200 in 82ms (compile: 67ms, render: 15ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1640µs, render: 2ms)
+ GET /principal/financeiro/bancos 200 in 88ms (compile: 72ms, render: 16ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1444µs, render: 2ms)
+ GET /principal 200 in 10ms (compile: 1787µs, render: 8ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1338µs, render: 2ms)
+ GET /principal/professores 200 in 266ms (compile: 248ms, render: 19ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1681µs, render: 2ms)
+✓ Compiled in 44ms
+✓ Compiled in 41ms
+✓ Compiled in 42ms
+✓ Compiled in 41ms
+✓ Compiled in 43ms
+✓ Compiled in 41ms
+✓ Compiled in 43ms
+✓ Compiled in 53ms
+✓ Compiled in 45ms
+✓ Compiled in 46ms
+ GET /principal/alunos 200 in 372ms (compile: 353ms, render: 19ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1528µs, render: 2ms)
+✓ Compiled in 53ms
+ GET /principal/alunos 200 in 320ms (compile: 298ms, render: 22ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1654µs, render: 2ms)
+✓ Compiled in 86ms
+✓ Compiled in 78ms
+ GET /principal/responsaveis 200 in 242ms (compile: 227ms, render: 16ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1388µs, render: 2ms)
+✓ Compiled in 49ms
+ GET /principal/responsaveis 200 in 262ms (compile: 243ms, render: 19ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1456µs, render: 2ms)
+ GET /principal/mensalidades 200 in 152ms (compile: 120ms, render: 33ms)
+ GET /manifest.webmanifest 200 in 6ms (compile: 3ms, render: 3ms)
+ GET /principal/parcelas 200 in 82ms (compile: 64ms, render: 17ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1845µs, render: 2ms)
+ GET /principal/mensalidades 200 in 12ms (compile: 1639µs, render: 10ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1358µs, render: 1884µs)
+ GET /principal/parcelas 200 in 11ms (compile: 1687µs, render: 9ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1302µs, render: 2ms)
+✓ Compiled in 42ms
+✓ Compiled in 40ms
+✓ Compiled in 233ms
+ GET /principal/pessoas 200 in 109ms (compile: 90ms, render: 19ms)
+ GET /manifest.webmanifest 200 in 3ms (compile: 1460µs, render: 2ms)
+ GET /principal/parcelas 200 in 119ms (compile: 67ms, render: 52ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 2ms, render: 3ms)
+✓ Compiled in 46ms
+✓ Compiled in 43ms
+✓ Compiled in 94ms
+ GET /principal/disciplinas 200 in 240ms (compile: 222ms, render: 18ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1703µs, render: 2ms)
+✓ Compiled in 49ms
+✓ Compiled in 41ms
+ GET / 200 in 20ms (compile: 6ms, render: 14ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1375µs, render: 2ms)
+ GET /principal 200 in 105ms (compile: 89ms, render: 17ms)
+ GET /manifest.webmanifest 200 in 5ms (compile: 1464µs, render: 3ms)
+ GET /principal/disciplinas 200 in 296ms (compile: 279ms, render: 16ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1815µs, render: 2ms)
+✓ Compiled in 38ms
+ GET /principal/series 200 in 246ms (compile: 229ms, render: 17ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1622µs, render: 2ms)

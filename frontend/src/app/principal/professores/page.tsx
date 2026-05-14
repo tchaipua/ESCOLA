@@ -1727,31 +1727,6 @@ export default function ProfessoresPage() {
                     }
                 />
 
-                <div className="mb-8 flex flex-wrap items-center justify-end gap-3 pt-6">
-                    <button
-                        type="button"
-                        onClick={() => setIsExportModalOpen(true)}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        Exportar
-                    </button>
-                    {canManageTeachers && (
-                        <button
-                            onClick={openModal}
-                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
-                        >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Novo Docente
-                        </button>
-                    )}
-                </div>
-
-            <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-medium text-blue-800">
-                O cadastro-base compartilhado agora fica em <Link href="/dashboard/pessoas" className="font-black underline">Pessoas</Link>. Use esta area principalmente para operacoes do papel de professor, como disciplinas, valores por aula e ajustes especificos.
-            </div>
-
             {errorStatus && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 mb-6 font-medium text-sm flex items-center gap-3">
                     <span className="bg-red-200 text-red-700 w-6 h-6 rounded-full flex items-center justify-center font-bold">!</span>
@@ -1770,6 +1745,19 @@ export default function ProfessoresPage() {
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="dashboard-band px-6 py-4 border-b">
                     <div className="flex flex-wrap items-center gap-3">
+                        {canManageTeachers && (
+                            <button
+                                type="button"
+                                onClick={openModal}
+                                title="Cadastrar novo"
+                                aria-label="Cadastrar novo"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        )}
                         <div className="relative w-full max-w-xs">
                             <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} type="text" placeholder="Buscar docente..." className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all" />
                             <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1886,6 +1874,7 @@ export default function ProfessoresPage() {
                     key={`teacher-footer-${displayedTeachersCount}`}
                     recordsCount={Number(displayedTeachersCount)}
                     onOpenColumns={() => setIsGridConfigOpen(true)}
+                    onOpenExport={() => setIsExportModalOpen(true)}
                     statusFilter={statusFilter}
                     onStatusFilterChange={setStatusFilter}
                     activeLabel="Mostrar somente professores ativos"

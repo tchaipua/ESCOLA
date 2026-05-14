@@ -287,10 +287,27 @@ Componentes/Telas:
 - a posicao vertical do bloco da direita deve ficar mais baixa que o topo do header, respeitando o encaixe visual aprovado na `PRINCIPAL`
 - o componente compartilhado deve permitir reaproveitamento manual tela por tela, sem rollout automatico
 - o mesmo padrao base pode ser usado na Escola e no Financeiro, mudando apenas os textos e o estado dos botoes
+- o card branco do usuario no lado direito e obrigatorio nas telas que usam esse padrao, com:
+  - nome do usuario em destaque
+  - perfil logo abaixo em texto menor
+  - avatar circular com iniciais
+  - seta de menu no extremo direito
+- o botao `VOLTAR` deve ficar abaixo do card do usuario, alinhado a direita e dentro da mesma faixa azul
+- o conjunto `card do usuario + VOLTAR` deve repetir o encaixe visual aprovado na `PRINCIPAL_PROFESSORES`
+- a tela `PRINCIPAL_MENSALIDADES` passa a usar essa mesma referencia visual como padrao correto para validacoes futuras
+- nenhuma tela existente deve ser alterada em lote por causa desse padrao:
+  - a aplicacao deve acontecer manualmente
+  - tela por tela
+  - somente apos validacao explicita do usuario
+- sempre que houver divergencia entre a implementacao local e esse padrao, a referencia soberana passa a ser:
+  - `frontend/src/app/components/principal-program-header.tsx`
+  - `frontend/src/app/principal/layout.tsx`
+  - validacao visual aprovada em `PRINCIPAL_PROFESSORES`
 
 Componente base:
 
 - `frontend/src/app/components/principal-program-header.tsx`
+- `frontend/src/app/principal/layout.tsx`
 
 Telas referencia:
 
@@ -298,6 +315,8 @@ Telas referencia:
 - `principal/notificacoes`
 - `principal/pessoas`
 - `principal/financeiro/[section]`
+- `principal/professores`
+- `principal/mensalidades`
 
 ### PAT-015 - Toolbar padrao de grid Escola e Financeiro
 
@@ -305,10 +324,17 @@ Telas referencia:
 - ele so pode ser usado em telas que possuem grid, lista ou tabela operacional
 - deve ser tratado como barra operacional da listagem
 - estrutura aprovada:
-  - esquerda: acoes principais da grid, como `COLUNAS`, exportacao, impressao ou acao equivalente
+  - esquerda: botao `COLUNAS` seguido do botao de `EXPORTACAO/IMPRESSAO`
   - centro: controles operacionais visuais da listagem, como semaforo horizontal, toggles ou filtros de status
   - direita: contador institucional de registros exibidos
 - o contador da direita deve manter leitura forte em uppercase, no estilo `REGISTROS EXIBIDOS (N)`
+- a exportacao e a impressao da tela com grid devem ficar concentradas apenas no botao ao lado de `COLUNAS`
+- quando a toolbar padrao estiver presente, o botao textual separado `EXPORTAR` no topo da tela deixa de ser necessario e deve ser removido para evitar duplicidade funcional
+- telas com grid/lista nao devem exibir faixa explicativa contextual entre o cabecalho principal e a area da listagem
+- telas com grid/lista nao devem exibir bloco textual intermediario detalhando o que a tela faz, para que a leitura comece direto na barra operacional e no conteudo da listagem
+- quando a tela tiver acao de incluir/cadastrar novo registro, esse botao deve ficar na mesma linha da busca
+- a posicao aprovada para essa acao e no lado esquerdo do campo de busca, como primeiro elemento da linha
+- o botao de incluir deve preferir formato compacto, mostrando apenas o icone `+`, com tooltip explicando a acao de cadastro
 - a barra deve funcionar como segundo padrao oficial compartilhado entre Escola e Financeiro
 - o uso continua manual, tela por tela, e nunca deve ser aplicado em paginas sem listagem
 - a toolbar pode variar nas acoes especificas da tela, mas deve preservar a distribuicao visual esquerda/centro/direita aprovada

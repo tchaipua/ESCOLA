@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
@@ -9,6 +8,7 @@ import GridFooterControls from '@/app/components/grid-footer-controls';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
@@ -1659,44 +1659,64 @@ export default function AlunosPage() {
     );
 
     return (
-        <div className="w-full">
-            <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-[#153a6a]">Alunos</h1>
-                    <p className="mt-1 font-medium text-slate-500">Cadastre estudantes e mantenha seus dados atualizados.</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => setIsExportModalOpen(true)}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        Exportar
-                    </button>
-                    {canManageStudents ? (
-                        <button
-                            onClick={openModal}
-                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all active:scale-95 hover:bg-blue-500"
-                        >
-                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Novo Aluno
-                        </button>
-                    ) : null}
-                </div>
-            </div>
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+            <div className="flex w-full flex-col bg-transparent">
+                <PrincipalProgramHeader
+                    eyebrow="Central discente"
+                    title="Cadastro de alunos"
+                    description="Gerencie estudantes, matrícula atual, responsáveis vinculados e acesso ao sistema."
+                    schoolName={currentTenantBranding?.schoolName}
+                    logoUrl={currentTenantBranding?.logoUrl}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Abrir notificações"
+                                aria-label="Abrir notificações"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </button>
+                        </>
+                    }
+                />
+                {errorStatus ? <div className="mb-6 rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">{errorStatus}</div> : null}
 
-            <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-medium text-blue-800">
-                O cadastro-base compartilhado agora fica em <Link href="/dashboard/pessoas" className="font-black underline">Pessoas</Link>. Use esta area para operacoes especificas do aluno, como matricula, turma, foto e vinculos com responsaveis.
-            </div>
-
-            {errorStatus ? <div className="mb-6 rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">{errorStatus}</div> : null}
-
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="dashboard-band border-b px-6 py-4">
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="dashboard-band border-b px-6 py-4">
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                            {canManageStudents ? (
+                                <button
+                                    type="button"
+                                    onClick={openModal}
+                                    title="Cadastrar novo"
+                                    aria-label="Cadastrar novo"
+                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                                >
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                            ) : null}
                             <div className="relative w-full max-w-xs">
                                 <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar aluno..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
                                 <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1727,78 +1747,79 @@ export default function AlunosPage() {
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </select>
-                        </div>
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Filtros por série e turma
+                            </div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                Filtros por série e turma
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
-                        <thead>
-                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
-                                {visibleStudentColumns.map((column) => (
-                                    <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}><GridSortableHeader label={column.label} isActive={sortState.column === column.key} direction={sortState.direction} onClick={() => toggleSort(column.key)} align={column.align === 'center' ? 'center' : 'left'} /></th>
-                                ))}
-                                <th className="px-6 py-4 text-right">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {isLoading ? <tr><td colSpan={visibleStudentColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando alunos...</td></tr> : null}
-                            {!isLoading && sortedFilteredStudents.length === 0 ? <tr><td colSpan={visibleStudentColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum aluno encontrado.</td></tr> : null}
-                            {!isLoading && sortedFilteredStudents.map((student) => (
-                                <tr key={student.id} className={student.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                    {visibleStudentColumns.map((column) => renderStudentGridCell(student, column.key))}
-                                    <td className="px-6 py-4 text-right">
-                                        {canManageStudents ? (
-                                            <div className="flex justify-end gap-2">
-                                                {renderStudentInfoButton(student)}
-                                                <GridRowActionIconButton title="Abrir responsáveis do aluno" onClick={() => handleManageGuardians(student)} tone="violet">
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
-                                                    </svg>
-                                                </GridRowActionIconButton>
-                                                <GridRowActionIconButton title="Editar aluno" onClick={() => handleEdit(student)} tone="blue">
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                    </svg>
-                                                </GridRowActionIconButton>
-                                                <GridRowActionIconButton title={student.canceledAt ? 'Ativar aluno' : 'Inativar aluno'} onClick={() => openStudentStatusModal(student)} tone={student.canceledAt ? 'emerald' : 'rose'}>
-                                                    {student.canceledAt ? (
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                        </svg>
-                                                    )}
-                                                </GridRowActionIconButton>
-                                            </div>
-                                        ) : (
-                                            <div className="flex justify-end gap-2">
-                                                {renderStudentInfoButton(student)}
-                                                <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
-                                            </div>
-                                        )}
-                                    </td>
+                    <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-left">
+                            <thead>
+                                <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                    {visibleStudentColumns.map((column) => (
+                                        <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}><GridSortableHeader label={column.label} isActive={sortState.column === column.key} direction={sortState.direction} onClick={() => toggleSort(column.key)} align={column.align === 'center' ? 'center' : 'left'} /></th>
+                                    ))}
+                                    <th className="px-6 py-4 text-right">Ação</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {isLoading ? <tr><td colSpan={visibleStudentColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando alunos...</td></tr> : null}
+                                {!isLoading && sortedFilteredStudents.length === 0 ? <tr><td colSpan={visibleStudentColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum aluno encontrado.</td></tr> : null}
+                                {!isLoading && sortedFilteredStudents.map((student) => (
+                                    <tr key={student.id} className={student.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
+                                        {visibleStudentColumns.map((column) => renderStudentGridCell(student, column.key))}
+                                        <td className="px-6 py-4 text-right">
+                                            {canManageStudents ? (
+                                                <div className="flex justify-end gap-2">
+                                                    {renderStudentInfoButton(student)}
+                                                    <GridRowActionIconButton title="Abrir responsáveis do aluno" onClick={() => handleManageGuardians(student)} tone="violet">
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
+                                                        </svg>
+                                                    </GridRowActionIconButton>
+                                                    <GridRowActionIconButton title="Editar aluno" onClick={() => handleEdit(student)} tone="blue">
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                        </svg>
+                                                    </GridRowActionIconButton>
+                                                    <GridRowActionIconButton title={student.canceledAt ? 'Ativar aluno' : 'Inativar aluno'} onClick={() => openStudentStatusModal(student)} tone={student.canceledAt ? 'emerald' : 'rose'}>
+                                                        {student.canceledAt ? (
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                            </svg>
+                                                        )}
+                                                    </GridRowActionIconButton>
+                                                </div>
+                                            ) : (
+                                                <div className="flex justify-end gap-2">
+                                                    {renderStudentInfoButton(student)}
+                                                    <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <GridFooterControls
+                        key={`student-footer-${sortedFilteredStudents.length}`}
+                        recordsCount={Number(sortedFilteredStudents.length)}
+                        onOpenColumns={() => setIsGridConfigOpen(true)}
+                        onOpenExport={() => setIsExportModalOpen(true)}
+                        statusFilter={statusFilter}
+                        onStatusFilterChange={setStatusFilter}
+                        activeLabel="Mostrar somente alunos ativos"
+                        allLabel="Mostrar alunos ativos e inativos"
+                        inactiveLabel="Mostrar somente alunos inativos"
+                        aggregateSummaries={aggregateSummaries}
+                    />
                 </div>
-                <GridFooterControls
-                    key={`student-footer-${sortedFilteredStudents.length}`}
-                    recordsCount={Number(sortedFilteredStudents.length)}
-                    onOpenColumns={() => setIsGridConfigOpen(true)}
-                    statusFilter={statusFilter}
-                    onStatusFilterChange={setStatusFilter}
-                    activeLabel="Mostrar somente alunos ativos"
-                    allLabel="Mostrar alunos ativos e inativos"
-                    inactiveLabel="Mostrar somente alunos inativos"
-                    aggregateSummaries={aggregateSummaries}
-                />
-            </div>
 
             <GridColumnConfigModal
                 isOpen={isGridConfigOpen}
@@ -2783,6 +2804,7 @@ export default function AlunosPage() {
                     </div>
                 </div>
             ) : saveError ? <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm"><div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-3 text-lg font-bold text-slate-800">Atenção</div><div className="text-sm font-medium text-red-600">{saveError}</div><div className="mt-4 text-right"><button onClick={() => setSaveError(null)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">Fechar</button></div></div></div> : null}
+            </div>
         </div>
     );
 }

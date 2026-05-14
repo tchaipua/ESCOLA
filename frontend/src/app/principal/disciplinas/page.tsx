@@ -5,6 +5,7 @@ import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridFooterControls from '@/app/components/grid-footer-controls';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
@@ -15,6 +16,7 @@ import { getStoredToken } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
+import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 type Subject = {
     id: string;
@@ -143,6 +145,10 @@ export default function DisciplinasPage() {
     const visibleSubjectColumns = useMemo(
         () => orderedSubjectColumns.filter((column) => !hiddenColumns.includes(column.key)),
         [hiddenColumns, orderedSubjectColumns],
+    );
+    const currentTenantBranding = useMemo(
+        () => readCachedTenantBranding(currentTenantId),
+        [currentTenantId],
     );
 
     const loadData = async () => {
@@ -568,147 +574,175 @@ export default function DisciplinasPage() {
     };
 
     return (
-        <div className="w-full space-y-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-[#153a6a] tracking-tight">Disciplinas</h1>
-                    <p className="text-slate-500 font-medium mt-1">Cadastre as disciplinas e consulte os professores vinculados.</p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => setIsExportModalOpen(true)}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        Exportar
-                    </button>
-                    {canManage ? (
-                        <button
-                            onClick={openCreateModal}
-                            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md shadow-blue-500/20 transition-all active:scale-95 hover:bg-blue-500"
-                        >
-                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                            </svg>
-                            Nova Disciplina
-                        </button>
-                    ) : null}
-                </div>
-            </div>
-
-            {errorStatus ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                    {errorStatus}
-                </div>
-            ) : null}
-
-            {successStatus ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-                    {successStatus}
-                </div>
-            ) : null}
-
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="dashboard-band border-b px-6 py-4">
-                    <div className="relative w-full max-w-xs">
-                        <input
-                            value={searchTerm}
-                            onChange={(event) => setSearchTerm(event.target.value)}
-                            placeholder="Buscar disciplina..."
-                            className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                        <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
-                        <thead>
-                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
-                                {visibleSubjectColumns.map((column) => (
-                                    <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}>
-                                        <GridSortableHeader label={column.label} isActive={sortState.column === column.key} direction={sortState.direction} onClick={() => toggleSort(column.key)} align={column.align === 'center' ? 'center' : 'left'} />
-                                    </th>
-                                ))}
-                                <th className="px-6 py-4 text-right">Ação</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan={visibleSubjectColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">
-                                        Carregando disciplinas...
-                                    </td>
-                                </tr>
-                            ) : null}
-
-                            {!isLoading && sortedFilteredSubjects.length === 0 ? (
-                                <tr>
-                                    <td colSpan={visibleSubjectColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">
-                                        Nenhuma disciplina cadastrada.
-                                    </td>
-                                </tr>
-                            ) : null}
-
-                            {!isLoading && sortedFilteredSubjects.map((subject) => {
-                                return (
-                                    <tr key={subject.id} className={subject.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                        {visibleSubjectColumns.map((column) => renderSubjectGridCell(subject, column.key))}
-                                        <td className="px-6 py-4 text-right">
-                                            {canManage ? (
-                                                <div className="flex justify-end gap-2">
-                                                    {renderSubjectInfoButton(subject)}
-                                                    <GridRowActionIconButton title="Editar disciplina" onClick={() => handleEditSubject(subject)} tone="blue">
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                        </svg>
-                                                    </GridRowActionIconButton>
-                                                    <GridRowActionIconButton
-                                                        title={subject.canceledAt ? 'Ativar disciplina' : 'Inativar disciplina'}
-                                                        onClick={() => handleToggleSubjectStatus(subject)}
-                                                        tone={subject.canceledAt ? 'emerald' : 'rose'}
-                                                    >
-                                                        {subject.canceledAt ? (
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                            </svg>
-                                                        ) : (
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                            </svg>
-                                                        )}
-                                                    </GridRowActionIconButton>
-                                                </div>
-                                            ) : (
-                                                <div className="flex justify-end gap-2">
-                                                    {renderSubjectInfoButton(subject)}
-                                                    <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
-                                                </div>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-
-                <GridFooterControls
-                    key={`subject-footer-${sortedFilteredSubjects.length}`}
-                    recordsCount={Number(sortedFilteredSubjects.length)}
-                    onOpenColumns={() => setIsGridConfigOpen(true)}
-                    statusFilter={statusFilter}
-                    onStatusFilterChange={setStatusFilter}
-                    activeLabel="Mostrar somente disciplinas ativas"
-                    allLabel="Mostrar disciplinas ativas e inativas"
-                    inactiveLabel="Mostrar somente disciplinas inativas"
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+            <div className="flex w-full flex-col bg-transparent">
+                <PrincipalProgramHeader
+                    eyebrow="Central curricular"
+                    title="Cadastro de disciplinas"
+                    description="Cadastre as disciplinas e consulte os professores vinculados."
+                    schoolName={currentTenantBranding?.schoolName}
+                    logoUrl={currentTenantBranding?.logoUrl}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Abrir notificações"
+                                aria-label="Abrir notificações"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </button>
+                        </>
+                    }
                 />
-            </section>
 
-            <GridColumnConfigModal
+                <div className="w-full space-y-8">
+                    {errorStatus ? (
+                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                            {errorStatus}
+                        </div>
+                    ) : null}
+
+                    {successStatus ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                            {successStatus}
+                        </div>
+                    ) : null}
+
+                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="dashboard-band border-b px-6 py-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                                {canManage ? (
+                                    <button
+                                        type="button"
+                                        onClick={openCreateModal}
+                                        title="Cadastrar nova disciplina"
+                                        aria-label="Cadastrar nova disciplina"
+                                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                                    >
+                                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                    </button>
+                                ) : null}
+                                <div className="relative w-full max-w-xs">
+                                    <input
+                                        value={searchTerm}
+                                        onChange={(event) => setSearchTerm(event.target.value)}
+                                        placeholder="Buscar disciplina..."
+                                        className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                    <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-left">
+                                <thead>
+                                    <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                        {visibleSubjectColumns.map((column) => (
+                                            <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}>
+                                                <GridSortableHeader label={column.label} isActive={sortState.column === column.key} direction={sortState.direction} onClick={() => toggleSort(column.key)} align={column.align === 'center' ? 'center' : 'left'} />
+                                            </th>
+                                        ))}
+                                        <th className="px-6 py-4 text-right">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {isLoading ? (
+                                        <tr>
+                                            <td colSpan={visibleSubjectColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">
+                                                Carregando disciplinas...
+                                            </td>
+                                        </tr>
+                                    ) : null}
+
+                                    {!isLoading && sortedFilteredSubjects.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={visibleSubjectColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">
+                                                Nenhuma disciplina cadastrada.
+                                            </td>
+                                        </tr>
+                                    ) : null}
+
+                                    {!isLoading && sortedFilteredSubjects.map((subject) => {
+                                        return (
+                                            <tr key={subject.id} className={subject.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
+                                                {visibleSubjectColumns.map((column) => renderSubjectGridCell(subject, column.key))}
+                                                <td className="px-6 py-4 text-right">
+                                                    {canManage ? (
+                                                        <div className="flex justify-end gap-2">
+                                                            {renderSubjectInfoButton(subject)}
+                                                            <GridRowActionIconButton title="Editar disciplina" onClick={() => handleEditSubject(subject)} tone="blue">
+                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                                </svg>
+                                                            </GridRowActionIconButton>
+                                                            <GridRowActionIconButton
+                                                                title={subject.canceledAt ? 'Ativar disciplina' : 'Inativar disciplina'}
+                                                                onClick={() => handleToggleSubjectStatus(subject)}
+                                                                tone={subject.canceledAt ? 'emerald' : 'rose'}
+                                                            >
+                                                                {subject.canceledAt ? (
+                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                                    </svg>
+                                                                )}
+                                                            </GridRowActionIconButton>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex justify-end gap-2">
+                                                            {renderSubjectInfoButton(subject)}
+                                                            <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <GridFooterControls
+                            key={`subject-footer-${sortedFilteredSubjects.length}`}
+                            recordsCount={Number(sortedFilteredSubjects.length)}
+                            onOpenColumns={() => setIsGridConfigOpen(true)}
+                            onOpenExport={() => setIsExportModalOpen(true)}
+                            statusFilter={statusFilter}
+                            onStatusFilterChange={setStatusFilter}
+                            activeLabel="Mostrar somente disciplinas ativas"
+                            allLabel="Mostrar disciplinas ativas e inativas"
+                            inactiveLabel="Mostrar somente disciplinas inativas"
+                        />
+                    </section>
+
+                    <GridColumnConfigModal
                 isOpen={isGridConfigOpen}
                 title="Configurar colunas do grid"
                 description="Reordene, oculte ou inclua colunas do cadastro de disciplinas nesta tela."
@@ -719,9 +753,9 @@ export default function DisciplinasPage() {
                 onMoveColumn={moveGridColumn}
                 onReset={resetGridColumns}
                 onClose={() => setIsGridConfigOpen(false)}
-            />
+                    />
 
-            <GridExportModal
+                    <GridExportModal
                 isOpen={isExportModalOpen}
                 title="Exportar disciplinas"
                 description={`A exportação respeita a busca atual e inclui ${sortedFilteredSubjects.length} registro(s).`}
@@ -758,9 +792,9 @@ export default function DisciplinasPage() {
                         setErrorStatus(error instanceof Error ? error.message : 'Não foi possível exportar as disciplinas.');
                     }
                 }}
-            />
+                    />
 
-            <StatusConfirmationModal
+                    <StatusConfirmationModal
                 isOpen={Boolean(toggleModalSubject && toggleModalAction)}
                 tenantId={currentTenantId}
                 actionType={toggleModalAction || 'activate'}
@@ -776,9 +810,9 @@ export default function DisciplinasPage() {
                 isProcessing={isProcessingToggle}
                 statusActive={!toggleModalSubject?.canceledAt}
                 screenId={DISCIPLINAS_STATUS_MODAL_SCREEN_ID}
-            />
+                    />
 
-            {isModalOpen ? (
+                    {isModalOpen ? (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
@@ -864,9 +898,9 @@ export default function DisciplinasPage() {
                         </form>
                     </div>
                 </div>
-            ) : null}
+                    ) : null}
 
-            {selectedSubjectForTeachers ? (
+                    {selectedSubjectForTeachers ? (
                 <div className="fixed inset-0 z-[56] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
                         <div className="dashboard-band flex items-start justify-between gap-4 border-b px-6 py-5 shrink-0">
@@ -921,7 +955,9 @@ export default function DisciplinasPage() {
                         </div>
                     </div>
                 </div>
-            ) : null}
+                    ) : null}
+                </div>
+            </div>
         </div>
     );
 }

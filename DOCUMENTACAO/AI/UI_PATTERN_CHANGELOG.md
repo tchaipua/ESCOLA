@@ -198,3 +198,70 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado
+
+### UIP-0014
+
+- Data: 2026-05-07
+- Padrao: acao unica de exportacao na toolbar da grid
+- Contexto: necessidade de eliminar duplicidade entre o botao textual `EXPORTAR` no topo da tela e o botao de exportacao/impressao localizado ao lado de `COLUNAS` na barra operacional da listagem
+- Alteracao: o padrao de telas com grid da Escola e do Financeiro passou a determinar que a exportacao/impressao fique concentrada apenas no botao ao lado de `COLUNAS`, tornando desnecessario o botao textual separado quando a toolbar padrao estiver presente
+- Componentes/Telas:
+  - `frontend/src/app/components/grid-footer-controls.tsx`
+  - `frontend/src/app/components/grid-export-modal.tsx`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0015
+
+- Data: 2026-05-07
+- Padrao: sem faixa explicativa em telas com grid/lista
+- Contexto: definicao de que a tela com listagem deve ficar mais objetiva, sem bloco textual intermediario entre o cabecalho principal e a area do grid
+- Alteracao: o padrao oficial de telas com grid da Escola e do Financeiro passou a vedar faixa explicativa contextual nessa posicao, mantendo foco direto na toolbar e na listagem
+- Componentes/Telas:
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0016
+
+- Data: 2026-05-07
+- Padrao: posicao compacta do botao de incluir em telas com grid/lista
+- Contexto: definicao de que a acao de cadastro de novo registro deve ficar integrada a barra operacional da listagem, sem competir com o cabecalho principal da tela
+- Alteracao: quando existir acao de incluir em telas com grid da Escola e do Financeiro, o botao deve aparecer na mesma linha da busca, no lado esquerdo como primeiro elemento, em formato compacto com icone `+` e tooltip de cadastro
+- Componentes/Telas:
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0018
+
+- Data: 2026-05-13
+- Padrao: consolidacao final do cabecalho Escola/Financeiro com bloco direito aprovado
+- Contexto: durante a validacao visual entre `PRINCIPAL_PROFESSORES` e `PRINCIPAL_MENSALIDADES`, foi confirmado que o trecho final correto do cabecalho e o mesmo bloco direito com card branco do usuario e botao `VOLTAR` encaixados dentro da faixa azul
+- Alteracao: o padrao oficial passou a registrar explicitamente `PRINCIPAL_PROFESSORES` como referencia soberana do lado direito do cabecalho, aplicavel tanto no sistema Escola quanto no sistema Financeiro, com rollout manual e nunca automatico em telas existentes
+- Componentes/Telas:
+  - `frontend/src/app/components/principal-program-header.tsx`
+  - `frontend/src/app/principal/layout.tsx`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+  - `DOCUMENTACAO/AI/DECISIONS.md`
+- Status: aprovado
+
+### UIP-0017
+
+- Data: 2026-05-07
+- Padrao: sem texto descritivo entre cabecalho e grid
+- Contexto: confirmacao de que telas com listagem da Escola e do Financeiro devem abrir a experiencia diretamente na barra operacional e na grid, sem faixa intermediaria explicando o objetivo da tela
+- Alteracao: reforco explicito no padrao de toolbar/grid de que nao deve existir bloco ou faixa textual detalhando o que a tela faz entre o cabecalho principal e a area da listagem
+- Componentes/Telas:
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `frontend/src/app/principal/financeiro/[section]/page.tsx`
+- Status: aprovado

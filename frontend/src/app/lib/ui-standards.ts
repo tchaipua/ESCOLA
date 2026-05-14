@@ -26,7 +26,7 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
     {
         id: 'program-header-school-finance',
         name: 'CABECALHO PADRAO DE PROGRAMAS ESCOLA/FINANCEIRO',
-        summary: 'FAIXA AZUL COM BOTOES LATERAIS, LOGOTIPO DA ESCOLA, TITULO, DESCRICAO, BLOCO DO USUARIO E VOLTAR SEM STICKY, COM RESERVA E POSICIONAMENTO PADRONIZADOS DO LADO DIREITO.',
+        summary: 'FAIXA AZUL COM BOTOES LATERAIS, LOGOTIPO DA ESCOLA, TITULO, DESCRICAO, CARD BRANCO DO USUARIO E BOTAO VOLTAR DENTRO DO BLOCO, SEM STICKY E COM `PRINCIPAL_PROFESSORES` COMO REFERENCIA VISUAL SOBERANA DO LADO DIREITO.',
         documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-014---cabecalho-padrao-de-programas-escola-e-financeiro',
         componentPaths: [
             'frontend/src/app/components/principal-program-header.tsx',
@@ -37,13 +37,15 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/principal/notificacoes/page.tsx',
             'frontend/src/app/principal/pessoas/page.tsx',
             'frontend/src/app/principal/financeiro/[section]/page.tsx',
+            'frontend/src/app/principal/professores/page.tsx',
+            'frontend/src/app/principal/mensalidades/page.tsx',
         ],
         status: 'approved',
     },
     {
         id: 'grid-list-toolbar-school-finance',
         name: 'TOOLBAR PADRAO DE GRID ESCOLA/FINANCEIRO',
-        summary: 'BARRA OPERACIONAL DE LISTAGEM COM ACOES PRINCIPAIS A ESQUERDA, CONTROLES/TIPO SEMAFORO NO CENTRO E CONTADOR DE REGISTROS A DIREITA, USADA SOMENTE EM TELAS COM GRID.',
+        summary: 'BARRA OPERACIONAL DE LISTAGEM COM ACAO DE INCLUIR NO INICIO DA LINHA DA BUSCA QUANDO EXISTIR, BOTAO COLUNAS E BOTAO DE EXPORTACAO/IMPRESSAO A ESQUERDA, CONTROLES/TIPO SEMAFORO NO CENTRO E CONTADOR DE REGISTROS A DIREITA, SEM FAIXA EXPLICATIVA ENTRE CABECALHO E GRID, USADA SOMENTE EM TELAS COM GRID.',
         documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-015---toolbar-padrao-de-grid-escola-e-financeiro',
         componentPaths: [
             'frontend/src/app/components/grid-footer-controls.tsx',

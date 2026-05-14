@@ -8,6 +8,7 @@ import GridFooterControls from '@/app/components/grid-footer-controls';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
@@ -1251,22 +1252,43 @@ export default function GradeHorariaPlanejadaPage() {
 
     return (
         <div className="w-full space-y-8">
-            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-[#153a6a]">Grade horária</h1>
-                    <p className="mt-1 font-medium text-slate-500">Monte a grade planejada da escola por ano letivo, turma, dia e aula.</p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={openExportModal}
-                        className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50"
-                    >
-                        Exportar
-                    </button>
-                </div>
-            </div>
+            <PrincipalProgramHeader
+                eyebrow="Central acadêmica"
+                title="Grade horária"
+                description="Monte a grade planejada da escola por ano letivo, turma, dia e aula."
+                schoolName={currentTenant?.name}
+                logoUrl={currentTenant?.logoUrl || null}
+                secondaryAction={
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                            title="Recolher menu lateral"
+                            aria-label="Recolher menu lateral"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                            title="Abrir notificações"
+                            aria-label="Abrir notificações"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                        </button>
+                    </>
+                }
+            />
 
             {!isModalOpen && errorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{errorStatus}</div> : null}
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
@@ -1274,6 +1296,23 @@ export default function GradeHorariaPlanejadaPage() {
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band border-b px-6 py-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        {canManage ? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setErrorStatus(null);
+                                    setSuccessStatus(null);
+                                    openCreateModal();
+                                }}
+                                title="Cadastrar novo lançamento"
+                                aria-label="Cadastrar novo lançamento"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        ) : null}
                         <select
                             value={columnFilters.schoolYearId}
                             onChange={(event) => setColumnFilters((current) => ({ ...current, schoolYearId: event.target.value }))}
@@ -1415,6 +1454,7 @@ export default function GradeHorariaPlanejadaPage() {
                     key={`grade-horaria-footer-${filteredItems.length}`}
                     recordsCount={Number(filteredItems.length)}
                     onOpenColumns={() => setIsGridConfigOpen(true)}
+                    onOpenExport={openExportModal}
                     statusFilter={statusFilter}
                     onStatusFilterChange={setStatusFilter}
                     activeLabel="Mostrar somente lançamentos ativos"

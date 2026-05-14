@@ -5,6 +5,7 @@ import GridStatusFilter, { type GridStatusFilterValue } from '@/app/components/g
 type GridFooterControlsProps = {
     recordsCount: number;
     onOpenColumns: () => void;
+    onOpenExport?: () => void;
     statusFilter: GridStatusFilterValue;
     onStatusFilterChange: (value: GridStatusFilterValue) => void;
     activeLabel: string;
@@ -20,6 +21,7 @@ type GridFooterControlsProps = {
 export default function GridFooterControls({
     recordsCount,
     onOpenColumns,
+    onOpenExport,
     statusFilter,
     onStatusFilterChange,
     activeLabel,
@@ -32,7 +34,7 @@ export default function GridFooterControls({
     return (
         <div className="dashboard-band-footer border-t bg-slate-200/70 px-6 py-3 text-sm font-bold text-slate-700">
             <div className="grid items-center gap-3 lg:grid-cols-[auto_1fr_auto]">
-                <div className="justify-self-start">
+                <div className="flex items-center gap-3 justify-self-start">
                     <button
                         type="button"
                         onClick={onOpenColumns}
@@ -44,6 +46,19 @@ export default function GridFooterControls({
                         </svg>
                         Colunas
                     </button>
+                    {onOpenExport ? (
+                        <button
+                            type="button"
+                            onClick={onOpenExport}
+                            title="Abrir exportação e impressão"
+                            aria-label="Abrir exportação e impressão"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V4h12v5M6 18h12v2H6v-2zm-1-8h14a2 2 0 012 2v4H3v-4a2 2 0 012-2z" />
+                            </svg>
+                        </button>
+                    ) : null}
                 </div>
 
                 <div className="flex w-full flex-col items-center gap-3 justify-self-center">

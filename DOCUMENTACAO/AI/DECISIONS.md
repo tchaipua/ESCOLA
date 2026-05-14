@@ -123,3 +123,12 @@ Para cada decisao, registrar:
 - Impacto: cada tela passa a documentar sua propria logica operacional, tabelas fisicas, aliases, relacionamentos, metricas/campos exibidos, filtros, ordenacao e SQL/base logica da consulta
 - Alternativas consideradas: manter apenas copia simples do nome da tela; documentar logica somente em arquivos externos; criar auditoria apenas para telas financeiras
 - Status: aceita
+
+## DEC-0013
+
+- Data: 2026-05-13
+- Contexto: necessidade de preservar de forma oficial o cabecalho aprovado das telas Escola e Financeiro, evitando novas divergencias no bloco direito de usuario e `VOLTAR`
+- Decisao: adotar `PRINCIPAL_PROFESSORES` como referencia visual soberana do cabecalho padrao de programas, com reutilizacao tecnica por meio de `principal-program-header.tsx` + `principal/layout.tsx`, mantendo aplicacao manual tela por tela e proibindo rollout automatico em telas ja existentes sem validacao explicita do usuario
+- Impacto: o padrao do cabecalho passa a ficar salvo como regra oficial do produto, reaproveitavel tanto no sistema Escola quanto no Financeiro, com menor risco de regressao visual em novas manutencoes
+- Alternativas consideradas: manter apenas referencia por imagem/conversa; aplicar alteracao em lote em todas as telas imediatamente; permitir variacoes locais sem componente base nem documentacao
+- Status: aceita

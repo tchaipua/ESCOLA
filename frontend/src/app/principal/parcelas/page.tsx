@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridFooterControls from '@/app/components/grid-footer-controls';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import {
     getDashboardAuthContext,
@@ -13,7 +15,6 @@ import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const FINANCEIRO_FRONTEND_URL =
     process.env.NEXT_PUBLIC_FINANCEIRO_FRONTEND_URL || 'http://localhost:3003';
-const SCREEN_ID = 'PRINCIPAL_PARCELAS_CAIXA_GERAL';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_PARCELAS_ALERTA_GERAL';
 
 type InstallmentListStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'ALL';
@@ -170,6 +171,12 @@ function getInstallmentStatusClasses(item: InstallmentResponse) {
     }
 
     return 'border-blue-200 bg-blue-50 text-blue-700';
+}
+
+function mapInstallmentStatusToGridFilter(status: InstallmentListStatus) {
+    if (status === 'OPEN') return 'ACTIVE' as const;
+    if (status === 'ALL') return 'ALL' as const;
+    return 'INACTIVE' as const;
 }
 
 export default function PrincipalParcelasPage() {
@@ -435,6 +442,31 @@ export default function PrincipalParcelasPage() {
         });
     }
 
+    function handleOpenColumns() {
+        setAlertModal({
+            type: 'warning',
+            title: 'Colunas ainda indisponíveis',
+            message: 'A configuração de colunas desta listagem ainda não foi liberada nesta tela.',
+        });
+    }
+
+    function handleOpenExport() {
+        setAlertModal({
+            type: 'warning',
+            title: 'Exportação ainda indisponível',
+            message: 'A exportação desta listagem ainda não foi liberada nesta tela.',
+        });
+    }
+
+    function handleFooterStatusShortcut(nextValue: 'ACTIVE' | 'ALL' | 'INACTIVE') {
+        const nextStatus: InstallmentListStatus =
+            nextValue === 'ACTIVE' ? 'OPEN' : nextValue === 'ALL' ? 'ALL' : 'PAID';
+
+        setFilters((current) => ({ ...current, status: nextStatus }));
+        setSelectedIds([]);
+        setAppliedFilters((current) => ({ ...current, status: nextStatus }));
+    }
+
     async function handleSaveInstallmentChanges() {
         if (!authContext.token || !editInstallmentModal || isUpdatingInstallment) return;
 
@@ -572,79 +604,103 @@ export default function PrincipalParcelasPage() {
     return (
         <div className="space-y-6">
             <section className={`${cardClass} overflow-hidden`}>
-                <div className="bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-6 text-white">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">Financeiro integrado</div>
-                            <h1 className="mt-2 text-3xl font-black tracking-tight">Parcelas</h1>
-                            <p className="mt-2 max-w-3xl text-sm font-medium text-blue-100/90">
-                                Consulte parcelas abertas, fechadas ou vencidas, filtre por aluno ou responsável pagador e faça a baixa em dinheiro direto nesta tela.
-                            </p>
-                        </div>
-                        <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-blue-50">
-                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Filtro inicial</div>
-                            <div className="mt-1 text-base font-black">ABERTAS</div>
-                            <div className="mt-1 text-xs text-blue-100/85">Sempre que a tela abrir, as parcelas em aberto serão carregadas primeiro.</div>
-                        </div>
-                    </div>
-                </div>
-                <div className="border-t border-slate-100 bg-slate-50 px-6 py-4">
-                    <ScreenNameCopy screenId={SCREEN_ID} className="justify-end text-slate-500" disableMargin />
-                </div>
+                <PrincipalProgramHeader
+                    eyebrow="Financeiro integrado"
+                    title="Parcelas"
+                    description="Consulte parcelas abertas, fechadas ou vencidas, filtre por aluno ou responsável pagador e faça a baixa em dinheiro direto nesta tela."
+                    schoolName={tenantBranding?.schoolName}
+                    logoUrl={tenantBranding?.logoUrl}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Abrir notificações"
+                                aria-label="Abrir notificações"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </button>
+                        </>
+                    }
+                />
             </section>
 
-            <section className={`${cardClass} p-6`}>
-                <div className="grid gap-4 xl:grid-cols-[1.4fr_1.4fr_0.9fr_auto_auto]">
-                    <label>
-                        <span className={labelClass}>Aluno</span>
-                        <input
-                            value={filters.studentName}
-                            onChange={(event) => setFilters((current) => ({ ...current, studentName: event.target.value }))}
-                            className={inputClass}
-                            placeholder="NOME DO ALUNO"
-                        />
-                    </label>
+            <section className={`${cardClass} overflow-hidden`}>
+                <div className="border-b border-slate-100 px-6 py-5">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                        <div className="grid flex-1 gap-4 xl:grid-cols-[1.2fr_1.2fr_0.7fr]">
+                            <label>
+                                <span className={labelClass}>Aluno</span>
+                                <input
+                                    value={filters.studentName}
+                                    onChange={(event) => setFilters((current) => ({ ...current, studentName: event.target.value }))}
+                                    className={inputClass}
+                                    placeholder="NOME DO ALUNO"
+                                />
+                            </label>
 
-                    <label>
-                        <span className={labelClass}>Responsável pelo pagamento</span>
-                        <input
-                            value={filters.payerName}
-                            onChange={(event) => setFilters((current) => ({ ...current, payerName: event.target.value }))}
-                            className={inputClass}
-                            placeholder="NOME DO PAGADOR"
-                        />
-                    </label>
+                            <label>
+                                <span className={labelClass}>Responsável pelo pagamento</span>
+                                <input
+                                    value={filters.payerName}
+                                    onChange={(event) => setFilters((current) => ({ ...current, payerName: event.target.value }))}
+                                    className={inputClass}
+                                    placeholder="NOME DO PAGADOR"
+                                />
+                            </label>
 
-                    <label>
-                        <span className={labelClass}>Situação</span>
-                        <select
-                            value={filters.status}
-                            onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as InstallmentListStatus }))}
-                            className={inputClass}
-                        >
-                            {STATUS_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                            <label>
+                                <span className={labelClass}>Situação</span>
+                                <select
+                                    value={filters.status}
+                                    onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as InstallmentListStatus }))}
+                                    className={inputClass}
+                                >
+                                    {STATUS_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
 
-                    <button
-                        type="button"
-                        onClick={handleApplyFilters}
-                        className="self-end rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700"
-                    >
-                        Filtrar
-                    </button>
+                        <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+                            <button
+                                type="button"
+                                onClick={handleApplyFilters}
+                                className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-white shadow-lg shadow-blue-600/25 transition hover:bg-blue-700"
+                            >
+                                Filtrar
+                            </button>
 
-                    <button
-                        type="button"
-                        onClick={handleResetFilters}
-                        className="self-end rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-slate-600 transition hover:bg-slate-100"
-                    >
-                        Limpar
-                    </button>
+                            <button
+                                type="button"
+                                onClick={handleResetFilters}
+                                className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold uppercase tracking-[0.22em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Limpar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -765,18 +821,37 @@ export default function PrincipalParcelasPage() {
 
             <section className={`${cardClass} overflow-hidden`}>
                 <div className="border-b border-slate-100 px-6 py-5">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Resultado da consulta</div>
-                            <h2 className="mt-1 text-xl font-black text-slate-900">
-                                {isLoadingInstallments ? 'Carregando parcelas...' : `${installments.length} parcela(s) encontrada(s)`}
-                            </h2>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Resultado da consulta</div>
+                                <h2 className="mt-1 text-xl font-black text-slate-900">
+                                    {isLoadingInstallments ? 'Carregando parcelas...' : `${installments.length} parcela(s) encontrada(s)`}
+                                </h2>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                <span>Filtro ativo:</span>
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
+                                    {STATUS_OPTIONS.find((option) => option.value === appliedFilters.status)?.label || 'ABERTAS'}
+                                </span>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            <span>Filtro ativo:</span>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-700">
-                                {STATUS_OPTIONS.find((option) => option.value === appliedFilters.status)?.label || 'ABERTAS'}
-                            </span>
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {appliedFilters.studentName.trim() ? (
+                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                        Aluno: {appliedFilters.studentName}
+                                    </span>
+                                ) : null}
+                                {appliedFilters.payerName.trim() ? (
+                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                        Pagador: {appliedFilters.payerName}
+                                    </span>
+                                ) : null}
+                                <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+                                    Situação: {STATUS_OPTIONS.find((option) => option.value === appliedFilters.status)?.label || 'ABERTAS'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -870,6 +945,20 @@ export default function PrincipalParcelasPage() {
                         </tbody>
                     </table>
                 </div>
+                <GridFooterControls
+                    recordsCount={installments.length}
+                    onOpenColumns={handleOpenColumns}
+                    onOpenExport={handleOpenExport}
+                    statusFilter={mapInstallmentStatusToGridFilter(appliedFilters.status)}
+                    onStatusFilterChange={handleFooterStatusShortcut}
+                    activeLabel="Mostrar somente parcelas abertas"
+                    allLabel="Mostrar todas as parcelas"
+                    inactiveLabel="Atalho para parcelas fechadas"
+                    aggregateSummaries={[
+                        { key: 'selecionadas', label: 'Selecionadas', value: String(selectedInstallments.length) },
+                        { key: 'valor', label: 'Valor selecionado', value: formatCurrency(selectedTotalAmount) },
+                    ]}
+                />
             </section>
 
             {editInstallmentModal ? (

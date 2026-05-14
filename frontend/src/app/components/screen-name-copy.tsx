@@ -18,9 +18,224 @@ type ScreenNameCopyProps = {
 type ScreenAuditMetadata = {
   systemName: string;
   originText?: string;
+  auditText?: string;
+  sqlText?: string;
 };
 
 const SCREEN_AUDIT_METADATA: Record<string, ScreenAuditMetadata> = {
+  PRINCIPAL_PROFESSORES: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\professores\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutenção do papel de professor.
+
+TABELAS PRINCIPAIS:
+- teachers (T) - cadastro operacional de professores
+- subjects (S) - cadastro de disciplinas da escola
+- teacher_subjects (TS) - vinculo entre professor e disciplina
+
+RELACIONAMENTOS:
+- teachers.id = teacher_subjects.teacherId
+- subjects.id = teacher_subjects.subjectId
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+SELECT DISTINCT T.*
+FROM teachers T
+LEFT JOIN teacher_subjects TS
+  ON TS.teacherId = T.id
+ AND TS.tenantId = T.tenantId
+ AND TS.canceledAt IS NULL
+LEFT JOIN subjects S
+  ON S.id = TS.subjectId
+ AND S.tenantId = TS.tenantId
+ AND S.canceledAt IS NULL
+WHERE T.tenantId = :schoolId
+  AND (
+    :searchTerm = ''
+    OR UPPER(COALESCE(T.name, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.email, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.cpf, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.phone, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.whatsapp, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+  )
+  AND (
+    :statusFilter = 'ALL'
+    OR (:statusFilter = 'ACTIVE' AND T.canceledAt IS NULL)
+    OR (:statusFilter = 'INACTIVE' AND T.canceledAt IS NOT NULL)
+  )
+  AND (
+    :subjectId = 'ALL'
+    OR S.id = :subjectId
+  )
+ORDER BY T.canceledAt ASC, T.name ASC;
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- T.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId e o valor da empresa / escola logada no momento
+- na execucao real, :schoolId vem do contexto autenticado da sessao`,
+    sqlText: `SELECT DISTINCT T.*
+FROM teachers T
+LEFT JOIN teacher_subjects TS
+  ON TS.teacherId = T.id
+ AND TS.tenantId = T.tenantId
+ AND TS.canceledAt IS NULL
+LEFT JOIN subjects S
+  ON S.id = TS.subjectId
+ AND S.tenantId = TS.tenantId
+ AND S.canceledAt IS NULL
+WHERE T.tenantId = :schoolId
+  AND (
+    :searchTerm = ''
+    OR UPPER(COALESCE(T.name, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.email, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.cpf, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.phone, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+    OR UPPER(COALESCE(T.whatsapp, '')) LIKE '%' || UPPER(:searchTerm) || '%'
+  )
+  AND (
+    :statusFilter = 'ALL'
+    OR (:statusFilter = 'ACTIVE' AND T.canceledAt IS NULL)
+    OR (:statusFilter = 'INACTIVE' AND T.canceledAt IS NOT NULL)
+  )
+  AND (
+    :subjectId = 'ALL'
+    OR S.id = :subjectId
+  )
+ORDER BY T.canceledAt ASC, T.name ASC;`,
+  },
+  PRINCIPAL_PROFESSORES_STATUS_MODAL: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\professores\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Modal de confirmacao de status do professor.
+
+TABELAS PRINCIPAIS:
+- teachers (T) - cadastro operacional de professores
+
+RELACIONAMENTOS:
+- Nao aplicavel neste modal.
+
+METRICAS / CAMPOS EXIBIDOS:
+- nome do professor
+- status atual
+- acao de ativacao/inativacao
+
+FILTROS APLICADOS:
+- professor selecionado na grid
+
+ORDENACAO:
+- Nao aplicavel.
+
+ENDPOINTS / BASE LOGICA:
+- PATCH /teachers/{id}/status
+
+OBSERVACAO:
+- o modal apenas confirma a alteracao; a persistencia acontece pela rota de status no backend.`,
+  },
+  PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\professores\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Modal principal de cadastro/edicao de docente.
+
+TABELAS PRINCIPAIS:
+- teachers (T) - cadastro operacional de professores
+- teacher_subjects (TS) - vinculo entre professor e disciplina
+- subjects (S) - cadastro de disciplinas da escola
+
+RELACIONAMENTOS:
+- teachers.id = teacher_subjects.teacherId
+- subjects.id = teacher_subjects.subjectId
+
+METRICAS / CAMPOS EXIBIDOS:
+- dados cadastrais do professor
+- contato e endereco
+- acesso PWA
+- disciplinas vinculadas
+- valores por aula e vigencia por disciplina
+
+FILTROS APLICADOS:
+- edicao do professor selecionado
+- validacoes de CPF, e-mail e disciplina
+
+ORDENACAO:
+- Nao aplicavel.
+
+ENDPOINTS / BASE LOGICA:
+- POST /teachers
+- PATCH /teachers/{id}
+- POST /teachers/{id}/subjects
+- PATCH /teachers/{id}/subjects/{subjectId}
+- DELETE /teachers/{id}/subjects/{subjectId}
+
+OBSERVACAO:
+- a tela usa validacoes de frontend e envia a persistencia final para as rotas de professores e vinculos disciplinares.`,
+  },
+  PRINCIPAL_PROFESSORES_POPUP_CPF_CONFLICT: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\professores\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Popup de alerta para conflito de CPF no cadastro do docente.
+
+TABELAS PRINCIPAIS:
+- people / cadastro-base compartilhado (via servico de busca compartilhada)
+
+RELACIONAMENTOS:
+- validacao cruzada por CPF entre papeis da mesma pessoa
+
+METRICAS / CAMPOS EXIBIDOS:
+- nome encontrado
+- papeis ja vinculados ao CPF
+- CPF informado
+
+FILTROS APLICADOS:
+- CPF digitado no formulario do professor
+
+ORDENACAO:
+- Nao aplicavel.
+
+ENDPOINTS / BASE LOGICA:
+- validacao compartilhada de CPF antes do POST/PATCH de /teachers
+
+OBSERVACAO:
+- o popup e apenas preventivo; a logica de origem vem da consulta compartilhada usada no formulario.`,
+  },
+  PRINCIPAL_PROFESSORES_EMAIL_USAGE_MODAL: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\professores\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Popup de alerta para uso de e-mail ja existente.
+
+TABELAS PRINCIPAIS:
+- users / acessos vinculados
+- people / cadastro-base compartilhado
+
+RELACIONAMENTOS:
+- validacao cruzada por e-mail entre registros e escolas
+
+METRICAS / CAMPOS EXIBIDOS:
+- e-mail informado
+- locais onde o e-mail ja esta em uso
+- escola atual ou outras escolas
+- tipo de entidade vinculada
+
+FILTROS APLICADOS:
+- e-mail digitado no formulario do professor
+
+ORDENACAO:
+- Nao aplicavel.
+
+ENDPOINTS / BASE LOGICA:
+- validacao compartilhada de e-mail antes do POST/PATCH de /teachers
+
+OBSERVACAO:
+- o popup informa conflito de uso; a busca detalhada do e-mail e feita por servico auxiliar antes da gravacao.`,
+  },
   PRINCIPAL_FINANCEIRO_CAIXA: {
     systemName: 'Sistema Financeiro',
     originText:
@@ -165,6 +380,8 @@ export default function ScreenNameCopy({
         screenId={screenId}
         systemName={auditMetadata.systemName}
         originText={auditMetadata.originText}
+        auditText={auditMetadata.auditText}
+        sqlText={auditMetadata.sqlText}
         onClose={() => setIsAuditOpen(false)}
       />
     ) : null}

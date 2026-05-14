@@ -1,18 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext, hasAnyDashboardPermission, hasDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { clearStoredSession } from '@/app/lib/auth-storage';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
-const SCREEN_ID = 'PRINCIPAL_MENSALIDADES_LANCAMENTO_GERAL';
 const CONFIRMATION_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_CONFIRMAR_EFETUAR_LANCAMENTOS';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_ALERTA_GERAL';
-const COPY_FEEDBACK_TIMEOUT = 1800;
 
 const LAUNCH_TYPE_OPTIONS = [
     { value: 'MENSALIDADE', label: 'MENSALIDADE' },
@@ -189,9 +188,7 @@ export default function PrincipalMensalidadesPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
-    const [screenCopyStatus, setScreenCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
     const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
-    const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const router = useRouter();
 
     const authContext = isClientReady ? getDashboardAuthContext() : EMPTY_AUTH_CONTEXT;
@@ -251,14 +248,6 @@ export default function PrincipalMensalidadesPage() {
         void loadBootstrap();
     }, [isClientReady, loadBootstrap]);
 
-    useEffect(() => {
-        return () => {
-            if (copyTimerRef.current) {
-                clearTimeout(copyTimerRef.current);
-            }
-        };
-    }, []);
-
     const submitDisabled = useMemo(() => {
         if (bootstrapError) return true;
         if (!canManageLaunches || !isMonthlyType) return true;
@@ -273,49 +262,16 @@ export default function PrincipalMensalidadesPage() {
         return bootstrapData?.seriesClasses.find((item) => item.id === formState.seriesClassId)?.label || 'TURMA NÃO SELECIONADA';
     }, [bootstrapData?.seriesClasses, formState.seriesClassId]);
 
-    const resetCopyFeedback = useCallback(() => {
-        if (copyTimerRef.current) {
-            clearTimeout(copyTimerRef.current);
-        }
-
-        copyTimerRef.current = setTimeout(() => setScreenCopyStatus('idle'), COPY_FEEDBACK_TIMEOUT);
-    }, []);
-
-    const handleCopyScreenName = useCallback(async () => {
-        if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-            setScreenCopyStatus('error');
-            resetCopyFeedback();
-            return;
-        }
-
-        try {
-            await navigator.clipboard.writeText(SCREEN_ID);
-            setScreenCopyStatus('copied');
-        } catch (error) {
-            console.error('Falha ao copiar nome da tela', error);
-            setScreenCopyStatus('error');
-        } finally {
-            resetCopyFeedback();
-        }
-    }, [resetCopyFeedback]);
-
     const handleCopyConfirmationScreenName = useCallback(async () => {
-        if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-            setScreenCopyStatus('error');
-            resetCopyFeedback();
-            return;
-        }
-
         try {
+            if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+                return;
+            }
             await navigator.clipboard.writeText(CONFIRMATION_SCREEN_ID);
-            setScreenCopyStatus('copied');
         } catch (error) {
             console.error('Falha ao copiar nome da tela de confirmação', error);
-            setScreenCopyStatus('error');
-        } finally {
-            resetCopyFeedback();
         }
-    }, [resetCopyFeedback]);
+    }, []);
 
     const handleScopeChange = (nextScope: LaunchScope) => {
         setFormState((current) => ({
@@ -443,40 +399,45 @@ export default function PrincipalMensalidadesPage() {
     }
 
     return (
-        <div className="space-y-6">
-            <section className={`${cardClass} overflow-hidden`}>
-                <div className="bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-6 text-white">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">Financeiro integrado</div>
-                            <div className="mt-2 flex flex-wrap items-center gap-3">
-                                <h1 className="text-3xl font-black tracking-tight">Efetuar Lançamentos</h1>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleCopyScreenName()}
-                                    title="Copiar nome da tela"
-                                    aria-label={`Copiar o identificador ${SCREEN_ID}`}
-                                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                                >
-                                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M8 7h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z" />
-                                        <path d="M9 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                    </svg>
-                                </button>
-                                {screenCopyStatus !== 'idle' ? (
-                                    <span className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">
-                                        {screenCopyStatus === 'copied' ? 'Copiado' : 'Falha ao copiar'}
-                                    </span>
-                                ) : null}
-                            </div>
-                            <p className="mt-2 max-w-3xl text-sm font-medium text-blue-100/90">
-                                Gere mensalidades por todos os alunos, por série ou por turma. Os títulos e parcelas são enviados direto para o Financeiro, com bloqueio de duplicidade na mesma competência.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-            </section>
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+            <div className="flex w-full flex-col bg-transparent">
+            <PrincipalProgramHeader
+                eyebrow="Financeiro integrado"
+                title="Efetuar Lançamentos"
+                description="Gere mensalidades por todos os alunos, por série ou por turma. Os títulos e parcelas são enviados direto para o Financeiro, com bloqueio de duplicidade na mesma competência."
+                schoolName={tenantBranding?.schoolName}
+                logoUrl={tenantBranding?.logoUrl}
+                secondaryAction={
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                            title="Recolher menu lateral"
+                            aria-label="Recolher menu lateral"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                            title="Abrir notificações"
+                            aria-label="Abrir notificações"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                        </button>
+                    </>
+                }
+            />
             {successStatus ? (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-700">
                     {successStatus}
@@ -966,7 +927,7 @@ export default function PrincipalMensalidadesPage() {
                     </div>
                 </div>
             ) : null}
-
+            </div>
         </div>
     );
 }

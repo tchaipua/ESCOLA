@@ -31,7 +31,7 @@ const MENU_ITEMS = [
   },
   {
     id: 'lotes',
-    label: 'Registro de Boletos',
+    label: 'Envio\\Registro Boletos',
     href: '/principal/financeiro/lotes',
     description: '',
     title: 'REGISTRAR BOLETOS NO BANCO DAS PARCELAS GERADAS',
@@ -39,21 +39,21 @@ const MENU_ITEMS = [
   },
   {
     id: 'retornos',
-    label: 'Retornos',
+    label: 'Retorno Boletos',
     href: '/principal/financeiro/retornos',
     description: 'Importações e conferências de retornos bancários.',
     image: '/principal-financeiro/retornos.svg?v=2',
   },
   {
     id: 'parcelas',
-    label: 'Parcelas',
+    label: 'Parcelas a Receber',
     href: '/principal/financeiro/parcelas',
     description: 'Parcelas abertas, vencidas e baixadas da escola.',
     image: '/principal-financeiro/parcelas.svg?v=2',
   },
   {
     id: 'caixa',
-    label: 'Caixa',
+    label: 'Controle Caixa',
     href: '/principal/financeiro/caixa',
     description: 'Abertura e fechamento do caixa do usuário logado.',
     image: '/principal-financeiro/caixa.svg?v=2',

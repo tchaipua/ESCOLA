@@ -875,13 +875,38 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';
     const showSummaryNav = showDashboardProgram;
     const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
+    const showInstallmentsHeroHeader = pathname === '/principal/parcelas';
     const showPrincipalHeroHeader = pathname === '/principal';
     const showNotificationsHeroHeader = pathname === '/principal/notificacoes';
     const showPeopleHeroHeader = pathname === '/principal/pessoas';
     const showCommunicationsHeroHeader = pathname === '/principal/comunicacoes';
+    const showGuardiansHeroHeader = pathname === '/principal/responsaveis';
+    const showSeriesHeroHeader = pathname === '/principal/series';
+    const showClassesHeroHeader = pathname === '/principal/turmas';
+    const showGradeHeroHeader = pathname === '/principal/grade';
+    const showWeeklyGradeHeroHeader = pathname === '/principal/grade-horaria';
+    const showAnnualGradeHeroHeader = pathname === '/principal/grade-anual';
+    const showStudentsHeroHeader = pathname === '/principal/alunos';
     const showTeachersHeroHeader = pathname === '/principal/professores';
+    const showMonthlyFeesHeroHeader = pathname === '/principal/mensalidades';
+    const showSubjectsHeroHeader = pathname === '/principal/disciplinas';
     const showCustomHeroHeader =
-        showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showTeachersHeroHeader;
+        showFinanceiroModuleNav ||
+        showInstallmentsHeroHeader ||
+        showPrincipalHeroHeader ||
+        showNotificationsHeroHeader ||
+        showPeopleHeroHeader ||
+        showCommunicationsHeroHeader ||
+        showGuardiansHeroHeader ||
+        showSeriesHeroHeader ||
+        showClassesHeroHeader ||
+        showGradeHeroHeader ||
+        showWeeklyGradeHeroHeader ||
+        showAnnualGradeHeroHeader ||
+        showStudentsHeroHeader ||
+        showTeachersHeroHeader ||
+        showMonthlyFeesHeroHeader ||
+        showSubjectsHeroHeader;
     const summaryHrefSet = new Set(['/principal', '/principal/dashboard', ...summaryNavPaths]);
     const menuPrincipalItem = navItems.find((item) => item.href === '/principal');
     const menuDashboardItem = navItems.find((item) => item.href === '/principal/dashboard');
@@ -956,7 +981,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const notificationsButtonClassName = hasAllNotificationsRead
         ? 'relative p-2 text-emerald-600 hover:text-emerald-700 transition-colors'
         : 'relative p-2 text-slate-400 hover:text-blue-600 transition-colors';
-    const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showTeachersHeroHeader
+    const userMenuButtonClassName = showFinanceiroModuleNav || showInstallmentsHeroHeader || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showGradeHeroHeader || showWeeklyGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
     const userMenuTrigger = (
@@ -1095,7 +1120,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showTeachersHeroHeader ? (
+                        {!showFinanceiroModuleNav && !showInstallmentsHeroHeader && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? (
                             <button
                                 type="button"
                                 onClick={() => router.push('/principal/notificacoes')}
@@ -1114,13 +1139,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </button>
                         ) : null}
 
-                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showTeachersHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
-                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showTeachersHeroHeader ? userMenuTrigger : null}
+                        {!showFinanceiroModuleNav && !showInstallmentsHeroHeader && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
+                        {!showFinanceiroModuleNav && !showInstallmentsHeroHeader && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? userMenuTrigger : null}
                     </div>
                 </header>
 
                 <main className="relative flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
-                    {showFinanceiroModuleNav ? (
+                    {showFinanceiroModuleNav && !showInstallmentsHeroHeader ? (
                         <div className="pointer-events-none absolute left-6 right-6 top-8 z-20 flex justify-end md:left-8 md:right-12 md:top-10">
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
                                 {userMenuTrigger}
@@ -1133,6 +1158,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                     </svg>
                                     <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showInstallmentsHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    Voltar
                                 </button>
                             </div>
                         </div>
@@ -1205,6 +1247,142 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </div>
                         </div>
                     ) : null}
+                    {showMonthlyFeesHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showStudentsHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showGuardiansHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showSeriesHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showClassesHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showGradeHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showWeeklyGradeHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showAnnualGradeHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
                     {showTeachersHeroHeader ? (
                         <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
@@ -1218,6 +1396,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                     </svg>
                                     <span>Voltar</span>
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+                    {showSubjectsHeroHeader ? (
+                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                            <div className="pointer-events-auto flex flex-col items-end gap-3">
+                                {userMenuTrigger}
+                                <button
+                                    type="button"
+                                    onClick={() => router.back()}
+                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                                >
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    Voltar
                                 </button>
                             </div>
                         </div>
