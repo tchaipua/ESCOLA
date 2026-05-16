@@ -218,6 +218,20 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
 - Data: 2026-05-07
 - Padrao: sem faixa explicativa em telas com grid/lista
 - Contexto: definicao de que a tela com listagem deve ficar mais objetiva, sem bloco textual intermediario entre o cabecalho principal e a area do grid
+
+### UIP-0019
+
+- Data: 2026-05-15
+- Padrao: popup institucional com auditoria tecnica obrigatoria desde a criacao
+- Contexto: necessidade de transformar em regra explicita que todo novo popup da Escola ja nasca com identidade visual institucional e rastreabilidade tecnica completa
+- Alteracao: o padrao oficial de popup passou a exigir, por default, logotipo no cabecalho, nome tecnico exclusivo, bloco `Tela:` isolado no rodape e abertura da logica usada com SQL/base logica, tabelas, relacionamentos, filtros e ordenacao
+- Componentes/Telas:
+  - `frontend/src/app/components/screen-name-copy.tsx`
+  - `frontend/src/app/components/screen-audit-modal.tsx`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/CODING_RULES.md`
+- Status: aprovado
 - Alteracao: o padrao oficial de telas com grid da Escola e do Financeiro passou a vedar faixa explicativa contextual nessa posicao, mantendo foco direto na toolbar e na listagem
 - Componentes/Telas:
   - `frontend/src/app/principal/professores/page.tsx`

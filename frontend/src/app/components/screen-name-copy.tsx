@@ -13,6 +13,9 @@ type ScreenNameCopyProps = {
   label?: string;
   className?: string;
   disableMargin?: boolean;
+  originText?: string;
+  auditText?: string;
+  sqlText?: string;
 };
 
 type ScreenAuditMetadata = {
@@ -286,8 +289,17 @@ export default function ScreenNameCopy({
   label = 'Tela',
   className = '',
   disableMargin = false,
+  originText,
+  auditText,
+  sqlText,
 }: ScreenNameCopyProps) {
-  const auditMetadata = resolveScreenAuditMetadata(screenId);
+  const registeredAuditMetadata = resolveScreenAuditMetadata(screenId);
+  const auditMetadata: ScreenAuditMetadata = {
+    systemName: registeredAuditMetadata.systemName,
+    originText: originText || registeredAuditMetadata.originText,
+    auditText: auditText || registeredAuditMetadata.auditText,
+    sqlText: sqlText || registeredAuditMetadata.sqlText,
+  };
   const [status, setStatus] = useState<CopyStatus>('idle');
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -155,10 +155,12 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
     {
         id: 'institutional-popup-identity',
         name: 'POPUP INSTITUCIONAL COM IDENTIFICADOR',
-        summary: 'POPUP/MODAL COM LOGO NO CABECALHO E BLOCO "TELA:" ISOLADO EM LINHA PROPRIA NO RODAPE COM BOTAO DE COPIA.',
+        summary: 'POPUP/MODAL COM LOGO NO CABECALHO, NOME TECNICO EXCLUSIVO E BLOCO "TELA:" ISOLADO EM LINHA PROPRIA NO RODAPE COM BOTAO DE COPIA E ABERTURA DA LOGICA/SQL DA TELA.',
         documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-013---popup-institucional-com-logo-da-escola-e-identificador-exclusivo',
         componentPaths: [
             'frontend/src/app/components/screen-name-copy.tsx',
+            'frontend/src/app/components/audited-popup-shell.tsx',
+            'frontend/src/app/components/screen-audit-modal.tsx',
             'frontend/src/app/lib/tenant-branding-cache.ts',
         ],
         referenceScreens: [

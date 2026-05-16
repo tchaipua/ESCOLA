@@ -35,6 +35,8 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 ### Padrao obrigatorio de identificacao e auditoria visual de telas
 
 - Toda tela criada ou alterada deve manter no rodape o botao de copiar o nome tecnico da tela.
+- Todo novo popup/modal criado deve nascer por padrao com logotipo da escola no cabecalho, nome tecnico exclusivo e bloco de auditoria visual no rodape.
+- O nome tecnico de popup/modal deve ser exclusivo, estavel e nao pode ser reaproveitado por outro fluxo visual.
 - Ao clicar no botao de copiar, alem de copiar o nome da tela, deve abrir um popup central de "Logica Usada nessa Tela".
 - O popup deve seguir o padrao validado na tela `PRINCIPAL_FINANCEIRO_CAIXA_DETALHE`:
   - overlay escuro com blur e modal central moderno;
