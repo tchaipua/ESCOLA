@@ -279,3 +279,27 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `frontend/src/app/lib/ui-standards.ts`
   - `frontend/src/app/principal/financeiro/[section]/page.tsx`
 - Status: aprovado
+
+### UIP-0020
+
+- Data: 2026-05-18
+- Padrao: sem faixa azul interna duplicada em telas com grid/lista
+- Contexto: foi aprovado que novas telas com grid/lista nao devem repetir abaixo do cabecalho principal uma segunda faixa com eyebrow, titulo, descricao e botao de voltar/menu
+- Alteracao: reforco do padrao de grid/lista para abrir direto na barra operacional e no grid; explicacoes adicionais devem aguardar o local especifico indicado pelo usuario
+- Componentes/Telas:
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/produtos/page.tsx`
+- Status: aprovado
+
+### UIP-0021
+
+- Data: 2026-05-18
+- Padrao: identificador unico e exclusivo por tela
+- Contexto: na tela `PRINCIPAL_FINANCEIRO_ESTOQUE`, o grid interno do Financeiro estava exibindo um segundo nome tecnico junto do nome tecnico da tela hospedeira
+- Alteracao: toda tela nova deve ter apenas um nome tecnico visivel por vez; esse nome deve ser exclusivo, estavel e nao reutilizado em outra tela, rota, popup ou fluxo visual
+- Componentes/Telas:
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/produtos/page.tsx`
+- Status: aprovado

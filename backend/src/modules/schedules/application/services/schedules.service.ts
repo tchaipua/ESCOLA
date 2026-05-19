@@ -6,7 +6,11 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateScheduleDto } from "../dto/create-schedule.dto";
 import { UpdateScheduleDto } from "../dto/update-schedule.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class SchedulesService {
@@ -35,6 +39,14 @@ export class SchedulesService {
   }
 
   async create(createDto: CreateScheduleDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const { lessonNumber } = createDto;
     const period = this.normalizePeriod(createDto.period);
     const startTime = this.isInterval(lessonNumber)
@@ -87,8 +99,10 @@ export class SchedulesService {
         startTime,
         endTime,
         tenantId,
+        branchCode: targetBranchCode,
         createdBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 
@@ -120,6 +134,14 @@ export class SchedulesService {
 
   async update(id: string, updateDto: UpdateScheduleDto) {
     const currentSchedule = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      updateDto.branchCode,
+      currentSchedule.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const nextPeriod = updateDto.period
       ? this.normalizePeriod(updateDto.period)
       : currentSchedule.period;
@@ -185,8 +207,10 @@ export class SchedulesService {
           : updateDto.endTime !== undefined
             ? nextEndTime
             : undefined,
+        branchCode: targetBranchCode,
         updatedBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 

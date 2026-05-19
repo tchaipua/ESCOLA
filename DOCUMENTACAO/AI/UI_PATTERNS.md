@@ -235,6 +235,8 @@ Componentes/Telas base:
 - **Contexto**: garantir rastreabilidade e consistência visual em todas as telas administrativas (incluindo modais/popup) para manter histórico e facilitar auditoria.
 - **Comportamento obrigatório**:
   - toda tela, seja uma página inteira ou um modal/popup, deve ter um nome curto exclusivo exibido no rodapé, preferencialmente no canto inferior direito.
+  - toda tela nova deve ter apenas um nome técnico visível por vez; telas embutidas devem ocultar identificadores internos para não duplicar o nome visível da tela hospedeira.
+  - o nome técnico deve ser exclusivo, estável e não pode ser reutilizado por outra tela, rota, popup ou fluxo visual.
   - o nome exibido deve ter um botão de cópia ao lado, reutilizando o componente `ScreenNameCopy` para que o usuário consiga replicar o valor (`Ctrl+C`).
   - quando o layout do modal inclui um botão “Cancelar”, ele deve ser renomeado para “Fechar”, alinhado ao canto inferior esquerdo, com fundo vermelho, texto branco em uppercase e borda arredondada.
   - o rodapé permanece com ações principais à direita (como `Cadastrar`/`Salvar`) e o identificador no lado oposto para manter equilíbrio visual.
@@ -342,6 +344,8 @@ Telas referencia:
 - quando a toolbar padrao estiver presente, o botao textual separado `EXPORTAR` no topo da tela deixa de ser necessario e deve ser removido para evitar duplicidade funcional
 - telas com grid/lista nao devem exibir faixa explicativa contextual entre o cabecalho principal e a area da listagem
 - telas com grid/lista nao devem exibir bloco textual intermediario detalhando o que a tela faz, para que a leitura comece direto na barra operacional e no conteudo da listagem
+- telas com grid/lista nao devem criar uma segunda faixa azul interna repetindo `eyebrow`, titulo, descricao ou botao de voltar/menu logo abaixo do cabecalho principal
+- qualquer explicacao adicional sobre a finalidade da tela deve aguardar o local especifico aprovado pelo usuario
 - quando a tela tiver acao de incluir/cadastrar novo registro, esse botao deve ficar na mesma linha da busca
 - a posicao aprovada para essa acao e no lado esquerdo do campo de busca, como primeiro elemento da linha
 - o botao de incluir deve preferir formato compacto, mostrando apenas o icone `+`, com tooltip explicando a acao de cadastro

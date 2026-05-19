@@ -1,12 +1,15 @@
 import {
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Min,
   Matches,
 } from "class-validator";
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 const DAY_OF_WEEK_VALUES = [
   "SEGUNDA",
@@ -19,6 +22,16 @@ const DAY_OF_WEEK_VALUES = [
 ] as const;
 
 export class CreateClassScheduleItemDto {
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
+
   @ApiProperty({ description: "Ano letivo da grade planejada" })
   @IsUUID("4", { message: "Selecione um ano letivo válido." })
   @IsNotEmpty({ message: "Selecione o ano letivo." })

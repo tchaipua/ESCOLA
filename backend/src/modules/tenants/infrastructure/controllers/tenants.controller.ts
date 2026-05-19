@@ -228,6 +228,171 @@ export class TenantsController {
     return this.tenantsService.findCurrent(currentUser.tenantId);
   }
 
+  @Get("current/branches")
+  @ApiOperation({
+    summary: "Lista as filiais ativas da escola atual",
+  })
+  async listCurrentBranches(@CurrentUser() currentUser: ICurrentUser) {
+    return this.tenantsService.listCurrentBranches(currentUser.tenantId);
+  }
+
+  @Post("current/branches")
+  @ApiOperation({
+    summary: "Cria uma nova filial para a escola atual",
+  })
+  async createCurrentBranch(
+    @CurrentUser() currentUser: ICurrentUser,
+    @Body()
+    payload: {
+      branchCode?: number;
+      name?: string;
+      logoUrl?: string;
+      document?: string;
+      rg?: string;
+      cpf?: string;
+      cnpj?: string;
+      nickname?: string;
+      corporateName?: string;
+      phone?: string;
+      whatsapp?: string;
+      cellphone1?: string;
+      cellphone2?: string;
+      email?: string;
+      zipCode?: string;
+      street?: string;
+      number?: string;
+      city?: string;
+      state?: string;
+      neighborhood?: string;
+      complement?: string;
+      smtpHost?: string;
+      smtpPort?: number | string;
+      smtpTimeout?: number | string;
+      smtpAuthenticate?: boolean | string | number;
+      smtpSecure?: boolean | string | number;
+      smtpAuthType?: string;
+      smtpEmail?: string;
+      smtpPassword?: string;
+      storageProviderAccessKeyId?: string;
+      storageProviderSecretAccessKey?: string;
+      storageBucketName?: string;
+      storageFolderName?: string;
+      storageDefaultAcl?: string;
+      storageDefaultExpiration?: number | string;
+      storageRegion?: string;
+      storageEndpoint?: string;
+      storageCustomEndpoint?: string;
+    },
+  ) {
+    return this.tenantsService.createCurrentBranch(
+      currentUser.tenantId,
+      payload,
+      currentUser,
+    );
+  }
+
+  @Public()
+  @Get(":id/branches")
+  @ApiOperation({
+    summary: "Lista as filiais de uma escola pelo painel MSINFOR ADMIN",
+  })
+  async listBranchesByTenant(@Req() req: Request, @Param("id") id: string) {
+    this.assertMasterPass(req);
+    return this.tenantsService.listBranchesByTenant(id);
+  }
+
+  @Public()
+  @Post(":id/branches")
+  @ApiOperation({
+    summary: "Cria uma filial de uma escola pelo painel MSINFOR ADMIN",
+  })
+  async createBranchByTenant(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body()
+    payload: {
+      branchCode?: number;
+      name?: string;
+      logoUrl?: string;
+      document?: string;
+      rg?: string;
+      cpf?: string;
+      cnpj?: string;
+      nickname?: string;
+      corporateName?: string;
+      phone?: string;
+      whatsapp?: string;
+      cellphone1?: string;
+      cellphone2?: string;
+      email?: string;
+      zipCode?: string;
+      street?: string;
+      number?: string;
+      city?: string;
+      state?: string;
+      neighborhood?: string;
+      complement?: string;
+      smtpHost?: string;
+      smtpPort?: number | string;
+      smtpTimeout?: number | string;
+      smtpAuthenticate?: boolean | string | number;
+      smtpSecure?: boolean | string | number;
+      smtpAuthType?: string;
+      smtpEmail?: string;
+      smtpPassword?: string;
+      storageProviderAccessKeyId?: string;
+      storageProviderSecretAccessKey?: string;
+      storageBucketName?: string;
+      storageFolderName?: string;
+      storageDefaultAcl?: string;
+      storageDefaultExpiration?: number | string;
+      storageRegion?: string;
+      storageEndpoint?: string;
+      storageCustomEndpoint?: string;
+    },
+  ) {
+    this.assertMasterPass(req);
+    return this.tenantsService.createBranchByTenant(id, payload);
+  }
+
+  @Public()
+  @Put(":id/branches/:branchId")
+  @ApiOperation({
+    summary: "Atualiza uma filial de uma escola pelo painel MSINFOR ADMIN",
+  })
+  async updateBranchByTenant(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Param("branchId") branchId: string,
+    @Body()
+    payload: {
+      branchCode?: number;
+      name?: string;
+      logoUrl?: string;
+      document?: string;
+      rg?: string;
+      cpf?: string;
+      cnpj?: string;
+      nickname?: string;
+      corporateName?: string;
+      phone?: string;
+      whatsapp?: string;
+      cellphone1?: string;
+      cellphone2?: string;
+      email?: string;
+      zipCode?: string;
+      street?: string;
+      number?: string;
+      city?: string;
+      state?: string;
+      neighborhood?: string;
+      complement?: string;
+    },
+  ) {
+    this.assertMasterPass(req);
+    return this.tenantsService.updateBranchByTenant(id, branchId, payload);
+  }
+
   @Public()
   @Put(":id")
   @ApiOperation({

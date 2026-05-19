@@ -19,6 +19,7 @@ export type PurgeTenantDeletionSummary = {
   teachers: number;
   people: number;
   users: number;
+  tenantBranches: number;
   subjects: number;
   schedules: number;
   seriesClasses: number;

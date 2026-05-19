@@ -7,7 +7,10 @@ import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateGuardianDto } from "../dto/create-guardian.dto";
 import { UpdateGuardianDto } from "../dto/update-guardian.dto";
 import { LinkStudentGuardianDto } from "../dto/link-student.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
 import * as bcrypt from "bcrypt";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
@@ -22,6 +25,7 @@ import {
   sanitizeGuardianSummaryForViewer,
 } from "../../../../common/auth/entity-visibility";
 import { StudentsService } from "../../../students/application/services/students.service";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class GuardiansService {
@@ -181,94 +185,103 @@ export class GuardiansService {
   }
 
   async create(createDto: CreateGuardianDto, currentUser?: ICurrentUser) {
-    const sanitizedDto = this.sanitizeGuardianMutationDto(
-      createDto,
-      currentUser,
-    );
-
-    await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
       getTenantContext()!.tenantId,
-      sanitizedDto,
-      "GUARDIAN",
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
     );
 
-    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
-      sanitizedDto.name,
-    );
+    return runWithTenantBranchScope(targetBranchCode, async () => {
+      const sanitizedDto = this.sanitizeGuardianMutationDto(
+        createDto,
+        currentUser,
+      );
 
-    await this.fillAddressFromViaCep(sanitizedDto);
+      await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
+        getTenantContext()!.tenantId,
+        sanitizedDto,
+        "GUARDIAN",
+      );
 
-    if (sanitizedDto.email)
-      sanitizedDto.email = sanitizedDto.email.toUpperCase();
+      sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+        sanitizedDto.name,
+      );
 
-    const tenantId = getTenantContext()!.tenantId;
-    await this.assertUniqueGuardianCpf(tenantId, sanitizedDto.cpf);
+      await this.fillAddressFromViaCep(sanitizedDto);
 
-    // Lógica Específica de Autenticação para o PWA (Hash da Senha)
-    let hashedPassword = undefined;
-    if (sanitizedDto.password) {
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    }
-    const accessProfile =
-      normalizeAccessProfileCode(sanitizedDto.accessProfile, "RESPONSAVEL") ||
-      getDefaultAccessProfileForRole("RESPONSAVEL");
-    const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) &&
-      sanitizedDto.permissions.length > 0
-        ? serializePermissions(sanitizedDto.permissions)
-        : null;
+      if (sanitizedDto.email)
+        sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
-    const rawData = this.transformToUpperCase(sanitizedDto);
-    delete rawData.permissions;
-    delete rawData.accessProfile;
+      const tenantId = getTenantContext()!.tenantId;
+      await this.assertUniqueGuardianCpf(tenantId, sanitizedDto.cpf);
 
-    const createdGuardian = await this.prisma.guardian.create({
-      data: {
-        ...rawData,
-        password: null,
-        accessProfile,
-        permissions: explicitPermissions,
-        birthDate: sanitizedDto.birthDate
-          ? new Date(sanitizedDto.birthDate)
-          : undefined,
-        tenantId,
-        createdBy: getTenantContext()!.userId,
-      },
-    });
-
-    await this.sharedProfilesService.syncSharedProfile(
-      tenantId,
-      "GUARDIAN",
-      createdGuardian.id,
-      {
-        ...createdGuardian,
-        password: null,
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
-      },
-      getTenantContext()!.userId,
-    );
-
-    if (sanitizedDto.email) {
-      if (hashedPassword) {
-        await this.sharedProfilesService.updateEmailCredentialPassword(
-          sanitizedDto.email,
-          hashedPassword,
-          getTenantContext()!.userId,
-        );
-      } else {
-        await this.sharedProfilesService.ensureEmailCredential(
-          sanitizedDto.email,
-          { userId: getTenantContext()!.userId },
-        );
+      let hashedPassword = undefined;
+      if (sanitizedDto.password) {
+        const salt = await bcrypt.genSalt(10);
+        hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
       }
-    }
+      const accessProfile =
+        normalizeAccessProfileCode(sanitizedDto.accessProfile, "RESPONSAVEL") ||
+        getDefaultAccessProfileForRole("RESPONSAVEL");
+      const explicitPermissions =
+        Array.isArray(sanitizedDto.permissions) &&
+        sanitizedDto.permissions.length > 0
+          ? serializePermissions(sanitizedDto.permissions)
+          : null;
 
-    return sanitizeGuardianSummaryForViewer(
-      this.mapGuardianAccess(createdGuardian),
-      currentUser,
-    );
+      const rawData = this.transformToUpperCase(sanitizedDto);
+      delete rawData.permissions;
+      delete rawData.accessProfile;
+
+      const createdGuardian = await this.prisma.guardian.create({
+        data: {
+          ...rawData,
+          password: null,
+          accessProfile,
+          permissions: explicitPermissions,
+          birthDate: sanitizedDto.birthDate
+            ? new Date(sanitizedDto.birthDate)
+            : undefined,
+          tenantId,
+          branchCode: targetBranchCode,
+          createdBy: getTenantContext()!.userId,
+        },
+      });
+
+      await this.sharedProfilesService.syncSharedProfile(
+        tenantId,
+        "GUARDIAN",
+        createdGuardian.id,
+        {
+          ...createdGuardian,
+          password: null,
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+        },
+        getTenantContext()!.userId,
+      );
+
+      if (sanitizedDto.email) {
+        if (hashedPassword) {
+          await this.sharedProfilesService.updateEmailCredentialPassword(
+            sanitizedDto.email,
+            hashedPassword,
+            getTenantContext()!.userId,
+          );
+        } else {
+          await this.sharedProfilesService.ensureEmailCredential(
+            sanitizedDto.email,
+            { userId: getTenantContext()!.userId },
+          );
+        }
+      }
+
+      return sanitizeGuardianSummaryForViewer(
+        this.mapGuardianAccess(createdGuardian),
+        currentUser,
+      );
+    });
   }
 
   async findAll(currentUser?: ICurrentUser) {
@@ -405,126 +418,136 @@ export class GuardiansService {
     currentUser?: ICurrentUser,
   ) {
     const currentGuardian = await this.findGuardianEntity(id);
-    const sanitizedDto = this.sanitizeGuardianMutationDto(
-      updateDto,
-      currentUser,
-    );
-
-    await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
       getTenantContext()!.tenantId,
-      sanitizedDto,
-      "GUARDIAN",
-      id,
+      updateDto.branchCode,
+      currentGuardian.branchCode,
     );
 
-    sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
-      sanitizedDto.name,
-      currentGuardian.name,
-    );
+    return runWithTenantBranchScope(targetBranchCode, async () => {
+      const sanitizedDto = this.sanitizeGuardianMutationDto(
+        updateDto,
+        currentUser,
+      );
 
-    await this.fillAddressFromViaCep(sanitizedDto);
-
-    if (sanitizedDto.email)
-      sanitizedDto.email = sanitizedDto.email.toUpperCase();
-
-    const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
-      currentGuardian.email,
-    );
-    const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
-      sanitizedDto,
-      "email",
-    )
-      ? this.sharedProfilesService.normalizeEmail(sanitizedDto.email)
-      : normalizedCurrentEmail;
-    const shouldResolvePasswordForEmailChange =
-      Boolean(normalizedIncomingEmail) &&
-      normalizedIncomingEmail !== normalizedCurrentEmail;
-
-    if (
-      sanitizedDto.cpf !== undefined &&
-      this.normalizeDocument(sanitizedDto.cpf) !==
-        this.normalizeDocument(currentGuardian.cpf)
-    ) {
-      await this.assertUniqueGuardianCpf(
+      await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
         getTenantContext()!.tenantId,
-        sanitizedDto.cpf,
+        sanitizedDto,
+        "GUARDIAN",
         id,
       );
-    }
 
-    let hashedPassword = undefined;
-    if (sanitizedDto.password) {
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
-    }
-    const accessProfile =
-      normalizeAccessProfileCode(
-        sanitizedDto.accessProfile ?? currentGuardian.accessProfile,
-        "RESPONSAVEL",
-      ) || getDefaultAccessProfileForRole("RESPONSAVEL");
-    const explicitPermissions =
-      Array.isArray(sanitizedDto.permissions) &&
-      sanitizedDto.permissions.length > 0
-        ? serializePermissions(sanitizedDto.permissions)
-        : Object.prototype.hasOwnProperty.call(sanitizedDto, "permissions")
-          ? null
-          : currentGuardian.permissions;
+      sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
+        sanitizedDto.name,
+        currentGuardian.name,
+      );
 
-    const rawData = this.transformToUpperCase(sanitizedDto);
-    delete rawData.permissions;
-    delete rawData.accessProfile;
+      await this.fillAddressFromViaCep(sanitizedDto);
 
-    const updatedGuardian = await this.prisma.guardian.update({
-      where: { id },
-      data: {
-        ...rawData,
-        password:
-          hashedPassword || shouldResolvePasswordForEmailChange
-            ? null
-            : undefined,
-        accessProfile,
-        permissions: explicitPermissions,
-        birthDate: sanitizedDto.birthDate
-          ? new Date(sanitizedDto.birthDate)
-          : undefined,
-        updatedBy: getTenantContext()!.userId,
-      },
-    });
+      if (sanitizedDto.email)
+        sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
-    await this.sharedProfilesService.syncSharedProfile(
-      getTenantContext()!.tenantId,
-      "GUARDIAN",
-      updatedGuardian.id,
-      {
-        ...updatedGuardian,
-        password: null,
-        resetPasswordToken: null,
-        resetPasswordExpires: null,
-      },
-      getTenantContext()!.userId,
-      currentGuardian.cpf,
-    );
+      const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
+        currentGuardian.email,
+      );
+      const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
+        sanitizedDto,
+        "email",
+      )
+        ? this.sharedProfilesService.normalizeEmail(sanitizedDto.email)
+        : normalizedCurrentEmail;
+      const shouldResolvePasswordForEmailChange =
+        Boolean(normalizedIncomingEmail) &&
+        normalizedIncomingEmail !== normalizedCurrentEmail;
 
-    const emailForPasswordSync = sanitizedDto.email || currentGuardian.email;
-    if (emailForPasswordSync) {
-      if (hashedPassword) {
-        await this.sharedProfilesService.updateEmailCredentialPassword(
-          emailForPasswordSync,
-          hashedPassword,
-          getTenantContext()!.userId,
-        );
-      } else if (shouldResolvePasswordForEmailChange) {
-        await this.sharedProfilesService.ensureEmailCredential(
-          emailForPasswordSync,
-          { userId: getTenantContext()!.userId },
+      if (
+        sanitizedDto.cpf !== undefined &&
+        this.normalizeDocument(sanitizedDto.cpf) !==
+          this.normalizeDocument(currentGuardian.cpf)
+      ) {
+        await this.assertUniqueGuardianCpf(
+          getTenantContext()!.tenantId,
+          sanitizedDto.cpf,
+          id,
         );
       }
-    }
 
-    return sanitizeGuardianSummaryForViewer(
-      this.mapGuardianAccess(updatedGuardian),
-      currentUser,
-    );
+      let hashedPassword = undefined;
+      if (sanitizedDto.password) {
+        const salt = await bcrypt.genSalt(10);
+        hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
+      }
+      const accessProfile =
+        normalizeAccessProfileCode(
+          sanitizedDto.accessProfile ?? currentGuardian.accessProfile,
+          "RESPONSAVEL",
+        ) || getDefaultAccessProfileForRole("RESPONSAVEL");
+      const explicitPermissions =
+        Array.isArray(sanitizedDto.permissions) &&
+        sanitizedDto.permissions.length > 0
+          ? serializePermissions(sanitizedDto.permissions)
+          : Object.prototype.hasOwnProperty.call(sanitizedDto, "permissions")
+            ? null
+            : currentGuardian.permissions;
+
+      const rawData = this.transformToUpperCase(sanitizedDto);
+      delete rawData.permissions;
+      delete rawData.accessProfile;
+
+      const updatedGuardian = await this.prisma.guardian.update({
+        where: { id },
+        data: {
+          ...rawData,
+          password:
+            hashedPassword || shouldResolvePasswordForEmailChange
+              ? null
+              : undefined,
+          accessProfile,
+          permissions: explicitPermissions,
+          birthDate: sanitizedDto.birthDate
+            ? new Date(sanitizedDto.birthDate)
+            : undefined,
+          branchCode: targetBranchCode,
+          updatedBy: getTenantContext()!.userId,
+        },
+      });
+
+      await this.sharedProfilesService.syncSharedProfile(
+        getTenantContext()!.tenantId,
+        "GUARDIAN",
+        updatedGuardian.id,
+        {
+          ...updatedGuardian,
+          password: null,
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+        },
+        getTenantContext()!.userId,
+        currentGuardian.cpf,
+      );
+
+      const emailForPasswordSync = sanitizedDto.email || currentGuardian.email;
+      if (emailForPasswordSync) {
+        if (hashedPassword) {
+          await this.sharedProfilesService.updateEmailCredentialPassword(
+            emailForPasswordSync,
+            hashedPassword,
+            getTenantContext()!.userId,
+          );
+        } else if (shouldResolvePasswordForEmailChange) {
+          await this.sharedProfilesService.ensureEmailCredential(
+            emailForPasswordSync,
+            { userId: getTenantContext()!.userId },
+          );
+        }
+      }
+
+      return sanitizeGuardianSummaryForViewer(
+        this.mapGuardianAccess(updatedGuardian),
+        currentUser,
+      );
+    });
   }
 
   async remove(id: string) {

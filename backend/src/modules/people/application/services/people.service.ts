@@ -7,7 +7,10 @@ import {
 import * as bcrypt from "bcrypt";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../prisma/prisma.service";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
 import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import { CreatePersonDto } from "../dto/create-person.dto";
@@ -22,6 +25,8 @@ import {
   resolveAccountPermissions,
 } from "../../../../common/auth/access-profiles";
 import { serializePermissions } from "../../../../common/auth/user-permissions";
+import { getVisibleBranchCodes } from "../../../../common/tenant/branch.constants";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 type GuardianContact = {
   id: string;
@@ -49,6 +54,7 @@ type LinkedRoleRecord = {
 type PersonWithRoles = {
   id: string;
   tenantId: string;
+  branchCode: number;
   name: string;
   birthDate?: Date | null;
   rg?: string | null;
@@ -98,6 +104,7 @@ type AdministrativeRoleRecord = {
 type BasicPersonIdentity = {
   id: string;
   tenantId: string;
+  branchCode: number;
   name: string;
   email?: string | null;
   cpf?: string | null;
@@ -116,6 +123,14 @@ export class PeopleService {
 
   private userId() {
     return getTenantContext()!.userId;
+  }
+
+  private branchCode() {
+    return getTenantContext()!.branchCode;
+  }
+
+  private visibleBranchCodes() {
+    return getVisibleBranchCodes(this.branchCode());
   }
 
   private transformToUpperCase(data: Record<string, any>) {
@@ -322,7 +337,9 @@ export class PeopleService {
       FROM guardian_students gs
       INNER JOIN students s ON s.id = gs.studentId
       WHERE gs.tenantId = ${this.tenantId()}
+        AND gs.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
         AND gs.canceledBy IS NULL
+        AND s.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
         AND gs.guardianId IN (${Prisma.join(guardianIds)})
     `;
 
@@ -374,6 +391,7 @@ export class PeopleService {
     return {
       id: person.id,
       tenantId: person.tenantId,
+      branchCode: person.branchCode,
       name: person.name,
       birthDate: person.birthDate ?? null,
       rg: person.rg ?? null,
@@ -557,6 +575,7 @@ export class PeopleService {
         data: {
           ...sharedData,
           tenantId: this.tenantId(),
+          branchCode: person.branchCode,
           accessProfile,
           permissions,
           createdBy: this.userId(),
@@ -570,6 +589,7 @@ export class PeopleService {
         data: {
           ...sharedData,
           tenantId: this.tenantId(),
+          branchCode: person.branchCode,
           accessProfile,
           permissions,
           createdBy: this.userId(),
@@ -582,6 +602,7 @@ export class PeopleService {
       data: {
         ...sharedData,
         tenantId: this.tenantId(),
+        branchCode: person.branchCode,
         accessProfile,
         permissions,
         createdBy: this.userId(),
@@ -664,6 +685,7 @@ export class PeopleService {
           Array<{
             id: string;
             tenantId: string;
+            branchCode: number;
             name: string;
             rg: string | null;
             cpf: string | null;
@@ -686,11 +708,12 @@ export class PeopleService {
           }>
         >`
           SELECT
-            id, tenantId, name, rg, cpf, cnpj, nickname, corporateName,
+            id, tenantId, branchCode, name, rg, cpf, cnpj, nickname, corporateName,
             phone, whatsapp, cellphone1, cellphone2, email, password,
             zipCode, street, number, city, state, neighborhood, complement
           FROM people
           WHERE tenantId = ${tenantId}
+            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
           ORDER BY name ASC
         `,
         this.prisma.$queryRaw<
@@ -700,14 +723,16 @@ export class PeopleService {
             email: string | null;
             cpf: string | null;
             personId: string | null;
+            branchCode: number;
             accessProfile: string | null;
             permissions: string | null;
             canceledBy: string | null;
           }>
         >`
-          SELECT id, name, email, cpf, personId, accessProfile, permissions, canceledBy
+          SELECT id, name, email, cpf, personId, branchCode, accessProfile, permissions, canceledBy
           FROM teachers
           WHERE tenantId = ${tenantId}
+            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
           ORDER BY id ASC
         `,
         this.prisma.$queryRaw<
@@ -717,15 +742,17 @@ export class PeopleService {
             email: string | null;
             cpf: string | null;
             personId: string | null;
+            branchCode: number;
             accessProfile: string | null;
             permissions: string | null;
             canceledBy: string | null;
             photoUrl: string | null;
           }>
         >`
-          SELECT id, name, email, cpf, personId, accessProfile, permissions, canceledBy, photoUrl
+          SELECT id, name, email, cpf, personId, branchCode, accessProfile, permissions, canceledBy, photoUrl
           FROM students
           WHERE tenantId = ${tenantId}
+            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
           ORDER BY id ASC
         `,
         this.prisma.$queryRaw<
@@ -735,14 +762,16 @@ export class PeopleService {
             email: string | null;
             cpf: string | null;
             personId: string | null;
+            branchCode: number;
             accessProfile: string | null;
             permissions: string | null;
             canceledBy: string | null;
           }>
         >`
-          SELECT id, name, email, cpf, personId, accessProfile, permissions, canceledBy
+          SELECT id, name, email, cpf, personId, branchCode, accessProfile, permissions, canceledBy
           FROM guardians
           WHERE tenantId = ${tenantId}
+            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
           ORDER BY id ASC
         `,
           this.prisma.$queryRaw<
@@ -767,8 +796,10 @@ export class PeopleService {
             FROM guardian_students gs
             INNER JOIN guardians g ON g.id = gs.guardianId
             WHERE gs.tenantId = ${tenantId}
+              AND gs.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
               AND gs.canceledBy IS NULL
               AND g.tenantId = ${tenantId}
+              AND g.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
           `,
           this.prisma.$queryRaw<
             Array<{
@@ -783,6 +814,7 @@ export class PeopleService {
             SELECT id, name, email, role, canceledAt, canceledBy
             FROM users
             WHERE tenantId = ${tenantId}
+              AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
               AND canceledAt IS NULL
           `,
         ]);
@@ -924,83 +956,93 @@ export class PeopleService {
   }
 
   async create(createDto: CreatePersonDto, currentUser?: ICurrentUser) {
-    const mutableData = this.transformToUpperCase({ ...createDto });
-    await this.fillAddressFromViaCep(mutableData);
-    mutableData.name = this.sharedProfilesService.resolveWritableName(
-      mutableData.name,
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      createDto.branchCode,
+      this.branchCode(),
     );
 
-    const normalizedEmail = this.sharedProfilesService.normalizeEmail(
-      createDto.email,
-    );
-    await this.ensureUniquePersonIdentity({
-      cpf: createDto.cpf,
-      email: normalizedEmail,
-    });
+    return runWithTenantBranchScope(targetBranchCode, async () => {
+      const mutableData = this.transformToUpperCase({ ...createDto });
+      await this.fillAddressFromViaCep(mutableData);
+      mutableData.name = this.sharedProfilesService.resolveWritableName(
+        mutableData.name,
+      );
 
-    let hashedPassword: string | null = null;
-    if (createDto.password) {
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(createDto.password, salt);
-    }
+      const normalizedEmail = this.sharedProfilesService.normalizeEmail(
+        createDto.email,
+      );
+      await this.ensureUniquePersonIdentity({
+        cpf: createDto.cpf,
+        email: normalizedEmail,
+      });
 
-    const createdPerson = await this.prisma.person.create({
-      data: {
-        name: mutableData.name,
-        birthDate: createDto.birthDate ? new Date(createDto.birthDate) : null,
-        rg: mutableData.rg || null,
-        cpf: mutableData.cpf || null,
-        cpfDigits:
-          this.sharedProfilesService.normalizeDocument(createDto.cpf) || null,
-        cnpj: mutableData.cnpj || null,
-        nickname: mutableData.nickname || null,
-        corporateName: mutableData.corporateName || null,
-        phone: mutableData.phone || null,
-        whatsapp: mutableData.whatsapp || null,
-        cellphone1: mutableData.cellphone1 || null,
-        cellphone2: mutableData.cellphone2 || null,
-        email: normalizedEmail || null,
-        password: null,
-        zipCode: mutableData.zipCode || null,
-        street: mutableData.street || null,
-        number: mutableData.number || null,
-        city: mutableData.city || null,
-        state: mutableData.state || null,
-        neighborhood: mutableData.neighborhood || null,
-        complement: mutableData.complement || null,
-        tenantId: this.tenantId(),
-        createdBy: currentUser?.userId || this.userId(),
-      },
-    });
-
-    if (normalizedEmail) {
-      if (hashedPassword) {
-        await this.sharedProfilesService.updateEmailCredentialPassword(
-          normalizedEmail,
-          hashedPassword,
-          currentUser?.userId || this.userId(),
-        );
-      } else {
-        await this.sharedProfilesService.ensureEmailCredential(
-          normalizedEmail,
-          {
-            userId: currentUser?.userId || this.userId(),
-          },
-        );
+      let hashedPassword: string | null = null;
+      if (createDto.password) {
+        const salt = await bcrypt.genSalt(10);
+        hashedPassword = await bcrypt.hash(createDto.password, salt);
       }
-    }
 
-    await this.upsertRolesForPerson(
-      await this.findPersonEntity(createdPerson.id),
-      createDto.roles,
-    );
+      const createdPerson = await this.prisma.person.create({
+        data: {
+          name: mutableData.name,
+          birthDate: createDto.birthDate ? new Date(createDto.birthDate) : null,
+          rg: mutableData.rg || null,
+          cpf: mutableData.cpf || null,
+          cpfDigits:
+            this.sharedProfilesService.normalizeDocument(createDto.cpf) || null,
+          cnpj: mutableData.cnpj || null,
+          nickname: mutableData.nickname || null,
+          corporateName: mutableData.corporateName || null,
+          phone: mutableData.phone || null,
+          whatsapp: mutableData.whatsapp || null,
+          cellphone1: mutableData.cellphone1 || null,
+          cellphone2: mutableData.cellphone2 || null,
+          email: normalizedEmail || null,
+          password: null,
+          zipCode: mutableData.zipCode || null,
+          street: mutableData.street || null,
+          number: mutableData.number || null,
+          city: mutableData.city || null,
+          state: mutableData.state || null,
+          neighborhood: mutableData.neighborhood || null,
+          complement: mutableData.complement || null,
+          tenantId: this.tenantId(),
+          branchCode: targetBranchCode,
+          createdBy: currentUser?.userId || this.userId(),
+        },
+      });
 
-    const reloadedPerson = await this.findPersonEntity(createdPerson.id);
-    await this.syncAllLinkedRoles(reloadedPerson);
-    await this.ensurePersonHasRole(reloadedPerson.id);
+      if (normalizedEmail) {
+        if (hashedPassword) {
+          await this.sharedProfilesService.updateEmailCredentialPassword(
+            normalizedEmail,
+            hashedPassword,
+            currentUser?.userId || this.userId(),
+          );
+        } else {
+          await this.sharedProfilesService.ensureEmailCredential(
+            normalizedEmail,
+            {
+              userId: currentUser?.userId || this.userId(),
+            },
+          );
+        }
+      }
 
-    const finalPerson = await this.findPersonEntity(createdPerson.id);
-    return this.mapPersonResponse(finalPerson);
+      await this.upsertRolesForPerson(
+        await this.findPersonEntity(createdPerson.id),
+        createDto.roles,
+      );
+
+      const reloadedPerson = await this.findPersonEntity(createdPerson.id);
+      await this.syncAllLinkedRoles(reloadedPerson);
+      await this.ensurePersonHasRole(reloadedPerson.id);
+
+      const finalPerson = await this.findPersonEntity(createdPerson.id);
+      return this.mapPersonResponse(finalPerson);
+    });
   }
 
   async update(
@@ -1009,155 +1051,169 @@ export class PeopleService {
     currentUser?: ICurrentUser,
   ) {
     const currentPerson = await this.findPersonEntity(id);
-    const mutableData = this.transformToUpperCase({ ...updateDto });
-    await this.fillAddressFromViaCep(mutableData);
-    mutableData.name = this.sharedProfilesService.resolveWritableName(
-      mutableData.name,
-      currentPerson.name,
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      updateDto.branchCode,
+      currentPerson.branchCode,
     );
 
-    const normalizedEmail = Object.prototype.hasOwnProperty.call(
-      updateDto,
-      "email",
-    )
-      ? this.sharedProfilesService.normalizeEmail(updateDto.email)
-      : currentPerson.email;
-    const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
-      currentPerson.email,
-    );
-    const shouldResolvePasswordForEmailChange =
-      Boolean(normalizedEmail) && normalizedEmail !== normalizedCurrentEmail;
+    return runWithTenantBranchScope(targetBranchCode, async () => {
+      const mutableData = this.transformToUpperCase({ ...updateDto });
+      await this.fillAddressFromViaCep(mutableData);
+      mutableData.name = this.sharedProfilesService.resolveWritableName(
+        mutableData.name,
+        currentPerson.name,
+      );
 
-    await this.ensureUniquePersonIdentity(
-      {
-        cpf: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
-          ? updateDto.cpf
-          : currentPerson.cpf,
-        email: normalizedEmail,
-      },
-      id,
-    );
+      const normalizedEmail = Object.prototype.hasOwnProperty.call(
+        updateDto,
+        "email",
+      )
+        ? this.sharedProfilesService.normalizeEmail(updateDto.email)
+        : currentPerson.email;
+      const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
+        currentPerson.email,
+      );
+      const shouldResolvePasswordForEmailChange =
+        Boolean(normalizedEmail) && normalizedEmail !== normalizedCurrentEmail;
 
-    let hashedPassword: string | undefined;
-    if (updateDto.password) {
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(updateDto.password, salt);
-    }
+      await this.ensureUniquePersonIdentity(
+        {
+          cpf: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
+            ? updateDto.cpf
+            : currentPerson.cpf,
+          email: normalizedEmail,
+        },
+        id,
+      );
 
-    await this.prisma.person.update({
-      where: { id },
-      data: {
-        name: Object.prototype.hasOwnProperty.call(updateDto, "name")
-          ? mutableData.name || currentPerson.name
-          : undefined,
-        birthDate: Object.prototype.hasOwnProperty.call(updateDto, "birthDate")
-          ? updateDto.birthDate
-            ? new Date(updateDto.birthDate)
-            : null
-          : undefined,
-        rg: Object.prototype.hasOwnProperty.call(updateDto, "rg")
-          ? mutableData.rg || null
-          : undefined,
-        cpf: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
-          ? mutableData.cpf || null
-          : undefined,
-        cpfDigits: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
-          ? this.sharedProfilesService.normalizeDocument(updateDto.cpf) || null
-          : undefined,
-        cnpj: Object.prototype.hasOwnProperty.call(updateDto, "cnpj")
-          ? mutableData.cnpj || null
-          : undefined,
-        nickname: Object.prototype.hasOwnProperty.call(updateDto, "nickname")
-          ? mutableData.nickname || null
-          : undefined,
-        corporateName: Object.prototype.hasOwnProperty.call(
-          updateDto,
-          "corporateName",
-        )
-          ? mutableData.corporateName || null
-          : undefined,
-        phone: Object.prototype.hasOwnProperty.call(updateDto, "phone")
-          ? mutableData.phone || null
-          : undefined,
-        whatsapp: Object.prototype.hasOwnProperty.call(updateDto, "whatsapp")
-          ? mutableData.whatsapp || null
-          : undefined,
-        cellphone1: Object.prototype.hasOwnProperty.call(
-          updateDto,
-          "cellphone1",
-        )
-          ? mutableData.cellphone1 || null
-          : undefined,
-        cellphone2: Object.prototype.hasOwnProperty.call(
-          updateDto,
-          "cellphone2",
-        )
-          ? mutableData.cellphone2 || null
-          : undefined,
-        email: Object.prototype.hasOwnProperty.call(updateDto, "email")
-          ? normalizedEmail || null
-          : undefined,
-        password:
-          hashedPassword || shouldResolvePasswordForEmailChange
-            ? null
-            : undefined,
-        zipCode: Object.prototype.hasOwnProperty.call(updateDto, "zipCode")
-          ? mutableData.zipCode || null
-          : undefined,
-        street: Object.prototype.hasOwnProperty.call(updateDto, "street")
-          ? mutableData.street || null
-          : undefined,
-        number: Object.prototype.hasOwnProperty.call(updateDto, "number")
-          ? mutableData.number || null
-          : undefined,
-        city: Object.prototype.hasOwnProperty.call(updateDto, "city")
-          ? mutableData.city || null
-          : undefined,
-        state: Object.prototype.hasOwnProperty.call(updateDto, "state")
-          ? mutableData.state || null
-          : undefined,
-        neighborhood: Object.prototype.hasOwnProperty.call(
-          updateDto,
-          "neighborhood",
-        )
-          ? mutableData.neighborhood || null
-          : undefined,
-        complement: Object.prototype.hasOwnProperty.call(
-          updateDto,
-          "complement",
-        )
-          ? mutableData.complement || null
-          : undefined,
-        updatedBy: currentUser?.userId || this.userId(),
-      },
-    });
-
-    if (normalizedEmail) {
-      if (hashedPassword) {
-        await this.sharedProfilesService.updateEmailCredentialPassword(
-          normalizedEmail,
-          hashedPassword,
-          currentUser?.userId || this.userId(),
-        );
-      } else if (shouldResolvePasswordForEmailChange) {
-        await this.sharedProfilesService.ensureEmailCredential(
-          normalizedEmail,
-          {
-            userId: currentUser?.userId || this.userId(),
-          },
-        );
+      let hashedPassword: string | undefined;
+      if (updateDto.password) {
+        const salt = await bcrypt.genSalt(10);
+        hashedPassword = await bcrypt.hash(updateDto.password, salt);
       }
-    }
 
-    await this.upsertRolesForPerson(
-      await this.findPersonEntity(id),
-      updateDto.roles,
-    );
-    const reloadedPerson = await this.findPersonEntity(id);
-    await this.syncAllLinkedRoles(reloadedPerson);
-    await this.ensurePersonHasRole(reloadedPerson.id);
+      await this.prisma.person.update({
+        where: { id },
+        data: {
+          name: Object.prototype.hasOwnProperty.call(updateDto, "name")
+            ? mutableData.name || currentPerson.name
+            : undefined,
+          birthDate: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "birthDate",
+          )
+            ? updateDto.birthDate
+              ? new Date(updateDto.birthDate)
+              : null
+            : undefined,
+          rg: Object.prototype.hasOwnProperty.call(updateDto, "rg")
+            ? mutableData.rg || null
+            : undefined,
+          cpf: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
+            ? mutableData.cpf || null
+            : undefined,
+          cpfDigits: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
+            ? this.sharedProfilesService.normalizeDocument(updateDto.cpf) ||
+              null
+            : undefined,
+          cnpj: Object.prototype.hasOwnProperty.call(updateDto, "cnpj")
+            ? mutableData.cnpj || null
+            : undefined,
+          nickname: Object.prototype.hasOwnProperty.call(updateDto, "nickname")
+            ? mutableData.nickname || null
+            : undefined,
+          corporateName: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "corporateName",
+          )
+            ? mutableData.corporateName || null
+            : undefined,
+          phone: Object.prototype.hasOwnProperty.call(updateDto, "phone")
+            ? mutableData.phone || null
+            : undefined,
+          whatsapp: Object.prototype.hasOwnProperty.call(updateDto, "whatsapp")
+            ? mutableData.whatsapp || null
+            : undefined,
+          cellphone1: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "cellphone1",
+          )
+            ? mutableData.cellphone1 || null
+            : undefined,
+          cellphone2: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "cellphone2",
+          )
+            ? mutableData.cellphone2 || null
+            : undefined,
+          email: Object.prototype.hasOwnProperty.call(updateDto, "email")
+            ? normalizedEmail || null
+            : undefined,
+          password:
+            hashedPassword || shouldResolvePasswordForEmailChange
+              ? null
+              : undefined,
+          zipCode: Object.prototype.hasOwnProperty.call(updateDto, "zipCode")
+            ? mutableData.zipCode || null
+            : undefined,
+          street: Object.prototype.hasOwnProperty.call(updateDto, "street")
+            ? mutableData.street || null
+            : undefined,
+          number: Object.prototype.hasOwnProperty.call(updateDto, "number")
+            ? mutableData.number || null
+            : undefined,
+          city: Object.prototype.hasOwnProperty.call(updateDto, "city")
+            ? mutableData.city || null
+            : undefined,
+          state: Object.prototype.hasOwnProperty.call(updateDto, "state")
+            ? mutableData.state || null
+            : undefined,
+          neighborhood: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "neighborhood",
+          )
+            ? mutableData.neighborhood || null
+            : undefined,
+          complement: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "complement",
+          )
+            ? mutableData.complement || null
+            : undefined,
+          branchCode: targetBranchCode,
+          updatedBy: currentUser?.userId || this.userId(),
+        },
+      });
 
-    return this.mapPersonResponse(reloadedPerson);
+      if (normalizedEmail) {
+        if (hashedPassword) {
+          await this.sharedProfilesService.updateEmailCredentialPassword(
+            normalizedEmail,
+            hashedPassword,
+            currentUser?.userId || this.userId(),
+          );
+        } else if (shouldResolvePasswordForEmailChange) {
+          await this.sharedProfilesService.ensureEmailCredential(
+            normalizedEmail,
+            {
+              userId: currentUser?.userId || this.userId(),
+            },
+          );
+        }
+      }
+
+      await this.upsertRolesForPerson(
+        await this.findPersonEntity(id),
+        updateDto.roles,
+      );
+      const reloadedPerson = await this.findPersonEntity(id);
+      await this.syncAllLinkedRoles(reloadedPerson);
+      await this.ensurePersonHasRole(reloadedPerson.id);
+
+      return this.mapPersonResponse(reloadedPerson);
+    });
   }
 
   private async ensurePersonHasRole(personId: string) {

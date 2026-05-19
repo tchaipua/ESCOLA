@@ -11,6 +11,7 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
@@ -19,6 +20,7 @@ import {
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
+    fetchTenantBranches,
     formatCnpj,
     formatCnpjInput,
     formatCpf,
@@ -35,6 +37,7 @@ import {
     normalizeDocumentDigits,
     type EmailUsageRecord,
     type SharedNameSuggestion,
+    type TenantBranchSummary,
 } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
@@ -87,6 +90,7 @@ type GuardianRecord = {
     state?: string | null;
     neighborhood?: string | null;
     complement?: string | null;
+    branchCode?: number | null;
     accessProfile?: AccessProfileCode | null;
     permissions?: string[];
     students?: GuardianStudentLink[];
@@ -96,6 +100,7 @@ type GuardianFormState = {
     name: string; birthDate: string; cpf: string; rg: string; cnpj: string; nickname: string; corporateName: string;
     phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string;
     zipCode: string; street: string; number: string; city: string; state: string; neighborhood: string; complement: string;
+    branchCode: number;
     accessProfile: AccessProfileCode; permissions: string[];
 };
 
@@ -105,6 +110,7 @@ const EMPTY_FORM: GuardianFormState = {
     name: '', birthDate: '', cpf: '', rg: '', cnpj: '', nickname: '', corporateName: '',
     phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
     zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
+    branchCode: 1,
     accessProfile: DEFAULT_GUARDIAN_PROFILE, permissions: getProfilePermissions(DEFAULT_GUARDIAN_PROFILE),
 };
 
@@ -278,6 +284,8 @@ export default function ResponsaveisPage() {
     const [selectedGuardianForStudents, setSelectedGuardianForStudents] = useState<GuardianRecord | null>(null);
     const [sortState, setSortState] = useState<GridSortState<GuardianColumnKey>>(DEFAULT_SORT);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
     const [isGridConfigReady, setIsGridConfigReady] = useState(false);
     const [columnOrder, setColumnOrder] = useState<GuardianColumnKey[]>(GUARDIAN_COLUMN_KEYS);
@@ -364,7 +372,6 @@ export default function ResponsaveisPage() {
         () => readCachedTenantBranding(currentTenantId),
         [currentTenantId],
     );
-
     const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
         const normalizedEmail = String(email || '').trim().toUpperCase();
@@ -384,11 +391,14 @@ export default function ResponsaveisPage() {
         try {
             setIsLoading(true);
             setErrorStatus(null);
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
+            const branches = await fetchTenantBranches().catch(() => []);
+            setTenantBranches(Array.isArray(branches) ? branches : []);
             const response = await fetch(`${API_BASE_URL}/guardians`, { headers: { Authorization: `Bearer ${token}` } });
             if (!response.ok) {
                 const err = await response.json().catch(() => null);
@@ -489,7 +499,7 @@ export default function ResponsaveisPage() {
         setIsModalOpen(false);
         setEditingGuardianId(null);
         setActiveTab(1);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
         setPersonSystemRoles(['RESPONSAVEL']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -504,7 +514,7 @@ export default function ResponsaveisPage() {
     const openModal = () => {
         setEditingGuardianId(null);
         setActiveTab(1);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
         setPersonSystemRoles(['RESPONSAVEL']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -539,6 +549,7 @@ export default function ResponsaveisPage() {
             state: guardian.state || '',
             neighborhood: guardian.neighborhood || '',
             complement: guardian.complement || '',
+            branchCode: typeof guardian.branchCode === 'number' ? guardian.branchCode : currentBranchCode,
             accessProfile: guardian.accessProfile || DEFAULT_GUARDIAN_PROFILE,
             permissions: Array.isArray(guardian.permissions) && guardian.permissions.length > 0
                 ? guardian.permissions
@@ -911,8 +922,9 @@ export default function ResponsaveisPage() {
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             const url = editingGuardianId ? `${API_BASE_URL}/guardians/${editingGuardianId}` : `${API_BASE_URL}/guardians`;
             const method = editingGuardianId ? 'PATCH' : 'POST';
-            const payload: Record<string, string | string[]> = {
+            const payload: Record<string, string | string[] | number> = {
                 ...formData,
+                branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
                 cpf: formatCpf(formData.cpf),
                 cnpj: formatCnpj(formData.cnpj),
                 phone: formatPhone(formData.phone),
@@ -1266,6 +1278,13 @@ export default function ResponsaveisPage() {
                                         ) : null}
                                     </div>
                                     <div><label className={labelClass}>Data de nascimento</label><input type="date" value={formData.birthDate} onChange={(event) => setFormData((current) => ({ ...current, birthDate: event.target.value }))} className={inputClass} /></div>
+                                    <TenantBranchSelect
+                                        branches={tenantBranches}
+                                        value={formData.branchCode}
+                                        onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                        labelClassName={labelClass}
+                                        selectClassName={`${inputClass} bg-white`}
+                                    />
                                     {guardianFieldAccess.sensitive ? (
                                         <>
                                             <div><label className={labelClass}>RG</label><input value={formData.rg} onChange={(event) => setFormData((current) => ({ ...current, rg: event.target.value.toUpperCase() }))} className={inputClass} /></div>

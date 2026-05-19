@@ -111,6 +111,10 @@ function buildFinanceFrameUrl(
     params.set('sourceTenantId', authContext.tenantId.toUpperCase());
   }
 
+  if (Number.isInteger(authContext.branchCode) && authContext.branchCode >= 0) {
+    params.set('sourceBranchCode', String(authContext.branchCode));
+  }
+
   if (authContext.userId) {
     params.set('cashierUserId', authContext.userId.toUpperCase());
   }

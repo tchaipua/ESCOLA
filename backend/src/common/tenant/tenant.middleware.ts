@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware } from "@nestjs/common";
 import { Request, Response, NextFunction } from "express";
 import { tenantContext } from "./tenant.context";
 import { MASTER_TENANT_ID } from "../auth/master-auth";
+import { DEFAULT_BRANCH_CODE, normalizeBranchCode } from "./branch.constants";
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
@@ -35,6 +36,10 @@ export class TenantMiddleware implements NestMiddleware {
               typeof decoded.tenantId === "string" && decoded.tenantId.trim()
                 ? decoded.tenantId
                 : MASTER_TENANT_ID,
+            branchCode: normalizeBranchCode(
+              decoded.branchCode,
+              DEFAULT_BRANCH_CODE,
+            ),
             role: decoded.role,
             isMaster: true,
           };
@@ -46,6 +51,10 @@ export class TenantMiddleware implements NestMiddleware {
           const contextData = {
             userId: decoded.userId || decoded.sub,
             tenantId: decoded.tenantId,
+            branchCode: normalizeBranchCode(
+              decoded.branchCode,
+              DEFAULT_BRANCH_CODE,
+            ),
             role: decoded.role,
             isMaster: false,
           };

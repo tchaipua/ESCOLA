@@ -11,6 +11,7 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
@@ -19,6 +20,7 @@ import {
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
+    fetchTenantBranches,
     formatCepInput,
     formatCnpj,
     formatCnpjInput,
@@ -36,6 +38,7 @@ import {
     readImageFileAsDataUrl,
     type EmailUsageRecord,
     type SharedNameSuggestion,
+    type TenantBranchSummary,
 } from '@/app/lib/dashboard-crud-utils';
 import {
     buildGridAggregateSummaries,
@@ -146,6 +149,7 @@ type StudentEnrollment = {
 
 type StudentRecord = {
     id: string;
+    branchCode?: number | null;
     personId?: string | null;
     canceledAt?: string | null;
     name: string;
@@ -180,6 +184,7 @@ type StudentRecord = {
 };
 
 type StudentFormState = {
+    branchCode: number;
     name: string;
     photoUrl: string;
     birthDate: string;
@@ -219,6 +224,7 @@ type GuardianLinkFormState = {
 };
 
 const EMPTY_FORM: StudentFormState = {
+    branchCode: 1,
     name: '',
     photoUrl: '',
     birthDate: '',
@@ -519,6 +525,8 @@ export default function AlunosPage() {
     const [originalStudentSeriesClassId, setOriginalStudentSeriesClassId] = useState('');
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [seriesFilter, setSeriesFilter] = useState('ALL');
     const [classFilter, setClassFilter] = useState('ALL');
@@ -731,18 +739,23 @@ export default function AlunosPage() {
         try {
             setIsLoading(true);
             setErrorStatus(null);
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
-            const response = await fetch(`${API_BASE_URL}/students`, { headers: { Authorization: `Bearer ${token}` } });
+            setCurrentBranchCode(branchCode);
+            const [response, branchesData] = await Promise.all([
+                fetch(`${API_BASE_URL}/students`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetchTenantBranches().catch(() => []),
+            ]);
             if (!response.ok) {
                 const err = await response.json().catch(() => null);
                 throw new Error(err?.message || 'Falha ao buscar alunos.');
             }
             const data = await response.json();
             setStudents(Array.isArray(data) ? data : []);
+            setTenantBranches(Array.isArray(branchesData) ? branchesData : []);
         } catch (error) {
             setErrorStatus(errorMessage(error, 'Não foi possível carregar os alunos.'));
         } finally {
@@ -956,7 +969,7 @@ export default function AlunosPage() {
         setCpfConflictRoles([]);
         setCpfConflictRoles([]);
         setActiveTab(1);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
         setPersonSystemRoles(['ALUNO']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -1108,7 +1121,7 @@ export default function AlunosPage() {
         setOriginalStudentSeriesClassId('');
         setCpfConflictAlert(null);
         setActiveTab(1);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
         setPersonSystemRoles(['ALUNO']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -1130,6 +1143,7 @@ export default function AlunosPage() {
             setOriginalStudentSeriesClassId(getCurrentEnrollmentSeriesClassId(detail, activeSchoolYearId));
             setActiveTab(initialTab);
             setFormData({
+                branchCode: typeof detail.branchCode === 'number' ? detail.branchCode : currentBranchCode,
                 name: detail.name || '',
                 photoUrl: detail.photoUrl || '',
                 birthDate: detail.birthDate ? new Date(detail.birthDate).toISOString().split('T')[0] : '',
@@ -1454,6 +1468,9 @@ export default function AlunosPage() {
                 billingPayerType,
                 billingGuardianId: billingPayerType === 'RESPONSAVEL' ? (formData.billingGuardianId || null) : null,
             };
+            if (tenantBranches.length <= 1) {
+                payload.branchCode = currentBranchCode;
+            }
             if (!String(formData.email || '').trim()) delete payload.email;
             delete payload.seriesClassId;
             if (!payload.birthDate) delete payload.birthDate;
@@ -2035,6 +2052,13 @@ export default function AlunosPage() {
                                         ) : null}
                                     </div>
                                     <div><label className={labelClass}>Data de nascimento</label><input type="date" value={formData.birthDate} onChange={(event) => setFormData((current) => ({ ...current, birthDate: event.target.value }))} className={inputClass} /></div>
+                                    <TenantBranchSelect
+                                        branches={tenantBranches}
+                                        value={formData.branchCode}
+                                        onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                        labelClassName={labelClass}
+                                        selectClassName={`${inputClass} bg-white`}
+                                    />
                                     <div className="lg:col-span-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-4">
                                         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_0.8fr]">
                                             <div>

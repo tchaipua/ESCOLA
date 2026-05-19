@@ -12,8 +12,9 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { getStoredToken } from '@/app/lib/auth-storage';
-import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import { fetchTenantBranches, getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
@@ -21,6 +22,7 @@ import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 type Subject = {
     id: string;
     name: string;
+    branchCode?: number | null;
     canceledAt?: string | null;
 };
 
@@ -135,6 +137,9 @@ export default function DisciplinasPage() {
     const [isLoadingNameSuggestions, setIsLoadingNameSuggestions] = useState(false);
     const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
     const [debouncedSubjectNameQuery, setDebouncedSubjectNameQuery] = useState('');
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
+    const [subjectBranchCode, setSubjectBranchCode] = useState(1);
 
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_SUBJECTS', 'VIEW_TEACHERS']);
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SUBJECTS');
@@ -155,20 +160,22 @@ export default function DisciplinasPage() {
         try {
             setIsLoading(true);
             setErrorStatus(null);
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
 
-            const [subjectsResponse, teachersResponse] = await Promise.all([
+            const [subjectsResponse, teachersResponse, branches] = await Promise.all([
                 fetch(`${API_BASE_URL}/subjects`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
                 fetch(`${API_BASE_URL}/teachers`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
+                fetchTenantBranches().catch(() => []),
             ]);
 
             if (!subjectsResponse.ok) {
@@ -188,6 +195,7 @@ export default function DisciplinasPage() {
 
             setSubjects(Array.isArray(subjectsData) ? subjectsData : []);
             setTeachers(Array.isArray(teachersData) ? teachersData : []);
+            setTenantBranches(branches);
             setSelectedSubjectForTeachers((current) => {
                 if (!current) return null;
                 return subjectsData.find((subject: Subject) => subject.id === current.id) || null;
@@ -320,6 +328,7 @@ export default function DisciplinasPage() {
     const openCreateModal = () => {
         setEditingSubjectId(null);
         setSubjectName('');
+        setSubjectBranchCode(currentBranchCode);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
         setIsLoadingNameSuggestions(false);
@@ -332,6 +341,7 @@ export default function DisciplinasPage() {
         setIsModalOpen(false);
         setEditingSubjectId(null);
         setSubjectName('');
+        setSubjectBranchCode(currentBranchCode);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
         setIsLoadingNameSuggestions(false);
@@ -418,7 +428,10 @@ export default function DisciplinasPage() {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ name: normalizedName }),
+                body: JSON.stringify({
+                    name: normalizedName,
+                    branchCode: tenantBranches.length <= 1 ? currentBranchCode : subjectBranchCode,
+                }),
             });
 
             const data = await response.json().catch(() => null);
@@ -440,6 +453,7 @@ export default function DisciplinasPage() {
     const handleEditSubject = (subject: Subject) => {
         if (!canManage) return;
         setSubjectName(subject.name);
+        setSubjectBranchCode(typeof subject.branchCode === 'number' ? subject.branchCode : currentBranchCode);
         setEditingSubjectId(subject.id);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -878,6 +892,14 @@ export default function DisciplinasPage() {
                                     </div>
                                 ) : null}
                             </div>
+
+                            <TenantBranchSelect
+                                branches={tenantBranches}
+                                value={subjectBranchCode}
+                                onChange={setSubjectBranchCode}
+                                labelClassName="text-xs font-bold text-slate-600 mb-1 block"
+                                selectClassName="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                            />
 
                             <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
                                 <button

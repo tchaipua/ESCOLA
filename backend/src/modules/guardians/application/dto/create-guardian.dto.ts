@@ -4,11 +4,14 @@ import {
   IsNotEmpty,
   IsOptional,
   IsArray,
+  IsInt,
   IsString,
   MinLength,
   ArrayUnique,
+  Min,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class CreateGuardianDto {
   /* ===============================
@@ -82,4 +85,14 @@ export class CreateGuardianDto {
   @ApiPropertyOptional() @IsString() @IsOptional() state?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() neighborhood?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() complement?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
 }

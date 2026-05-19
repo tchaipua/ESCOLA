@@ -63,6 +63,7 @@ type ClassSummary = {
 
 type SeriesClassSummary = {
     id: string;
+    branchCode?: number | null;
     series?: SeriesSummary | null;
     class?: ClassSummary | null;
 };
@@ -95,6 +96,7 @@ type ScheduleRecord = {
 
 type ClassScheduleItemRecord = {
     id: string;
+    branchCode?: number | null;
     canceledAt?: string | null;
     canBePhysicallyDeleted?: boolean;
     linkedLessonCalendarItems?: number;
@@ -381,6 +383,7 @@ export default function GradeHorariaPlanejadaPage() {
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
     const scheduleSelectRef = useRef<HTMLSelectElement | null>(null);
 
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, [
@@ -671,7 +674,7 @@ export default function GradeHorariaPlanejadaPage() {
         });
     };
 
-    const ensureOperationalSchoolYears = async (token: string, role: string | null, permissions: string[]) => {
+    const ensureOperationalSchoolYears = async (token: string, role: string | null, permissions: string[], branchCode: number) => {
         const response = await fetch(`${API_BASE_URL}/school-years`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -706,10 +709,13 @@ export default function GradeHorariaPlanejadaPage() {
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify(
-                    getSchoolYearPayload(
-                        year,
-                        shouldActivateCurrentYear && year === currentYear,
-                    ),
+                    {
+                        ...getSchoolYearPayload(
+                            year,
+                            shouldActivateCurrentYear && year === currentYear,
+                        ),
+                        branchCode,
+                    },
                 ),
             });
 
@@ -750,14 +756,15 @@ export default function GradeHorariaPlanejadaPage() {
             setErrorStatus(null);
             setModalErrorStatus(null);
 
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
 
-            const yearList = await ensureOperationalSchoolYears(token, role, permissions);
+            const yearList = await ensureOperationalSchoolYears(token, role, permissions, branchCode);
 
             const [itemsResponse, seriesClassesResponse, teacherSubjectsResponse, schedulesResponse, tenantResponse] = await Promise.all([
                 fetch(`${API_BASE_URL}/class-schedule-items`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -1215,6 +1222,7 @@ export default function GradeHorariaPlanejadaPage() {
                         Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
+                        branchCode: typeof selectedSeriesClass?.branchCode === 'number' ? selectedSeriesClass.branchCode : currentBranchCode,
                         schoolYearId: formData.schoolYearId,
                         seriesClassId: formData.seriesClassId,
                         dayOfWeek: formData.dayOfWeek,

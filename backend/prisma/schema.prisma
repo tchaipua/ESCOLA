@@ -14,32 +14,6 @@ generator client {
 model Tenant {
   id        String   @id @default(uuid())
   name      String
-  document  String?  @unique
-
-  // 1.001 Logotipo
-  logoUrl        String?
-
-  // (DB) DADOS BÁSICOS
-  birthDate      DateTime?
-  rg             String?
-  cpf            String?
-  cnpj           String?
-  nickname       String?
-  corporateName  String?
-  phone          String?
-  whatsapp       String?
-  cellphone1     String?
-  cellphone2     String?
-  email          String?
-
-  // (EC) ENDEREÇO COMPLETO
-  zipCode      String?
-  street       String?
-  number       String?
-  city         String?
-  state        String?
-  neighborhood String?
-  complement   String?
 
   // (DF) DADOS FINANCEIROS
   interestRate        Float?
@@ -55,6 +29,15 @@ model Tenant {
   smtpAuthType        String?
   smtpEmail           String?
   smtpPassword        String?
+  storageProviderAccessKeyId     String?
+  storageProviderSecretAccessKey String?
+  storageBucketName              String?
+  storageFolderName              String?
+  storageDefaultAcl              String?
+  storageDefaultExpiration       Int?
+  storageRegion                  String?
+  storageEndpoint                String?
+  storageCustomEndpoint          String?
   
   // Auditoria Obrigatória
   createdAt DateTime  @default(now())
@@ -90,12 +73,76 @@ model Tenant {
   notifications Notification[]
   communicationCampaigns CommunicationCampaign[]
   userPreferences UserPreference[]
+  branches    TenantBranch[]
   @@map("tenants")
+}
+
+model TenantBranch {
+  id         String   @id @default(uuid())
+  tenantId    String
+  branchCode  Int
+  name        String
+  logoUrl     String?
+  document    String?
+  rg          String?
+  cpf         String?
+  cnpj        String?
+  nickname    String?
+  corporateName String?
+  phone          String?
+  whatsapp       String?
+  cellphone1     String?
+  cellphone2     String?
+  email          String?
+  zipCode      String?
+  street       String?
+  number       String?
+  city         String?
+  state        String?
+  neighborhood String?
+  complement   String?
+  stockControlMode          String   @default("BY_PRODUCT")
+  stockIntegerQuantityMode  String   @default("BY_PRODUCT")
+  stockLotControlMode       String   @default("BY_PRODUCT")
+  stockExpirationControlMode String  @default("BY_PRODUCT")
+  stockGridControlMode      String   @default("BY_PRODUCT")
+  stockNegativeControlMode  String   @default("BY_PRODUCT")
+  smtpHost            String?
+  smtpPort            Int?
+  smtpTimeout         Int?
+  smtpAuthenticate    Boolean?
+  smtpSecure          Boolean?
+  smtpAuthType        String?
+  smtpEmail           String?
+  smtpPassword        String?
+  storageProviderAccessKeyId     String?
+  storageProviderSecretAccessKey String?
+  storageBucketName              String?
+  storageFolderName              String?
+  storageDefaultAcl              String?
+  storageDefaultExpiration       Int?
+  storageRegion                  String?
+  storageEndpoint                String?
+  storageCustomEndpoint          String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  createdBy   String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+  canceledAt  DateTime?
+  canceledBy  String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, branchCode])
+  @@index([tenantId, isActive, name])
+  @@map("tenant_branches")
 }
 
 model UserPreference {
   id              String   @id @default(uuid())
   tenantId        String
+  branchCode  Int      @default(1)
   userId          String
   preferenceKey   String
   preferenceValue String
@@ -109,8 +156,8 @@ model UserPreference {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
-  @@index([tenantId, userId])
-  @@unique([tenantId, userId, preferenceKey])
+  @@index([tenantId, branchCode, userId])
+  @@unique([tenantId, branchCode, userId, preferenceKey])
   @@map("user_preferences")
 }
 
@@ -153,6 +200,7 @@ model EmailCredential {
 model User {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   name      String
   email     String
   password  String?
@@ -182,6 +230,7 @@ model User {
 model Person {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   name      String
   birthDate DateTime?
   rg        String?
@@ -219,13 +268,14 @@ model Person {
   guardians Guardian[]
 
   @@index([tenantId])
-  @@unique([tenantId, cpfDigits])
+  @@unique([tenantId, branchCode, cpfDigits])
   @@map("people")
 }
 
 model SchoolYear {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   year      Int
   startDate DateTime
   endDate   DateTime
@@ -243,13 +293,14 @@ model SchoolYear {
   classScheduleItems ClassScheduleItem[]
   lessonCalendars LessonCalendar[]
   lessonCalendarItems LessonCalendarItem[]
-  @@unique([tenantId, year])
+  @@unique([tenantId, branchCode, year])
   @@map("school_years")
 }
 
 model Class {
   id           String   @id @default(uuid())
   tenantId     String
+  branchCode  Int      @default(1)
   name         String
   gradeLevel   Int?
   shift        String   
@@ -273,6 +324,7 @@ model Class {
 model Series {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   name      String
   code      String?
   sortOrder Int?
@@ -293,6 +345,7 @@ model Series {
 model SeriesClass {
   id           String   @id @default(uuid())
   tenantId     String
+  branchCode  Int      @default(1)
   seriesId     String
   classId      String
 
@@ -323,6 +376,7 @@ model SeriesClass {
 model Guardian {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   personId  String?
   
   // (DB) DADOS BÁSICOS
@@ -376,6 +430,7 @@ model Guardian {
 model Student {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   personId  String?
   
   // (DB) DADOS BÁSICOS
@@ -438,6 +493,7 @@ model Student {
 model GuardianStudent {
   id         String   @id @default(uuid())
   tenantId   String
+  branchCode  Int      @default(1)
   studentId  String
   guardianId String
   
@@ -463,6 +519,7 @@ model GuardianStudent {
 model Enrollment {
   id           String   @id @default(uuid())
   tenantId     String
+  branchCode  Int      @default(1)
   studentId    String
   classId      String
   seriesClassId String?
@@ -495,6 +552,7 @@ model Enrollment {
 model Teacher {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   personId  String?
   
   // (DB) DADOS BÁSICOS
@@ -551,6 +609,7 @@ model Teacher {
 model Subject {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   name      String   // Matemática, Inglês, etc
 
   createdAt DateTime @default(now())
@@ -573,6 +632,7 @@ model Subject {
 model TeacherSubject {
   id          String   @id @default(uuid())
   tenantId    String
+  branchCode  Int      @default(1)
   teacherId   String
   subjectId   String
   hourlyRate  Float?   // Valor pago por aula dada
@@ -599,6 +659,7 @@ model TeacherSubject {
 model TeacherSubjectRateHistory {
   id               String    @id @default(uuid())
   tenantId         String
+  branchCode  Int      @default(1)
   teacherSubjectId String
   hourlyRate       Float?
   effectiveFrom    DateTime
@@ -626,6 +687,7 @@ model TeacherSubjectRateHistory {
 model Schedule {
   id           String   @id @default(uuid())
   tenantId     String
+  branchCode  Int      @default(1)
   period       String   // MANHA, TARDE, NOITE
   lessonNumber Int      // 1, 2, 3...
   startTime    String   // "07:00"
@@ -641,13 +703,14 @@ model Schedule {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
-  @@unique([tenantId, period, lessonNumber])
+  @@unique([tenantId, branchCode, period, lessonNumber])
   @@map("schedules")
 }
 
 model ClassScheduleItem {
   id               String   @id @default(uuid())
   tenantId         String
+  branchCode  Int      @default(1)
   schoolYearId     String
   seriesClassId    String
   teacherSubjectId String?
@@ -672,13 +735,14 @@ model ClassScheduleItem {
   @@index([schoolYearId])
   @@index([seriesClassId])
   @@index([teacherSubjectId])
-  @@unique([tenantId, schoolYearId, seriesClassId, teacherSubjectId, dayOfWeek, startTime, endTime])
+  @@unique([tenantId, branchCode, schoolYearId, seriesClassId, teacherSubjectId, dayOfWeek, startTime, endTime])
   @@map("class_schedule_items")
 }
 
 model LessonCalendar {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   schoolYearId String
   seriesClassId String
   lastWeeklySyncAt DateTime?
@@ -705,6 +769,7 @@ model LessonCalendar {
 model LessonCalendarPeriod {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   lessonCalendarId String
   periodType String
   startDate DateTime
@@ -729,6 +794,7 @@ model LessonCalendarPeriod {
 model LessonCalendarItem {
   id        String   @id @default(uuid())
   tenantId  String
+  branchCode  Int      @default(1)
   lessonCalendarId String
   schoolYearId String
   seriesClassId String
@@ -769,6 +835,7 @@ model LessonCalendarItem {
 model LessonEvent {
   id                 String   @id @default(uuid())
   tenantId           String
+  branchCode  Int      @default(1)
   lessonCalendarItemId String?
   teacherId          String
   eventType          String
@@ -810,6 +877,7 @@ model LessonEvent {
 model LessonAssessment {
   id                 String   @id @default(uuid())
   tenantId           String
+  branchCode  Int      @default(1)
   lessonEventId      String   @unique
   lessonCalendarItemId String
   teacherId          String
@@ -844,6 +912,7 @@ model LessonAssessment {
 model LessonAssessmentGrade {
   id                 String   @id @default(uuid())
   tenantId           String
+  branchCode  Int      @default(1)
   lessonAssessmentId String
   studentId          String
   score              Float?
@@ -871,6 +940,7 @@ model LessonAssessmentGrade {
 model LessonAttendance {
   id                 String   @id @default(uuid())
   tenantId           String
+  branchCode  Int      @default(1)
   lessonCalendarItemId String
   studentId          String
   teacherId          String
@@ -901,6 +971,7 @@ model LessonAttendance {
 model Notification {
   id            String   @id @default(uuid())
   tenantId      String
+  branchCode  Int      @default(1)
   recipientType String
   recipientId   String
   category      String
@@ -932,6 +1003,7 @@ model Notification {
 model CommunicationCampaign {
   id                String   @id @default(uuid())
   tenantId          String
+  branchCode  Int      @default(1)
   senderType        String
   senderId          String
   senderRole        String

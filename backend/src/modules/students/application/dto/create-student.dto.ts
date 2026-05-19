@@ -3,15 +3,28 @@ import {
   IsEmail,
   IsNotEmpty,
   IsNumber,
+  IsInt,
   IsOptional,
   IsArray,
   IsString,
   ArrayUnique,
   IsIn,
+  Min,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class CreateStudentDto {
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para acesso comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
+
   /* ===============================
        DADOS BÁSICOS (DB)
     =============================== */

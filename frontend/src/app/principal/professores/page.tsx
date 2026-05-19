@@ -12,6 +12,7 @@ import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
@@ -20,6 +21,7 @@ import {
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
     fetchSharedPersonProfileByEmail,
+    fetchTenantBranches,
     formatCepInput,
     formatCnpj,
     formatCnpjInput,
@@ -35,6 +37,7 @@ import {
     normalizeDocumentDigits,
     type EmailUsageRecord,
     type SharedNameSuggestion,
+    type TenantBranchSummary,
 } from '@/app/lib/dashboard-crud-utils';
 import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRole, PERMISSION_OPTIONS, type AccessProfileCode } from '@/app/lib/access-profiles';
 
@@ -73,6 +76,7 @@ type TeacherSubjectAssignment = {
 
 type TeacherRecord = {
     id: string;
+    branchCode?: number | null;
     name: string;
     canceledAt?: string | null;
     email?: string | null;
@@ -104,6 +108,7 @@ type DisciplineBadgeTone = {
 };
 
 type TeacherFormState = {
+    branchCode: number;
     name: string;
     rg: string;
     cpf: string;
@@ -544,6 +549,8 @@ export default function ProfessoresPage() {
     const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('ALL');
     const [selectedTeacherForSubjects, setSelectedTeacherForSubjects] = useState<TeacherRecord | null>(null);
@@ -675,6 +682,7 @@ export default function ProfessoresPage() {
 
     // States do Formulário
     const [formData, setFormData] = useState<TeacherFormState>({
+        branchCode: 1,
         name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
         phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
         zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
@@ -694,14 +702,15 @@ export default function ProfessoresPage() {
     const fetchProfessores = async () => {
         try {
             setIsLoading(true);
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
 
-            const [teachersResponse, subjectsResponse, teacherSubjectsResponse] = await Promise.all([
+            const [teachersResponse, subjectsResponse, teacherSubjectsResponse, branchesData] = await Promise.all([
                 fetch(`${API_BASE_URL}/teachers`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
@@ -716,7 +725,8 @@ export default function ProfessoresPage() {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }
-                })
+                }),
+                fetchTenantBranches().catch(() => []),
             ]);
 
             await ensureResponse(teachersResponse, 'Falha ao buscar professores');
@@ -739,6 +749,7 @@ export default function ProfessoresPage() {
             if (teacherSubjectsResponse.ok) {
                 teacherSubjectsData = await teacherSubjectsResponse.json();
             }
+            setTenantBranches(Array.isArray(branchesData) ? branchesData : []);
 
             const teacherSubjectAssignmentsMap = buildTeacherSubjectAssignmentsMap(teacherSubjectsData);
             const teachersWithSubjects = (teachersData as TeacherRecord[]).map((teacher) => ({
@@ -890,6 +901,7 @@ export default function ProfessoresPage() {
         setEditingHourlyRateBySubject({});
         setEditingEffectiveFromBySubject({});
         setFormData({
+            branchCode: currentBranchCode,
             name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
             phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
             zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
@@ -951,6 +963,7 @@ export default function ProfessoresPage() {
             }, {}),
         );
         setFormData({
+            branchCode: typeof prof.branchCode === 'number' ? prof.branchCode : currentBranchCode,
             name: prof.name || '',
             rg: prof.rg || '',
             cpf: prof.cpf ? limitNumericDigits(prof.cpf, 11) : '',
@@ -1400,8 +1413,9 @@ export default function ProfessoresPage() {
             const token = getStoredToken();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
-            const payload: { subjectId: string; hourlyRate?: number; effectiveFrom?: string } = {
+            const payload: { subjectId: string; hourlyRate?: number; effectiveFrom?: string; branchCode?: number } = {
                 subjectId: selectedSubjectIdForTeacher,
+                branchCode: selectedTeacherForSubjects.branchCode ?? currentBranchCode,
             };
 
             if (teacherFieldAccess.financial && hourlyRateForTeacher.trim()) {
@@ -1625,6 +1639,9 @@ export default function ProfessoresPage() {
             const method = editingTeacherId ? 'PATCH' : 'POST';
 
             const payload = { ...formData, permissions: formData.permissions };
+            if (tenantBranches.length <= 1) {
+                payload.branchCode = currentBranchCode;
+            }
             if (!teacherFieldAccess.access) {
                 delete (payload as any).email;
                 delete (payload as any).accessProfile;
@@ -2129,6 +2146,13 @@ export default function ProfessoresPage() {
                                             <label className="text-xs font-bold text-slate-600 mb-1 block">Data de Nascimento</label>
                                             <input type="date" value={formData.birthDate} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
                                         </div>
+                                        <TenantBranchSelect
+                                            branches={tenantBranches}
+                                            value={formData.branchCode}
+                                            onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                            labelClassName="text-xs font-bold text-slate-600 mb-1 block"
+                                            selectClassName="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                        />
 
                                         {teacherFieldAccess.sensitive ? (
                                             <>

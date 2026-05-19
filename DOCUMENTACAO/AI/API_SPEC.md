@@ -6,10 +6,83 @@
 - Formato: JSON
 - Autenticacao: `Authorization: Bearer <access_token>`
 - Tenant: derivado do token e validado no backend
+- Filial: `branchCode` e derivado do token e pode ser informado em mutacoes de cadastros operacionais; `0` indica cadastro comum a todas as filiais
 - Soft delete: cancelamento logico, nao remocao fisica, exceto no endpoint master exclusivo de purge definitivo de tenant
 - Textos em uppercase, exceto senha
 
 ## Tenants
+
+### GET `/tenants/current/branches`
+
+- Autenticacao: JWT da escola logada
+- Uso: lista filiais ativas da escola atual
+- Regra: se nao houver filial cadastrada, o backend cria a primeira filial com `branchCode = 1`
+
+### POST `/tenants/current/branches`
+
+- Autenticacao: JWT da escola logada
+- Uso: cria uma filial operacional para a escola atual
+- Body:
+
+```json
+{
+  "branchCode": 2,
+  "name": "FILIAL CENTRO"
+}
+```
+
+### GET `/tenants/:id/branches`
+
+- Autenticacao: cabecalho `x-msinfor-master-pass`
+- Uso: lista filiais de uma escola a partir da tela MSINFOR ADMIN
+- Regra: garante a existencia da primeira filial com `branchCode = 1`
+
+### POST `/tenants/:id/branches`
+
+- Autenticacao: cabecalho `x-msinfor-master-pass`
+- Uso: cria filial para uma escola a partir da tela MSINFOR ADMIN
+- Body aceita `branchCode`, `name`, `logoUrl`, documento/CNPJ, contatos, endereco completo, SMTP proprio da filial, storage proprio da filial e parametros operacionais de estoque da filial
+- SMTP da filial e opcional; quando informado, tem prioridade sobre o SMTP da empresa nos envios daquela filial. Quando vazio, o sistema usa o SMTP da empresa.
+- Storage da filial e opcional; quando informado, tem prioridade sobre o storage da empresa nas operacoes de arquivo daquela filial. Quando vazio, o sistema usa o storage da empresa.
+- Campos SMTP da filial:
+  - `smtpHost`
+  - `smtpPort`
+  - `smtpTimeout`
+  - `smtpAuthenticate`
+  - `smtpSecure`
+  - `smtpAuthType`
+  - `smtpEmail`
+  - `smtpPassword`
+- Campos de storage da filial:
+  - `storageProviderAccessKeyId`
+  - `storageProviderSecretAccessKey`
+  - `storageBucketName`
+  - `storageFolderName`
+  - `storageDefaultAcl`
+  - `storageDefaultExpiration`
+  - `storageRegion`
+  - `storageEndpoint`
+  - `storageCustomEndpoint`
+- Parametros de estoque aceitam `NO`, `YES` ou `BY_PRODUCT`:
+  - `stockControlMode`
+  - `stockIntegerQuantityMode`
+  - `stockLotControlMode`
+  - `stockExpirationControlMode`
+  - `stockGridControlMode`
+  - `stockNegativeControlMode`
+
+### PUT `/tenants/:id/branches/:branchId`
+
+- Autenticacao: cabecalho `x-msinfor-master-pass`
+- Uso: atualiza dados cadastrais e parametros operacionais da filial
+- Restricao: `branchCode` nao pode repetir dentro da mesma escola
+
+### `branchCode` em cadastros operacionais
+
+- `branchCode = 1..n`: registro restrito a filial informada
+- `branchCode = 0`: registro comum a todas as filiais
+- quando a escola possui apenas uma filial, o backend ignora a filial enviada e grava na filial existente
+- endpoints de professor, aluno, responsavel, serie, turma, serie x turma, disciplina, ano letivo, horarios base, vinculo professor x disciplina e grade horaria aceitam `branchCode` nas mutacoes
 
 ### DELETE `/tenants/:id`
 

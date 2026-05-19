@@ -5,7 +5,11 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../prisma/prisma.service";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 import { CreateClassScheduleItemDto } from "../dto/create-class-schedule-item.dto";
 import { UpdateClassScheduleItemDto } from "../dto/update-class-schedule-item.dto";
 
@@ -602,6 +606,14 @@ export class ClassScheduleItemsService {
   }
 
   async create(createDto: CreateClassScheduleItemDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const dayOfWeek = this.normalizeDayOfWeek(createDto.dayOfWeek);
     const startTime = this.normalizeTime(createDto.startTime);
     const endTime = this.normalizeTime(createDto.endTime);
@@ -640,6 +652,7 @@ export class ClassScheduleItemsService {
           dayOfWeek,
           startTime,
           endTime,
+          branchCode: targetBranchCode,
           createdBy: this.userId(),
         },
         include: this.includeRelations(),
@@ -649,6 +662,7 @@ export class ClassScheduleItemsService {
     } catch (error) {
       this.rethrowPersistenceError(error);
     }
+    });
   }
 
   async findAll() {
@@ -688,6 +702,14 @@ export class ClassScheduleItemsService {
 
   async update(id: string, updateDto: UpdateClassScheduleItemDto) {
     const currentItem = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      updateDto.branchCode,
+      currentItem.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const schoolYearId = updateDto.schoolYearId || currentItem.schoolYearId;
     const seriesClassId = updateDto.seriesClassId || currentItem.seriesClassId;
     const teacherSubjectId = Object.prototype.hasOwnProperty.call(
@@ -745,6 +767,7 @@ export class ClassScheduleItemsService {
             dayOfWeek: updateDto.dayOfWeek ? dayOfWeek : undefined,
             startTime: updateDto.startTime ? startTime : undefined,
             endTime: updateDto.endTime ? endTime : undefined,
+            branchCode: targetBranchCode,
             updatedBy: this.userId(),
           },
         });
@@ -762,6 +785,7 @@ export class ClassScheduleItemsService {
     }
 
     return this.findOne(id);
+    });
   }
 
   async remove(id: string) {

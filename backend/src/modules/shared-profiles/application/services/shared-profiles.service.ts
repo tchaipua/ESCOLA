@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PrismaService } from "../../../../prisma/prisma.service";
+import {
+  DEFAULT_BRANCH_CODE,
+  normalizeBranchCode,
+} from "../../../../common/tenant/branch.constants";
+import { getTenantContext } from "../../../../common/tenant/tenant.context";
 
 type SharedProfileKind = "TEACHER" | "STUDENT" | "GUARDIAN";
 type SharedEmailAccountKind =
-  | "TENANT"
   | "USER"
   | "TEACHER"
   | "STUDENT"
@@ -12,6 +16,7 @@ type SharedEmailAccountKind =
 
 type SharedProfileRecord = {
   id: string;
+  branchCode?: number | null;
   personId?: string | null;
   updatedAt: Date;
   name: string;
@@ -58,6 +63,7 @@ type SharedEmailAccountSource = {
 type SharedPersonRecord = {
   id: string;
   tenantId: string;
+  branchCode: number;
   updatedAt: Date;
   name: string;
   birthDate?: Date | null;
@@ -139,6 +145,7 @@ type AdministrativeSharedProfilePayload = {
 
 type SharedProfileSyncUpdate = {
   personId: string;
+  branchCode: number;
   name: string;
   birthDate: Date | null;
   rg: string | null;
@@ -641,6 +648,7 @@ export class SharedProfilesService {
   ): SharedProfileSyncUpdate {
     return {
       personId: person.id,
+      branchCode: person.branchCode,
       name: person.name,
       birthDate: person.birthDate ?? null,
       rg: person.rg ?? null,
@@ -667,6 +675,7 @@ export class SharedProfilesService {
   private selectSharedFields() {
     return {
       id: true,
+      branchCode: true,
       personId: true,
       updatedAt: true,
       name: true,
@@ -698,6 +707,7 @@ export class SharedProfilesService {
     return {
       id: true,
       tenantId: true,
+      branchCode: true,
       updatedAt: true,
       name: true,
       birthDate: true,
@@ -979,6 +989,7 @@ export class SharedProfilesService {
     tenantId: string,
     payload: SharedProfilePayload,
     userId?: string | null,
+    branchCode = DEFAULT_BRANCH_CODE,
   ) {
     const normalizedEmail = this.normalizeEmail(
       typeof payload.email === "string" ? payload.email : null,
@@ -989,6 +1000,7 @@ export class SharedProfilesService {
 
     return {
       tenantId,
+      branchCode,
       name: this.resolveWritableName(
         typeof payload.name === "string" ? payload.name : null,
       ),
@@ -1044,10 +1056,17 @@ export class SharedProfilesService {
     tenantId: string,
     payload: SharedProfilePayload,
     userId?: string | null,
+    branchCode = DEFAULT_BRANCH_CODE,
   ) {
-    const nextData = this.buildPersonCreateData(tenantId, payload, userId);
+    const nextData = this.buildPersonCreateData(
+      tenantId,
+      payload,
+      userId,
+      branchCode,
+    );
 
     return {
+      branchCode: nextData.branchCode,
       name: nextData.name,
       birthDate: nextData.birthDate,
       rg: nextData.rg,
@@ -1085,6 +1104,10 @@ export class SharedProfilesService {
     const payloadCpf = typeof payload.cpf === "string" ? payload.cpf : null;
     const payloadEmail =
       typeof payload.email === "string" ? payload.email : null;
+    const targetBranchCode = normalizeBranchCode(
+      (sourceRecord as { branchCode?: number | null }).branchCode,
+      getTenantContext()?.branchCode ?? DEFAULT_BRANCH_CODE,
+    );
     const currentPerson = await this.findPersonById(
       (sourceRecord as { personId?: string | null }).personId,
     );
@@ -1100,7 +1123,12 @@ export class SharedProfilesService {
     );
 
     const basePerson = currentPerson || cpfPerson || emailPerson || null;
-    const nextData = this.buildPersonCreateData(tenantId, payload, userId);
+    const nextData = this.buildPersonCreateData(
+      tenantId,
+      payload,
+      userId,
+      targetBranchCode,
+    );
 
     if (!basePerson) {
       return this.prisma.person.create({
@@ -1111,7 +1139,12 @@ export class SharedProfilesService {
 
     return this.prisma.person.update({
       where: { id: basePerson.id },
-      data: this.buildPersonUpdateData(tenantId, payload, userId),
+      data: this.buildPersonUpdateData(
+        tenantId,
+        payload,
+        userId,
+        targetBranchCode,
+      ),
       select: this.selectPersonFields(),
     });
   }
@@ -1866,20 +1899,8 @@ export class SharedProfilesService {
 
     const prismaClient = this.getCrossTenantPrisma();
 
-    const [tenants, users, teachers, students, guardians, people] =
+    const [users, teachers, students, guardians, people] =
       await Promise.all([
-        prismaClient.tenant.findMany({
-          where: { canceledAt: null },
-          select: {
-            id: true,
-            name: true,
-            document: true,
-            logoUrl: true,
-            updatedAt: true,
-            updatedBy: true,
-            email: true,
-          },
-        }),
         prismaClient.user.findMany({
           where: { canceledAt: null },
           select: {
@@ -1888,7 +1909,7 @@ export class SharedProfilesService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         }),
         prismaClient.teacher.findMany({
@@ -1899,7 +1920,7 @@ export class SharedProfilesService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         }),
         prismaClient.student.findMany({
@@ -1910,7 +1931,7 @@ export class SharedProfilesService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         }),
         prismaClient.guardian.findMany({
@@ -1921,7 +1942,7 @@ export class SharedProfilesService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         }),
         prismaClient.person.findMany({
@@ -1932,7 +1953,7 @@ export class SharedProfilesService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         }),
       ]);
@@ -1959,7 +1980,7 @@ export class SharedProfilesService {
         email: record.email,
         tenantId: record.tenant?.id || "",
         tenantName: record.tenant?.name || "",
-        tenantDocument: record.tenant?.document ?? null,
+        tenantDocument: null,
         tenantLogoUrl: null,
         updatedAt: record.updatedAt,
         updatedBy: record.updatedBy ?? null,
@@ -1967,29 +1988,6 @@ export class SharedProfilesService {
     };
 
     const result: EmailUsageRecord[] = [
-      ...tenants.map(
-        (record: {
-          id: string;
-          name: string;
-          document?: string | null;
-          logoUrl?: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          email?: string | null;
-        }) => ({
-          entityType: "TENANT" as const,
-          entityLabel: "ESCOLA",
-          recordId: record.id,
-          recordName: record.name,
-          email: record.email || "",
-          tenantId: record.id,
-          tenantName: record.name,
-          tenantDocument: record.document ?? null,
-          tenantLogoUrl: record.logoUrl ?? null,
-          updatedAt: record.updatedAt,
-          updatedBy: record.updatedBy ?? null,
-        }),
-      ),
       ...users.map(
         (record: {
           id: string;

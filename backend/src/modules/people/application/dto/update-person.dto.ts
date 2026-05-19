@@ -3,8 +3,10 @@ import {
   IsArray,
   IsDateString,
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
+  Min,
   MinLength,
   ValidateNested,
 } from "class-validator";
@@ -113,6 +115,16 @@ export class UpdatePersonDto {
   @IsString()
   @IsOptional()
   complement?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
 
   @ApiPropertyOptional({
     description:

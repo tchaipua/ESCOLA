@@ -1,0 +1,19 @@
+ALTER TABLE "tenants" ADD COLUMN "storageProviderAccessKeyId" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageProviderSecretAccessKey" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageBucketName" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageFolderName" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageDefaultAcl" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageDefaultExpiration" INTEGER;
+ALTER TABLE "tenants" ADD COLUMN "storageRegion" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageEndpoint" TEXT;
+ALTER TABLE "tenants" ADD COLUMN "storageCustomEndpoint" TEXT;
+
+ALTER TABLE "tenant_branches" ADD COLUMN "storageProviderAccessKeyId" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageProviderSecretAccessKey" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageBucketName" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageFolderName" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageDefaultAcl" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageDefaultExpiration" INTEGER;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageRegion" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageEndpoint" TEXT;
+ALTER TABLE "tenant_branches" ADD COLUMN "storageCustomEndpoint" TEXT;

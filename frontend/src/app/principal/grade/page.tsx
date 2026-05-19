@@ -12,7 +12,8 @@ import StatusConfirmationModal from '@/app/components/status-confirmation-modal'
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
-import { getDashboardAuthContext, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
+import { fetchTenantBranches, getDashboardAuthContext, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
@@ -29,6 +30,7 @@ type PeriodValue = (typeof PERIOD_OPTIONS)[number]['value'];
 
 type ScheduleRecord = {
     id: string;
+    branchCode?: number | null;
     period: PeriodValue;
     lessonNumber: number;
     startTime: string;
@@ -37,6 +39,7 @@ type ScheduleRecord = {
 };
 
 type ScheduleFormState = {
+    branchCode: number;
     period: PeriodValue;
     lessonNumber: string;
     startTime: string;
@@ -44,6 +47,7 @@ type ScheduleFormState = {
 };
 
 const EMPTY_FORM: ScheduleFormState = {
+    branchCode: 1,
     period: 'MANHA',
     lessonNumber: '',
     startTime: '',
@@ -137,6 +141,8 @@ export default function GradeHorariaPage() {
     const [scheduleStatusToggleTarget, setScheduleStatusToggleTarget] = useState<ScheduleRecord | null>(null);
     const [scheduleStatusToggleAction, setScheduleStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingScheduleToggle, setIsProcessingScheduleToggle] = useState(false);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
 
     const canView = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SCHEDULES');
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SCHEDULES');
@@ -176,21 +182,26 @@ export default function GradeHorariaPage() {
             setIsLoading(true);
             setErrorStatus(null);
 
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
 
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
 
-            const response = await fetch(`${API_BASE_URL}/schedules`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const [response, branches] = await Promise.all([
+                fetch(`${API_BASE_URL}/schedules`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetchTenantBranches().catch(() => []),
+            ]);
             const data = await response.json().catch(() => null);
 
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível carregar os horários.'));
 
             setSchedules(Array.isArray(data) ? data : []);
+            setTenantBranches(branches);
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar os horários.');
         } finally {
@@ -230,7 +241,7 @@ export default function GradeHorariaPage() {
 
     const resetForm = () => {
         setEditingId(null);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
     };
 
     const openCreateModal = () => {
@@ -263,6 +274,7 @@ export default function GradeHorariaPage() {
                 },
                 body: JSON.stringify({
                     period: formData.period,
+                    branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
                     lessonNumber: Number(formData.lessonNumber),
                     startTime: formData.startTime,
                     endTime: formData.endTime,
@@ -285,6 +297,7 @@ export default function GradeHorariaPage() {
     const handleEdit = (schedule: ScheduleRecord) => {
         setEditingId(schedule.id);
         setFormData({
+            branchCode: typeof schedule.branchCode === 'number' ? schedule.branchCode : currentBranchCode,
             period: schedule.period,
             lessonNumber: String(schedule.lessonNumber),
             startTime: schedule.startTime,
@@ -644,6 +657,13 @@ export default function GradeHorariaPage() {
 
                         <form onSubmit={handleSave} className="p-6 space-y-5">
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                                <TenantBranchSelect
+                                    branches={tenantBranches}
+                                    value={formData.branchCode}
+                                    onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                    labelClassName="text-xs font-bold text-slate-600 mb-1 block"
+                                    selectClassName="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                />
                                 <select value={formData.period} onChange={(event) => setFormData((current) => ({ ...current, period: event.target.value as PeriodValue }))} className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20">
                                     {PERIOD_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                                 </select>

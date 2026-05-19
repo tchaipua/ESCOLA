@@ -27,6 +27,10 @@ export class CreateTenantDto {
   @IsOptional()
   logoUrl?: string;
 
+  @ApiPropertyOptional({ description: "Dados da primeira filial operacional" })
+  @IsOptional()
+  defaultBranch?: Partial<CreateTenantDto>;
+
   // (DB) DADOS BÁSICOS
   @IsOptional() @IsString() rg?: string;
   @IsOptional() @IsString() cpf?: string;
@@ -64,6 +68,17 @@ export class CreateTenantDto {
   @IsOptional() @IsString() smtpAuthType?: string;
   @IsOptional() @IsString() smtpEmail?: string;
   @IsOptional() @IsString() smtpPassword?: string;
+
+  // (STORAGE) ARQUIVOS / S3 COMPATIVEL
+  @IsOptional() @IsString() storageProviderAccessKeyId?: string;
+  @IsOptional() @IsString() storageProviderSecretAccessKey?: string;
+  @IsOptional() @IsString() storageBucketName?: string;
+  @IsOptional() @IsString() storageFolderName?: string;
+  @IsOptional() @IsString() storageDefaultAcl?: string;
+  @IsOptional() @IsInt() @Min(1) storageDefaultExpiration?: number;
+  @IsOptional() @IsString() storageRegion?: string;
+  @IsOptional() @IsString() storageEndpoint?: string;
+  @IsOptional() @IsString() storageCustomEndpoint?: string;
 
   @ApiProperty({ description: "Nome do primeiro Administrador" })
   @IsString()

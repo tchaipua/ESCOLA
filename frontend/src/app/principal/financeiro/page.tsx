@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext, hasAnyDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
@@ -60,21 +61,6 @@ const MENU_ITEMS = [
   },
 ] as const;
 
-function normalizeDisplayText(value: string | null | undefined) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return null;
-
-  if (!/[ÃÂâ]/.test(trimmed)) {
-    return trimmed;
-  }
-
-  try {
-    return decodeURIComponent(escape(trimmed));
-  } catch {
-    return trimmed;
-  }
-}
-
 export default function PrincipalFinanceiroPage() {
   const [isMounted, setIsMounted] = useState(false);
   const authContext = getDashboardAuthContext();
@@ -113,49 +99,43 @@ export default function PrincipalFinanceiroPage() {
   return (
     <div className="space-y-6">
       <section className={`${cardClass} overflow-hidden`}>
-        <div className="bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-6 text-white">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm">
-                {tenantBranding?.logoUrl ? (
-                  <img
-                    src={tenantBranding.logoUrl}
-                    alt={`Logo de ${tenantBranding.schoolName}`}
-                    className="h-full w-full object-contain p-2"
-                  />
-                ) : (
-                  <span className="text-lg font-black uppercase tracking-[0.25em] text-white">
-                    {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">
-                  Financeiro integrado
-                </div>
-                <h1 className="mt-2 text-3xl font-black tracking-tight">Portal Financeiro</h1>
-                <p className="mt-2 max-w-3xl text-sm font-medium text-blue-100/90">
-                  Escolha abaixo a área desejada para abrir a tela completa do Financeiro.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-blue-50">
-                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Escola atual</div>
-                <div className="mt-1 text-base font-black">
-                  {tenantBranding?.schoolName || 'ESCOLA LOGADA'}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-blue-50">
-                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">Operador</div>
-                <div className="mt-1 text-base font-black">
-                  {normalizeDisplayText(authContext.name) || 'USUÁRIO DO SISTEMA'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PrincipalProgramHeader
+          eyebrow="Financeiro integrado"
+          title="Portal Financeiro"
+          description="Escolha abaixo a área desejada para abrir a tela completa do Financeiro."
+          schoolName={tenantBranding?.schoolName}
+          logoUrl={tenantBranding?.logoUrl}
+          secondaryAction={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                title="Recolher menu lateral"
+                aria-label="Recolher menu lateral"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                title="Abrir notificações"
+                aria-label="Abrir notificações"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </button>
+            </>
+          }
+        />
       </section>
 
       <section className={`${cardClass} p-6`}>

@@ -7,8 +7,19 @@ import {
   Min,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class CreateSchoolYearDto {
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
+
   @ApiProperty({ description: "O Ano Letivo vigente (Ex: 2026)" })
   @IsInt()
   @Min(2000)

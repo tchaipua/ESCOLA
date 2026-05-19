@@ -9,7 +9,11 @@ import {
   sanitizeStudentForViewer,
 } from "../../../../common/auth/entity-visibility";
 import { PrismaService } from "../../../../prisma/prisma.service";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 import { CreateSeriesClassDto } from "../dto/create-series-class.dto";
 import { UpdateSeriesClassDto } from "../dto/update-series-class.dto";
 
@@ -107,6 +111,14 @@ export class SeriesClassesService {
   }
 
   async create(createDto: CreateSeriesClassDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     await this.validateReferences(createDto.seriesId, createDto.classId);
     await this.ensureUniqueLink(createDto.seriesId, createDto.classId);
 
@@ -115,12 +127,14 @@ export class SeriesClassesService {
         tenantId: this.tenantId(),
         seriesId: createDto.seriesId,
         classId: createDto.classId,
+        branchCode: targetBranchCode,
         createdBy: this.userId(),
       },
       include: {
         series: true,
         class: true,
       },
+    });
     });
   }
 
@@ -420,6 +434,14 @@ export class SeriesClassesService {
 
   async update(id: string, updateDto: UpdateSeriesClassDto) {
     const currentLink = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      updateDto.branchCode,
+      currentLink.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const nextSeriesId = updateDto.seriesId || currentLink.seriesId;
     const nextClassId = updateDto.classId || currentLink.classId;
 
@@ -431,12 +453,14 @@ export class SeriesClassesService {
       data: {
         seriesId: updateDto.seriesId,
         classId: updateDto.classId,
+        branchCode: targetBranchCode,
         updatedBy: this.userId(),
       },
       include: {
         series: true,
         class: true,
       },
+    });
     });
   }
 

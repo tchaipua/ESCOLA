@@ -6,7 +6,11 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateSchoolYearDto } from "../dto/create-school-year.dto";
 import { UpdateSchoolYearDto } from "../dto/update-school-year.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class SchoolYearsService {
@@ -21,6 +25,14 @@ export class SchoolYearsService {
   }
 
   async create(createDto: CreateSchoolYearDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const conflict = await this.prisma.schoolYear.findFirst({
       where: {
         tenantId: this.tenantId(),
@@ -53,9 +65,11 @@ export class SchoolYearsService {
           endDate: new Date(createDto.endDate),
           isActive: createDto.isActive || false,
           tenantId: this.tenantId(),
+          branchCode: targetBranchCode,
           createdBy: this.userId(),
         },
       });
+    });
     });
   }
 
@@ -85,7 +99,14 @@ export class SchoolYearsService {
 
   async update(id: string, updateDto: UpdateSchoolYearDto) {
     const currentYear = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      updateDto.branchCode,
+      currentYear.branchCode,
+    );
 
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     if (
       typeof updateDto.year === "number" &&
       updateDto.year !== currentYear.year
@@ -126,9 +147,11 @@ export class SchoolYearsService {
             : undefined,
           endDate: updateDto.endDate ? new Date(updateDto.endDate) : undefined,
           isActive: updateDto.isActive,
+          branchCode: targetBranchCode,
           updatedBy: this.userId(),
         },
       });
+    });
     });
   }
 

@@ -23,10 +23,19 @@ import {
   serializeComplementaryAccessProfiles,
 } from "../../../../common/auth/access-profiles";
 import { tenantContext } from "../../../../common/tenant/tenant.context";
+import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
+import {
+  DEFAULT_BRANCH_CODE,
+  normalizeBranchCode,
+} from "../../../../common/tenant/branch.constants";
+import {
+  ensureDefaultTenantBranch,
+  listTenantBranches,
+  mapTenantBranchSummary,
+} from "../../../../common/tenant/tenant-branches";
 
 type EmailUsageEntityType =
-  | "TENANT"
   | "ADMIN_USER"
   | "USER"
   | "TEACHER"
@@ -47,6 +56,53 @@ export interface EmailUsageItem {
   updatedBy?: string | null;
 }
 
+type TenantBranchPayload = {
+  branchCode?: number;
+  name?: string;
+  logoUrl?: string | null;
+  document?: string | null;
+  rg?: string | null;
+  cpf?: string | null;
+  cnpj?: string | null;
+  nickname?: string | null;
+  corporateName?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  cellphone1?: string | null;
+  cellphone2?: string | null;
+  email?: string | null;
+  zipCode?: string | null;
+  street?: string | null;
+  number?: string | null;
+  city?: string | null;
+  state?: string | null;
+  neighborhood?: string | null;
+  complement?: string | null;
+  stockControlMode?: string | null;
+  stockIntegerQuantityMode?: string | null;
+  stockLotControlMode?: string | null;
+  stockExpirationControlMode?: string | null;
+  stockGridControlMode?: string | null;
+  stockNegativeControlMode?: string | null;
+  smtpHost?: string | null;
+  smtpPort?: number | string | null;
+  smtpTimeout?: number | string | null;
+  smtpAuthenticate?: boolean | string | number | null;
+  smtpSecure?: boolean | string | number | null;
+  smtpAuthType?: string | null;
+  smtpEmail?: string | null;
+  smtpPassword?: string | null;
+  storageProviderAccessKeyId?: string | null;
+  storageProviderSecretAccessKey?: string | null;
+  storageBucketName?: string | null;
+  storageFolderName?: string | null;
+  storageDefaultAcl?: string | null;
+  storageDefaultExpiration?: number | string | null;
+  storageRegion?: string | null;
+  storageEndpoint?: string | null;
+  storageCustomEndpoint?: string | null;
+};
+
 @Injectable()
 export class TenantsService {
   constructor(
@@ -63,6 +119,7 @@ export class TenantsService {
     const context = {
       userId: this.masterAuditUser,
       tenantId,
+      branchCode: DEFAULT_BRANCH_CODE,
       role: "SOFTHOUSE_ADMIN",
       isMaster: true,
     };
@@ -103,6 +160,73 @@ export class TenantsService {
       .toUpperCase();
   }
 
+  private normalizeOptionalText(value?: string | null) {
+    const normalized = String(value || "")
+      .trim()
+      .toUpperCase();
+    return normalized || null;
+  }
+
+  private normalizeBranchStockParameterMode(value?: string | null) {
+    const normalized = String(value || "")
+      .trim()
+      .toUpperCase();
+
+    if (!normalized) return "BY_PRODUCT";
+
+    if (["NO", "YES", "BY_PRODUCT"].includes(normalized)) {
+      return normalized;
+    }
+
+    throw new BadRequestException(
+      "Parâmetro de estoque da filial inválido.",
+    );
+  }
+
+  private buildTenantBranchData(payload: TenantBranchPayload) {
+    return {
+      logoUrl: String(payload.logoUrl || "").trim() || null,
+      document: this.normalizeOptionalText(payload.document),
+      rg: this.normalizeOptionalText(payload.rg),
+      cpf: this.normalizeOptionalText(payload.cpf),
+      cnpj: this.normalizeOptionalText(payload.cnpj),
+      nickname: this.normalizeOptionalText(payload.nickname),
+      corporateName: this.normalizeOptionalText(payload.corporateName),
+      phone: this.normalizeOptionalText(payload.phone),
+      whatsapp: this.normalizeOptionalText(payload.whatsapp),
+      cellphone1: this.normalizeOptionalText(payload.cellphone1),
+      cellphone2: this.normalizeOptionalText(payload.cellphone2),
+      email: this.normalizeOptionalText(payload.email),
+      zipCode: this.normalizeOptionalText(payload.zipCode),
+      street: this.normalizeOptionalText(payload.street),
+      number: this.normalizeOptionalText(payload.number),
+      city: this.normalizeOptionalText(payload.city),
+      state: this.normalizeOptionalText(payload.state),
+      neighborhood: this.normalizeOptionalText(payload.neighborhood),
+      complement: this.normalizeOptionalText(payload.complement),
+      stockControlMode: this.normalizeBranchStockParameterMode(
+        payload.stockControlMode,
+      ),
+      stockIntegerQuantityMode: this.normalizeBranchStockParameterMode(
+        payload.stockIntegerQuantityMode,
+      ),
+      stockLotControlMode: this.normalizeBranchStockParameterMode(
+        payload.stockLotControlMode,
+      ),
+      stockExpirationControlMode: this.normalizeBranchStockParameterMode(
+        payload.stockExpirationControlMode,
+      ),
+      stockGridControlMode: this.normalizeBranchStockParameterMode(
+        payload.stockGridControlMode,
+      ),
+      stockNegativeControlMode: this.normalizeBranchStockParameterMode(
+        payload.stockNegativeControlMode,
+      ),
+      ...this.buildTenantBranchSmtpData(payload),
+      ...this.buildTenantBranchStorageData(payload),
+    };
+  }
+
   private normalizeEntityType(
     entityType?: string | null,
   ): EmailUsageEntityType {
@@ -110,7 +234,6 @@ export class TenantsService {
       .trim()
       .toUpperCase();
     const validTypes: EmailUsageEntityType[] = [
-      "TENANT",
       "ADMIN_USER",
       "USER",
       "TEACHER",
@@ -208,26 +331,139 @@ export class TenantsService {
     payload.smtpPassword = smtpPassword || undefined;
   }
 
-  private mapTenantEmailUsage(record: {
-    id: string;
-    name: string;
-    email: string | null;
-    document?: string | null;
-    updatedAt: Date;
-    updatedBy?: string | null;
-  }): EmailUsageItem {
+  private buildStorageConfigurationData(payload: {
+    storageProviderAccessKeyId?: string | null;
+    storageProviderSecretAccessKey?: string | null;
+    storageBucketName?: string | null;
+    storageFolderName?: string | null;
+    storageDefaultAcl?: string | null;
+    storageDefaultExpiration?: number | string | null;
+    storageRegion?: string | null;
+    storageEndpoint?: string | null;
+    storageCustomEndpoint?: string | null;
+  }) {
+    const storageDefaultExpiration = this.parseOptionalInt(
+      payload.storageDefaultExpiration,
+    );
+
+    if (
+      storageDefaultExpiration !== undefined &&
+      storageDefaultExpiration < 1
+    ) {
+      throw new ConflictException(
+        "Expiração padrão do storage deve ser maior que zero.",
+      );
+    }
+
     return {
-      entityType: "TENANT",
-      entityLabel: "ESCOLA",
-      recordId: record.id,
-      tenantId: record.id,
-      tenantName: record.name,
-      recordName: record.name,
-      currentEmail: record.email || "",
-      document: record.document,
-      updatedAt: record.updatedAt,
-      updatedBy: record.updatedBy,
+      storageProviderAccessKeyId:
+        String(payload.storageProviderAccessKeyId || "").trim() || null,
+      storageProviderSecretAccessKey:
+        String(payload.storageProviderSecretAccessKey || "").trim() || null,
+      storageBucketName:
+        String(payload.storageBucketName || "").trim() || null,
+      storageFolderName:
+        String(payload.storageFolderName || "").trim() || null,
+      storageDefaultAcl:
+        String(payload.storageDefaultAcl || "").trim() || null,
+      storageDefaultExpiration: storageDefaultExpiration ?? null,
+      storageRegion:
+        String(payload.storageRegion || "").trim() || null,
+      storageEndpoint:
+        String(payload.storageEndpoint || "").trim() || null,
+      storageCustomEndpoint:
+        String(payload.storageCustomEndpoint || "").trim() || null,
     };
+  }
+
+  private buildTenantBranchSmtpData(payload: TenantBranchPayload) {
+    const smtpHostInput = String(payload.smtpHost || "").trim();
+    const smtpEmail = String(payload.smtpEmail || "").trim();
+    const smtpPassword = String(payload.smtpPassword || "").trim();
+    const smtpPortInput = this.parseOptionalInt(payload.smtpPort);
+    const smtpTimeoutInput = this.parseOptionalInt(payload.smtpTimeout);
+    const smtpAuthTypeInput = String(payload.smtpAuthType || "")
+      .trim()
+      .toUpperCase();
+    const hasSmtpAccountConfiguration =
+      !!smtpHostInput ||
+      !!smtpEmail ||
+      !!smtpPassword;
+
+    if (!hasSmtpAccountConfiguration) {
+      return {
+        smtpHost: null,
+        smtpPort: null,
+        smtpTimeout: null,
+        smtpAuthenticate: null,
+        smtpSecure: null,
+        smtpAuthType: null,
+        smtpEmail: null,
+        smtpPassword: null,
+      };
+    }
+
+    if ((smtpEmail && !smtpPassword) || (!smtpEmail && smtpPassword)) {
+      throw new ConflictException(
+        "Para configurar SMTP da filial, informe usuário e senha juntos.",
+      );
+    }
+
+    const hasCredentials = !!smtpEmail && !!smtpPassword;
+    const smtpSecure = this.parseBoolean(
+      payload.smtpSecure,
+      smtpAuthTypeInput === "SSL" || smtpPortInput === 465,
+    );
+    const smtpAuthenticate = this.parseBoolean(
+      payload.smtpAuthenticate,
+      hasCredentials,
+    );
+
+    if (smtpAuthenticate && !hasCredentials) {
+      throw new ConflictException(
+        "Autenticação SMTP da filial exige usuário e senha.",
+      );
+    }
+
+    const smtpHost = smtpHostInput || (hasCredentials ? "smtp.gmail.com" : "");
+    const smtpPort =
+      smtpPortInput ?? (smtpHost ? (smtpSecure ? 465 : 587) : undefined);
+    const smtpTimeout = smtpTimeoutInput ?? (smtpHost ? 60 : undefined);
+    const smtpAuthType =
+      smtpAuthTypeInput || (smtpHost ? (smtpSecure ? "SSL" : "STARTTLS") : "");
+
+    if (!smtpHost || !smtpPort || !smtpEmail) {
+      throw new ConflictException(
+        "SMTP da filial incompleto. Informe host, porta e usuário de envio.",
+      );
+    }
+
+    if (smtpPort < 1 || smtpPort > 65535) {
+      throw new ConflictException(
+        "Porta SMTP da filial inválida. Use valor entre 1 e 65535.",
+      );
+    }
+
+    if (smtpTimeout !== undefined && (smtpTimeout < 5 || smtpTimeout > 600)) {
+      throw new ConflictException(
+        "Tempo limite SMTP da filial inválido. Use valor entre 5 e 600 segundos.",
+      );
+    }
+
+    return {
+      smtpHost: smtpHost.toLowerCase(),
+      smtpPort,
+      smtpTimeout,
+      smtpAuthenticate,
+      smtpSecure,
+      smtpAuthType: smtpAuthType || null,
+      smtpEmail: smtpEmail.toLowerCase(),
+      smtpPassword,
+    };
+  }
+
+  private buildTenantBranchStorageData(payload: TenantBranchPayload) {
+    return this.buildStorageConfigurationData(payload);
   }
 
   private mapUserEmailUsage(record: {
@@ -237,7 +473,7 @@ export class TenantsService {
     role: string;
     updatedAt: Date;
     updatedBy?: string | null;
-    tenant: { id: string; name: string; document?: string | null };
+    tenant: { id: string; name: string };
   }): EmailUsageItem {
     const isAdmin = record.role === "ADMIN";
     return {
@@ -249,7 +485,7 @@ export class TenantsService {
       recordName: record.name,
       currentEmail: record.email || "",
       role: record.role,
-      document: record.tenant.document,
+      document: null,
       updatedAt: record.updatedAt,
       updatedBy: record.updatedBy,
     };
@@ -261,7 +497,7 @@ export class TenantsService {
     email: string | null;
     updatedAt: Date;
     updatedBy?: string | null;
-    tenant: { id: string; name: string; document?: string | null };
+    tenant: { id: string; name: string };
   }): EmailUsageItem {
     return {
       entityType: "TEACHER",
@@ -271,7 +507,7 @@ export class TenantsService {
       tenantName: record.tenant.name,
       recordName: record.name,
       currentEmail: record.email || "",
-      document: record.tenant.document,
+      document: null,
       updatedAt: record.updatedAt,
       updatedBy: record.updatedBy,
     };
@@ -283,7 +519,7 @@ export class TenantsService {
     email: string | null;
     updatedAt: Date;
     updatedBy?: string | null;
-    tenant: { id: string; name: string; document?: string | null };
+    tenant: { id: string; name: string };
   }): EmailUsageItem {
     return {
       entityType: "STUDENT",
@@ -293,7 +529,7 @@ export class TenantsService {
       tenantName: record.tenant.name,
       recordName: record.name,
       currentEmail: record.email || "",
-      document: record.tenant.document,
+      document: null,
       updatedAt: record.updatedAt,
       updatedBy: record.updatedBy,
     };
@@ -305,7 +541,7 @@ export class TenantsService {
     email: string | null;
     updatedAt: Date;
     updatedBy?: string | null;
-    tenant: { id: string; name: string; document?: string | null };
+    tenant: { id: string; name: string };
   }): EmailUsageItem {
     return {
       entityType: "GUARDIAN",
@@ -315,7 +551,7 @@ export class TenantsService {
       tenantName: record.tenant.name,
       recordName: record.name,
       currentEmail: record.email || "",
-      document: record.tenant.document,
+      document: null,
       updatedAt: record.updatedAt,
       updatedBy: record.updatedBy,
     };
@@ -344,16 +580,9 @@ export class TenantsService {
 
     this.validateAndNormalizeSmtp(createTenantDto);
 
-    if (createTenantDto.document) {
-      const existingTenant = await this.prisma.tenant.findUnique({
-        where: { document: createTenantDto.document },
-      });
-      if (existingTenant) {
-        throw new ConflictException(
-          "Uma escola com este documento já está registrada.",
-        );
-      }
-    }
+    const defaultBranchPayload =
+      (createTenantDto.defaultBranch as TenantBranchPayload | undefined) ||
+      (createTenantDto as TenantBranchPayload);
 
     const normalizedAdminPassword = String(
       createTenantDto.adminPassword || "",
@@ -371,25 +600,6 @@ export class TenantsService {
       const newTenant = await tx.tenant.create({
         data: {
           name: createTenantDto.name,
-          document: createTenantDto.document,
-          logoUrl: createTenantDto.logoUrl?.trim() || null,
-          rg: createTenantDto.rg,
-          cpf: createTenantDto.cpf,
-          cnpj: createTenantDto.cnpj,
-          nickname: createTenantDto.nickname,
-          corporateName: createTenantDto.corporateName,
-          phone: createTenantDto.phone,
-          whatsapp: createTenantDto.whatsapp,
-          cellphone1: createTenantDto.cellphone1,
-          cellphone2: createTenantDto.cellphone2,
-          email: createTenantDto.email,
-          zipCode: createTenantDto.zipCode,
-          street: createTenantDto.street,
-          number: createTenantDto.number,
-          city: createTenantDto.city,
-          state: createTenantDto.state,
-          neighborhood: createTenantDto.neighborhood,
-          complement: createTenantDto.complement,
           interestRate: createTenantDto.interestRate,
           penaltyRate: createTenantDto.penaltyRate,
           penaltyValue: createTenantDto.penaltyValue,
@@ -405,7 +615,23 @@ export class TenantsService {
           smtpAuthType: createTenantDto.smtpAuthType,
           smtpEmail: createTenantDto.smtpEmail,
           smtpPassword: createTenantDto.smtpPassword,
+          ...this.buildStorageConfigurationData(createTenantDto),
           createdBy: this.masterAuditUser,
+          updatedBy: this.masterAuditUser,
+        },
+      });
+
+      const defaultBranch = await ensureDefaultTenantBranch(
+        tx,
+        newTenant.id,
+        this.masterAuditUser,
+      );
+
+      await tx.tenantBranch.update({
+        where: { id: defaultBranch.id },
+        data: {
+          name: "FILIAL 1",
+          ...this.buildTenantBranchData(defaultBranchPayload),
           updatedBy: this.masterAuditUser,
         },
       });
@@ -456,6 +682,10 @@ export class TenantsService {
     const tenants = await this.prisma.tenant.findMany({
       where: { canceledAt: null },
       include: {
+        branches: {
+          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
+          take: 1,
+        },
         users: {
           where: { role: "ADMIN" },
           select: { name: true, email: true },
@@ -464,10 +694,23 @@ export class TenantsService {
       orderBy: { createdAt: "desc" },
     });
 
-    return tenants.map(({ smtpPassword: _smtpPassword, ...tenant }) => tenant);
+    return tenants.map(({ smtpPassword: _smtpPassword, branches, ...tenant }) => {
+      const defaultBranch = branches[0]
+        ? mapTenantBranchSummary(branches[0])
+        : null;
+
+      return {
+        ...tenant,
+        logoUrl: defaultBranch?.logoUrl ?? null,
+        document: defaultBranch?.document ?? null,
+        defaultBranch,
+      };
+    });
   }
 
   async findCurrent(tenantId: string) {
+    await ensureDefaultTenantBranch(this.prisma, tenantId);
+
     const tenant = await this.prisma.tenant.findFirst({
       where: {
         id: tenantId,
@@ -476,14 +719,10 @@ export class TenantsService {
       select: {
         id: true,
         name: true,
-        document: true,
-        logoUrl: true,
-        email: true,
-        whatsapp: true,
-        phone: true,
-        city: true,
-        state: true,
-        neighborhood: true,
+        branches: {
+          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
+          take: 1,
+        },
       },
     });
 
@@ -493,7 +732,178 @@ export class TenantsService {
       );
     }
 
-    return tenant;
+    const defaultBranch = tenant.branches[0]
+      ? mapTenantBranchSummary(tenant.branches[0])
+      : null;
+
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      logoUrl: defaultBranch?.logoUrl ?? null,
+      document: defaultBranch?.document ?? null,
+      email: defaultBranch?.email ?? null,
+      phone: defaultBranch?.phone ?? null,
+      whatsapp: defaultBranch?.whatsapp ?? null,
+      city: defaultBranch?.city ?? null,
+      state: defaultBranch?.state ?? null,
+      defaultBranch,
+    };
+  }
+
+  async listCurrentBranches(tenantId: string) {
+    const branches = await listTenantBranches(this.prisma, tenantId);
+    return branches.map(mapTenantBranchSummary);
+  }
+
+  private async assertActiveTenant(tenantId: string) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, canceledAt: null },
+      select: { id: true },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException("Escola não encontrada.");
+    }
+  }
+
+  async createCurrentBranch(
+    tenantId: string,
+    payload: TenantBranchPayload,
+    currentUser: ICurrentUser,
+  ) {
+    await this.assertActiveTenant(tenantId);
+    const branches = await listTenantBranches(this.prisma, tenantId);
+    const requestedBranchCode =
+      payload.branchCode === undefined || payload.branchCode === null
+        ? Math.max(...branches.map((branch) => branch.branchCode), 0) + 1
+        : normalizeBranchCode(payload.branchCode, -1);
+
+    if (requestedBranchCode < DEFAULT_BRANCH_CODE) {
+      throw new BadRequestException("A filial deve usar código maior ou igual a 1.");
+    }
+
+    const alreadyExists = branches.some(
+      (branch) => branch.branchCode === requestedBranchCode,
+    );
+    if (alreadyExists) {
+      throw new ConflictException("Já existe uma filial com este código.");
+    }
+
+    const createdBranch = await this.prisma.tenantBranch.create({
+      data: {
+        tenantId,
+        branchCode: requestedBranchCode,
+        name: String(payload.name || `FILIAL ${requestedBranchCode}`)
+          .trim()
+          .toUpperCase(),
+        ...this.buildTenantBranchData(payload),
+        isActive: true,
+        createdBy: currentUser.userId,
+        updatedBy: currentUser.userId,
+      },
+    });
+
+    return mapTenantBranchSummary(createdBranch);
+  }
+
+  async listBranchesByTenant(tenantId: string) {
+    await this.assertActiveTenant(tenantId);
+    const branches = await listTenantBranches(this.prisma, tenantId);
+    return branches.map(mapTenantBranchSummary);
+  }
+
+  async createBranchByTenant(tenantId: string, payload: TenantBranchPayload) {
+    return this.createCurrentBranch(tenantId, payload, {
+      userId: this.masterAuditUser,
+      tenantId,
+      branchCode: DEFAULT_BRANCH_CODE,
+      role: "SOFTHOUSE_ADMIN",
+      permissions: [],
+      isMaster: true,
+    });
+  }
+
+  async updateBranchByTenant(
+    tenantId: string,
+    branchId: string,
+    payload: TenantBranchPayload,
+  ) {
+    await this.assertActiveTenant(tenantId);
+    const branch = await this.prisma.tenantBranch.findFirst({
+      where: { id: branchId, tenantId, canceledAt: null },
+    });
+
+    if (!branch) {
+      throw new NotFoundException("Filial não encontrada.");
+    }
+
+    const requestedBranchCode =
+      payload.branchCode === undefined || payload.branchCode === null
+        ? branch.branchCode
+        : normalizeBranchCode(payload.branchCode, -1);
+
+    if (requestedBranchCode < DEFAULT_BRANCH_CODE) {
+      throw new BadRequestException(
+        "A filial deve usar código maior ou igual a 1.",
+      );
+    }
+
+    if (requestedBranchCode !== branch.branchCode) {
+      const alreadyExists = await this.prisma.tenantBranch.findFirst({
+        where: {
+          tenantId,
+          branchCode: requestedBranchCode,
+          canceledAt: null,
+          id: { not: branchId },
+        },
+        select: { id: true },
+      });
+
+      if (alreadyExists) {
+        throw new ConflictException("Já existe uma filial com este código.");
+      }
+    }
+
+    const incomingSmtpEmail = payload.smtpEmail?.trim().toLowerCase();
+    const incomingSmtpPassword = payload.smtpPassword?.trim();
+    if (
+      incomingSmtpEmail &&
+      !incomingSmtpPassword &&
+      branch.smtpEmail &&
+      incomingSmtpEmail === branch.smtpEmail.toLowerCase() &&
+      branch.smtpPassword
+    ) {
+      payload.smtpPassword = branch.smtpPassword;
+    }
+
+    const incomingStorageAccessKey =
+      payload.storageProviderAccessKeyId?.trim();
+    const incomingStorageSecret =
+      payload.storageProviderSecretAccessKey?.trim();
+    if (
+      incomingStorageAccessKey &&
+      !incomingStorageSecret &&
+      branch.storageProviderAccessKeyId &&
+      incomingStorageAccessKey === branch.storageProviderAccessKeyId &&
+      branch.storageProviderSecretAccessKey
+    ) {
+      payload.storageProviderSecretAccessKey =
+        branch.storageProviderSecretAccessKey;
+    }
+
+    const updatedBranch = await this.prisma.tenantBranch.update({
+      where: { id: branchId },
+      data: {
+        branchCode: requestedBranchCode,
+        name: String(payload.name || branch.name)
+          .trim()
+          .toUpperCase(),
+        ...this.buildTenantBranchData(payload),
+        updatedBy: this.masterAuditUser,
+      },
+    });
+
+    return mapTenantBranchSummary(updatedBranch);
   }
 
   async findEmailUsage(email: string) {
@@ -505,18 +915,7 @@ export class TenantsService {
         }
       ).getUnscopedClient?.() || this.prisma;
 
-    const [tenants, users, teachers, students, guardians] = await Promise.all([
-      prismaClient.tenant.findMany({
-        where: { canceledAt: null },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          document: true,
-          updatedAt: true,
-          updatedBy: true,
-        },
-      }),
+    const [users, teachers, students, guardians] = await Promise.all([
       prismaClient.user.findMany({
         where: { canceledAt: null },
         select: {
@@ -526,7 +925,7 @@ export class TenantsService {
           role: true,
           updatedAt: true,
           updatedBy: true,
-          tenant: { select: { id: true, name: true, document: true } },
+          tenant: { select: { id: true, name: true } },
         },
       }) as Promise<
         Array<{
@@ -536,7 +935,7 @@ export class TenantsService {
           role: string;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }>
       >,
       prismaClient.teacher.findMany({
@@ -547,7 +946,7 @@ export class TenantsService {
           email: true,
           updatedAt: true,
           updatedBy: true,
-          tenant: { select: { id: true, name: true, document: true } },
+          tenant: { select: { id: true, name: true } },
         },
       }) as Promise<
         Array<{
@@ -556,7 +955,7 @@ export class TenantsService {
           email: string | null;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }>
       >,
       prismaClient.student.findMany({
@@ -567,7 +966,7 @@ export class TenantsService {
           email: true,
           updatedAt: true,
           updatedBy: true,
-          tenant: { select: { id: true, name: true, document: true } },
+          tenant: { select: { id: true, name: true } },
         },
       }) as Promise<
         Array<{
@@ -576,7 +975,7 @@ export class TenantsService {
           email: string | null;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }>
       >,
       prismaClient.guardian.findMany({
@@ -587,7 +986,7 @@ export class TenantsService {
           email: true,
           updatedAt: true,
           updatedBy: true,
-          tenant: { select: { id: true, name: true, document: true } },
+          tenant: { select: { id: true, name: true } },
         },
       }) as Promise<
         Array<{
@@ -596,22 +995,12 @@ export class TenantsService {
           email: string | null;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }>
       >,
     ]);
 
     return [
-      ...tenants.map(
-        (record: {
-          id: string;
-          name: string;
-          email: string | null;
-          document?: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-        }) => this.mapTenantEmailUsage(record),
-      ),
       ...users.map(
         (record: {
           id: string;
@@ -620,7 +1009,7 @@ export class TenantsService {
           role: string;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }) => this.mapUserEmailUsage(record),
       ),
       ...teachers.map(
@@ -630,7 +1019,7 @@ export class TenantsService {
           email: string | null;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }) => this.mapTeacherEmailUsage(record),
       ),
       ...students.map(
@@ -640,7 +1029,7 @@ export class TenantsService {
           email: string | null;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }) => this.mapStudentEmailUsage(record),
       ),
       ...guardians.map(
@@ -650,7 +1039,7 @@ export class TenantsService {
           email: string | null;
           updatedAt: Date;
           updatedBy?: string | null;
-          tenant: { id: string; name: string; document?: string | null };
+          tenant: { id: string; name: string };
         }) => this.mapGuardianEmailUsage(record),
       ),
     ]
@@ -682,31 +1071,6 @@ export class TenantsService {
     }
 
     switch (entityType) {
-      case "TENANT": {
-        const tenant = await this.prisma.tenant.findFirst({
-          where: { id: recordId, canceledAt: null },
-          select: { id: true },
-        });
-
-        if (!tenant) {
-          throw new NotFoundException(
-            "Escola não encontrada para atualização de email.",
-          );
-        }
-
-        await this.prisma.tenant.update({
-          where: { id: recordId },
-          data: {
-            email: newEmail,
-            updatedBy: this.masterAuditUser,
-          },
-        });
-
-        return {
-          message: "Email da escola atualizado com sucesso.",
-          usage: await this.findEmailUsageRecord("TENANT", recordId),
-        };
-      }
       case "ADMIN_USER":
       case "USER": {
         const user = await this.prisma.user.findFirst({
@@ -1580,6 +1944,10 @@ export class TenantsService {
           where: { tenantId, canceledAt: null },
           data: auditPayload,
         });
+        await tx.tenantBranch.updateMany({
+          where: { tenantId, canceledAt: null },
+          data: auditPayload,
+        });
         await tx.schoolYear.updateMany({
           where: { tenantId, canceledAt: null },
           data: auditPayload,
@@ -1759,6 +2127,9 @@ export class TenantsService {
             .count,
           people: (await tx.person.deleteMany({ where: { tenantId } })).count,
           users: (await tx.user.deleteMany({ where: { tenantId } })).count,
+          tenantBranches: (
+            await tx.tenantBranch.deleteMany({ where: { tenantId } })
+          ).count,
           subjects: (await tx.subject.deleteMany({ where: { tenantId } }))
             .count,
           schedules: (await tx.schedule.deleteMany({ where: { tenantId } }))
@@ -1802,6 +2173,9 @@ export class TenantsService {
       updateTenantDto.email = updateTenantDto.email.toUpperCase();
     if (updateTenantDto.adminEmail)
       updateTenantDto.adminEmail = updateTenantDto.adminEmail.toUpperCase();
+    const defaultBranchPayload =
+      (updateTenantDto.defaultBranch as TenantBranchPayload | undefined) ||
+      (updateTenantDto as TenantBranchPayload);
 
     const tenant = await this.prisma.tenant.findUnique({ where: { id } });
     if (!tenant) throw new ConflictException("Escola não encontrada.");
@@ -1818,20 +2192,22 @@ export class TenantsService {
       updateTenantDto.smtpPassword = tenant.smtpPassword;
     }
 
-    this.validateAndNormalizeSmtp(updateTenantDto);
-
+    const incomingStorageAccessKey =
+      updateTenantDto.storageProviderAccessKeyId?.trim();
+    const incomingStorageSecret =
+      updateTenantDto.storageProviderSecretAccessKey?.trim();
     if (
-      updateTenantDto.document &&
-      updateTenantDto.document !== tenant.document
+      incomingStorageAccessKey &&
+      !incomingStorageSecret &&
+      tenant.storageProviderAccessKeyId &&
+      incomingStorageAccessKey === tenant.storageProviderAccessKeyId &&
+      tenant.storageProviderSecretAccessKey
     ) {
-      const existing = await this.prisma.tenant.findUnique({
-        where: { document: updateTenantDto.document },
-      });
-      if (existing)
-        throw new ConflictException(
-          "Uma escola com este documento já está registrada.",
-        );
+      updateTenantDto.storageProviderSecretAccessKey =
+        tenant.storageProviderSecretAccessKey;
     }
+
+    this.validateAndNormalizeSmtp(updateTenantDto);
 
     let hashedPassword: string | undefined;
     if (updateTenantDto.adminPassword) {
@@ -1864,30 +2240,6 @@ export class TenantsService {
         where: { id },
         data: {
           name: updateTenantDto.name,
-          document: updateTenantDto.document,
-          logoUrl: Object.prototype.hasOwnProperty.call(
-            updateTenantDto,
-            "logoUrl",
-          )
-            ? updateTenantDto.logoUrl?.trim() || null
-            : undefined,
-          rg: updateTenantDto.rg,
-          cpf: updateTenantDto.cpf,
-          cnpj: updateTenantDto.cnpj,
-          nickname: updateTenantDto.nickname,
-          corporateName: updateTenantDto.corporateName,
-          phone: updateTenantDto.phone,
-          whatsapp: updateTenantDto.whatsapp,
-          cellphone1: updateTenantDto.cellphone1,
-          cellphone2: updateTenantDto.cellphone2,
-          email: updateTenantDto.email,
-          zipCode: updateTenantDto.zipCode,
-          street: updateTenantDto.street,
-          number: updateTenantDto.number,
-          city: updateTenantDto.city,
-          state: updateTenantDto.state,
-          neighborhood: updateTenantDto.neighborhood,
-          complement: updateTenantDto.complement,
           interestRate: updateTenantDto.interestRate,
           penaltyRate: updateTenantDto.penaltyRate,
           penaltyValue: updateTenantDto.penaltyValue,
@@ -1903,6 +2255,23 @@ export class TenantsService {
           smtpAuthType: updateTenantDto.smtpAuthType,
           smtpEmail: updateTenantDto.smtpEmail,
           smtpPassword: updateTenantDto.smtpPassword,
+          ...this.buildStorageConfigurationData(updateTenantDto),
+          updatedBy: this.masterAuditUser,
+        },
+      });
+
+      const defaultBranch = await ensureDefaultTenantBranch(
+        tx,
+        id,
+        this.masterAuditUser,
+      );
+      await tx.tenantBranch.update({
+        where: { id: defaultBranch.id },
+        data: {
+          name:
+            this.normalizeOptionalText(defaultBranchPayload.name) ||
+            "FILIAL 1",
+          ...this.buildTenantBranchData(defaultBranchPayload),
           updatedBy: this.masterAuditUser,
         },
       });
@@ -2002,24 +2371,6 @@ export class TenantsService {
     recordId: string,
   ) {
     switch (entityType) {
-      case "TENANT": {
-        const record = await this.prisma.tenant.findFirst({
-          where: { id: recordId, canceledAt: null },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            document: true,
-            updatedAt: true,
-            updatedBy: true,
-          },
-        });
-        if (!record || !record.email)
-          throw new NotFoundException(
-            "Registro de escola não encontrado após atualização.",
-          );
-        return this.mapTenantEmailUsage(record);
-      }
       case "ADMIN_USER":
       case "USER": {
         const record = await this.prisma.user.findFirst({
@@ -2031,7 +2382,7 @@ export class TenantsService {
             role: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         });
         if (!record)
@@ -2049,7 +2400,7 @@ export class TenantsService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         });
         if (!record)
@@ -2067,7 +2418,7 @@ export class TenantsService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         });
         if (!record)
@@ -2085,7 +2436,7 @@ export class TenantsService {
             email: true,
             updatedAt: true,
             updatedBy: true,
-            tenant: { select: { id: true, name: true, document: true } },
+            tenant: { select: { id: true, name: true } },
           },
         });
         if (!record)

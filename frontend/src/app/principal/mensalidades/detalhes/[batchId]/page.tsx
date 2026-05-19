@@ -64,6 +64,7 @@ const EMPTY_AUTH_CONTEXT: DashboardAuthContext = {
     role: null,
     permissions: [],
     tenantId: null,
+    branchCode: 1,
     name: null,
     modelType: null,
 };

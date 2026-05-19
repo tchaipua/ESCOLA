@@ -9,6 +9,7 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { CreateStudentFinancialLaunchDto } from "../dto/create-student-financial-launch.dto";
+import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 
 type LaunchScope = "ALL" | "SERIES" | "SERIES_CLASS";
 type LaunchType = "MENSALIDADE" | "MATERIAL_ESCOLAR" | "FORMATURA" | "EXTRA";
@@ -532,9 +533,15 @@ export class StudentFinancialLaunchesService {
       select: {
         id: true,
         name: true,
-        document: true,
-        cnpj: true,
-        cpf: true,
+        branches: {
+          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
+          select: {
+            document: true,
+            cnpj: true,
+            cpf: true,
+          },
+          take: 1,
+        },
       },
     });
 
@@ -545,7 +552,11 @@ export class StudentFinancialLaunchesService {
     return {
       id: tenant.id,
       name: tenant.name,
-      document: tenant.document || tenant.cnpj || tenant.cpf || null,
+      document:
+        tenant.branches[0]?.document ||
+        tenant.branches[0]?.cnpj ||
+        tenant.branches[0]?.cpf ||
+        null,
     };
   }
 

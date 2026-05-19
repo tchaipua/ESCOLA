@@ -132,3 +132,57 @@ Para cada decisao, registrar:
 - Impacto: o padrao do cabecalho passa a ficar salvo como regra oficial do produto, reaproveitavel tanto no sistema Escola quanto no Financeiro, com menor risco de regressao visual em novas manutencoes
 - Alternativas consideradas: manter apenas referencia por imagem/conversa; aplicar alteracao em lote em todas as telas imediatamente; permitir variacoes locais sem componente base nem documentacao
 - Status: aceita
+
+## DEC-0014
+
+- Data: 2026-05-16
+- Contexto: empresas/escolas podem operar com uma ou mais filiais, mas o uso de filial nao deve poluir a tela quando houver apenas uma filial operacional
+- Decisao: introduzir `TenantBranch` e `branchCode` nos cadastros de negocio; quando houver apenas uma filial ativa, o backend grava automaticamente na filial existente e o frontend oculta qualquer seletor; quando houver mais de uma filial, os cadastros exibem a escolha entre uma filial especifica ou `0` como cadastro comum a todas as filiais
+- Impacto: preserva simplicidade para escola com filial unica, permite isolamento operacional por filial em cadastros como professor, aluno, responsavel, serie, turma, disciplina, ano letivo e grade, e mantem registros comuns visiveis junto da filial atual
+- Alternativas consideradas: exigir filial em todas as telas mesmo com uma filial; criar bancos separados por filial; tratar filial somente no Financeiro
+- Status: aceita
+
+## DEC-0015
+
+- Data: 2026-05-17
+- Contexto: a Escola consome telas embutidas do projeto `Financeiro`, cujo frontend foi atualizado para `next@16.2.6` apos `npm audit fix --force`; o `npm audit` do Financeiro ainda sugere downgrade para Next 9 por causa de `postcss` interno do Next, o que e incompatível com App Router moderno
+- Decisao: registrar na Escola apenas como risco acompanhado de integracao, mantendo a decisao tecnica principal no projeto `Financeiro`; nao aplicar nenhuma mudanca no frontend da Escola por causa desse alerta
+- Impacto: a Escola continua consumindo o Financeiro normalmente, e qualquer acao corretiva sobre Next/PostCSS deve ser tratada no repositorio `Financeiro`
+- Alternativas consideradas: duplicar a correcao na Escola; forcar downgrade do Next no Financeiro; ignorar o risco sem registro na documentacao da vertical consumidora
+- Status: aceita
+
+## DEC-0016
+
+- Data: 2026-05-17
+- Contexto: o cadastro de empresa/escola deve concentrar parametros gerais, enquanto logotipo, CNPJ, endereco e contatos operacionais pertencem as filiais.
+- Decisao: manter a criacao automatica da primeira filial ao cadastrar uma empresa, sem expor conceito especial para essa filial, e permitir gerenciar filiais diretamente no grid `MSINFOR_ADMIN_UNIDADES_ATIVAS`, com campos proprios de logotipo, documento, contato e endereco.
+- Impacto: novas empresas ja nascem com filial operacional, e cadastros por filial passam a ter origem administrativa clara no MSINFOR ADMIN.
+- Alternativas consideradas: manter CNPJ/endereco somente no tenant; criar filiais apenas via API; exigir filial em todas as telas mesmo com unidade unica.
+- Status: aceita
+
+## DEC-0017
+
+- Data: 2026-05-17
+- Contexto: parametros de estoque podem variar por filial, mas alguns produtos precisam decidir individualmente se controlam estoque, quantidade inteira, lote, validade, grade e estoque negativo.
+- Decisao: armazenar na filial os parametros de estoque com os modos `NO`, `YES` e `BY_PRODUCT`; quando a filial estiver em `BY_PRODUCT`, a regra efetiva deve ser resolvida pelo cadastro do produto.
+- Impacto: permite forcar comportamento para todos os produtos de uma filial ou delegar a decisao produto a produto, incluindo controle unico de grade sem separar cor e tamanho/numero como parametros independentes.
+- Alternativas consideradas: usar apenas booleanos por filial; separar cor e tamanho/numero em parametros distintos; manter parametros somente no produto.
+- Status: aceita
+
+## DEC-0018
+
+- Data: 2026-05-17
+- Contexto: a empresa possui configuracao SMTP geral, mas uma filial pode precisar enviar e-mails por uma conta propria.
+- Decisao: duplicar a configuracao SMTP na filial como opcional; quando a filial possuir SMTP preenchido, ele tem prioridade sobre o SMTP da empresa, e quando estiver vazio o sistema usa o SMTP geral da empresa.
+- Impacto: permite remetente e credenciais especificos por filial sem obrigar configuracao duplicada para todas as unidades.
+- Alternativas consideradas: manter SMTP somente na empresa; exigir SMTP em todas as filiais; mover SMTP totalmente para filial e remover da empresa.
+- Status: aceita
+
+## DEC-0019
+
+- Data: 2026-05-17
+- Contexto: arquivos da escola podem ser salvos em storage S3/Contabo, e algumas filiais podem precisar usar bucket, pasta ou credenciais proprias.
+- Decisao: armazenar configuracao de storage tanto na empresa quanto na filial; quando a filial possuir configuracao preenchida, ela tem prioridade, e quando estiver vazia o sistema usa a configuracao da empresa.
+- Impacto: permite centralizar storage na empresa para casos simples e sobrescrever por filial quando houver segregacao operacional de arquivos.
+- Alternativas consideradas: manter storage somente em configuracao global da softhouse; exigir storage em todas as filiais; mover storage totalmente para filial.
+- Status: aceita

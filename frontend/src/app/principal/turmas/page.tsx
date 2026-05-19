@@ -13,7 +13,8 @@ import { type GridStatusFilterValue } from '@/app/components/grid-status-filter'
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
-import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
+import { fetchTenantBranches, getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
 import {
     buildGridAggregateSummaries,
     getAllGridColumnKeys,
@@ -45,6 +46,7 @@ type SeriesRecord = {
 
 type ClassRecord = {
     id: string;
+    branchCode?: number | null;
     name: string;
     shift: string;
     defaultMonthlyFee?: number | null;
@@ -53,6 +55,7 @@ type ClassRecord = {
 
 type SeriesClassRecord = {
     id: string;
+    branchCode?: number | null;
     seriesId: string;
     classId: string;
     canceledAt?: string | null;
@@ -73,6 +76,7 @@ type SeriesClassRecord = {
 };
 
 type FormData = {
+    branchCode: number;
     seriesId: string;
     name: string;
     shifts: ShiftValue[];
@@ -80,6 +84,7 @@ type FormData = {
 };
 
 const EMPTY_FORM: FormData = {
+    branchCode: 1,
     seriesId: '',
     name: '',
     shifts: [],
@@ -226,6 +231,8 @@ export default function TurmasPage() {
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [sortState, setSortState] = useState<GridSortState<SeriesClassColumnKey>>(DEFAULT_SORT);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
@@ -295,15 +302,17 @@ export default function TurmasPage() {
             setIsLoading(true);
             setErrorStatus(null);
 
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
 
-            const [linksResponse, seriesResponse] = await Promise.all([
+            const [linksResponse, seriesResponse, branchesData] = await Promise.all([
                 fetch(`${API_BASE_URL}/series-classes`, { headers: { Authorization: `Bearer ${token}` } }),
                 fetch(`${API_BASE_URL}/series`, { headers: { Authorization: `Bearer ${token}` } }),
+                fetchTenantBranches().catch(() => []),
             ]);
 
             const [linksData, seriesData] = await Promise.all([
@@ -315,6 +324,7 @@ export default function TurmasPage() {
             if (!seriesResponse.ok) throw new Error(seriesData?.message || 'Não foi possível carregar as séries.');
             setLinks(Array.isArray(linksData) ? linksData : []);
             setSeries(Array.isArray(seriesData) ? seriesData : []);
+            setTenantBranches(Array.isArray(branchesData) ? branchesData : []);
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar as turmas.');
         } finally {
@@ -355,7 +365,7 @@ export default function TurmasPage() {
 
     const resetForm = () => {
         setEditingId(null);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
     };
 
     const openCreateModal = () => {
@@ -385,7 +395,7 @@ export default function TurmasPage() {
         );
     };
 
-    const createClassAndLink = async (token: string, payload: { seriesId: string; name: string; shifts: ShiftValue[]; defaultMonthlyFee: string }) => {
+    const createClassAndLink = async (token: string, payload: { branchCode: number; seriesId: string; name: string; shifts: ShiftValue[]; defaultMonthlyFee: string }) => {
         const classResponse = await fetch(`${API_BASE_URL}/classes`, {
             method: 'POST',
             headers: {
@@ -396,6 +406,7 @@ export default function TurmasPage() {
                 name: payload.name,
                 shift: normalizeShifts(payload.shifts).join(','),
                 defaultMonthlyFee: parseMoneyValue(payload.defaultMonthlyFee),
+                branchCode: payload.branchCode,
             }),
         });
 
@@ -411,6 +422,7 @@ export default function TurmasPage() {
             body: JSON.stringify({
                 seriesId: payload.seriesId,
                 classId: classData.id,
+                branchCode: payload.branchCode,
             }),
         });
 
@@ -448,6 +460,7 @@ export default function TurmasPage() {
             if (editingId) {
                 const current = links.find((item) => item.id === editingId);
                 if (!current?.class?.id) throw new Error('Turma selecionada para edição não foi encontrada.');
+                const targetBranchCode = tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode;
 
                 const classResponse = await fetch(`${API_BASE_URL}/classes/${current.class.id}`, {
                     method: 'PATCH',
@@ -459,6 +472,7 @@ export default function TurmasPage() {
                         name: normalizedName,
                         shift: normalizeShifts(formData.shifts).join(','),
                         defaultMonthlyFee: parseMoneyValue(formData.defaultMonthlyFee),
+                        branchCode: targetBranchCode,
                     }),
                 });
 
@@ -474,6 +488,7 @@ export default function TurmasPage() {
                     body: JSON.stringify({
                         seriesId: formData.seriesId,
                         classId: current.class.id,
+                        branchCode: targetBranchCode,
                     }),
                 });
 
@@ -483,6 +498,7 @@ export default function TurmasPage() {
                 setSuccessStatus('Turma atualizada com sucesso.');
             } else {
                 await createClassAndLink(token, {
+                    branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
                     seriesId: formData.seriesId,
                     name: normalizedName,
                     shifts: formData.shifts,
@@ -503,6 +519,7 @@ export default function TurmasPage() {
     const handleEdit = (item: SeriesClassRecord) => {
         setEditingId(item.id);
         setFormData({
+            branchCode: typeof item.branchCode === 'number' ? item.branchCode : (typeof item.class?.branchCode === 'number' ? item.class.branchCode : currentBranchCode),
             seriesId: item.seriesId,
             name: item.class?.name || '',
             shifts: item.class?.shift ? splitShiftValue(item.class.shift) : [],
@@ -1047,6 +1064,13 @@ export default function TurmasPage() {
                                         className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                                     />
                                 </div>
+                                <TenantBranchSelect
+                                    branches={tenantBranches}
+                                    value={formData.branchCode}
+                                    onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                    labelClassName="text-xs font-semibold uppercase tracking-[0.3em] text-slate-600"
+                                    selectClassName="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                />
                             </div>
                             <div className={`rounded-lg px-4 py-3 ${hasShiftSelected ? 'border border-slate-300 bg-slate-50' : 'border border-red-200 bg-red-50'}`}>
                                 <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Turnos</p>

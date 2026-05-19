@@ -12,7 +12,8 @@ import StatusConfirmationModal from '@/app/components/status-confirmation-modal'
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
-import { getDashboardAuthContext, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
+import { fetchTenantBranches, getDashboardAuthContext, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
 import {
     buildGridAggregateSummaries,
     getAllGridColumnKeys,
@@ -30,6 +31,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3
 
 type SeriesRecord = {
     id: string;
+    branchCode?: number | null;
     name: string;
     code?: string | null;
     sortOrder?: number | null;
@@ -66,6 +68,7 @@ const formatPhoneNumber = (value?: string | null) => {
 };
 
 const EMPTY_FORM = {
+    branchCode: 1,
     name: '',
     code: '',
     sortOrder: '',
@@ -127,6 +130,8 @@ export default function SeriesPage() {
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [sortState, setSortState] = useState<GridSortState<SeriesColumnKey>>(DEFAULT_SORT);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
@@ -192,18 +197,23 @@ export default function SeriesPage() {
         try {
             setIsLoading(true);
             setErrorStatus(null);
-            const { token, role, permissions, tenantId } = getDashboardAuthContext();
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             setCurrentRole(role);
             setCurrentPermissions(permissions);
             setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
 
-            const response = await fetch(`${API_BASE_URL}/series`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const [response, branchesData] = await Promise.all([
+                fetch(`${API_BASE_URL}/series`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetchTenantBranches().catch(() => []),
+            ]);
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(data?.message || 'Não foi possível carregar as séries.');
             setSeries(Array.isArray(data) ? data : []);
+            setTenantBranches(Array.isArray(branchesData) ? branchesData : []);
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar as séries.');
         } finally {
@@ -288,7 +298,7 @@ export default function SeriesPage() {
 
     const resetForm = () => {
         setEditingId(null);
-        setFormData(EMPTY_FORM);
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
     };
 
     const openCreateModal = () => {
@@ -320,6 +330,7 @@ export default function SeriesPage() {
                     name: formData.name,
                     code: formData.code || undefined,
                     sortOrder: formData.sortOrder ? Number(formData.sortOrder) : undefined,
+                    branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
                 }),
             });
 
@@ -339,6 +350,7 @@ export default function SeriesPage() {
     const handleEdit = (item: SeriesRecord) => {
         setEditingId(item.id);
         setFormData({
+            branchCode: typeof item.branchCode === 'number' ? item.branchCode : currentBranchCode,
             name: item.name || '',
             code: item.code || '',
             sortOrder: item.sortOrder !== null && item.sortOrder !== undefined ? String(item.sortOrder) : '',
@@ -823,6 +835,13 @@ export default function SeriesPage() {
                                 <input required value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value.toUpperCase() }))} placeholder="Nome da série" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
                                 <input value={formData.code} onChange={(event) => setFormData((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="Código curto" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
                                 <input value={formData.sortOrder} onChange={(event) => setFormData((current) => ({ ...current, sortOrder: event.target.value }))} placeholder="Ordem de aprendizado" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
+                                <TenantBranchSelect
+                                    branches={tenantBranches}
+                                    value={formData.branchCode}
+                                    onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                    labelClassName="text-xs font-bold text-slate-600"
+                                    selectClassName="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                />
                             </div>
 
                             <div className="flex flex-col gap-3 border-t border-slate-100 pt-5">

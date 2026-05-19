@@ -4,6 +4,7 @@ import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
 import { ListMyNotificationsDto } from "../dto/list-my-notifications.dto";
+import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 
 type RecipientType = "USER" | "TEACHER" | "STUDENT" | "GUARDIAN";
 
@@ -113,6 +114,18 @@ type AttendanceNotificationPayload = {
   }>;
 };
 
+type SmtpConfiguration = {
+  id: string;
+  name: string;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpTimeout?: number | null;
+  smtpAuthenticate?: boolean | null;
+  smtpSecure?: boolean | null;
+  smtpEmail?: string | null;
+  smtpPassword?: string | null;
+};
+
 @Injectable()
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -123,6 +136,20 @@ export class NotificationsService {
 
   private userId() {
     return getTenantContext()!.userId;
+  }
+
+  private branchCode() {
+    return getTenantContext()?.branchCode;
+  }
+
+  private hasSmtpInformation(config?: Partial<SmtpConfiguration> | null) {
+    return !!(
+      config?.smtpHost ||
+      config?.smtpPort ||
+      config?.smtpTimeout ||
+      config?.smtpEmail ||
+      config?.smtpPassword
+    );
   }
 
   private normalizeText(value: string) {
@@ -183,8 +210,9 @@ export class NotificationsService {
     }
   }
 
-  private async getTenantSmtpConfiguration() {
-    return this.prisma.tenant.findFirst({
+  private async getTenantSmtpConfiguration(): Promise<SmtpConfiguration | null> {
+    const branchCode = this.branchCode();
+    const tenant = await this.prisma.tenant.findFirst({
       where: {
         id: this.tenantId(),
         canceledAt: null,
@@ -199,9 +227,44 @@ export class NotificationsService {
         smtpSecure: true,
         smtpEmail: true,
         smtpPassword: true,
-        email: true,
+        branches:
+          branchCode && branchCode >= DEFAULT_BRANCH_CODE
+            ? {
+                where: { branchCode, canceledAt: null },
+                select: {
+                  smtpHost: true,
+                  smtpPort: true,
+                  smtpTimeout: true,
+                  smtpAuthenticate: true,
+                  smtpSecure: true,
+                  smtpEmail: true,
+                  smtpPassword: true,
+                },
+                take: 1,
+              }
+            : false,
       },
     });
+
+    if (!tenant) return null;
+
+    const branch = tenant.branches?.[0];
+    if (this.hasSmtpInformation(branch)) {
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        smtpHost: branch.smtpHost,
+        smtpPort: branch.smtpPort,
+        smtpTimeout: branch.smtpTimeout,
+        smtpAuthenticate: branch.smtpAuthenticate,
+        smtpSecure: branch.smtpSecure,
+        smtpEmail: branch.smtpEmail,
+        smtpPassword: branch.smtpPassword,
+      };
+    }
+
+    const { branches: _branches, ...tenantSmtp } = tenant;
+    return tenantSmtp;
   }
 
   private buildNotificationTitle(payload: LessonEventNotificationPayload) {
@@ -438,7 +501,7 @@ export class NotificationsService {
           transporter.sendMail({
             from: `"${tenant.name}" <${tenant.smtpEmail}>`,
             to: recipient.email!,
-            replyTo: tenant.email || tenant.smtpEmail || undefined,
+            replyTo: tenant.smtpEmail || undefined,
             subject,
             text: textBody,
             html: `
@@ -592,7 +655,7 @@ export class NotificationsService {
           return transporter.sendMail({
             from: `"${tenant.name}" <${tenant.smtpEmail}>`,
             to: recipient.email!,
-            replyTo: tenant.email || tenant.smtpEmail || undefined,
+            replyTo: tenant.smtpEmail || undefined,
             subject,
             text: textBody,
             html: `

@@ -34,12 +34,18 @@ import {
 } from "../../../../common/auth/master-auth";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import { GlobalSettingsService } from "../../../global-settings/application/services/global-settings.service";
+import {
+  DEFAULT_BRANCH_CODE,
+  getVisibleBranchCodes,
+  normalizeBranchCode,
+} from "../../../../common/tenant/branch.constants";
 
 type AccountModelType = "user" | "teacher" | "student" | "guardian";
 
 type AccountLookup = {
   id: string;
   tenantId: string;
+  branchCode: number;
   name: string;
   email: string | null;
   password: string | null;
@@ -51,6 +57,7 @@ type AccountLookup = {
     id: string;
     name: string;
     logoUrl?: string | null;
+    branches?: Array<{ logoUrl?: string | null }>;
     smtpHost?: string | null;
     smtpPort?: number | null;
     smtpTimeout?: number | null;
@@ -128,7 +135,11 @@ export class AuthService {
     const tenantSelect = {
       id: true,
       name: true,
-      logoUrl: true,
+      branches: {
+        where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
+        select: { logoUrl: true },
+        take: 1,
+      },
       smtpHost: true,
       smtpPort: true,
       smtpTimeout: true,
@@ -140,6 +151,7 @@ export class AuthService {
     const baseSelect = {
       id: true,
       tenantId: true,
+      branchCode: true,
       name: true,
       email: true,
       password: true,
@@ -215,10 +227,14 @@ export class AuthService {
     ];
   }
 
-  private toSafeLoginUser(account: AccountLookup) {
+  private toSafeLoginUser(
+    account: AccountLookup,
+    sessionBranchCode = DEFAULT_BRANCH_CODE,
+  ) {
     return {
       id: account.id,
       tenantId: account.tenantId,
+      branchCode: normalizeBranchCode(sessionBranchCode, DEFAULT_BRANCH_CODE),
       role: account.role,
       permissions: account.permissions,
       complementaryProfiles:
@@ -347,10 +363,21 @@ export class AuthService {
       new Map(
         accounts.map((account) => [
           account.tenant.id,
-          { id: account.tenant.id, name: account.tenant.name },
+          {
+            id: account.tenant.id,
+            name: account.tenant.name,
+            logoUrl: this.getTenantLogoUrl(account.tenant),
+          },
         ]),
       ).values(),
     );
+  }
+
+  private getTenantLogoUrl(tenant?: {
+    logoUrl?: string | null;
+    branches?: Array<{ logoUrl?: string | null }>;
+  }) {
+    return tenant?.logoUrl ?? tenant?.branches?.[0]?.logoUrl ?? null;
   }
 
   private getRoleLabel(role: string) {
@@ -387,7 +414,7 @@ export class AuthService {
       tenant: {
         id: account.tenant.id,
         name: account.tenant.name,
-        logoUrl: account.tenant.logoUrl,
+        logoUrl: this.getTenantLogoUrl(account.tenant),
       },
     };
   }
@@ -426,15 +453,25 @@ export class AuthService {
   }
 
   private async listMasterTenants(): Promise<TenantSelectionSummary[]> {
-    return this.prisma.tenant.findMany({
+    const tenants = await this.prisma.tenant.findMany({
       where: { canceledAt: null },
       select: {
         id: true,
         name: true,
-        logoUrl: true,
+        branches: {
+          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
+          select: { logoUrl: true },
+          take: 1,
+        },
       },
       orderBy: { name: "asc" },
     });
+
+    return tenants.map((tenant) => ({
+      id: tenant.id,
+      name: tenant.name,
+      logoUrl: tenant.branches[0]?.logoUrl ?? null,
+    }));
   }
 
   private async loadEmailCredential(email?: string | null) {
@@ -602,6 +639,7 @@ export class AuthService {
       const payload = {
         userId: MASTER_USER_ID,
         tenantId: selectedTenant.id,
+        branchCode: DEFAULT_BRANCH_CODE,
         role: MASTER_ROLE,
         permissions: MASTER_PERMISSIONS,
         isMaster: true,
@@ -615,6 +653,7 @@ export class AuthService {
         user: {
           id: MASTER_USER_ID,
           tenantId: selectedTenant.id,
+          branchCode: DEFAULT_BRANCH_CODE,
           role: MASTER_ROLE,
           permissions: MASTER_PERMISSIONS,
           name: MASTER_LOGIN_USERNAME,
@@ -657,6 +696,10 @@ export class AuthService {
     }
 
     const validUsers = accounts;
+    const requestedBranchCode = normalizeBranchCode(
+      loginDto.branchCode,
+      DEFAULT_BRANCH_CODE,
+    );
 
     let userToLogin: AccountLookup | null = null;
     const validTenantIds = Array.from(
@@ -684,7 +727,11 @@ export class AuthService {
     }
 
     const validUsersForTenant = validUsers.filter(
-      (account) => account.tenantId === selectedTenantId,
+      (account) =>
+        account.tenantId === selectedTenantId &&
+        getVisibleBranchCodes(requestedBranchCode).includes(
+          normalizeBranchCode(account.branchCode, DEFAULT_BRANCH_CODE),
+        ),
     );
 
     if (validUsersForTenant.length === 0) {
@@ -747,6 +794,7 @@ export class AuthService {
     const payload = {
       userId: userToLogin.id,
       tenantId: userToLogin.tenantId,
+      branchCode: requestedBranchCode,
       role: userToLogin.role,
       permissions: userToLogin.permissions,
       name: userToLogin.name,
@@ -756,7 +804,7 @@ export class AuthService {
     return {
       status: "SUCCESS",
       access_token: this.jwtService.sign(payload),
-      user: this.toSafeLoginUser(userToLogin),
+      user: this.toSafeLoginUser(userToLogin, requestedBranchCode),
     };
   }
 

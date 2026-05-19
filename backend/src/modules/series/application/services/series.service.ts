@@ -6,7 +6,11 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateSeriesDto } from "../dto/create-series.dto";
 import { UpdateSeriesDto } from "../dto/update-series.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class SeriesService {
@@ -55,6 +59,14 @@ export class SeriesService {
   }
 
   async create(createDto: CreateSeriesDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const name = this.normalizeText(createDto.name);
     const code = createDto.code
       ? this.normalizeText(createDto.code)
@@ -68,8 +80,10 @@ export class SeriesService {
         name,
         code,
         sortOrder: createDto.sortOrder,
+        branchCode: targetBranchCode,
         createdBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 
@@ -104,6 +118,14 @@ export class SeriesService {
 
   async update(id: string, updateDto: UpdateSeriesDto) {
     const currentSeries = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      updateDto.branchCode,
+      currentSeries.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const nextName = updateDto.name
       ? this.normalizeText(updateDto.name)
       : currentSeries.name;
@@ -124,8 +146,10 @@ export class SeriesService {
             ? this.normalizeText(updateDto.code) || null
             : undefined,
         sortOrder: updateDto.sortOrder,
+        branchCode: targetBranchCode,
         updatedBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 

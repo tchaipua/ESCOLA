@@ -6,7 +6,11 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateTeacherDto } from "../dto/create-teacher.dto";
 import { UpdateTeacherDto } from "../dto/update-teacher.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 import * as bcrypt from "bcrypt";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
@@ -218,11 +222,19 @@ export class TeachersService {
   }
 
   async create(createDto: CreateTeacherDto, currentUser?: ICurrentUser) {
+    const tenantId = getTenantContext()!.tenantId;
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      tenantId,
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const sanitizedDto = this.sanitizeTeacherMutationDto(
       createDto,
       currentUser,
     );
-    const tenantId = getTenantContext()!.tenantId;
 
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
@@ -270,6 +282,7 @@ export class TeachersService {
           ? new Date(sanitizedDto.birthDate)
           : undefined,
         tenantId,
+        branchCode: targetBranchCode,
         createdBy: getTenantContext()!.userId,
       },
     });
@@ -306,6 +319,7 @@ export class TeachersService {
       this.mapTeacherAccess(createdTeacher),
       currentUser,
     );
+    });
   }
 
   async findAll(currentUser?: ICurrentUser) {
@@ -399,7 +413,14 @@ export class TeachersService {
       updateDto,
       currentUser,
     );
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      tenantId,
+      sanitizedDto.branchCode,
+      teacher.branchCode,
+    );
 
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
@@ -475,6 +496,7 @@ export class TeachersService {
         birthDate: sanitizedDto.birthDate
           ? new Date(sanitizedDto.birthDate)
           : undefined,
+        branchCode: targetBranchCode,
         updatedBy: getTenantContext()!.userId,
       },
     });
@@ -513,6 +535,7 @@ export class TeachersService {
       this.mapTeacherAccess(updatedTeacher),
       currentUser,
     );
+    });
   }
 
   async remove(id: string) {

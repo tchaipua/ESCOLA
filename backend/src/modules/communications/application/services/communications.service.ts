@@ -10,6 +10,7 @@ import {
   CreateCommunicationCampaignDto,
   type CommunicationTargetGroup,
 } from "../dto/create-communication-campaign.dto";
+import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 
 type AllowedAudienceScope = {
   mode: "ADMIN" | "FINANCEIRO" | "PROFESSOR";
@@ -23,6 +24,18 @@ type RecipientRecord = {
   recipientId: string;
   name: string;
   email?: string | null;
+};
+
+type SmtpConfiguration = {
+  id: string;
+  name: string;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpTimeout?: number | null;
+  smtpAuthenticate?: boolean | null;
+  smtpSecure?: boolean | null;
+  smtpEmail?: string | null;
+  smtpPassword?: string | null;
 };
 
 @Injectable()
@@ -348,7 +361,20 @@ export class CommunicationsService {
     return Array.from(recipients.values());
   }
 
-  private async getTenantSmtpConfiguration(tenantId: string) {
+  private hasSmtpInformation(config?: Partial<SmtpConfiguration> | null) {
+    return !!(
+      config?.smtpHost ||
+      config?.smtpPort ||
+      config?.smtpTimeout ||
+      config?.smtpEmail ||
+      config?.smtpPassword
+    );
+  }
+
+  private async getTenantSmtpConfiguration(
+    tenantId: string,
+    branchCode?: number | null,
+  ): Promise<SmtpConfiguration> {
     const tenant = await this.prisma.tenant.findFirst({
       where: {
         id: tenantId,
@@ -364,7 +390,23 @@ export class CommunicationsService {
         smtpSecure: true,
         smtpEmail: true,
         smtpPassword: true,
-        email: true,
+        branches:
+          branchCode && branchCode >= DEFAULT_BRANCH_CODE
+            ? {
+                where: { branchCode, canceledAt: null },
+                select: {
+                  name: true,
+                  smtpHost: true,
+                  smtpPort: true,
+                  smtpTimeout: true,
+                  smtpAuthenticate: true,
+                  smtpSecure: true,
+                  smtpEmail: true,
+                  smtpPassword: true,
+                },
+                take: 1,
+              }
+            : false,
       },
     });
 
@@ -372,16 +414,36 @@ export class CommunicationsService {
       throw new BadRequestException("Escola não encontrada para envio.");
     }
 
-    return tenant;
+    const branch = tenant.branches?.[0];
+    if (this.hasSmtpInformation(branch)) {
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        smtpHost: branch.smtpHost,
+        smtpPort: branch.smtpPort,
+        smtpTimeout: branch.smtpTimeout,
+        smtpAuthenticate: branch.smtpAuthenticate,
+        smtpSecure: branch.smtpSecure,
+        smtpEmail: branch.smtpEmail,
+        smtpPassword: branch.smtpPassword,
+      };
+    }
+
+    const { branches: _branches, ...tenantSmtp } = tenant;
+    return tenantSmtp;
   }
 
   private async sendTenantEmails(params: {
     tenantId: string;
+    branchCode?: number | null;
     title: string;
     message: string;
     recipients: RecipientRecord[];
   }) {
-    const tenant = await this.getTenantSmtpConfiguration(params.tenantId);
+    const tenant = await this.getTenantSmtpConfiguration(
+      params.tenantId,
+      params.branchCode,
+    );
 
     if (!tenant.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) {
       throw new BadRequestException(
@@ -429,7 +491,7 @@ export class CommunicationsService {
         transport.sendMail({
           from: `"${tenant.name}" <${tenant.smtpEmail}>`,
           to: email,
-          replyTo: tenant.email || tenant.smtpEmail || undefined,
+          replyTo: tenant.smtpEmail || undefined,
           subject: params.title,
           text: `${params.message}\n\nENVIADO PELA ESCOLA ${tenant.name}.`,
           html: `
@@ -458,12 +520,20 @@ export class CommunicationsService {
       select: {
         id: true,
         name: true,
-        logoUrl: true,
+        branches: {
+          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
+          select: { logoUrl: true },
+          take: 1,
+        },
         smtpHost: true,
         smtpPort: true,
         smtpEmail: true,
       },
     });
+    const smtpConfiguration = await this.getTenantSmtpConfiguration(
+      currentUser.tenantId,
+      currentUser.branchCode,
+    ).catch(() => null);
 
     return {
       scope: scope.mode,
@@ -497,8 +567,16 @@ export class CommunicationsService {
                     : "RESPONSÁVEIS CADASTRADOS NA ESCOLA.",
       })),
       emailConfigured:
-        !!tenant?.smtpHost && !!tenant?.smtpPort && !!tenant?.smtpEmail,
-      tenant,
+        !!smtpConfiguration?.smtpHost &&
+        !!smtpConfiguration?.smtpPort &&
+        !!smtpConfiguration?.smtpEmail,
+      tenant: tenant
+        ? {
+            ...tenant,
+            logoUrl: tenant.branches[0]?.logoUrl ?? null,
+            branches: undefined,
+          }
+        : null,
     };
   }
 
@@ -627,6 +705,7 @@ export class CommunicationsService {
     if (createDto.sendEmail) {
       emailCount = await this.sendTenantEmails({
         tenantId: currentUser.tenantId,
+        branchCode: currentUser.branchCode,
         title,
         message,
         recipients,

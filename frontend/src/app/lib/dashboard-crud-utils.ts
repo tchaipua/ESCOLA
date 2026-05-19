@@ -8,6 +8,7 @@ export type DashboardTokenPayload = {
     role?: string;
     permissions?: string[];
     tenantId?: string;
+    branchCode?: number;
     isMaster?: boolean;
     name?: string;
     modelType?: string;
@@ -19,8 +20,17 @@ export type DashboardAuthContext = {
     role: string | null;
     permissions: string[];
     tenantId: string | null;
+    branchCode: number;
     name: string | null;
     modelType: string | null;
+};
+
+export type TenantBranchSummary = {
+    id: string;
+    branchCode: number;
+    name: string;
+    isActive: boolean;
+    isShared: boolean;
 };
 
 export type ViaCepAddress = {
@@ -123,7 +133,7 @@ export function decodeDashboardToken(token: string): DashboardTokenPayload | nul
 export function getDashboardAuthContext(): DashboardAuthContext {
     const token = getStoredToken();
     if (!token) {
-        return { token: null, userId: null, role: null, permissions: [], tenantId: null, name: null, modelType: null };
+        return { token: null, userId: null, role: null, permissions: [], tenantId: null, branchCode: 1, name: null, modelType: null };
     }
 
     const payload = decodeDashboardToken(token);
@@ -135,6 +145,9 @@ export function getDashboardAuthContext(): DashboardAuthContext {
                 ? payload!.permissions.filter((permission): permission is string => typeof permission === 'string')
                 : [],
             tenantId: typeof payload?.tenantId === 'string' ? payload.tenantId : null,
+            branchCode: typeof payload?.branchCode === 'number' && Number.isInteger(payload.branchCode) && payload.branchCode >= 0
+                ? payload.branchCode
+                : 1,
             name: typeof payload?.name === 'string' ? payload.name : null,
             modelType: typeof payload?.modelType === 'string' ? payload.modelType : null,
         };
@@ -579,6 +592,27 @@ export async function fetchSharedPersonNameSuggestions(name: string, limit = 8):
     const data = await response.json().catch(() => []);
     if (!Array.isArray(data)) return [];
     return data as SharedNameSuggestion[];
+}
+
+export async function fetchTenantBranches(): Promise<TenantBranchSummary[]> {
+    const { token } = getDashboardAuthContext();
+    if (!token) {
+        throw new Error('Token não encontrado, por favor faça login novamente.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/tenants/current/branches`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+        },
+    });
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.message || 'Não foi possível consultar as filiais da escola.');
+    }
+
+    const data = await response.json().catch(() => []);
+    return Array.isArray(data) ? data as TenantBranchSummary[] : [];
 }
 
 export function mergeSharedPersonIntoForm<T extends Record<string, string>>(formData: T, profile: SharedPersonProfile | null): T {

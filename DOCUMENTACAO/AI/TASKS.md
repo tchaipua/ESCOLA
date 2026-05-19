@@ -20,6 +20,8 @@
 - [x] Cadastro mestre de pessoas com `Person`, `personId` nos papeis e escolha de perfil no login
 - [x] Central administrativa `dashboard/pessoas` criada para cadastro-base compartilhado
 - [x] Backfill legado para popular `people` e vincular professores, alunos e responsaveis existentes
+- [x] Escopo de filial em cadastros operacionais com transparencia para filial unica e opcao de cadastro comum para multiplas filiais
+- [x] Gerenciamento de filiais no MSINFOR ADMIN a partir do grid de unidades ativas
 - [~] Replicar continuamente novos padroes aprovados na documentacao oficial de UI
 
 ## Fase 0 - Fundacao tecnica
@@ -86,3 +88,4 @@
 
 - 2026-03-17: Resumo por turma agora ordena pelas séries conforme o `sortOrder` registrado no cadastro de séries para refletir a sequência natural de aprendizado.
 - 2026-03-31: Regra oficializada de e-mail compartilhado entre escolas apenas para autenticacao (`login`, `forgot-password`, validacao de senha compartilhada e troca global de senha), mantendo isolamento normal por `tenantId` fora desses fluxos.
+- 2026-05-17: Alerta residual de `npm audit` sobre Next/PostCSS pertence ao projeto `Financeiro`; a Escola apenas acompanha por consumir telas embutidas do Financeiro e nao requer alteracao tecnica local.

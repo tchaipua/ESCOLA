@@ -7,10 +7,47 @@ Documentar o modelo atual de dados com foco nas regras obrigatorias do projeto.
 ## Regras globais obrigatorias
 
 - Todo dado de negocio pertence a um `tenantId`
+- Dados operacionais com escopo de filial tambem possuem `branchCode`
 - Nao existe delete fisico em negocio, exceto no purge fisico definitivo de tenant acionado pelo MSINFOR ADMIN master
 - Toda mutacao precisa de auditoria
 - Textos ficam em uppercase, exceto senha
 - Isolamento total entre escolas
+
+## Filiais
+
+### `tenant_branches`
+
+Tabela de filiais operacionais por escola.
+
+Campos principais:
+
+- `tenantId`
+- `branchCode`
+- `name`
+- dados proprios da filial: logotipo, documento/CNPJ, contatos e endereco completo
+- configuracao SMTP propria da filial, opcional, com os mesmos campos SMTP da empresa
+- configuracao de arquivos/storage propria da filial, opcional, compativel com S3/Contabo
+- parametros operacionais de estoque por filial:
+  - `stockControlMode`
+  - `stockIntegerQuantityMode`
+  - `stockLotControlMode`
+  - `stockExpirationControlMode`
+  - `stockGridControlMode`
+  - `stockNegativeControlMode`
+- `isActive`
+
+Regras:
+
+- a primeira filial criada automaticamente usa `branchCode = 1`
+- `branchCode = 0` representa cadastro comum/visivel para todas as filiais
+- ao cadastrar uma nova escola/empresa, a primeira filial operacional e criada automaticamente
+- dados operacionais como logotipo, CNPJ, endereco e contatos devem ficar na filial, deixando a empresa/tenant com parametros gerais compartilhados
+- se a filial possuir configuracao SMTP preenchida, ela tem prioridade sobre o SMTP da empresa; se nao possuir, o envio continua usando o SMTP da empresa
+- se a filial possuir configuracao de storage preenchida, ela tem prioridade sobre o storage da empresa; se nao possuir, leitura/gravação de arquivos deve usar o storage da empresa
+- parametros de estoque da filial aceitam `NO`, `YES` ou `BY_PRODUCT`; quando estiver `BY_PRODUCT`, a regra efetiva deve ser buscada no cadastro do produto
+- se a escola possuir apenas uma filial ativa, o cadastro deve ser transparente para o usuario e gravado automaticamente na filial existente
+- se a escola possuir mais de uma filial ativa, cadastros operacionais devem permitir escolher uma filial especifica ou comum a todas
+- consultas de uma filial enxergam os registros da filial atual e os registros comuns (`0`)
 
 ## Colunas base obrigatorias
 
@@ -18,6 +55,7 @@ Padrao minimo para entidades de negocio:
 
 - `id`
 - `tenantId`
+- `branchCode` quando a entidade for operacional por filial
 - `createdAt`
 - `createdBy`
 - `updatedAt`

@@ -7,7 +7,11 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { AssignSubjectDto } from "../dto/assign-subject.dto";
 import { UpdateTeacherSubjectDto } from "../dto/update-teacher-subject.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class TeacherSubjectsService {
@@ -223,6 +227,14 @@ export class TeacherSubjectsService {
   }
 
   async assign(teacherId: string, assignDto: AssignSubjectDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      assignDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const { subjectId, hourlyRate } = assignDto;
     const effectiveFrom = this.getEffectiveFromDate(assignDto.effectiveFrom);
     const tenantId = this.tenantId();
@@ -252,6 +264,7 @@ export class TeacherSubjectsService {
           subjectId,
           hourlyRate,
           tenantId,
+          branchCode: targetBranchCode,
           createdBy: this.userId(),
         },
       });
@@ -266,6 +279,7 @@ export class TeacherSubjectsService {
       }
 
       return assignment;
+    });
     });
   }
 

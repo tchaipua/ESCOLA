@@ -1,11 +1,10 @@
 'use client';
 
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import { MSINFOR_MASTER_SESSION_KEY } from '@/app/lib/auth-storage';
-import { fetchAddressByCep, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
@@ -13,15 +12,38 @@ import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnCo
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import GlobalSettingsModal, { DEFAULT_GENERAL_SETTINGS, type GeneralSettingsForm, type GeneralSettingsTab } from './components/global-settings-modal';
 import TenantAccessManager from './components/tenant-access-manager';
+import TenantBranchManager from './components/tenant-branch-manager';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 type TenantRecord = {
     id: string;
     name: string;
-    document?: string | null;
-    logoUrl?: string | null;
     createdAt: string;
+    defaultBranch?: {
+        id: string;
+        branchCode: number;
+        name: string;
+        logoUrl?: string | null;
+        document?: string | null;
+        rg?: string | null;
+        cpf?: string | null;
+        cnpj?: string | null;
+        nickname?: string | null;
+        corporateName?: string | null;
+        phone?: string | null;
+        whatsapp?: string | null;
+        cellphone1?: string | null;
+        cellphone2?: string | null;
+        email?: string | null;
+        zipCode?: string | null;
+        street?: string | null;
+        number?: string | null;
+        city?: string | null;
+        state?: string | null;
+        neighborhood?: string | null;
+        complement?: string | null;
+    } | null;
     users?: Array<{
         name?: string | null;
         email?: string | null;
@@ -39,7 +61,7 @@ type EmailUsageRecord = {
     updatedBy?: string | null;
 };
 
-type TenantColumnKey = 'id' | 'name' | 'document' | 'admin' | 'createdAt';
+type TenantColumnKey = 'id' | 'name' | 'admin' | 'createdAt';
 type TenantExportColumnKey = TenantColumnKey;
 type EmailUsageColumnKey = 'entityType' | 'recordId' | 'recordName' | 'tenantName' | 'document' | 'currentEmail' | 'updatedAt' | 'updatedBy';
 type EmailUsageExportColumnKey = EmailUsageColumnKey;
@@ -47,7 +69,6 @@ type EmailUsageExportColumnKey = EmailUsageColumnKey;
 const TENANT_COLUMNS: ConfigurableGridColumn<TenantRecord, TenantColumnKey>[] = [
     { key: 'id', label: 'ID da escola', getValue: (row) => row.id || '---', visibleByDefault: false },
     { key: 'name', label: 'Tenant ID (Escola)', getValue: (row) => row.name || '---' },
-    { key: 'document', label: 'Documento / CNPJ', getValue: (row) => row.document || 'NÃO INFORMADO' },
     { key: 'admin', label: 'Admin titular master', getValue: (row) => row.users?.[0]?.name || row.users?.[0]?.email || '---' },
     { key: 'createdAt', label: 'Data de registro', getValue: (row) => new Date(row.createdAt).toLocaleDateString(), getSortValue: (row) => new Date(row.createdAt).getTime() },
 ];
@@ -134,6 +155,7 @@ export default function MsinforAdminPage() {
     const [replacementEmail, setReplacementEmail] = useState('');
     const [emailUpdateLoading, setEmailUpdateLoading] = useState(false);
     const [accessTenant, setAccessTenant] = useState<any | null>(null);
+    const [branchTenant, setBranchTenant] = useState<TenantRecord | null>(null);
     const [isGeneralSettingsOpen, setIsGeneralSettingsOpen] = useState(false);
     const [generalSettingsTab, setGeneralSettingsTab] = useState<GeneralSettingsTab>('s3');
     const [generalSettings, setGeneralSettings] = useState<GeneralSettingsForm>(DEFAULT_GENERAL_SETTINGS);
@@ -146,7 +168,6 @@ export default function MsinforAdminPage() {
         message: string;
         details?: string[];
     } | null>(null);
-    const [logoError, setLogoError] = useState<string | null>(null);
     const [tenantSortState, setTenantSortState] = useState<GridSortState<TenantColumnKey>>(DEFAULT_TENANT_SORT);
     const [emailUsageSortState, setEmailUsageSortState] = useState<GridSortState<EmailUsageColumnKey>>(DEFAULT_EMAIL_USAGE_SORT);
     const [isTenantGridConfigOpen, setIsTenantGridConfigOpen] = useState(false);
@@ -208,26 +229,13 @@ export default function MsinforAdminPage() {
         // SMTP
         smtpHost: 'smtp.gmail.com', smtpPort: '465', smtpTimeout: '60',
         smtpAuthenticate: true, smtpSecure: true, smtpAuthType: 'SSL',
-        smtpEmail: '', smtpPassword: ''
+        smtpEmail: '', smtpPassword: '',
+        // STORAGE
+        storageProviderAccessKeyId: '', storageProviderSecretAccessKey: '',
+        storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
+        storageDefaultExpiration: '1440', storageRegion: '', storageEndpoint: 'custom',
+        storageCustomEndpoint: ''
     });
-
-    const handleLogoChange = async (event: ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        try {
-            setLogoError(null);
-            const dataUrl = await readImageFileAsDataUrl(file);
-            setFormData((current) => ({
-                ...current,
-                logoUrl: dataUrl,
-            }));
-        } catch (error: any) {
-            setLogoError(error?.message || 'Não foi possível carregar o logotipo.');
-        } finally {
-            event.target.value = '';
-        }
-    };
 
     const buildMasterPass = (date: Date) => {
         const day = date.getDate();
@@ -380,17 +388,16 @@ export default function MsinforAdminPage() {
     const renderTenantInfoButton = (escola: TenantRecord) => (
         <GridRecordPopover
             title={escola.name}
-            subtitle={escola.document || 'Escola sem documento informado'}
+            subtitle="Empresa com parâmetros gerais"
             buttonLabel={`Ver detalhes da escola ${escola.name}`}
-            avatarUrl={escola.logoUrl || null}
             sections={[
                 {
-                    title: 'Escola',
+                    title: 'Empresa',
                     items: [
                         { label: 'ID', value: escola.id || 'Não informado' },
                         { label: 'Nome', value: escola.name || 'Não informado' },
-                        { label: 'Documento', value: escola.document || 'Não informado' },
                         { label: 'Data de registro', value: new Date(escola.createdAt).toLocaleDateString() },
+                        { label: 'Dados operacionais', value: 'Mantidos no cadastro de filiais' },
                     ],
                 },
                 {
@@ -697,6 +704,10 @@ export default function MsinforAdminPage() {
         setAccessTenant(null);
     };
 
+    const closeBranchManager = () => {
+        setBranchTenant(null);
+    };
+
     const handleLogout = () => {
         if (typeof window !== 'undefined') {
             window.sessionStorage.removeItem(MSINFOR_MASTER_SESSION_KEY);
@@ -782,7 +793,10 @@ export default function MsinforAdminPage() {
             const method = editingTenantId ? 'PUT' : 'POST';
             // Converte os dados financeiros de string para number, caso existam e não sejam vazios
             const payload: any = {
-                ...formData,
+                name: formData.name,
+                adminName: formData.adminName,
+                adminEmail: formData.adminEmail,
+                adminPassword: formData.adminPassword,
                 interestRate: formData.interestRate ? parseFloat(formData.interestRate as string) : null,
                 penaltyRate: formData.penaltyRate ? parseFloat(formData.penaltyRate as string) : null,
                 penaltyValue: formData.penaltyValue ? parseFloat(formData.penaltyValue as string) : null,
@@ -793,6 +807,15 @@ export default function MsinforAdminPage() {
                 smtpAuthenticate: !!formData.smtpAuthenticate,
                 smtpSecure: !!formData.smtpSecure,
                 smtpAuthType: formData.smtpAuthType || (formData.smtpSecure ? 'SSL' : 'STARTTLS'),
+                storageProviderAccessKeyId: formData.storageProviderAccessKeyId || null,
+                storageProviderSecretAccessKey: formData.storageProviderSecretAccessKey || null,
+                storageBucketName: formData.storageBucketName || null,
+                storageFolderName: formData.storageFolderName || null,
+                storageDefaultAcl: formData.storageDefaultAcl || null,
+                storageDefaultExpiration: formData.storageDefaultExpiration ? parseInt(formData.storageDefaultExpiration as string, 10) : null,
+                storageRegion: formData.storageRegion || null,
+                storageEndpoint: formData.storageEndpoint || null,
+                storageCustomEndpoint: formData.storageCustomEndpoint || null,
             };
 
             if (!String(formData.adminPassword || '').trim()) {
@@ -900,14 +923,14 @@ export default function MsinforAdminPage() {
 
         setFormData({
             name: escola.name || '',
-            document: escola.document || '',
-            logoUrl: escola.logoUrl || '',
+            document: '',
+            logoUrl: '',
             adminName: admin.name || '',
             adminEmail: admin.email || '',
             adminPassword: '',
-            rg: escola.rg || '', cpf: escola.cpf || '', cnpj: escola.cnpj || '', nickname: escola.nickname || '', corporateName: escola.corporateName || '',
-            phone: escola.phone || '', whatsapp: escola.whatsapp || '', cellphone1: escola.cellphone1 || '', cellphone2: escola.cellphone2 || '', email: escola.email || '',
-            zipCode: escola.zipCode || '', street: escola.street || '', number: escola.number || '', city: escola.city || '', state: escola.state || '', neighborhood: escola.neighborhood || '', complement: escola.complement || '',
+            rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '',
+            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+            zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
             interestRate: escola.interestRate ?? '',
             penaltyRate: escola.penaltyRate ?? '',
             penaltyValue: escola.penaltyValue ?? '',
@@ -920,7 +943,16 @@ export default function MsinforAdminPage() {
             smtpSecure: escola.smtpSecure ?? true,
             smtpAuthType: escola.smtpAuthType ?? ((escola.smtpSecure ?? true) ? 'SSL' : 'STARTTLS'),
             smtpEmail: escola.smtpEmail ?? '',
-            smtpPassword: escola.smtpPassword ?? ''
+            smtpPassword: '',
+            storageProviderAccessKeyId: escola.storageProviderAccessKeyId ?? '',
+            storageProviderSecretAccessKey: escola.storageProviderSecretAccessKey ?? '',
+            storageBucketName: escola.storageBucketName ?? '',
+            storageFolderName: escola.storageFolderName ?? '',
+            storageDefaultAcl: escola.storageDefaultAcl ?? 'Default',
+            storageDefaultExpiration: escola.storageDefaultExpiration ? String(escola.storageDefaultExpiration) : '1440',
+            storageRegion: escola.storageRegion ?? '',
+            storageEndpoint: escola.storageEndpoint ?? 'custom',
+            storageCustomEndpoint: escola.storageCustomEndpoint ?? ''
         });
 
         adminEmailLastCheckedRef.current = '';
@@ -945,9 +977,12 @@ export default function MsinforAdminPage() {
             interestRate: '', penaltyRate: '', penaltyValue: '', penaltyGracePeriod: '', interestGracePeriod: '',
             smtpHost: 'smtp.gmail.com', smtpPort: '465', smtpTimeout: '60',
             smtpAuthenticate: true, smtpSecure: true, smtpAuthType: 'SSL',
-            smtpEmail: '', smtpPassword: ''
+            smtpEmail: '', smtpPassword: '',
+            storageProviderAccessKeyId: '', storageProviderSecretAccessKey: '',
+            storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
+            storageDefaultExpiration: '1440', storageRegion: '', storageEndpoint: 'custom',
+            storageCustomEndpoint: ''
         });
-        setLogoError(null);
         setAdminPasswordEqualityNote(null);
         setAdminEmailCheckError(null);
         setAdminEmailChecking(false);
@@ -1065,24 +1100,6 @@ export default function MsinforAdminPage() {
         }
     };
 
-    const handleCepSearch = async () => {
-        try {
-            const address = await fetchAddressByCep(formData.zipCode);
-            if (!address) return;
-
-            setFormData((current) => ({
-                ...current,
-                street: address.street,
-                neighborhood: address.neighborhood,
-                city: address.city,
-                state: address.state,
-            }));
-        } catch (error: any) {
-            console.error('Falha ao consultar Cep via padrão:', error);
-            alert(error?.message || 'Falha ao consultar o CEP. Serviço viacep pode estar oscilando.');
-        }
-    };
-
     const renderEmailUsageGridCell = (usage: EmailUsageRecord, columnKey: EmailUsageColumnKey) => {
         if (columnKey === 'entityType') {
             return (
@@ -1146,14 +1163,6 @@ export default function MsinforAdminPage() {
                 <td key={`${escola.id}-${columnKey}`} className="px-6 py-4">
                     <div className="font-bold text-indigo-900 text-base">{escola.name}</div>
                     <div className="text-[10px] font-mono text-slate-400 mt-1">{escola.id}</div>
-                </td>
-            );
-        }
-
-        if (columnKey === 'document') {
-            return (
-                <td key={`${escola.id}-${columnKey}`} className="px-6 py-4 text-slate-600 font-medium">
-                    {escola.document || <span className="text-slate-300 italic">Não Informado</span>}
                 </td>
             );
         }
@@ -1270,7 +1279,7 @@ export default function MsinforAdminPage() {
             </header>
 
             {/* Conteúdo */}
-            <main className="flex-1 p-8 max-w-7xl w-full mx-auto relative">
+            <main className="flex-1 p-8 w-full max-w-none relative">
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800">Unidades de Ensino Ativas</h2>
@@ -1453,7 +1462,7 @@ export default function MsinforAdminPage() {
                     )}
                 </section>
                 {/* Tabela de Escolas */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="-mx-8 overflow-hidden border-y border-slate-200 bg-white shadow-sm">
                     <div className="flex items-center justify-end border-b border-slate-200 bg-slate-50 px-6 py-4">
                         <div className="flex items-center gap-2">
                             <button
@@ -1515,6 +1524,15 @@ export default function MsinforAdminPage() {
                                                 >
                                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10-10a4 4 0 11-8 0 4 4 0 018 0z" />
+                                                    </svg>
+                                                </GridRowActionIconButton>
+                                                <GridRowActionIconButton
+                                                    title="Abrir filiais da escola"
+                                                    onClick={() => setBranchTenant(escola)}
+                                                    tone="emerald"
+                                                >
+                                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-3M9 9h1m-1 4h1m-1 4h1m6-4h1m-1 4h1" />
                                                     </svg>
                                                 </GridRowActionIconButton>
                                                 <GridRowActionIconButton title="Editar escola" onClick={() => handleEdit(escola)} tone="blue">
@@ -1750,6 +1768,13 @@ export default function MsinforAdminPage() {
                     onChanged={fetchEscolas}
                 />
             )}
+            {branchTenant && (
+                <TenantBranchManager
+                    tenant={branchTenant}
+                    getMasterPass={getMasterPassForRequest}
+                    onClose={closeBranchManager}
+                />
+            )}
 
             <GridColumnConfigModal
                 isOpen={isEmailUsageGridConfigOpen}
@@ -1860,17 +1885,9 @@ export default function MsinforAdminPage() {
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                             <div className="flex items-center gap-4">
                                 <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {formData.logoUrl ? (
-                                        <img
-                                            src={formData.logoUrl}
-                                            alt={`Logotipo da ${formData.name || 'escola'}`}
-                                            className="h-full w-full object-contain"
-                                        />
-                                    ) : (
-                                        <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">
-                                            Sem logo
-                                        </span>
-                                    )}
+                                    <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">
+                                        Empresa
+                                    </span>
                                 </div>
                                 <h2 className="text-xl font-bold text-[#153a6a] flex items-center gap-2">
                                     {editingTenantId ? 'Editar Escola Cliente' : 'Nova Escola Cliente'}
@@ -1888,38 +1905,29 @@ export default function MsinforAdminPage() {
                                 onClick={() => setActiveTab(0)}
                                 className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 0 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
                             >
-                                LOGOTIPO
+                                EMPRESA
                             </button>
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab(1)}
-                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-                                >
-                                    1. DADOS BÁSICOS (DB)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab(2)}
-                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-                                >
-                                    2. ENDEREÇO (EC)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab(3)}
-                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-                                >
-                                    3. ADMINISTRADOR
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab(4)}
-                                    className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-                                >
-                                    4. SISTEMA DE E-MAILS
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab(1)}
+                                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                            >
+                                ADMINISTRADOR
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab(2)}
+                                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                            >
+                                SISTEMA DE E-MAILS
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab(3)}
+                                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                            >
+                                ARQUIVOS / STORAGE
+                            </button>
                         </div>
 
                         <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 p-6">
@@ -1927,176 +1935,29 @@ export default function MsinforAdminPage() {
 
                                 {activeTab === 0 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Identidade Visual da Escola</h4>
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Parâmetros Gerais da Empresa</h4>
                                         <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5">
-                                            <div className="grid gap-5 md:grid-cols-[220px_1fr] md:items-center">
-                                                <div className="flex flex-col items-center gap-3">
-                                                    <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-indigo-200 bg-white shadow-sm">
-                                                        {formData.logoUrl ? (
-                                                            <img src={formData.logoUrl} alt="Logotipo da escola" className="h-full w-full object-contain" />
-                                                        ) : (
-                                                            <div className="px-4 text-center text-xs font-bold text-slate-400">
-                                                                LOGOTIPO DA ESCOLA
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    {formData.logoUrl ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setFormData((current) => ({ ...current, logoUrl: '' }))}
-                                                            className="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100"
-                                                        >
-                                                            Remover logotipo
-                                                        </button>
-                                                    ) : null}
-                                                </div>
+                                            <div className="grid gap-5">
                                                 <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">Logotipo da escola</label>
+                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">Nome da Empresa *</label>
                                                     <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        onChange={handleLogoChange}
-                                                        className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-sm file:font-bold file:text-white hover:file:bg-indigo-700"
+                                                        type="text"
+                                                        required
+                                                        value={formData.name}
+                                                        onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
+                                                        className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                                                        placeholder="Ex: COLÉGIO PROGRESSO"
                                                     />
-                                                    <p className="mt-2 text-xs font-medium text-slate-500">
-                                                        A imagem fica gravada no banco e será exibida no dashboard da escola logada.
-                                                    </p>
-                                                    {logoError ? (
-                                                        <div className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">
-                                                            {logoError}
-                                                        </div>
-                                                    ) : null}
                                                 </div>
+                                                <p className="text-xs font-semibold text-slate-500">
+                                                    CNPJ, endereço, contatos e logotipo são cadastrados na tela de filiais.
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
                                 )}
 
                                 {activeTab === 1 && (
-                                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Identificação Jurídica da Instituição</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                            <div className="lg:col-span-3">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Nome da Instituição *</label>
-                                                <input type="text" required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 transition-all" placeholder="Ex: Colégio Progresso" />
-                                            </div>
-                                            <div className="lg:col-span-3">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Razão Social</label>
-                                                <input type="text" value={formData.corporateName} onChange={e => setFormData({ ...formData, corporateName: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="Razão Social LTDA" />
-                                            </div>
-                                            <div className="lg:col-span-1 border-r border-slate-100 pr-5">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Apelido (Nome Fantasia)</label>
-                                                <input type="text" value={formData.nickname} onChange={e => setFormData({ ...formData, nickname: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-
-                                                <div className="mt-4">
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">CNPJ</label>
-                                                    <input type="text" value={formData.cnpj} onChange={e => setFormData({ ...formData, cnpj: e.target.value.toUpperCase(), document: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="00.000.000/0001-00" />
-                                                </div>
-                                            </div>
-
-                                            <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">Celular 1 (WhatsApp Oficial)</label>
-                                                    <input type="text" value={formData.whatsapp} onChange={e => setFormData({ ...formData, whatsapp: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail Administrativo</label>
-                                                    <input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">Telefone Fixo</label>
-                                                    <input type="text" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">Celular 2 (Recados)</label>
-                                                    <input type="text" value={formData.cellphone2} onChange={e => setFormData({ ...formData, cellphone2: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">CPF do Titular</label>
-                                                    <input type="text" value={formData.cpf} onChange={e => setFormData({ ...formData, cpf: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">RG do Titular</label>
-                                                    <input type="text" value={formData.rg} onChange={e => setFormData({ ...formData, rg: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 2 && (
-                                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Endereço Completo e Logística</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">CEP</label>
-                                                <div className="flex gap-2">
-                                                    <input type="text" value={formData.zipCode} onChange={e => setFormData({ ...formData, zipCode: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="00000-000" />
-                                                    <button type="button" onClick={handleCepSearch} className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200 rounded-lg px-3 transition-colors flex items-center justify-center font-bold shadow-sm" title="Consultar CEP">
-                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Logradouro / Rua</label>
-                                                <input type="text" value={formData.street} onChange={e => setFormData({ ...formData, street: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Número</label>
-                                                <input type="text" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Bairro</label>
-                                                <input type="text" value={formData.neighborhood} onChange={e => setFormData({ ...formData, neighborhood: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                            </div>
-                                            <div className="md:col-span-2">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Complemento</label>
-                                                <input type="text" value={formData.complement} onChange={e => setFormData({ ...formData, complement: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                            </div>
-                                            <div className="md:col-span-3">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Cidade</label>
-                                                <input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value.toUpperCase() })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all" />
-                                            </div>
-                                            <div className="md:col-span-1">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">UF</label>
-                                                <select value={formData.state} onChange={e => setFormData({ ...formData, state: e.target.value })} className="w-full bg-slate-100/50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:bg-white transition-all">
-                                                    <option value="">Selecione</option>
-                                                    <option value="AC">Acre</option>
-                                                    <option value="AL">Alagoas</option>
-                                                    <option value="AP">Amapá</option>
-                                                    <option value="AM">Amazonas</option>
-                                                    <option value="BA">Bahia</option>
-                                                    <option value="CE">Ceará</option>
-                                                    <option value="DF">Distrito Federal</option>
-                                                    <option value="ES">Espírito Santo</option>
-                                                    <option value="GO">Goiás</option>
-                                                    <option value="MA">Maranhão</option>
-                                                    <option value="MT">Mato Grosso</option>
-                                                    <option value="MS">Mato Grosso do Sul</option>
-                                                    <option value="MG">Minas Gerais</option>
-                                                    <option value="PA">Pará</option>
-                                                    <option value="PB">Paraíba</option>
-                                                    <option value="PR">Paraná</option>
-                                                    <option value="PE">Pernambuco</option>
-                                                    <option value="PI">Piauí</option>
-                                                    <option value="RJ">Rio de Janeiro</option>
-                                                    <option value="RN">Rio Grande do Norte</option>
-                                                    <option value="RS">Rio Grande do Sul</option>
-                                                    <option value="RO">Rondônia</option>
-                                                    <option value="RR">Roraima</option>
-                                                    <option value="SC">Santa Catarina</option>
-                                                    <option value="SP">São Paulo</option>
-                                                    <option value="SE">Sergipe</option>
-                                                    <option value="TO">Tocantins</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 3 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                         <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Conta Limite do Administrador Titular</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">
@@ -2168,7 +2029,7 @@ export default function MsinforAdminPage() {
                                     </div>
                                 )}
 
-                                {activeTab === 4 && (
+                                {activeTab === 2 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                         <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Configuração de Servidor de E-mail (SMTP)</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">
@@ -2258,6 +2119,53 @@ export default function MsinforAdminPage() {
                                             </div>
                                         </div>
 
+                                    </div>
+                                )}
+
+                                {activeTab === 3 && (
+                                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Configuração de Arquivos / Storage Compatível com S3</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">
+                                            <div className="md:col-span-2">
+                                                <h5 className="text-center text-sm font-semibold text-slate-600 mb-2">Configuração padrão da empresa para salvar e ler arquivos.</h5>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Access Key ID</label>
+                                                <input type="text" value={formData.storageProviderAccessKeyId} onChange={e => setFormData({ ...formData, storageProviderAccessKeyId: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Secret Access Key</label>
+                                                <input type="text" value={formData.storageProviderSecretAccessKey} onChange={e => setFormData({ ...formData, storageProviderSecretAccessKey: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Bucket</label>
+                                                <input type="text" value={formData.storageBucketName} onChange={e => setFormData({ ...formData, storageBucketName: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="contabos3msinfor" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Pasta</label>
+                                                <input type="text" value={formData.storageFolderName} onChange={e => setFormData({ ...formData, storageFolderName: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="content" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">ACL padrão</label>
+                                                <input type="text" value={formData.storageDefaultAcl} onChange={e => setFormData({ ...formData, storageDefaultAcl: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="Default" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Expiração padrão (minutos)</label>
+                                                <input type="number" min={1} value={formData.storageDefaultExpiration} onChange={e => setFormData({ ...formData, storageDefaultExpiration: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="1440" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Região</label>
+                                                <input type="text" value={formData.storageRegion} onChange={e => setFormData({ ...formData, storageRegion: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="US-central" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Endpoint</label>
+                                                <input type="text" value={formData.storageEndpoint} onChange={e => setFormData({ ...formData, storageEndpoint: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="custom" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Endpoint customizado</label>
+                                                <input type="text" value={formData.storageCustomEndpoint} onChange={e => setFormData({ ...formData, storageCustomEndpoint: e.target.value.toLowerCase() })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="https://usc1.contabostorage.com/" />
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>

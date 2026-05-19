@@ -1,5 +1,12 @@
-import { IsNotEmpty, IsString, IsOptional } from "class-validator";
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Min,
+} from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class LoginDto {
   @ApiProperty({ description: "Email do usuário ou login master" })
@@ -18,6 +25,16 @@ export class LoginDto {
   @IsString()
   @IsOptional()
   tenantId?: string;
+
+  @ApiProperty({
+    description: "Código da filial operacional do acesso",
+    required: false,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  branchCode?: number;
 
   @ApiProperty({
     description:

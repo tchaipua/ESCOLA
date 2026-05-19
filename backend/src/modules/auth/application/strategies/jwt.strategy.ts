@@ -10,6 +10,10 @@ import {
   MASTER_TENANT_ID,
   MASTER_USER_ID,
 } from "../../../../common/auth/master-auth";
+import {
+  DEFAULT_BRANCH_CODE,
+  normalizeBranchCode,
+} from "../../../../common/tenant/branch.constants";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -33,6 +37,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           typeof payload.tenantId === "string" && payload.tenantId.trim()
             ? payload.tenantId
             : MASTER_TENANT_ID,
+        branchCode: normalizeBranchCode(
+          payload.branchCode,
+          DEFAULT_BRANCH_CODE,
+        ),
         role: MASTER_ROLE,
         permissions: Array.isArray(payload.permissions)
           ? payload.permissions
@@ -131,6 +139,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       userId: payload.userId,
       tenantId: payload.tenantId,
+      branchCode: normalizeBranchCode(payload.branchCode, DEFAULT_BRANCH_CODE),
       role: payload.role,
       email:
         typeof account.email === "string" && account.email.trim()

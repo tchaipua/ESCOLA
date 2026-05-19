@@ -8,7 +8,11 @@ import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateStudentDto } from "../dto/create-student.dto";
 import { UpdateStudentDto } from "../dto/update-student.dto";
 import { AssignStudentSeriesClassDto } from "../dto/assign-student-series-class.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 import * as bcrypt from "bcrypt";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
@@ -437,6 +441,14 @@ export class StudentsService {
   }
 
   async create(createDto: CreateStudentDto, currentUser?: ICurrentUser) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const sanitizedDto = this.sanitizeStudentMutationDto(
       createDto,
       currentUser,
@@ -498,6 +510,7 @@ export class StudentsService {
           ? new Date(sanitizedDto.birthDate)
           : undefined,
         tenantId: this.tenantId(),
+        branchCode: targetBranchCode,
         createdBy: this.userId(), // Auditoria OBRIGATÓRIA
       },
     });
@@ -539,6 +552,7 @@ export class StudentsService {
       this.mapStudentAccess(createdStudent),
       currentUser,
     );
+    });
   }
 
   async findAll(currentUser?: ICurrentUser) {
@@ -965,7 +979,14 @@ export class StudentsService {
       updateDto,
       currentUser,
     );
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      this.tenantId(),
+      sanitizedDto.branchCode,
+      currentStudent.branchCode,
+    );
 
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
       sanitizedDto,
@@ -1064,6 +1085,7 @@ export class StudentsService {
         birthDate: sanitizedDto.birthDate
           ? new Date(sanitizedDto.birthDate)
           : undefined,
+        branchCode: targetBranchCode,
         updatedBy: this.userId(),
       },
     });
@@ -1105,6 +1127,7 @@ export class StudentsService {
       this.mapStudentAccess(this.normalizeStudentDisplayName(refreshedStudent)),
       currentUser,
     );
+    });
   }
 
   async assignSeriesClass(

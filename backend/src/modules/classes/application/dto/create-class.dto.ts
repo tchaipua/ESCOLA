@@ -1,8 +1,19 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from "class-validator";
+import { IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class CreateClassDto {
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
+
   @ApiProperty({ description: "Nome da Turma (Ex: Turma A, 101, Especial)" })
   @IsString()
   @IsNotEmpty()

@@ -4,13 +4,26 @@ import {
   IsNotEmpty,
   IsOptional,
   IsArray,
+  IsInt,
   IsString,
+  Min,
   MinLength,
   ArrayUnique,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class CreateTeacherDto {
+  @ApiPropertyOptional({
+    description:
+      "Filial do cadastro. Use 0 para acesso comum a todas as filiais quando houver mais de uma.",
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  branchCode?: number;
+
   @ApiProperty({ description: "Nome do Professor" })
   @IsString()
   @IsNotEmpty()

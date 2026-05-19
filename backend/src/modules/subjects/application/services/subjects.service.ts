@@ -6,7 +6,11 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateSubjectDto } from "../dto/create-subject.dto";
 import { UpdateSubjectDto } from "../dto/update-subject.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 type FindAllOptions = {
   activeOnly?: boolean;
@@ -38,6 +42,14 @@ export class SubjectsService {
   }
 
   async create(createDto: CreateSubjectDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const normalizedName = this.normalizeName(createDto.name);
     await this.ensureUniqueName(normalizedName);
 
@@ -45,8 +57,10 @@ export class SubjectsService {
       data: {
         name: normalizedName,
         tenantId: getTenantContext()!.tenantId,
+        branchCode: targetBranchCode,
         createdBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 
@@ -72,8 +86,15 @@ export class SubjectsService {
   }
 
   async update(id: string, updateDto: UpdateSubjectDto) {
-    await this.findOne(id);
+    const currentSubject = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      updateDto.branchCode,
+      currentSubject.branchCode,
+    );
 
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const normalizedName = updateDto.name
       ? this.normalizeName(updateDto.name)
       : undefined;
@@ -85,8 +106,10 @@ export class SubjectsService {
       where: { id },
       data: {
         name: normalizedName,
+        branchCode: targetBranchCode,
         updatedBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 

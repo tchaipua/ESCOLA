@@ -25,6 +25,109 @@ type ScreenAuditMetadata = {
   sqlText?: string;
 };
 
+type ScreenOriginRule = {
+  screenId: string;
+  match: 'exact' | 'prefix';
+  systemName?: string;
+  physicalPath: string;
+};
+
+const ESCOLA_APP_ROOT = 'C:\\Sistemas\\IA\\Escola\\frontend\\src\\app';
+const FINANCEIRO_APP_ROOT = 'C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app';
+
+function escolaAppPath(...segments: string[]) {
+  return [ESCOLA_APP_ROOT, ...segments].join('\\');
+}
+
+function financeiroAppPath(...segments: string[]) {
+  return [FINANCEIRO_APP_ROOT, ...segments].join('\\');
+}
+
+function buildOriginText(systemName: string, physicalPath: string) {
+  return `Origem: ${systemName} - caminho físico: ${physicalPath}`;
+}
+
+const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
+  { screenId: 'PRINCIPAL_ROOT', match: 'exact', physicalPath: escolaAppPath('principal', 'page.tsx') },
+  { screenId: 'PRINCIPAL', match: 'exact', physicalPath: escolaAppPath('principal', 'page.tsx') },
+  { screenId: 'PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL', match: 'exact', physicalPath: escolaAppPath('principal', 'layout.tsx') },
+  { screenId: 'PRINCIPAL_RESPONSAVEL_PWA', match: 'exact', physicalPath: escolaAppPath('responsavel', 'page.tsx') },
+
+  { screenId: 'MSINFOR_ADMIN_CONFIGURACOES_GERAIS_MODAL', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'components', 'global-settings-modal.tsx') },
+  { screenId: 'MSINFOR_ADMIN_FILIAIS_ESCOLA', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'components', 'tenant-branch-manager.tsx') },
+  { screenId: 'MSINFOR_ADMIN_EDITAR_FILIAL_ESCOLA', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'components', 'tenant-branch-manager.tsx') },
+  { screenId: 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA', match: 'prefix', physicalPath: escolaAppPath('msinfor-admin', 'components', 'tenant-access-manager.tsx') },
+  { screenId: 'MSINFOR_ADMIN', match: 'prefix', physicalPath: escolaAppPath('msinfor-admin', 'page.tsx') },
+
+  { screenId: 'PRINCIPAL_FINANCEIRO_CAIXA_DETALHE', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('caixa', '[sessionId]', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CAIXA', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('caixa', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS_MANUAL', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('contas-a-pagar', 'importacao-notas', 'manual', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('contas-a-pagar', 'importacao-notas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_NOTAS_IMPORTADAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('contas-a-pagar', 'notas-importadas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_APROVACAO_NOTA', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('contas-a-pagar', 'notas-importadas', '[importId]', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_CERTIFICADOS_DIGITAIS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('contas-a-pagar', 'certificados-digitais', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('contas-a-pagar', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_BANCOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('bancos', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_EMPRESA', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('empresas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_RESUMO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('resumo', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'historico-movimentacao', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_LOTES', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'lotes', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_RETORNOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'retornos', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('MAPEAMENTO_ESPECIFICO_PENDENTE.tsx') },
+
+  { screenId: 'POPUP_PRINCIPAL_MENSALIDADES', match: 'prefix', physicalPath: escolaAppPath('principal', 'mensalidades', 'page.tsx') },
+  { screenId: 'POPUP_PRINCIPAL_PARCELAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'parcelas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_MENSALIDADES_DETALHES', match: 'prefix', physicalPath: escolaAppPath('principal', 'mensalidades', 'detalhes', '[batchId]', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_PERIODO_', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-periodo', '[shift]', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_SERIE_', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-serie', '[seriesId]', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_TURMA_', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-turma', '[seriesClassId]', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_PROFESSOR_AULAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-professor-aulas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_PERIODO', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-periodo', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_SERIE', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-serie', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_TURMA', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-turma', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD_RESUMO', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo', 'page.tsx') },
+
+  { screenId: 'PRINCIPAL_CALENDARIO_AULAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'calendario-aulas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_GRADE_HORARIA', match: 'prefix', physicalPath: escolaAppPath('principal', 'grade-horaria', 'page.tsx') },
+  { screenId: 'PRINCIPAL_GRADE_ANUAL', match: 'prefix', physicalPath: escolaAppPath('principal', 'grade-anual', 'page.tsx') },
+  { screenId: 'PRINCIPAL_HISTORICO_NOTAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'historico-notas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_LANCAR_NOTAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'lancar-notas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_COMUNICACOES', match: 'prefix', physicalPath: escolaAppPath('principal', 'comunicacoes', 'page.tsx') },
+  { screenId: 'PRINCIPAL_NOTIFICACOES', match: 'prefix', physicalPath: escolaAppPath('principal', 'notificacoes', 'page.tsx') },
+  { screenId: 'PRINCIPAL_MENSALIDADES', match: 'prefix', physicalPath: escolaAppPath('principal', 'mensalidades', 'page.tsx') },
+  { screenId: 'PRINCIPAL_RESPONSAVEIS', match: 'prefix', physicalPath: escolaAppPath('principal', 'responsaveis', 'page.tsx') },
+  { screenId: 'PRINCIPAL_PROFESSORES', match: 'prefix', physicalPath: escolaAppPath('principal', 'professores', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DISCIPLINAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'disciplinas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_DASHBOARD', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'page.tsx') },
+  { screenId: 'PRINCIPAL_PARCELAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'parcelas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_PESSOAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'pessoas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_TURMAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'turmas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_SERIES', match: 'prefix', physicalPath: escolaAppPath('principal', 'series', 'page.tsx') },
+  { screenId: 'PRINCIPAL_ALUNOS', match: 'prefix', physicalPath: escolaAppPath('principal', 'alunos', 'page.tsx') },
+  { screenId: 'PRINCIPAL_GRADE', match: 'prefix', physicalPath: escolaAppPath('principal', 'grade', 'page.tsx') },
+  { screenId: 'PRINCIPAL_CAIXA', match: 'prefix', physicalPath: escolaAppPath('principal', 'caixa', 'page.tsx') },
+];
+
+function inferScreenAuditMetadata(screenId: string): ScreenAuditMetadata | null {
+  const normalizedScreenId = String(screenId || '').trim().toUpperCase();
+  if (!normalizedScreenId) return null;
+
+  const exactRule = SCREEN_ORIGIN_RULES.find((rule) => rule.match === 'exact' && rule.screenId === normalizedScreenId);
+  const prefixRule = SCREEN_ORIGIN_RULES
+    .filter((rule) => rule.match === 'prefix' && normalizedScreenId.startsWith(rule.screenId))
+    .sort((first, second) => second.screenId.length - first.screenId.length)[0];
+  const matchedRule = exactRule || prefixRule;
+  if (!matchedRule) return null;
+
+  const systemName = matchedRule.systemName || 'Sistema Escola';
+  return {
+    systemName,
+    originText: buildOriginText(systemName, matchedRule.physicalPath),
+  };
+}
+
 const SCREEN_AUDIT_METADATA: Record<string, ScreenAuditMetadata> = {
   PRINCIPAL_PROFESSORES: {
     systemName: 'Sistema Escola',
@@ -277,11 +380,15 @@ OBSERVACAO:
 };
 
 function resolveScreenAuditMetadata(screenId: string): ScreenAuditMetadata {
-  return (
-    SCREEN_AUDIT_METADATA[screenId] || {
-      systemName: 'Sistema Escola',
-    }
-  );
+  const inferredMetadata = inferScreenAuditMetadata(screenId);
+  const registeredMetadata = SCREEN_AUDIT_METADATA[screenId];
+
+  return {
+    systemName: registeredMetadata?.systemName || inferredMetadata?.systemName || 'Sistema Escola',
+    originText: registeredMetadata?.originText || inferredMetadata?.originText,
+    auditText: registeredMetadata?.auditText,
+    sqlText: registeredMetadata?.sqlText,
+  };
 }
 
 export default function ScreenNameCopy({
@@ -346,6 +453,7 @@ export default function ScreenNameCopy({
     } catch (error) {
       console.error('Falha ao copiar nome da tela', error);
       setStatus('error');
+      setIsAuditOpen(true);
     } finally {
       resetStatus();
     }

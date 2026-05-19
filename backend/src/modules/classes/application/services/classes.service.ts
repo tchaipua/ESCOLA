@@ -6,7 +6,11 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateClassDto } from "../dto/create-class.dto";
 import { UpdateClassDto } from "../dto/update-class.dto";
-import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import {
+  getTenantContext,
+  runWithTenantBranchScope,
+} from "../../../../common/tenant/tenant.context";
+import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class ClassesService {
@@ -53,6 +57,14 @@ export class ClassesService {
   }
 
   async create(createDto: CreateClassDto) {
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      createDto.branchCode,
+      getTenantContext()!.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const normalizedName = this.normalizeName(createDto.name);
     const normalizedShift = this.normalizeShift(createDto.shift);
     await this.ensureUniqueClass(normalizedName);
@@ -65,8 +77,10 @@ export class ClassesService {
           createDto.defaultMonthlyFee,
         ),
         tenantId: getTenantContext()!.tenantId,
+        branchCode: targetBranchCode,
         createdBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 
@@ -96,6 +110,14 @@ export class ClassesService {
 
   async update(id: string, updateDto: UpdateClassDto) {
     const currentClass = await this.findOne(id);
+    const targetBranchCode = await resolveWritableTenantBranchCode(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      updateDto.branchCode,
+      currentClass.branchCode,
+    );
+
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     const nextName = updateDto.name
       ? this.normalizeName(updateDto.name)
       : currentClass.name;
@@ -116,8 +138,10 @@ export class ClassesService {
         )
           ? this.getDefaultMonthlyFeeValue(updateDto.defaultMonthlyFee)
           : undefined,
+        branchCode: targetBranchCode,
         updatedBy: getTenantContext()!.userId,
       },
+    });
     });
   }
 
