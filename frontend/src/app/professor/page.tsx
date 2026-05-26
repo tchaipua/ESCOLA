@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { clearStoredSession } from '@/app/lib/auth-storage';
+import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
 
@@ -216,9 +217,13 @@ export default function ProfessorPwaPage() {
 
     const copyScreenNameToClipboard = useCallback(async () => {
         try {
-            await navigator.clipboard.writeText(SCREEN_NAME);
-            setCopiedScreenName(true);
-            window.setTimeout(() => setCopiedScreenName(false), 1500);
+            const copied = await copyTextToClipboard(SCREEN_NAME);
+            if (copied) {
+                setCopiedScreenName(true);
+                window.setTimeout(() => setCopiedScreenName(false), 1500);
+            } else {
+                setErrorStatus('Nao foi possivel copiar o nome da tela.');
+            }
         } catch {
             setErrorStatus('Nao foi possivel copiar o nome da tela.');
         }

@@ -448,7 +448,7 @@ export class SeriesClassesService {
     await this.validateReferences(nextSeriesId, nextClassId);
     await this.ensureUniqueLink(nextSeriesId, nextClassId, id);
 
-    return this.prisma.seriesClass.update({
+    await this.prisma.seriesClass.updateMany({
       where: { id },
       data: {
         seriesId: updateDto.seriesId,
@@ -456,11 +456,9 @@ export class SeriesClassesService {
         branchCode: targetBranchCode,
         updatedBy: this.userId(),
       },
-      include: {
-        series: true,
-        class: true,
-      },
     });
+
+    return this.findOne(id);
     });
   }
 
@@ -507,7 +505,7 @@ export class SeriesClassesService {
       }
     }
 
-    const updatedSeriesClass = await this.prisma.seriesClass.update({
+    await this.prisma.seriesClass.updateMany({
       where: { id },
       data: active
         ? {
@@ -520,17 +518,13 @@ export class SeriesClassesService {
             canceledBy: this.userId(),
             updatedBy: this.userId(),
           },
-      include: {
-        series: true,
-        class: true,
-      },
     });
 
     return {
       message: active
         ? "Turma ativada com sucesso."
         : "Turma inativada com sucesso.",
-      seriesClass: updatedSeriesClass,
+      seriesClass: await this.findOne(id),
     };
   }
 }

@@ -18,6 +18,7 @@ import { fetchTenantBranches, getDashboardAuthContext, hasAllDashboardPermission
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 type Subject = {
     id: string;
@@ -42,6 +43,7 @@ type Teacher = {
 };
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const DISCIPLINAS_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS';
 const DISCIPLINAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS_STATUS_MODAL';
 
 type SubjectColumnKey = 'name' | 'recordStatus';
@@ -69,6 +71,77 @@ const DEFAULT_SORT: GridSortState<SubjectColumnKey> = {
     column: 'name',
     direction: 'asc',
 };
+
+type DisciplinasAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    displayedRowsCount: number;
+    sortColumn: SubjectColumnKey;
+    sortDirection: 'asc' | 'desc';
+};
+
+function getDisciplinasAuditOrderBy(column: SubjectColumnKey) {
+    const orderColumns: Record<SubjectColumnKey, string> = {
+        name: 'S.name',
+        recordStatus: 'S.canceledAt',
+    };
+
+    return orderColumns[column] || 'S.name';
+}
+
+function buildDisciplinasAuditSql(params: DisciplinasAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+
+SELECT S.*
+FROM subjects S
+WHERE S.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(S.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND S.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND S.canceledAt IS NOT NULL)
+  )
+ORDER BY ${getDisciplinasAuditOrderBy(params.sortColumn)} ${sortDirection};`;
+}
+
+function buildDisciplinasAuditText(params: DisciplinasAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao do cadastro de disciplinas.
+
+TABELAS PRINCIPAIS:
+- subjects (S) - cadastro de disciplinas da escola
+
+RELACIONAMENTOS:
+- Nao ha relacionamento obrigatorio para a listagem principal.
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- status selecionado (:statusFilter): ${statusFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: ${getDisciplinasAuditOrderBy(params.sortColumn)} ${sortDirection}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- S.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
 
 function normalizeText(value: string) {
     return String(value || '')
@@ -113,6 +186,7 @@ export default function DisciplinasPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -324,6 +398,30 @@ export default function DisciplinasPage() {
             ),
         [filteredSubjects, sortState],
     );
+    const disciplinasAuditContext = useMemo(() => {
+        const auditParams: DisciplinasAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: currentTenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            displayedRowsCount: sortedFilteredSubjects.length,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+        };
+
+        return {
+            auditText: buildDisciplinasAuditText(auditParams),
+            sqlText: buildDisciplinasAuditSql(auditParams),
+        };
+    }, [currentTenantBranding?.schoolName, currentTenantId, searchTerm, sortState.column, sortState.direction, sortedFilteredSubjects.length, statusFilter]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: DISCIPLINAS_SCREEN_ID,
+            auditText: disciplinasAuditContext.auditText,
+            sqlText: disciplinasAuditContext.sqlText,
+        });
+    }, [disciplinasAuditContext]);
 
     const openCreateModal = () => {
         setEditingSubjectId(null);
@@ -439,9 +537,13 @@ export default function DisciplinasPage() {
                 throw new Error(data?.message || 'Falha ao salvar disciplina.');
             }
 
-            setSuccessStatus(editingSubjectId ? 'Disciplina atualizada com sucesso.' : 'Disciplina cadastrada com sucesso.');
+            const wasEditing = Boolean(editingSubjectId);
             closeModal();
             await loadData();
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Disciplina salva com sucesso' : 'Disciplina inserida com sucesso',
+                message: wasEditing ? 'A disciplina foi alterada e a lista já foi atualizada.' : 'A disciplina foi inserida e a lista já foi atualizada.',
+            });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Falha ao salvar disciplina.';
             setErrorStatus(message);
@@ -830,9 +932,25 @@ export default function DisciplinasPage() {
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h2 className="text-xl font-bold text-[#153a6a]">
-                                {editingSubjectId ? 'Editar disciplina' : 'Nova disciplina'}
-                            </h2>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {currentTenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">
+                                        {editingSubjectId ? 'Editar disciplina' : 'Nova disciplina'}
+                                    </h2>
+                                </div>
+                            </div>
                             <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -897,8 +1015,8 @@ export default function DisciplinasPage() {
                                 branches={tenantBranches}
                                 value={subjectBranchCode}
                                 onChange={setSubjectBranchCode}
-                                labelClassName="text-xs font-bold text-slate-600 mb-1 block"
-                                selectClassName="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                variant="pills"
+                                label="Filiais"
                             />
 
                             <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
@@ -918,6 +1036,40 @@ export default function DisciplinasPage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+                    ) : null}
+
+                    {saveSuccessPopup ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl animate-in zoom-in-95">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
                     ) : null}

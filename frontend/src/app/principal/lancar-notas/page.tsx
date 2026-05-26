@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const LANCAR_NOTAS_SCREEN_ID = 'PRINCIPAL_LANCAR_NOTAS';
 
 type CurrentTenant = {
     id: string;
@@ -145,6 +147,76 @@ function formatDateTime(value?: string | null) {
     }).format(new Date(value));
 }
 
+type LancarNotasAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    statusFilter: AssessmentListStatus;
+    selectedLessonEventId: string;
+    displayedRowsCount: number;
+    totalStudents: number;
+};
+
+function buildLancarNotasAuditSql(params: LancarNotasAuditParams) {
+    const statusFilter = String(params.statusFilter || 'ALL').toUpperCase();
+
+    return `-- PARAMETROS ATUAIS DA TELA
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+-- :lessonEventId = ${toSqlLiteral(params.selectedLessonEventId)}
+
+SELECT LE.*
+FROM lesson_events LE
+LEFT JOIN lesson_assessments LA
+  ON LA.lessonEventId = LE.id
+ AND LA.tenantId = LE.tenantId
+ AND LA.canceledAt IS NULL
+WHERE LE.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND LE.canceledAt IS NULL
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'PENDING' AND LA.id IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'GRADED' AND LA.id IS NOT NULL)
+  )
+ORDER BY LE.date ASC, LE.startTime ASC;
+
+SELECT ASG.*
+FROM lesson_assessment_students ASG
+LEFT JOIN lesson_assessments LA
+  ON LA.id = ASG.assessmentId
+ AND LA.tenantId = ASG.tenantId
+WHERE ASG.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (${toSqlLiteral(params.selectedLessonEventId)} = '' OR LA.lessonEventId = ${toSqlLiteral(params.selectedLessonEventId)})
+ORDER BY ASG.studentName ASC;`;
+}
+
+function buildLancarNotasAuditText(params: LancarNotasAuditParams) {
+    const statusFilter = String(params.statusFilter || 'ALL').toUpperCase();
+
+    return `--- LOGICA DA TELA ---
+Tela de lancamento de notas para provas e trabalhos da grade anual.
+
+TABELAS PRINCIPAIS:
+- lesson_events (LE) - eventos avaliativos cadastrados no calendario
+- lesson_assessments (LA) - avaliacao/notas vinculadas ao evento
+- lesson_assessment_students (ASG) - notas por aluno
+
+RELACIONAMENTOS:
+- lesson_events.id = lesson_assessments.lessonEventId
+- lesson_assessments.id = lesson_assessment_students.assessmentId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- status selecionado (:statusFilter): ${statusFilter}
+- evento selecionado (:lessonEventId): ${formatAuditValue(params.selectedLessonEventId, 'NAO SELECIONADO')}
+- avaliacoes listadas apos filtro: ${params.displayedRowsCount}
+- alunos exibidos no detalhe selecionado: ${params.totalStudents}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- LE.tenantId, LA.tenantId e ASG.tenantId isolam os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados na tela`;
+}
+
 export default function LancarNotasPage() {
     const [tenant, setTenant] = useState<CurrentTenant | null>(null);
     const [statusFilter, setStatusFilter] = useState<AssessmentListStatus>('ALL');
@@ -264,6 +336,29 @@ export default function LancarNotasPage() {
         const graded = listData?.totalWithGrades || 0;
         return { total, pending, graded };
     }, [listData]);
+    const lancarNotasAuditContext = useMemo(() => {
+        const auditParams: LancarNotasAuditParams = {
+            tenantId: tenant?.id || null,
+            tenantName: tenant?.name,
+            statusFilter,
+            selectedLessonEventId: selectedItem?.lessonEventId || '',
+            displayedRowsCount: listData?.items.length || 0,
+            totalStudents: formState.students.length,
+        };
+
+        return {
+            auditText: buildLancarNotasAuditText(auditParams),
+            sqlText: buildLancarNotasAuditSql(auditParams),
+        };
+    }, [formState.students.length, listData?.items.length, selectedItem?.lessonEventId, statusFilter, tenant?.id, tenant?.name]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: LANCAR_NOTAS_SCREEN_ID,
+            auditText: lancarNotasAuditContext.auditText,
+            sqlText: lancarNotasAuditContext.sqlText,
+        });
+    }, [lancarNotasAuditContext]);
 
     const handleSave = async () => {
         if (!selectedItem) return;

@@ -12,7 +12,9 @@ import {
 } from "../../../../common/auth/master-auth";
 import {
   DEFAULT_BRANCH_CODE,
+  getVisibleBranchCodes,
   normalizeBranchCode,
+  SHARED_BRANCH_CODE,
 } from "../../../../common/tenant/branch.constants";
 
 @Injectable()
@@ -26,6 +28,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    const prismaClient =
+      (
+        this.prisma as PrismaService & {
+          getUnscopedClient?: () => PrismaService;
+        }
+      ).getUnscopedClient?.() || this.prisma;
+
     if (
       payload?.isMaster &&
       payload.userId === MASTER_USER_ID &&
@@ -45,6 +54,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         permissions: Array.isArray(payload.permissions)
           ? payload.permissions
           : MASTER_PERMISSIONS,
+        branchAccessCodes: Array.isArray(payload.branchAccessCodes)
+          ? payload.branchAccessCodes
+          : [],
+        canAccessAllBranches: true,
         email:
           typeof payload.email === "string" && payload.email.trim()
             ? payload.email
@@ -60,8 +73,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       );
     }
 
+    const requestedBranchCode = normalizeBranchCode(
+      payload.branchCode,
+      DEFAULT_BRANCH_CODE,
+    );
+
     const [user, teacher, student, guardian] = await Promise.all([
-      this.prisma.user.findFirst({
+      prismaClient.user.findFirst({
         where: {
           id: payload.userId,
           tenantId: payload.tenantId,
@@ -70,14 +88,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         select: {
           id: true,
           tenantId: true,
+          branchCode: true,
           role: true,
           accessProfile: true,
           complementaryProfiles: true,
           permissions: true,
           email: true,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
         },
       }),
-      this.prisma.teacher.findFirst({
+      prismaClient.teacher.findFirst({
         where: {
           id: payload.userId,
           tenantId: payload.tenantId,
@@ -86,12 +110,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         select: {
           id: true,
           tenantId: true,
+          branchCode: true,
           accessProfile: true,
           permissions: true,
           email: true,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
         },
       }),
-      this.prisma.student.findFirst({
+      prismaClient.student.findFirst({
         where: {
           id: payload.userId,
           tenantId: payload.tenantId,
@@ -100,12 +130,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         select: {
           id: true,
           tenantId: true,
+          branchCode: true,
           accessProfile: true,
           permissions: true,
           email: true,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
         },
       }),
-      this.prisma.guardian.findFirst({
+      prismaClient.guardian.findFirst({
         where: {
           id: payload.userId,
           tenantId: payload.tenantId,
@@ -114,9 +150,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         select: {
           id: true,
           tenantId: true,
+          branchCode: true,
           accessProfile: true,
           permissions: true,
           email: true,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
         },
       }),
     ]);
@@ -136,10 +178,65 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("Acesso negado: Perfil inexistente");
     }
 
+    const canAccessAllBranches = Boolean(
+      user && String(user.role || "").toUpperCase() === "ADMIN",
+    );
+    const branchAccesses = user
+      ? user.branchAccesses || []
+      : "branchAccesses" in account
+        ? (account.branchAccesses || [])
+        : [];
+    const branchAccessCodes = Array.from(
+      new Set(
+        branchAccesses
+          .map((access) =>
+            normalizeBranchCode(access.branchCode, DEFAULT_BRANCH_CODE),
+          )
+          .filter((branchCode) => branchCode >= DEFAULT_BRANCH_CODE),
+      ),
+    );
+
+    if (user && !canAccessAllBranches) {
+      const fallbackCodes =
+        branchAccessCodes.length > 0
+          ? branchAccessCodes
+          : [normalizeBranchCode(user.branchCode, DEFAULT_BRANCH_CODE)];
+
+      if (!fallbackCodes.includes(requestedBranchCode)) {
+        throw new UnauthorizedException(
+          "Acesso negado para a filial selecionada.",
+        );
+      }
+    }
+
+    if (!user) {
+      if (branchAccessCodes.length > 0) {
+        if (!branchAccessCodes.includes(requestedBranchCode)) {
+          throw new UnauthorizedException(
+            "Acesso negado para a filial selecionada.",
+          );
+        }
+      } else {
+        const accountBranchCode = normalizeBranchCode(
+        (account as { branchCode?: number | null }).branchCode,
+        DEFAULT_BRANCH_CODE,
+        );
+        const isSharedAccount = accountBranchCode === SHARED_BRANCH_CODE;
+        if (
+          !isSharedAccount &&
+          !getVisibleBranchCodes(requestedBranchCode).includes(accountBranchCode)
+        ) {
+          throw new UnauthorizedException(
+            "Acesso negado para a filial selecionada.",
+          );
+        }
+      }
+    }
+
     return {
       userId: payload.userId,
       tenantId: payload.tenantId,
-      branchCode: normalizeBranchCode(payload.branchCode, DEFAULT_BRANCH_CODE),
+      branchCode: requestedBranchCode,
       role: payload.role,
       email:
         typeof account.email === "string" && account.email.trim()
@@ -162,8 +259,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             permissions:
               "permissions" in account
                 ? (account as { permissions?: string | null }).permissions
-                : payload.permissions,
+              : payload.permissions,
           }),
+      branchAccessCodes,
+      canAccessAllBranches,
       isMaster: false,
     };
   }

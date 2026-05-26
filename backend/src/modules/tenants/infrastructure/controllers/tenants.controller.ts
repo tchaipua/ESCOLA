@@ -148,6 +148,7 @@ export class TenantsController {
       role?: string;
       accessProfile?: string;
       permissions?: string[];
+      branchAccessCodes?: number[];
     },
   ) {
     this.assertMasterPass(req);
@@ -190,6 +191,7 @@ export class TenantsController {
       role?: string;
       accessProfile?: string;
       permissions?: string[];
+      branchAccessCodes?: number[];
     },
   ) {
     this.assertMasterPass(req);

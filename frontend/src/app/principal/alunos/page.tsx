@@ -59,8 +59,11 @@ import {
 } from '@/app/lib/access-profiles';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
+import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const ALUNOS_SCREEN_ID = 'PRINCIPAL_ALUNOS';
 const ALUNOS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_ALUNOS_STATUS_MODAL';
 
 const normalizeCpfDigits = (value: string) => String(value || '').replace(/\D/g, '');
@@ -150,6 +153,7 @@ type StudentEnrollment = {
 type StudentRecord = {
     id: string;
     branchCode?: number | null;
+    branchAccessCodes?: number[] | null;
     personId?: string | null;
     canceledAt?: string | null;
     name: string;
@@ -185,6 +189,7 @@ type StudentRecord = {
 
 type StudentFormState = {
     branchCode: number;
+    branchAccessCodes: number[];
     name: string;
     photoUrl: string;
     birthDate: string;
@@ -225,6 +230,7 @@ type GuardianLinkFormState = {
 
 const EMPTY_FORM: StudentFormState = {
     branchCode: 1,
+    branchAccessCodes: [1],
     name: '',
     photoUrl: '',
     birthDate: '',
@@ -357,6 +363,147 @@ const DEFAULT_SORT: GridSortState<StudentColumnKey> = {
     column: 'name',
     direction: 'asc',
 };
+
+type AlunosAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    seriesFilter: string;
+    classFilter: string;
+    displayedRowsCount: number;
+    sortColumn: StudentColumnKey;
+    sortDirection: 'asc' | 'desc';
+};
+
+function getAlunosAuditOrderBy(column: StudentColumnKey) {
+    const orderColumns: Record<StudentColumnKey, string> = {
+        name: 'ST.name',
+        currentEnrollment: 'SE.name',
+        nickname: 'ST.nickname',
+        corporateName: 'ST.corporateName',
+        birthDate: 'ST.birthDate',
+        cpf: 'ST.cpf',
+        rg: 'ST.rg',
+        cnpj: 'ST.cnpj',
+        contact: 'COALESCE(ST.email, ST.whatsapp, ST.phone, ST.cellphone1)',
+        email: 'ST.email',
+        phone: 'ST.phone',
+        whatsapp: 'ST.whatsapp',
+        cellphone1: 'ST.cellphone1',
+        cellphone2: 'ST.cellphone2',
+        monthlyFee: 'ST.monthlyFee',
+        zipCode: 'ST.zipCode',
+        street: 'ST.street',
+        number: 'ST.number',
+        neighborhood: 'ST.neighborhood',
+        complement: 'ST.complement',
+        city: 'ST.city',
+        state: 'ST.state',
+        cityState: 'ST.city',
+        address: 'ST.street',
+        pwaStatus: 'ST.email',
+        accessProfile: 'ST.accessProfile',
+        notes: 'ST.notes',
+    };
+
+    return orderColumns[column] || 'ST.name';
+}
+
+function buildAlunosAuditSql(params: AlunosAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const seriesFilter = String(params.seriesFilter || 'ALL').trim().toUpperCase() || 'ALL';
+    const classFilter = String(params.classFilter || 'ALL').trim().toUpperCase() || 'ALL';
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+-- :seriesFilter = ${toSqlLiteral(seriesFilter)}
+-- :classFilter = ${toSqlLiteral(classFilter)}
+
+SELECT DISTINCT ST.*
+FROM students ST
+LEFT JOIN enrollments EN
+  ON EN.studentId = ST.id
+ AND EN.tenantId = ST.tenantId
+ AND EN.canceledAt IS NULL
+LEFT JOIN series_classes SC
+  ON SC.id = EN.seriesClassId
+ AND SC.tenantId = ST.tenantId
+ AND SC.canceledAt IS NULL
+LEFT JOIN series SE
+  ON SE.id = SC.seriesId
+ AND SE.tenantId = ST.tenantId
+ AND SE.canceledAt IS NULL
+LEFT JOIN classes CL
+  ON CL.id = SC.classId
+ AND CL.tenantId = ST.tenantId
+ AND CL.canceledAt IS NULL
+WHERE ST.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(ST.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(ST.email, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(ST.cpf, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(ST.whatsapp, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(ST.phone, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND ST.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND ST.canceledAt IS NOT NULL)
+  )
+  AND (
+    ${toSqlLiteral(seriesFilter)} = 'ALL'
+    OR UPPER(COALESCE(SE.name, '')) = ${toSqlLiteral(seriesFilter)}
+  )
+  AND (
+    ${toSqlLiteral(classFilter)} = 'ALL'
+    OR UPPER(COALESCE(CL.name, '')) = ${toSqlLiteral(classFilter)}
+  )
+ORDER BY ${getAlunosAuditOrderBy(params.sortColumn)} ${sortDirection};`;
+}
+
+function buildAlunosAuditText(params: AlunosAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const seriesFilter = String(params.seriesFilter || 'ALL').trim().toUpperCase() || 'ALL';
+    const classFilter = String(params.classFilter || 'ALL').trim().toUpperCase() || 'ALL';
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao do cadastro de alunos.
+
+TABELAS PRINCIPAIS:
+- students (ST) - cadastro operacional de alunos
+- enrollments (EN) - matriculas e vinculos academicos
+- series_classes (SC) - vinculo entre serie e turma
+- series (SE) - cadastro de series da escola
+- classes (CL) - cadastro de turmas da escola
+
+RELACIONAMENTOS:
+- students.id = enrollments.studentId
+- enrollments.seriesClassId = series_classes.id
+- series.id = series_classes.seriesId
+- classes.id = series_classes.classId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- status selecionado (:statusFilter): ${statusFilter}
+- serie selecionada (:seriesFilter): ${seriesFilter}
+- turma selecionada (:classFilter): ${classFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: ${getAlunosAuditOrderBy(params.sortColumn)} ${sortDirection}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- ST.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
 
 function errorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
@@ -532,6 +679,7 @@ export default function AlunosPage() {
     const [classFilter, setClassFilter] = useState('ALL');
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [formData, setFormData] = useState<StudentFormState>(EMPTY_FORM);
     const [studentGuardians, setStudentGuardians] = useState<StudentGuardianLink[]>([]);
     const [guardiansCatalog, setGuardiansCatalog] = useState<GuardianSummary[]>([]);
@@ -708,6 +856,32 @@ export default function AlunosPage() {
         () => readCachedTenantBranding(currentTenantId),
         [currentTenantId],
     );
+    const alunosAuditContext = useMemo(() => {
+        const auditParams: AlunosAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: currentTenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            seriesFilter,
+            classFilter,
+            displayedRowsCount: sortedFilteredStudents.length,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+        };
+
+        return {
+            auditText: buildAlunosAuditText(auditParams),
+            sqlText: buildAlunosAuditSql(auditParams),
+        };
+    }, [classFilter, currentTenantBranding?.schoolName, currentTenantId, searchTerm, seriesFilter, sortState.column, sortState.direction, sortedFilteredStudents.length, statusFilter]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: ALUNOS_SCREEN_ID,
+            auditText: alunosAuditContext.auditText,
+            sqlText: alunosAuditContext.sqlText,
+        });
+    }, [alunosAuditContext]);
 
     const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
@@ -969,7 +1143,7 @@ export default function AlunosPage() {
         setCpfConflictRoles([]);
         setCpfConflictRoles([]);
         setActiveTab(1);
-        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode, branchAccessCodes: [currentBranchCode] });
         setPersonSystemRoles(['ALUNO']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -1121,7 +1295,7 @@ export default function AlunosPage() {
         setOriginalStudentSeriesClassId('');
         setCpfConflictAlert(null);
         setActiveTab(1);
-        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode, branchAccessCodes: [currentBranchCode] });
         setPersonSystemRoles(['ALUNO']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -1144,6 +1318,7 @@ export default function AlunosPage() {
             setActiveTab(initialTab);
             setFormData({
                 branchCode: typeof detail.branchCode === 'number' ? detail.branchCode : currentBranchCode,
+                branchAccessCodes: resolveBranchAccessSelection(detail, currentBranchCode),
                 name: detail.name || '',
                 photoUrl: detail.photoUrl || '',
                 birthDate: detail.birthDate ? new Date(detail.birthDate).toISOString().split('T')[0] : '',
@@ -1456,8 +1631,10 @@ export default function AlunosPage() {
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             const url = editingStudentId ? `${API_BASE_URL}/students/${editingStudentId}` : `${API_BASE_URL}/students`;
             const method = editingStudentId ? 'PATCH' : 'POST';
-            const payload: Record<string, string | number | string[] | null> = {
+            const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
+            const payload: Record<string, string | number | string[] | number[] | null | undefined> = {
                 ...formData,
+                ...branchPayload,
                 cpf: formatCpf(formData.cpf),
                 cnpj: formatCnpj(formData.cnpj),
                 phone: formatPhone(formData.phone),
@@ -1468,8 +1645,8 @@ export default function AlunosPage() {
                 billingPayerType,
                 billingGuardianId: billingPayerType === 'RESPONSAVEL' ? (formData.billingGuardianId || null) : null,
             };
-            if (tenantBranches.length <= 1) {
-                payload.branchCode = currentBranchCode;
+            if (branchPayload.branchAccessCodes === undefined) {
+                delete payload.branchAccessCodes;
             }
             if (!String(formData.email || '').trim()) delete payload.email;
             delete payload.seriesClassId;
@@ -1518,8 +1695,13 @@ export default function AlunosPage() {
                 }
             }
 
+            const wasEditing = Boolean(editingStudentId);
             closeModal();
             await fetchStudents();
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Aluno salvo com sucesso' : 'Aluno inserido com sucesso',
+                message: wasEditing ? 'O aluno foi alterado e a lista já foi atualizada.' : 'O aluno foi inserido e a lista já foi atualizada.',
+            });
         } catch (error) {
             setSaveError(errorMessage(error, 'Erro ao salvar aluno.'));
         }
@@ -1963,6 +2145,7 @@ export default function AlunosPage() {
                                 { id: 5, label: '5. FINANCEIRO' },
                                 { id: 6, label: '6. FOTOS' },
                                 { id: 7, label: '7. OBSERVAÇÕES' },
+                                { id: 8, label: '8. FILIAIS DE ACESSO' },
                             ].map((tab) => (
                                 <button
                                     key={tab.label}
@@ -2052,13 +2235,6 @@ export default function AlunosPage() {
                                         ) : null}
                                     </div>
                                     <div><label className={labelClass}>Data de nascimento</label><input type="date" value={formData.birthDate} onChange={(event) => setFormData((current) => ({ ...current, birthDate: event.target.value }))} className={inputClass} /></div>
-                                    <TenantBranchSelect
-                                        branches={tenantBranches}
-                                        value={formData.branchCode}
-                                        onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
-                                        labelClassName={labelClass}
-                                        selectClassName={`${inputClass} bg-white`}
-                                    />
                                     <div className="lg:col-span-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-4">
                                         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_0.8fr]">
                                             <div>
@@ -2553,6 +2729,23 @@ export default function AlunosPage() {
                                     </div>
                                 </div>
                             ) : null}
+                            {activeTab === 8 ? (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Filiais de Acesso</h4>
+                                    <div className="grid grid-cols-1 gap-5 max-w-4xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                        <TenantBranchSelect
+                                            branches={tenantBranches}
+                                            value={formData.branchCode}
+                                            onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                            mode="multiple"
+                                            selectedBranchCodes={formData.branchAccessCodes}
+                                            onSelectedBranchCodesChange={(branchAccessCodes) => setFormData((current) => ({ ...current, branchAccessCodes }))}
+                                            labelClassName={labelClass}
+                                            selectClassName={`${inputClass} bg-white`}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
 
                             <div className="sticky bottom-0 -mx-6 mt-8 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2564,6 +2757,40 @@ export default function AlunosPage() {
                                 </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+            ) : null}
+
+            {saveSuccessPopup ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
             ) : null}

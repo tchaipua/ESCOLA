@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext, hasAnyDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const COMUNICACOES_SCREEN_ID = 'PRINCIPAL_COMUNICACOES';
 
 type ScopeResponse = {
     scope: 'ADMIN' | 'FINANCEIRO' | 'PROFESSOR';
@@ -53,6 +55,55 @@ function canOpenCommunicationCenter(role: string | null, permissions: string[]) 
         role === 'PROFESSOR' ||
         hasAnyDashboardPermission(role, permissions, ['MANAGE_COMMUNICATION_CENTER', 'MANAGE_FINANCIAL'])
     );
+}
+
+type ComunicacoesAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    selectedGroups: string[];
+    formTitle: string;
+    sendInternal: boolean;
+    sendEmail: boolean;
+    displayedRowsCount: number;
+};
+
+function buildComunicacoesAuditSql(params: ComunicacoesAuditParams) {
+    return `-- PARAMETROS ATUAIS DA TELA
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :recipientGroups = ${toSqlLiteral(params.selectedGroups.join(','))}
+-- :sendInternal = ${toSqlLiteral(params.sendInternal ? 'TRUE' : 'FALSE')}
+-- :sendEmail = ${toSqlLiteral(params.sendEmail ? 'TRUE' : 'FALSE')}
+
+SELECT C.*
+FROM communications C
+WHERE C.tenantId = ${toSqlLiteral(params.tenantId || '')}
+ORDER BY C.createdAt DESC;`;
+}
+
+function buildComunicacoesAuditText(params: ComunicacoesAuditParams) {
+    return `--- LOGICA DA TELA ---
+Tela da central de comunicacoes para disparo e consulta de comunicados.
+
+TABELAS PRINCIPAIS:
+- communications (C) - historico de comunicados enviados
+- notifications (N) - notificacoes internas geradas pelo envio
+
+RELACIONAMENTOS:
+- o envio cria notificacoes/e-mails para os grupos selecionados conforme permissao do usuario
+
+FILTROS/PARAMETROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- grupos selecionados (:recipientGroups): ${formatAuditValue(params.selectedGroups.join(', '), 'NENHUM')}
+- titulo digitado: ${formatAuditValue(params.formTitle)}
+- enviar notificacao interna (:sendInternal): ${params.sendInternal ? 'TRUE' : 'FALSE'}
+- enviar email (:sendEmail): ${params.sendEmail ? 'TRUE' : 'FALSE'}
+- comunicados exibidos no historico: ${params.displayedRowsCount}
+- ordenacao atual: criado em DESC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- C.tenantId e N.tenantId isolam os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os campos visiveis da tela`;
 }
 
 export default function CommunicationsPage() {
@@ -113,6 +164,24 @@ export default function CommunicationsPage() {
         void loadPage();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [canAccess]);
+
+    useEffect(() => {
+        const auditParams: ComunicacoesAuditParams = {
+            tenantId: authContext.tenantId,
+            tenantName: scope?.tenant?.name,
+            selectedGroups,
+            formTitle: formState.title,
+            sendInternal: formState.sendInternal,
+            sendEmail: formState.sendEmail,
+            displayedRowsCount: campaigns.length,
+        };
+
+        dispatchScreenAuditContext({
+            screenId: COMUNICACOES_SCREEN_ID,
+            auditText: buildComunicacoesAuditText(auditParams),
+            sqlText: buildComunicacoesAuditSql(auditParams),
+        });
+    }, [authContext.tenantId, campaigns.length, formState.sendEmail, formState.sendInternal, formState.title, scope?.tenant?.name, selectedGroups]);
 
     const toggleGroup = (groupCode: string) => {
         setSelectedGroups((current) =>

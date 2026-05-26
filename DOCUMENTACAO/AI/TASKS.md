@@ -21,6 +21,7 @@
 - [x] Central administrativa `dashboard/pessoas` criada para cadastro-base compartilhado
 - [x] Backfill legado para popular `people` e vincular professores, alunos e responsaveis existentes
 - [x] Escopo de filial em cadastros operacionais com transparencia para filial unica e opcao de cadastro comum para multiplas filiais
+- [x] Selecao parcial de filiais em professores, alunos e responsaveis com impacto no login por papel
 - [x] Gerenciamento de filiais no MSINFOR ADMIN a partir do grid de unidades ativas
 - [~] Replicar continuamente novos padroes aprovados na documentacao oficial de UI
 

@@ -12,13 +12,16 @@ import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
+import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, type GridColumnDefinition, type GridExportFormat } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const GRADE_HORARIA_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA';
 const GRADE_HORARIA_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_STATUS_MODAL';
 const GRADE_HORARIA_NEW_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_NEW_MODAL';
 const GRADE_HORARIA_EDIT_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_HORARIA_EDIT_MODAL';
@@ -349,6 +352,112 @@ function resolveDefaultFilterSchoolYearId(years: SchoolYearSummary[]) {
         || '';
 }
 
+type GradeHorariaAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    statusFilter: GridStatusFilterValue;
+    columnFilters: ColumnFilters;
+    schoolYearLabel: string;
+    seriesClassLabel: string;
+    dayLabel: string;
+    subjectLabel: string;
+    teacherLabel: string;
+    displayedRowsCount: number;
+};
+
+function buildGradeHorariaAuditSql(params: GradeHorariaAuditParams) {
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+-- :schoolYearId = ${toSqlLiteral(params.columnFilters.schoolYearId)}
+-- :seriesClassId = ${toSqlLiteral(params.columnFilters.seriesClassId)}
+-- :dayOfWeek = ${toSqlLiteral(params.columnFilters.dayOfWeek)}
+-- :subjectId = ${toSqlLiteral(params.columnFilters.subjectId)}
+-- :teacherId = ${toSqlLiteral(params.columnFilters.teacherId)}
+-- :startTime = ${toSqlLiteral(params.columnFilters.startTime)}
+-- :endTime = ${toSqlLiteral(params.columnFilters.endTime)}
+
+SELECT CSI.*
+FROM class_schedule_items CSI
+LEFT JOIN school_years SY
+  ON SY.id = CSI.schoolYearId
+ AND SY.tenantId = CSI.tenantId
+LEFT JOIN series_classes SC
+  ON SC.id = CSI.seriesClassId
+ AND SC.tenantId = CSI.tenantId
+LEFT JOIN series SE
+  ON SE.id = SC.seriesId
+ AND SE.tenantId = CSI.tenantId
+LEFT JOIN classes CL
+  ON CL.id = SC.classId
+ AND CL.tenantId = CSI.tenantId
+LEFT JOIN teacher_subjects TS
+  ON TS.id = CSI.teacherSubjectId
+ AND TS.tenantId = CSI.tenantId
+LEFT JOIN teachers T
+  ON T.id = TS.teacherId
+ AND T.tenantId = CSI.tenantId
+LEFT JOIN subjects SU
+  ON SU.id = TS.subjectId
+ AND SU.tenantId = CSI.tenantId
+WHERE CSI.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND CSI.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND CSI.canceledAt IS NOT NULL)
+  )
+  AND (${toSqlLiteral(params.columnFilters.schoolYearId)} = '' OR CSI.schoolYearId = ${toSqlLiteral(params.columnFilters.schoolYearId)})
+  AND (${toSqlLiteral(params.columnFilters.seriesClassId)} = '' OR CSI.seriesClassId = ${toSqlLiteral(params.columnFilters.seriesClassId)})
+  AND (${toSqlLiteral(params.columnFilters.dayOfWeek)} = '' OR CSI.dayOfWeek = ${toSqlLiteral(params.columnFilters.dayOfWeek)})
+  AND (${toSqlLiteral(params.columnFilters.subjectId)} = '' OR TS.subjectId = ${toSqlLiteral(params.columnFilters.subjectId)})
+  AND (${toSqlLiteral(params.columnFilters.teacherId)} = '' OR TS.teacherId = ${toSqlLiteral(params.columnFilters.teacherId)})
+  AND (${toSqlLiteral(params.columnFilters.startTime)} = '' OR CSI.startTime = ${toSqlLiteral(params.columnFilters.startTime)})
+  AND (${toSqlLiteral(params.columnFilters.endTime)} = '' OR CSI.endTime = ${toSqlLiteral(params.columnFilters.endTime)})
+ORDER BY CSI.dayOfWeek ASC, CSI.startTime ASC;`;
+}
+
+function buildGradeHorariaAuditText(params: GradeHorariaAuditParams) {
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao da grade horaria semanal.
+
+TABELAS PRINCIPAIS:
+- class_schedule_items (CSI) - lancamentos da grade semanal
+- school_years (SY) - ano letivo
+- series_classes (SC) - turma/serie
+- teacher_subjects (TS) - vinculo professor/disciplina
+- teachers (T) - professor da aula
+- subjects (SU) - disciplina da aula
+
+RELACIONAMENTOS:
+- class_schedule_items.schoolYearId = school_years.id
+- class_schedule_items.seriesClassId = series_classes.id
+- class_schedule_items.teacherSubjectId = teacher_subjects.id
+- teacher_subjects.teacherId = teachers.id
+- teacher_subjects.subjectId = subjects.id
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- status selecionado (:statusFilter): ${statusFilter}
+- ano letivo (:schoolYearId): ${formatAuditValue(params.columnFilters.schoolYearId, 'TODOS')} (${params.schoolYearLabel})
+- turma/serie (:seriesClassId): ${formatAuditValue(params.columnFilters.seriesClassId, 'TODAS')} (${params.seriesClassLabel})
+- dia da semana (:dayOfWeek): ${formatAuditValue(params.columnFilters.dayOfWeek, 'TODOS')} (${params.dayLabel})
+- disciplina (:subjectId): ${formatAuditValue(params.columnFilters.subjectId, 'TODAS')} (${params.subjectLabel})
+- professor (:teacherId): ${formatAuditValue(params.columnFilters.teacherId, 'TODOS')} (${params.teacherLabel})
+- horario inicial (:startTime): ${formatAuditValue(params.columnFilters.startTime, 'TODOS')}
+- horario final (:endTime): ${formatAuditValue(params.columnFilters.endTime, 'TODOS')}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: dia da semana ASC, horario inicial ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- CSI.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function GradeHorariaPlanejadaPage() {
     const [items, setItems] = useState<ClassScheduleItemRecord[]>([]);
     const [schoolYears, setSchoolYears] = useState<SchoolYearSummary[]>([]);
@@ -544,6 +653,37 @@ export default function GradeHorariaPlanejadaPage() {
 
         return grouped;
     }, [filteredItems, shouldShowSchedule]);
+    const gradeHorariaAuditContext = useMemo(() => {
+        const selectedFilterSchoolYear = schoolYears.find((item) => item.id === columnFilters.schoolYearId);
+        const selectedFilterSeriesClass = seriesClasses.find((item) => item.id === columnFilters.seriesClassId);
+        const selectedFilterSubject = allSubjects.find((item) => item.id === columnFilters.subjectId);
+        const selectedFilterTeacher = allTeachers.find((item) => item.id === columnFilters.teacherId);
+        const auditParams: GradeHorariaAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: currentTenant?.name,
+            statusFilter,
+            columnFilters,
+            schoolYearLabel: selectedFilterSchoolYear ? String(selectedFilterSchoolYear.year) : 'TODOS',
+            seriesClassLabel: selectedFilterSeriesClass ? getSeriesClassLabel(selectedFilterSeriesClass) : 'TODAS',
+            dayLabel: columnFilters.dayOfWeek ? getDayLabel(columnFilters.dayOfWeek) : 'TODOS',
+            subjectLabel: selectedFilterSubject?.name || 'TODAS',
+            teacherLabel: selectedFilterTeacher?.name || 'TODOS',
+            displayedRowsCount: filteredItems.length,
+        };
+
+        return {
+            auditText: buildGradeHorariaAuditText(auditParams),
+            sqlText: buildGradeHorariaAuditSql(auditParams),
+        };
+    }, [allSubjects, allTeachers, columnFilters, currentTenant?.name, currentTenantId, filteredItems.length, schoolYears, seriesClasses, statusFilter]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: GRADE_HORARIA_SCREEN_ID,
+            auditText: gradeHorariaAuditContext.auditText,
+            sqlText: gradeHorariaAuditContext.sqlText,
+        });
+    }, [gradeHorariaAuditContext]);
 
     const scheduleOptions = useMemo(() => {
         return availableSchedules
@@ -1014,8 +1154,8 @@ export default function GradeHorariaPlanejadaPage() {
 
     const handleCopyScreenProgramName = async () => {
         try {
-            await navigator.clipboard.writeText(SCREEN_PROGRAM_NAME);
-            setClipboardFeedback('success');
+            const copied = await copyTextToClipboard(SCREEN_PROGRAM_NAME);
+            setClipboardFeedback(copied ? 'success' : 'error');
         } catch {
             setClipboardFeedback('error');
         }

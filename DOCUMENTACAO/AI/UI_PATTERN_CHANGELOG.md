@@ -303,3 +303,33 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
   - `C:/Sistemas/IA/Financeiro/frontend/src/app/produtos/page.tsx`
 - Status: aprovado
+
+### UIP-0022
+
+- Data: 2026-05-23
+- Padrao: auditoria SQL em abas e com parametros reais
+- Contexto: na validacao da tela `PRINCIPAL_PROFESSORES`, foi aprovado que a auditoria deve separar informacoes funcionais do SQL executavel e mostrar os filtros atuais do grid, incluindo busca digitada e tenant real
+- Alteracao: a auditoria visual passa a abrir por padrao na aba `Outras informações`, com a aba `SQL` separada contendo somente a consulta copiavel; parametros como `schoolId`/`tenantId`, status, busca, disciplina, filial e ordenacao devem aparecer com valores reais sempre que possivel
+- Regra complementar: nomes humanos de apoio, como nome da escola, podem aparecer entre parenteses apenas na aba de informacoes; o SQL deve permanecer executavel e sem texto amigavel que quebre a consulta
+- Componentes/Telas:
+  - `frontend/src/app/components/screen-audit-modal.tsx`
+  - `frontend/src/app/principal/layout.tsx`
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/CODING_RULES.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0023
+
+- Data: 2026-05-23
+- Padrao: layout do modal de auditoria SQL com abas no cabecalho
+- Contexto: apos a validacao visual da `PRINCIPAL_PROFESSORES`, foi aprovado que o seletor `Outras informações` / `SQL` deve ficar no cabecalho do modal, junto da identidade da tela e dos botoes principais
+- Alteracao: o cabecalho do modal passa a concentrar logotipo, etiqueta `Auditoria SQL`, identificador tecnico, origem do sistema, abas centrais e botoes `Fechar`/`Copiar SQL` a direita; `Copiar SQL` aparece somente na aba `SQL` e nao ha botoes duplicados no rodape
+- Componentes/Telas:
+  - `frontend/src/app/components/screen-audit-modal.tsx`
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/CODING_RULES.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado

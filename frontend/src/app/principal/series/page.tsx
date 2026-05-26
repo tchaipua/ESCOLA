@@ -26,8 +26,10 @@ import {
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const SERIES_SCREEN_ID = 'PRINCIPAL_SERIES';
 
 type SeriesRecord = {
     id: string;
@@ -118,6 +120,100 @@ const SERIES_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STUDENTS_MODAL';
 const SERIES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STATUS_MODAL';
 const SERIES_NEW_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_NEW_MODAL';
 
+type SeriesAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    displayedRowsCount: number;
+    sortColumn: SeriesColumnKey;
+    sortDirection: 'asc' | 'desc';
+};
+
+function getSeriesAuditOrderBy(column: SeriesColumnKey) {
+    const orderColumns: Record<SeriesColumnKey, string> = {
+        name: 'SE.name',
+        code: 'SE.code',
+        sortOrder: 'SE.sortOrder',
+        studentCount: 'studentCount',
+    };
+
+    return orderColumns[column] || 'SE.sortOrder';
+}
+
+function buildSeriesAuditSql(params: SeriesAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+
+SELECT
+  SE.*,
+  COUNT(DISTINCT ST.id) AS studentCount
+FROM series SE
+LEFT JOIN series_classes SC
+  ON SC.seriesId = SE.id
+ AND SC.tenantId = SE.tenantId
+ AND SC.canceledAt IS NULL
+LEFT JOIN enrollments EN
+  ON EN.seriesClassId = SC.id
+ AND EN.tenantId = SE.tenantId
+ AND EN.canceledAt IS NULL
+LEFT JOIN students ST
+  ON ST.id = EN.studentId
+ AND ST.tenantId = SE.tenantId
+ AND ST.canceledAt IS NULL
+WHERE SE.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(SE.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(SE.code, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND SE.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND SE.canceledAt IS NOT NULL)
+  )
+GROUP BY SE.id
+ORDER BY ${getSeriesAuditOrderBy(params.sortColumn)} ${sortDirection};`;
+}
+
+function buildSeriesAuditText(params: SeriesAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao do cadastro de series.
+
+TABELAS PRINCIPAIS:
+- series (SE) - cadastro de series da escola
+- series_classes (SC) - vinculo entre serie e turma
+- enrollments (EN) - matriculas por serie/turma
+- students (ST) - alunos contabilizados na serie
+
+RELACIONAMENTOS:
+- series.id = series_classes.seriesId
+- series_classes.id = enrollments.seriesClassId
+- students.id = enrollments.studentId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- status selecionado (:statusFilter): ${statusFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: ${getSeriesAuditOrderBy(params.sortColumn)} ${sortDirection}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- SE.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function SeriesPage() {
     const [series, setSeries] = useState<SeriesRecord[]>([]);
     const [formData, setFormData] = useState(EMPTY_FORM);
@@ -128,6 +224,7 @@ export default function SeriesPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentBranchCode, setCurrentBranchCode] = useState(1);
@@ -192,6 +289,30 @@ export default function SeriesPage() {
         () => buildGridAggregateSummaries(sortedFilteredSeries, visibleSeriesColumns, columnAggregations),
         [columnAggregations, sortedFilteredSeries, visibleSeriesColumns],
     );
+    const seriesAuditContext = useMemo(() => {
+        const auditParams: SeriesAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: currentTenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            displayedRowsCount: sortedFilteredSeries.length,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+        };
+
+        return {
+            auditText: buildSeriesAuditText(auditParams),
+            sqlText: buildSeriesAuditSql(auditParams),
+        };
+    }, [currentTenantBranding?.schoolName, currentTenantId, searchTerm, sortState.column, sortState.direction, sortedFilteredSeries.length, statusFilter]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: SERIES_SCREEN_ID,
+            auditText: seriesAuditContext.auditText,
+            sqlText: seriesAuditContext.sqlText,
+        });
+    }, [seriesAuditContext]);
 
     const loadSeries = async () => {
         try {
@@ -337,9 +458,13 @@ export default function SeriesPage() {
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(data?.message || 'Não foi possível salvar a série.');
 
-            setSuccessStatus(editingId ? 'Série atualizada com sucesso.' : 'Série cadastrada com sucesso.');
+            const wasEditing = Boolean(editingId);
             closeModal();
             await loadSeries();
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Série salva com sucesso' : 'Série inserida com sucesso',
+                message: wasEditing ? 'A série foi alterada e a lista já foi atualizada.' : 'A série foi inserida e a lista já foi atualizada.',
+            });
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível salvar a série.');
         } finally {
@@ -822,7 +947,23 @@ export default function SeriesPage() {
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h2 className="text-xl font-bold text-[#153a6a]">{editingId ? 'Editar série' : 'Nova série'}</h2>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {currentTenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">{editingId ? 'Editar série' : 'Nova série'}</h2>
+                                </div>
+                            </div>
                             <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -839,8 +980,9 @@ export default function SeriesPage() {
                                     branches={tenantBranches}
                                     value={formData.branchCode}
                                     onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
-                                    labelClassName="text-xs font-bold text-slate-600"
-                                    selectClassName="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    variant="pills"
+                                    label="Filiais"
+                                    containerClassName="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 md:col-span-3"
                                 />
                             </div>
 
@@ -866,6 +1008,40 @@ export default function SeriesPage() {
                                 </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+            ) : null}
+
+            {saveSuccessPopup ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl animate-in zoom-in-95">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
             ) : null}

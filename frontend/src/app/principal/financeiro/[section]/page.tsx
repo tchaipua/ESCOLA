@@ -152,7 +152,7 @@ export default function PrincipalFinanceiroSectionPage({
 }) {
   const [isMounted, setIsMounted] = useState(false);
   const [section, setSection] = useState<string | null>(null);
-  const [isFrameLoading, setIsFrameLoading] = useState(true);
+  const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
   const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
@@ -179,15 +179,11 @@ export default function PrincipalFinanceiroSectionPage({
   }, [authContext, sectionConfig, tenantBranding]);
 
   useEffect(() => {
-    if (iframeSrc) {
-      const timer = window.setTimeout(() => setIsFrameLoading(true), 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, [iframeSrc]);
-
-  useEffect(() => {
-    setEmbeddedScreenId(null);
+    const timer = window.setTimeout(() => setEmbeddedScreenId(null), 0);
+    return () => window.clearTimeout(timer);
   }, [section]);
+
+  const isFrameLoading = Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
 
   useEffect(() => {
     const handleEmbeddedScreenContext = (
@@ -343,7 +339,7 @@ export default function PrincipalFinanceiroSectionPage({
             key={iframeSrc}
             title={`Financeiro integrado - ${sectionConfig.label}`}
             src={iframeSrc}
-            onLoad={() => setIsFrameLoading(false)}
+            onLoad={() => setLoadedFrameSrc(iframeSrc)}
             className="block h-[calc(100vh-11rem)] w-full bg-white"
           />
         </div>

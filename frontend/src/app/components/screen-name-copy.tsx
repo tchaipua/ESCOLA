@@ -1,6 +1,8 @@
 ﻿'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { copyTextToClipboard } from '@/app/lib/clipboard';
+import { buildFinanceiroScreenAuditMetadata } from '@/app/lib/financeiro-screen-audit-metadata';
 import ScreenAuditModal from './screen-audit-modal';
 
 const COPY_FEEDBACK_TIMEOUT = 1800;
@@ -129,6 +131,117 @@ function inferScreenAuditMetadata(screenId: string): ScreenAuditMetadata | null 
 }
 
 const SCREEN_AUDIT_METADATA: Record<string, ScreenAuditMetadata> = {
+  MSINFOR_ADMIN_UNIDADES_ATIVAS: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\msinfor-admin\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Tela master do MSINFOR ADMIN para listar as escolas/empresas ativas cadastradas no motor central.
+
+TABELAS PRINCIPAIS:
+- tenants (T) - cadastro principal das escolas/empresas
+- users (U) - usuarios administrativos vinculados a cada escola
+- tenant_branches (TB) - filiais operacionais da escola, usada aqui para dados da filial principal
+
+RELACIONAMENTOS:
+- users.tenantId = tenants.id
+- tenant_branches.tenantId = tenants.id
+
+METRICAS / CAMPOS EXIBIDOS:
+- nome da escola/empresa
+- id da escola/empresa
+- admin titular master: primeiro usuario ADMIN retornado para a escola
+- e-mail do admin titular master
+- data de registro da escola
+- logotipo/documento da filial principal quando disponivel
+
+FILTROS APLICADOS AGORA:
+- somente escolas sem cancelamento logico: tenants.canceledAt IS NULL
+- filial principal: tenant_branches.branchCode = 1
+- filial sem cancelamento logico: tenant_branches.canceledAt IS NULL
+- usuarios administrativos: users.role = 'ADMIN'
+
+ORDENACAO:
+- backend retorna por tenants.createdAt DESC
+- a grid pode reordenar no frontend conforme o cabecalho clicado pelo usuario
+
+ENDPOINTS / BASE LOGICA:
+- GET /tenants
+- Protegido por x-msinfor-master-pass
+- Backend: tenantsService.findAll()
+
+OBSERVACAO:
+- O backend remove smtpPassword antes de devolver a resposta para a tela.
+- A tela tambem abre acoes relacionadas a acessos, filiais, edicao e exclusao definitiva, mas a listagem principal vem das tabelas abaixo.`,
+    sqlText: `SELECT
+  T.id,
+  T.name,
+  T.createdAt,
+  U.name AS adminName,
+  U.email AS adminEmail,
+  TB.logoUrl,
+  TB.document,
+  TB.branchCode,
+  TB.name AS defaultBranchName
+FROM tenants T
+LEFT JOIN tenant_branches TB
+  ON TB.tenantId = T.id
+ AND TB.branchCode = 1
+ AND TB.canceledAt IS NULL
+LEFT JOIN users U
+  ON U.tenantId = T.id
+ AND U.role = 'ADMIN'
+WHERE T.canceledAt IS NULL
+ORDER BY T.createdAt DESC;`,
+  },
+  MSINFOR_ADMIN_EXCLUSAO_DEFINITIVA_ESCOLA: {
+    systemName: 'Sistema Escola',
+    originText:
+      'Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\msinfor-admin\\page.tsx',
+    auditText: `--- LOGICA DA TELA ---
+Modal master de exclusao definitiva de uma escola, protegido por chave admin, ID exato da escola e frase de confirmacao.
+
+TABELAS PRINCIPAIS:
+- tenants (T) - escola/empresa selecionada para exclusao definitiva
+- tenant_branches (TB) - filiais da escola
+- users (U) - usuarios/acessos da escola
+- user_branch_accesses (UBA) - vinculos de acesso por filial
+- people (P) - cadastro-base compartilhado da escola
+
+RELACIONAMENTOS:
+- tenant_branches.tenantId = tenants.id
+- users.tenantId = tenants.id
+- user_branch_accesses.tenantId = tenants.id
+- people.tenantId = tenants.id
+
+FILTROS APLICADOS AGORA:
+- escola selecionada (:tenantId): informada pelo registro aberto no modal
+- senha master obrigatoria: x-msinfor-master-pass
+- confirmacao digitada: ID exato da escola
+- frase obrigatoria: EXCLUIR DEFINITIVAMENTE
+
+OBSERVACAO SOBRE O ESCOPO MASTER:
+- Este modal e uma operacao excepcional de administracao master.
+- Antes de executar a mutacao, a auditoria SQL exibe uma consulta de conferencia dos registros vinculados ao tenant.`,
+    sqlText: `SELECT
+  T.id,
+  T.name,
+  COUNT(DISTINCT TB.id) AS branchCount,
+  COUNT(DISTINCT U.id) AS userCount,
+  COUNT(DISTINCT UBA.id) AS branchAccessCount,
+  COUNT(DISTINCT P.id) AS peopleCount
+FROM tenants T
+LEFT JOIN tenant_branches TB
+  ON TB.tenantId = T.id
+LEFT JOIN users U
+  ON U.tenantId = T.id
+LEFT JOIN user_branch_accesses UBA
+  ON UBA.tenantId = T.id
+LEFT JOIN people P
+  ON P.tenantId = T.id
+WHERE T.id = :tenantId
+GROUP BY T.id, T.name;`,
+  },
   PRINCIPAL_PROFESSORES: {
     systemName: 'Sistema Escola',
     originText:
@@ -228,7 +341,7 @@ METRICAS / CAMPOS EXIBIDOS:
 - status atual
 - acao de ativacao/inativacao
 
-FILTROS APLICADOS:
+FILTROS APLICADOS AGORA:
 - professor selecionado na grid
 
 ORDENACAO:
@@ -263,7 +376,7 @@ METRICAS / CAMPOS EXIBIDOS:
 - disciplinas vinculadas
 - valores por aula e vigencia por disciplina
 
-FILTROS APLICADOS:
+FILTROS APLICADOS AGORA:
 - edicao do professor selecionado
 - validacoes de CPF, e-mail e disciplina
 
@@ -298,7 +411,7 @@ METRICAS / CAMPOS EXIBIDOS:
 - papeis ja vinculados ao CPF
 - CPF informado
 
-FILTROS APLICADOS:
+FILTROS APLICADOS AGORA:
 - CPF digitado no formulario do professor
 
 ORDENACAO:
@@ -330,7 +443,7 @@ METRICAS / CAMPOS EXIBIDOS:
 - escola atual ou outras escolas
 - tipo de entidade vinculada
 
-FILTROS APLICADOS:
+FILTROS APLICADOS AGORA:
 - e-mail digitado no formulario do professor
 
 ORDENACAO:
@@ -380,14 +493,23 @@ OBSERVACAO:
 };
 
 function resolveScreenAuditMetadata(screenId: string): ScreenAuditMetadata {
+  const normalizedScreenId = String(screenId || '').trim().toUpperCase();
   const inferredMetadata = inferScreenAuditMetadata(screenId);
-  const registeredMetadata = SCREEN_AUDIT_METADATA[screenId];
+  const registeredMetadata = SCREEN_AUDIT_METADATA[screenId] || SCREEN_AUDIT_METADATA[normalizedScreenId];
+  const financeiroMetadata = buildFinanceiroScreenAuditMetadata(normalizedScreenId);
 
   return {
-    systemName: registeredMetadata?.systemName || inferredMetadata?.systemName || 'Sistema Escola',
-    originText: registeredMetadata?.originText || inferredMetadata?.originText,
-    auditText: registeredMetadata?.auditText,
-    sqlText: registeredMetadata?.sqlText,
+    systemName:
+      registeredMetadata?.systemName ||
+      financeiroMetadata?.systemName ||
+      inferredMetadata?.systemName ||
+      'Sistema Escola',
+    originText:
+      registeredMetadata?.originText ||
+      inferredMetadata?.originText ||
+      financeiroMetadata?.originText,
+    auditText: registeredMetadata?.auditText || financeiroMetadata?.auditText,
+    sqlText: registeredMetadata?.sqlText || financeiroMetadata?.sqlText,
   };
 }
 
@@ -427,16 +549,9 @@ export default function ScreenNameCopy({
   }, []);
 
   const handleCopy = useCallback(async () => {
-    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-      setStatus('error');
-      setIsAuditOpen(true);
-      resetStatus();
-      return;
-    }
-
     try {
-      await navigator.clipboard.writeText(screenId);
-      setStatus('copied');
+      const copied = await copyTextToClipboard(screenId);
+      setStatus(copied ? 'copied' : 'error');
       if (screenId === FINANCEIRO_CAIXA_DETALHE_SCREEN_ID && typeof window !== 'undefined') {
         for (let index = 0; index < window.frames.length; index += 1) {
           window.frames[index]?.postMessage(

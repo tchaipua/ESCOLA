@@ -130,6 +130,105 @@ function getEmailUsageExportConfigStorageKey() {
     return 'msinfor-admin:email-usage:export-config';
 }
 
+type MsinforTenantAuditParams = {
+    sortColumn: TenantColumnKey;
+    sortDirection: GridSortState<TenantColumnKey>['direction'];
+    loadedRowsCount: number;
+    rowsCount: number;
+    visibleColumnLabels: string[];
+};
+
+function toSqlLiteral(value: string) {
+    return `'${String(value || '').replace(/'/g, "''")}'`;
+}
+
+function buildMsinforTenantAuditSql({
+    sortColumn,
+    sortDirection,
+}: MsinforTenantAuditParams) {
+    const orderColumnByGridColumn: Record<TenantColumnKey, string> = {
+        id: 'T.id',
+        name: 'T.name',
+        admin: "COALESCE(AU.adminName, AU.adminEmail, '')",
+        createdAt: 'T.createdAt',
+    };
+    const orderColumn = orderColumnByGridColumn[sortColumn] || 'T.name';
+    const orderDirection = sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :masterContext = ${toSqlLiteral('MSINFOR_ADMIN')}
+-- :statusFilter = ${toSqlLiteral('ACTIVE')}
+-- :branchCode = 1
+-- :adminRole = ${toSqlLiteral('ADMIN')}
+
+WITH admin_users AS (
+  SELECT
+    tenantId,
+    MIN(name) AS adminName,
+    MIN(email) AS adminEmail
+  FROM users
+  WHERE role = 'ADMIN'
+  GROUP BY tenantId
+)
+SELECT
+  T.id,
+  T.name,
+  T.createdAt,
+  AU.adminName,
+  AU.adminEmail,
+  TB.logoUrl,
+  TB.document,
+  TB.branchCode,
+  TB.name AS defaultBranchName
+FROM tenants T
+LEFT JOIN tenant_branches TB
+  ON TB.tenantId = T.id
+ AND TB.branchCode = 1
+ AND TB.canceledAt IS NULL
+LEFT JOIN admin_users AU
+  ON AU.tenantId = T.id
+WHERE T.canceledAt IS NULL
+ORDER BY ${orderColumn} ${orderDirection};`;
+}
+
+function buildMsinforTenantAuditText(params: MsinforTenantAuditParams) {
+    const sqlText = buildMsinforTenantAuditSql(params);
+    const visibleColumns = params.visibleColumnLabels.length ? params.visibleColumnLabels.join(', ') : 'NENHUMA';
+
+    return `--- LOGICA DA TELA ---
+Tela master do MSINFOR ADMIN para listar as escolas/empresas ativas cadastradas no motor central.
+
+TABELAS PRINCIPAIS:
+- tenants (T) - cadastro principal das escolas/empresas
+- users (U) - usuarios administrativos vinculados a cada escola
+- tenant_branches (TB) - filiais operacionais da escola, usada aqui para dados da filial principal
+
+RELACIONAMENTOS:
+- users.tenantId = tenants.id
+- tenant_branches.tenantId = tenants.id
+
+FILTROS APLICADOS AGORA:
+- contexto atual (:masterContext): MSINFOR_ADMIN
+- escola/tenant atual (:schoolId): NAO APLICAVEL - esta tela lista todas as escolas ativas
+- busca digitada (:searchTerm): NAO APLICAVEL - esta grid nao possui campo de busca
+- status selecionado (:statusFilter): ACTIVE
+- filial principal (:branchCode): 1
+- perfil administrativo (:adminRole): ADMIN
+- registros carregados do backend: ${params.loadedRowsCount}
+- registros exibidos apos os filtros: ${params.rowsCount}
+- ordenacao atual: ${params.sortColumn} ${params.sortDirection.toUpperCase()}
+- colunas visiveis agora: ${visibleColumns}
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}
+
+OBSERVACAO SOBRE O ESCOPO MASTER:
+- T.id e o tenantId/escola listado no grid
+- T.canceledAt IS NULL limita a listagem a escolas ativas logicamente
+- esta tela e uma excecao administrativa master e consulta varias escolas, protegida por x-msinfor-master-pass
+- os parametros acima refletem os filtros e ordenacao visiveis aplicados no grid`;
+}
+
 export default function MsinforAdminPage() {
     const [escolas, setEscolas] = useState<TenantRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -469,6 +568,21 @@ export default function MsinforAdminPage() {
         () => sortGridRows(escolas, TENANT_COLUMNS, tenantSortState),
         [escolas, tenantSortState],
     );
+
+    const tenantAuditContext = useMemo(() => {
+        const auditParams: MsinforTenantAuditParams = {
+            sortColumn: tenantSortState.column,
+            sortDirection: tenantSortState.direction,
+            loadedRowsCount: escolas.length,
+            rowsCount: sortedEscolas.length,
+            visibleColumnLabels: visibleTenantColumns.map((column) => column.label),
+        };
+
+        return {
+            auditText: buildMsinforTenantAuditText(auditParams),
+            sqlText: buildMsinforTenantAuditSql(auditParams),
+        };
+    }, [escolas.length, sortedEscolas.length, tenantSortState.column, tenantSortState.direction, visibleTenantColumns]);
 
     const sortedEmailUsageResults = useMemo(
         () => sortGridRows(emailUsageResults, EMAIL_USAGE_COLUMNS, emailUsageSortState),
@@ -1566,7 +1680,14 @@ export default function MsinforAdminPage() {
                 </div>
                 <div className="mt-4 flex justify-end">
                     <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-xl backdrop-blur-md">
-                        <ScreenNameCopy screenId={LIST_SCREEN_ID} label="Tela" className="mt-0" disableMargin />
+                        <ScreenNameCopy
+                            screenId={LIST_SCREEN_ID}
+                            label="Tela"
+                            className="mt-0"
+                            disableMargin
+                            auditText={tenantAuditContext.auditText}
+                            sqlText={tenantAuditContext.sqlText}
+                        />
                     </div>
                 </div>
             </main>
@@ -2184,6 +2305,8 @@ export default function MsinforAdminPage() {
                                     label="Tela"
                                     disableMargin
                                     className="justify-end"
+                                    auditText={tenantAuditContext.auditText}
+                                    sqlText={tenantAuditContext.sqlText}
                                 />
                             </div>
                         </form>

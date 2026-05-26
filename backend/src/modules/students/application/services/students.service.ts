@@ -12,7 +12,13 @@ import {
   getTenantContext,
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
-import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import {
+  filterRoleBranchRecordsForCurrentBranch,
+  isRoleBranchRecordVisibleInCurrentBranch,
+  resolveRoleBranchSelection,
+  syncRoleBranchAccesses,
+  withRoleBranchAccessCodes,
+} from "../../../../common/tenant/role-branch-accesses";
 import * as bcrypt from "bcrypt";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
@@ -330,7 +336,7 @@ export class StudentsService {
     T extends { accessProfile?: string | null; permissions?: string | null },
   >(student: T) {
     return {
-      ...student,
+      ...withRoleBranchAccessCodes(student as T & { branchCode: number }),
       accessProfile:
         normalizeAccessProfileCode(student.accessProfile, "ALUNO") ||
         getDefaultAccessProfileForRole("ALUNO"),
@@ -391,6 +397,10 @@ export class StudentsService {
         },
         billingGuardian: true,
         person: true,
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
         enrollments: {
           where: { canceledAt: null },
           include: {
@@ -406,7 +416,7 @@ export class StudentsService {
       },
     });
 
-    if (!student) {
+    if (!student || !isRoleBranchRecordVisibleInCurrentBranch(student)) {
       throw new NotFoundException("Aluno não encontrado na sua Instituição.");
     }
 
@@ -441,12 +451,14 @@ export class StudentsService {
   }
 
   async create(createDto: CreateStudentDto, currentUser?: ICurrentUser) {
-    const targetBranchCode = await resolveWritableTenantBranchCode(
+    const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       this.tenantId(),
       createDto.branchCode,
+      createDto.branchAccessCodes,
       getTenantContext()!.branchCode,
     );
+    const targetBranchCode = branchSelection.branchCode;
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
     const sanitizedDto = this.sanitizeStudentMutationDto(
@@ -495,24 +507,47 @@ export class StudentsService {
     delete rawData.accessProfile;
     delete rawData.billingPayerType;
     delete rawData.billingGuardianId;
+    delete rawData.branchAccessCodes;
 
-    const createdStudent = await this.prisma.student.create({
-      data: {
-        ...rawData,
-        password: null,
-        accessProfile,
-        permissions: explicitPermissions,
-        photoUrl: sanitizedDto.photoUrl?.trim() || null,
-        monthlyFee: this.normalizeMonthlyFee(sanitizedDto.monthlyFee),
-        billingPayerType: billingSettings.billingPayerType,
-        billingGuardianId: billingSettings.billingGuardianId,
-        birthDate: sanitizedDto.birthDate
-          ? new Date(sanitizedDto.birthDate)
-          : undefined,
-        tenantId: this.tenantId(),
-        branchCode: targetBranchCode,
-        createdBy: this.userId(), // Auditoria OBRIGATÓRIA
-      },
+    const createdStudent = await this.prisma.$transaction(async (tx) => {
+      const student = await tx.student.create({
+        data: {
+          ...rawData,
+          password: null,
+          accessProfile,
+          permissions: explicitPermissions,
+          photoUrl: sanitizedDto.photoUrl?.trim() || null,
+          monthlyFee: this.normalizeMonthlyFee(sanitizedDto.monthlyFee),
+          billingPayerType: billingSettings.billingPayerType,
+          billingGuardianId: billingSettings.billingGuardianId,
+          birthDate: sanitizedDto.birthDate
+            ? new Date(sanitizedDto.birthDate)
+            : undefined,
+          tenantId: this.tenantId(),
+          branchCode: targetBranchCode,
+          createdBy: this.userId(), // Auditoria OBRIGATÓRIA
+        },
+      });
+
+      await syncRoleBranchAccesses(
+        tx,
+        "student",
+        this.tenantId(),
+        student.id,
+        branchSelection.explicitBranchCodes,
+        this.userId(),
+      );
+
+      return {
+        ...student,
+        branchAccesses: branchSelection.explicitBranchCodes.map(
+          (branchCode, index) => ({
+            branchCode,
+            isDefault: index === 0,
+            canceledAt: null,
+          }),
+        ),
+      };
     });
 
     await this.sharedProfilesService.syncSharedProfile(
@@ -564,6 +599,10 @@ export class StudentsService {
       }, // Aplica o Soft Delete
       include: {
         person: true,
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
         guardians: {
           where: { canceledAt: null },
           include: { guardian: true },
@@ -586,7 +625,7 @@ export class StudentsService {
       orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
     });
 
-    return students.map((student) =>
+    return filterRoleBranchRecordsForCurrentBranch(students).map((student) =>
       sanitizeStudentForViewer(
         this.mapStudentAccess(this.normalizeStudentDisplayName(student)),
         currentUser,
@@ -613,6 +652,10 @@ export class StudentsService {
       },
       include: {
         person: true,
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
         guardians: {
           include: { guardian: true },
         },
@@ -632,7 +675,7 @@ export class StudentsService {
       },
     });
 
-    if (!student) {
+    if (!student || !isRoleBranchRecordVisibleInCurrentBranch(student)) {
       throw new NotFoundException("Aluno não encontrado para esta escola.");
     }
 
@@ -656,6 +699,10 @@ export class StudentsService {
         canceledAt: null,
       },
       include: {
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
         guardians: {
           where: {
             canceledAt: null,
@@ -680,7 +727,7 @@ export class StudentsService {
       },
     });
 
-    if (!student) {
+    if (!student || !isRoleBranchRecordVisibleInCurrentBranch(student)) {
       throw new NotFoundException("Aluno não encontrado para esta escola.");
     }
 
@@ -979,14 +1026,16 @@ export class StudentsService {
       updateDto,
       currentUser,
     );
-    const targetBranchCode = await resolveWritableTenantBranchCode(
+    const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       this.tenantId(),
       sanitizedDto.branchCode,
+      sanitizedDto.branchAccessCodes,
       currentStudent.branchCode,
     );
+    const targetBranchCode = branchSelection.branchCode;
 
-    return runWithTenantBranchScope(targetBranchCode, async () => {
+    return runWithTenantBranchScope(currentStudent.branchCode, async () => {
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
       sanitizedDto,
@@ -1058,36 +1107,59 @@ export class StudentsService {
     delete rawData.accessProfile;
     delete rawData.billingPayerType;
     delete rawData.billingGuardianId;
+    delete rawData.branchAccessCodes;
 
-    const updatedStudent = await this.prisma.student.update({
-      where: { id },
-      data: {
-        ...rawData,
-        name: resolvedStudentName,
-        password:
-          hashedPassword || shouldResolvePasswordForEmailChange
-            ? null
+    const updatedStudent = await this.prisma.$transaction(async (tx) => {
+      const student = await tx.student.update({
+        where: { id },
+        data: {
+          ...rawData,
+          name: resolvedStudentName,
+          password:
+            hashedPassword || shouldResolvePasswordForEmailChange
+              ? null
+              : undefined,
+          accessProfile,
+          permissions: explicitPermissions,
+          photoUrl: Object.prototype.hasOwnProperty.call(sanitizedDto, "photoUrl")
+            ? sanitizedDto.photoUrl?.trim() || null
             : undefined,
-        accessProfile,
-        permissions: explicitPermissions,
-        photoUrl: Object.prototype.hasOwnProperty.call(sanitizedDto, "photoUrl")
-          ? sanitizedDto.photoUrl?.trim() || null
-          : undefined,
-        monthlyFee: Object.prototype.hasOwnProperty.call(
-          sanitizedDto,
-          "monthlyFee",
-        )
-          ? this.normalizeMonthlyFee(sanitizedDto.monthlyFee)
-          : undefined,
-        billingPayerType: billingSettings.billingPayerType,
-        billingGuardianId: billingSettings.billingGuardianId,
-        personId: shouldDetachBlankCpfPersonLink ? null : undefined,
-        birthDate: sanitizedDto.birthDate
-          ? new Date(sanitizedDto.birthDate)
-          : undefined,
-        branchCode: targetBranchCode,
-        updatedBy: this.userId(),
-      },
+          monthlyFee: Object.prototype.hasOwnProperty.call(
+            sanitizedDto,
+            "monthlyFee",
+          )
+            ? this.normalizeMonthlyFee(sanitizedDto.monthlyFee)
+            : undefined,
+          billingPayerType: billingSettings.billingPayerType,
+          billingGuardianId: billingSettings.billingGuardianId,
+          personId: shouldDetachBlankCpfPersonLink ? null : undefined,
+          birthDate: sanitizedDto.birthDate
+            ? new Date(sanitizedDto.birthDate)
+            : undefined,
+          branchCode: targetBranchCode,
+          updatedBy: this.userId(),
+        },
+      });
+
+      await syncRoleBranchAccesses(
+        tx,
+        "student",
+        this.tenantId(),
+        id,
+        branchSelection.explicitBranchCodes,
+        this.userId(),
+      );
+
+      return {
+        ...student,
+        branchAccesses: branchSelection.explicitBranchCodes.map(
+          (branchCode, index) => ({
+            branchCode,
+            isDefault: index === 0,
+            canceledAt: null,
+          }),
+        ),
+      };
     });
 
     await this.sharedProfilesService.syncSharedProfile(

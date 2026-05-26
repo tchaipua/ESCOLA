@@ -49,6 +49,38 @@ Regras:
 - se a escola possuir mais de uma filial ativa, cadastros operacionais devem permitir escolher uma filial especifica ou comum a todas
 - consultas de uma filial enxergam os registros da filial atual e os registros comuns (`0`)
 
+### `user_branch_accesses`
+
+Tabela de autorizacao de filiais para usuarios administrativos da escola.
+
+Campos principais:
+
+- `tenantId`
+- `userId`
+- `branchCode`
+- `isDefault`
+- colunas de auditoria e cancelamento logico
+
+Regras:
+
+- somente usuarios administrativos da tabela `users` usam esta tabela
+- usuarios com papel `ADMIN` nao precisam de vinculos nesta tabela e podem acessar qualquer filial ativa da escola
+- usuarios nao-admin devem possuir pelo menos uma filial liberada quando a escola tem mais de uma filial ativa
+- ao fazer login em escola com mais de uma filial liberada, o usuario escolhe a filial da sessao
+- o `branchCode` escolhido entra no token e passa a escopar consultas e mutacoes operacionais
+- cancelar um usuario administrativo tambem cancela logicamente seus vinculos de filial
+
+### Filiais liberadas por papel operacional
+
+As tabelas `teacher_branch_accesses`, `student_branch_accesses` e `guardian_branch_accesses` controlam selecao parcial de filiais para professores, alunos e responsaveis.
+
+Regras:
+
+- `branchCode = 0` sem vinculos ativos significa uso em todas as filiais
+- quando o cadastro usa apenas algumas filiais, a tabela do papel guarda os `branchCode` liberados
+- o login de professor, aluno e responsavel deve oferecer somente as filiais liberadas no cadastro
+- consultas na filial atual exibem o cadastro comum a todas ou o cadastro com vinculo explicito para a filial atual
+
 ## Colunas base obrigatorias
 
 Padrao minimo para entidades de negocio:

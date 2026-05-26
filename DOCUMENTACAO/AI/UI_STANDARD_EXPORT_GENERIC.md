@@ -203,17 +203,14 @@ Contrato:
 - overlay escuro com desfoque;
 - modal central;
 - cabecalho destacado;
-- identificador tecnico da tela;
-- origem tecnica do arquivo, rota ou componente;
-- area rolavel com a logica usada;
-- secao para entidades, tabelas, colecoes, endpoints ou fontes de dados;
-- secao para relacionamentos;
-- secao para campos exibidos;
-- secao para filtros;
-- secao para ordenacao;
-- secao para consulta, pseudo-SQL, endpoint ou base logica;
-- botao para copiar a base logica;
-- botao para fechar.
+- lado esquerdo do cabecalho com identidade institucional, etiqueta da auditoria, identificador tecnico da tela e origem do sistema;
+- seletor de abas no cabecalho separando informacoes funcionais da consulta/base logica;
+- lado direito do cabecalho com botao de fechar e botao de copiar a consulta/base logica quando a aba correspondente estiver ativa;
+- origem tecnica do arquivo, rota ou componente em destaque logo abaixo do cabecalho;
+- aba de informacoes com entidades, tabelas, colecoes, endpoints ou fontes de dados;
+- aba de informacoes com relacionamentos, campos exibidos, filtros, ordenacao e observacoes;
+- aba de consulta/base logica separada, copiavel, com fonte monoespacada e rolagem propria;
+- sem botoes duplicados no rodape do modal.
 
 Quando a tela nao consultar dados diretamente, a auditoria deve declarar isso de forma explicita.
 
@@ -322,4 +319,3 @@ Nao sao permitidas sem aprovacao explicita:
 Este arquivo define um contrato neutro de UI/UX e auditoria visual.
 
 Ele nao deve conter regra de negocio especifica de nenhum sistema.
-

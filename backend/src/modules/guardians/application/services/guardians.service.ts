@@ -25,7 +25,13 @@ import {
   sanitizeGuardianSummaryForViewer,
 } from "../../../../common/auth/entity-visibility";
 import { StudentsService } from "../../../students/application/services/students.service";
-import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import {
+  filterRoleBranchRecordsForCurrentBranch,
+  isRoleBranchRecordVisibleInCurrentBranch,
+  resolveRoleBranchSelection,
+  syncRoleBranchAccesses,
+  withRoleBranchAccessCodes,
+} from "../../../../common/tenant/role-branch-accesses";
 
 @Injectable()
 export class GuardiansService {
@@ -124,7 +130,7 @@ export class GuardiansService {
     T extends { accessProfile?: string | null; permissions?: string | null },
   >(guardian: T) {
     return {
-      ...guardian,
+      ...withRoleBranchAccessCodes(guardian as T & { branchCode: number }),
       accessProfile:
         normalizeAccessProfileCode(guardian.accessProfile, "RESPONSAVEL") ||
         getDefaultAccessProfileForRole("RESPONSAVEL"),
@@ -143,10 +149,14 @@ export class GuardiansService {
         students: {
           include: { student: true },
         },
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
       },
     });
 
-    if (!guardian) {
+    if (!guardian || !isRoleBranchRecordVisibleInCurrentBranch(guardian)) {
       throw new NotFoundException(
         "Responsável não encontrado na sua Instituição.",
       );
@@ -185,12 +195,14 @@ export class GuardiansService {
   }
 
   async create(createDto: CreateGuardianDto, currentUser?: ICurrentUser) {
-    const targetBranchCode = await resolveWritableTenantBranchCode(
+    const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       getTenantContext()!.tenantId,
       createDto.branchCode,
+      createDto.branchAccessCodes,
       getTenantContext()!.branchCode,
     );
+    const targetBranchCode = branchSelection.branchCode;
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
       const sanitizedDto = this.sanitizeGuardianMutationDto(
@@ -233,20 +245,43 @@ export class GuardiansService {
       const rawData = this.transformToUpperCase(sanitizedDto);
       delete rawData.permissions;
       delete rawData.accessProfile;
+      delete rawData.branchAccessCodes;
 
-      const createdGuardian = await this.prisma.guardian.create({
-        data: {
-          ...rawData,
-          password: null,
-          accessProfile,
-          permissions: explicitPermissions,
-          birthDate: sanitizedDto.birthDate
-            ? new Date(sanitizedDto.birthDate)
-            : undefined,
+      const createdGuardian = await this.prisma.$transaction(async (tx) => {
+        const guardian = await tx.guardian.create({
+          data: {
+            ...rawData,
+            password: null,
+            accessProfile,
+            permissions: explicitPermissions,
+            birthDate: sanitizedDto.birthDate
+              ? new Date(sanitizedDto.birthDate)
+              : undefined,
+            tenantId,
+            branchCode: targetBranchCode,
+            createdBy: getTenantContext()!.userId,
+          },
+        });
+
+        await syncRoleBranchAccesses(
+          tx,
+          "guardian",
           tenantId,
-          branchCode: targetBranchCode,
-          createdBy: getTenantContext()!.userId,
-        },
+          guardian.id,
+          branchSelection.explicitBranchCodes,
+          getTenantContext()!.userId,
+        );
+
+        return {
+          ...guardian,
+          branchAccesses: branchSelection.explicitBranchCodes.map(
+            (branchCode, index) => ({
+              branchCode,
+              isDefault: index === 0,
+              canceledAt: null,
+            }),
+          ),
+        };
       });
 
       await this.sharedProfilesService.syncSharedProfile(
@@ -292,10 +327,14 @@ export class GuardiansService {
         students: {
           include: { student: true }, // Mostra todos os alunos atrelados a ele
         },
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
       },
     });
 
-    return guardians.map((guardian) =>
+    return filterRoleBranchRecordsForCurrentBranch(guardians).map((guardian) =>
       sanitizeGuardianSummaryForViewer(
         this.mapGuardianAccess(guardian),
         currentUser,
@@ -344,10 +383,14 @@ export class GuardiansService {
             },
           },
         },
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
       },
     });
 
-    if (!guardian) {
+    if (!guardian || !isRoleBranchRecordVisibleInCurrentBranch(guardian)) {
       throw new NotFoundException(
         "Responsável não encontrado para esta escola.",
       );
@@ -371,6 +414,10 @@ export class GuardiansService {
         canceledAt: null,
       },
       include: {
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
         students: {
           where: { canceledAt: null },
           include: {
@@ -381,7 +428,7 @@ export class GuardiansService {
       },
     });
 
-    if (!guardian) {
+    if (!guardian || !isRoleBranchRecordVisibleInCurrentBranch(guardian)) {
       throw new NotFoundException(
         "Responsável não encontrado para esta escola.",
       );
@@ -418,14 +465,16 @@ export class GuardiansService {
     currentUser?: ICurrentUser,
   ) {
     const currentGuardian = await this.findGuardianEntity(id);
-    const targetBranchCode = await resolveWritableTenantBranchCode(
+    const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       getTenantContext()!.tenantId,
       updateDto.branchCode,
+      updateDto.branchAccessCodes,
       currentGuardian.branchCode,
     );
+    const targetBranchCode = branchSelection.branchCode;
 
-    return runWithTenantBranchScope(targetBranchCode, async () => {
+    return runWithTenantBranchScope(currentGuardian.branchCode, async () => {
       const sanitizedDto = this.sanitizeGuardianMutationDto(
         updateDto,
         currentUser,
@@ -494,23 +543,46 @@ export class GuardiansService {
       const rawData = this.transformToUpperCase(sanitizedDto);
       delete rawData.permissions;
       delete rawData.accessProfile;
+      delete rawData.branchAccessCodes;
 
-      const updatedGuardian = await this.prisma.guardian.update({
-        where: { id },
-        data: {
-          ...rawData,
-          password:
-            hashedPassword || shouldResolvePasswordForEmailChange
-              ? null
+      const updatedGuardian = await this.prisma.$transaction(async (tx) => {
+        const guardian = await tx.guardian.update({
+          where: { id },
+          data: {
+            ...rawData,
+            password:
+              hashedPassword || shouldResolvePasswordForEmailChange
+                ? null
+                : undefined,
+            accessProfile,
+            permissions: explicitPermissions,
+            birthDate: sanitizedDto.birthDate
+              ? new Date(sanitizedDto.birthDate)
               : undefined,
-          accessProfile,
-          permissions: explicitPermissions,
-          birthDate: sanitizedDto.birthDate
-            ? new Date(sanitizedDto.birthDate)
-            : undefined,
-          branchCode: targetBranchCode,
-          updatedBy: getTenantContext()!.userId,
-        },
+            branchCode: targetBranchCode,
+            updatedBy: getTenantContext()!.userId,
+          },
+        });
+
+        await syncRoleBranchAccesses(
+          tx,
+          "guardian",
+          getTenantContext()!.tenantId,
+          id,
+          branchSelection.explicitBranchCodes,
+          getTenantContext()!.userId,
+        );
+
+        return {
+          ...guardian,
+          branchAccesses: branchSelection.explicitBranchCodes.map(
+            (branchCode, index) => ({
+              branchCode,
+              isDefault: index === 0,
+              canceledAt: null,
+            }),
+          ),
+        };
       });
 
       await this.sharedProfilesService.syncSharedProfile(

@@ -26,6 +26,13 @@ type UnreadNotificationSummary = {
     }>;
 };
 
+type CurrentBranchSummary = {
+    branchCode: number;
+    name: string;
+    isActive?: boolean;
+    isShared?: boolean;
+};
+
 type NavItem = {
     href: string;
     label: string;
@@ -36,6 +43,28 @@ type NavItem = {
 };
 
 type ChangePasswordErrorVariant = 'blank' | 'mismatch' | 'invalid-current' | 'generic';
+
+type ScreenAuditOverride = {
+    screenId: string;
+    originText?: string;
+    auditText?: string;
+    sqlText?: string;
+};
+
+type EmbeddedScreenContextMessage = {
+    type?: string;
+    screenId?: string;
+    originText?: unknown;
+    auditText?: unknown;
+    sqlText?: unknown;
+};
+
+function normalizeScreenContextText(value: unknown) {
+    if (typeof value !== 'string') return undefined;
+
+    const text = value.trim();
+    return text ? text.slice(0, 30000) : undefined;
+}
 
 function parseCssColor(value: string) {
     const match = String(value || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?\)/i);
@@ -145,8 +174,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [currentUserName, setCurrentUserName] = useState<string | null>(null);
     const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
+    const [currentBranchFooterLabel, setCurrentBranchFooterLabel] = useState<string | null>(null);
     const [unreadSummary, setUnreadSummary] = useState<UnreadNotificationSummary | null>(null);
     const [embeddedScreenContextLabel, setEmbeddedScreenContextLabel] = useState<string | null>(null);
+    const [screenAuditOverride, setScreenAuditOverride] = useState<ScreenAuditOverride | null>(null);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -217,6 +248,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setCurrentUserName(null);
         setCurrentUserEmail(null);
         setCurrentTenant(null);
+        setCurrentBranchFooterLabel(null);
         setUnreadSummary(null);
         router.replace('/');
     }, [router]);
@@ -238,12 +270,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     useEffect(() => {
         setEmbeddedScreenContextLabel(null);
+        setScreenAuditOverride(null);
     }, [pathname]);
 
     useEffect(() => {
         const handleEmbeddedScreenContext = (event: MessageEvent) => {
-            const data = event.data as { type?: string; screenId?: string } | null;
-            if (!data || data.type !== 'MSINFOR_SCREEN_CONTEXT') return;
+            const data = event.data as EmbeddedScreenContextMessage | null;
+            if (!data || typeof data !== 'object' || data.type !== 'MSINFOR_SCREEN_CONTEXT') return;
 
             const screenId = String(data.screenId || '')
                 .replace(/[^A-Z0-9_]/gi, '_')
@@ -253,11 +286,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             if (screenId) {
                 setEmbeddedScreenContextLabel(screenId);
+
+                const originText = normalizeScreenContextText(data.originText);
+                const auditText = normalizeScreenContextText(data.auditText);
+                const sqlText = normalizeScreenContextText(data.sqlText);
+
+                if (originText || auditText || sqlText) {
+                    setScreenAuditOverride({
+                        screenId,
+                        originText,
+                        auditText,
+                        sqlText,
+                    });
+                    return;
+                }
             }
+
+            setScreenAuditOverride(null);
         };
 
         window.addEventListener('message', handleEmbeddedScreenContext);
         return () => window.removeEventListener('message', handleEmbeddedScreenContext);
+    }, []);
+
+    useEffect(() => {
+        const handleScreenAuditContext = (event: Event) => {
+            const detail = (event as CustomEvent<Partial<ScreenAuditOverride>>).detail;
+            if (!detail) return;
+
+            const screenId = String(detail.screenId || '')
+                .replace(/[^A-Z0-9_]/gi, '_')
+                .replace(/_+/g, '_')
+                .toUpperCase()
+                .slice(0, 120);
+
+            if (!screenId) return;
+
+            if (!detail.auditText && !detail.sqlText && !detail.originText) {
+                setScreenAuditOverride((current) => (current?.screenId === screenId ? null : current));
+                return;
+            }
+
+            setScreenAuditOverride({
+                screenId,
+                originText: detail.originText,
+                auditText: detail.auditText,
+                sqlText: detail.sqlText,
+            });
+        };
+
+        window.addEventListener('MSINFOR_SCREEN_AUDIT_CONTEXT', handleScreenAuditContext);
+        return () => window.removeEventListener('MSINFOR_SCREEN_AUDIT_CONTEXT', handleScreenAuditContext);
     }, []);
 
     useEffect(() => {
@@ -352,6 +431,51 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         };
 
         void loadCurrentTenant();
+    }, [invalidateSession]);
+
+    useEffect(() => {
+        const loadCurrentBranchFooter = async () => {
+            try {
+                const { token, branchCode } = getDashboardAuthContext();
+                if (!token) {
+                    setCurrentBranchFooterLabel(null);
+                    return;
+                }
+
+                const response = await fetch(`${API_BASE_URL}/tenants/current/branches`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                const data = await response.json().catch(() => null);
+                if (response.status === 401) {
+                    invalidateSession();
+                    return;
+                }
+
+                if (!response.ok || !Array.isArray(data)) {
+                    throw new Error(data?.message || 'Não foi possível carregar as filiais da escola.');
+                }
+
+                const branches = (data as CurrentBranchSummary[]).filter(
+                    (branch) => branch && branch.isActive !== false && !branch.isShared,
+                );
+                if (branches.length <= 1) {
+                    setCurrentBranchFooterLabel(null);
+                    return;
+                }
+
+                const currentBranch =
+                    branches.find((branch) => branch.branchCode === branchCode) || null;
+                const branchName = normalizeDisplayText(currentBranch?.name) || `FILIAL ${branchCode}`;
+                setCurrentBranchFooterLabel(branchName.toUpperCase());
+            } catch {
+                setCurrentBranchFooterLabel(null);
+            }
+        };
+
+        void loadCurrentBranchFooter();
     }, [invalidateSession]);
 
     useEffect(() => {
@@ -924,6 +1048,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         () => embeddedScreenContextLabel || deriveScreenContextLabel(pathname),
         [embeddedScreenContextLabel, pathname],
     );
+    const currentScreenAuditOverride = screenAuditOverride?.screenId === screenContextLabel ? screenAuditOverride : null;
     const topLinks: NavItem[] = [];
     if (menuPrincipalItem) topLinks.push(menuPrincipalItem);
     if (showSummaryNav && menuDashboardItem) topLinks.push(menuDashboardItem);
@@ -1440,10 +1565,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <span>(16) 99999-1978</span>
                             </a>
                         </span>
+                        {currentBranchFooterLabel ? (
+                            <span className="min-w-[180px] text-center text-[10px] font-black not-italic uppercase tracking-[0.24em] text-slate-500">
+                                FILIAL: <span className="text-slate-700">{currentBranchFooterLabel}</span>
+                            </span>
+                        ) : null}
                         {/* padrão: exibimos o identificador da tela e o botão de copiar no rodapé */}
                         <ScreenNameCopy
                             screenId={screenContextLabel}
                             className="flex-1 justify-end text-right text-[11px]"
+                            originText={currentScreenAuditOverride?.originText}
+                            auditText={currentScreenAuditOverride?.auditText}
+                            sqlText={currentScreenAuditOverride?.sqlText}
                         />
                     </div>
                 </footer>

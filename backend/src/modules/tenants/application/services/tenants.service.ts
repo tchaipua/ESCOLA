@@ -103,6 +103,35 @@ type TenantBranchPayload = {
   storageCustomEndpoint?: string | null;
 };
 
+type AccessUserPayload = {
+  name?: string;
+  email?: string;
+  password?: string;
+  birthDate?: string;
+  rg?: string;
+  cpf?: string;
+  cnpj?: string;
+  nickname?: string;
+  corporateName?: string;
+  phone?: string;
+  whatsapp?: string;
+  cellphone1?: string;
+  cellphone2?: string;
+  zipCode?: string;
+  street?: string;
+  number?: string;
+  city?: string;
+  state?: string;
+  neighborhood?: string;
+  complement?: string;
+  photoUrl?: string | null;
+  complementaryProfiles?: string[];
+  role?: string;
+  accessProfile?: string;
+  permissions?: string[];
+  branchAccessCodes?: number[];
+};
+
 @Injectable()
 export class TenantsService {
   constructor(
@@ -124,7 +153,7 @@ export class TenantsService {
       isMaster: true,
     };
 
-    return tenantContext.run(context, () => operation());
+    return tenantContext.run(context, async () => await operation());
   }
 
   private parseBoolean(value: unknown, defaultValue: boolean): boolean {
@@ -1232,6 +1261,126 @@ export class TenantsService {
     return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
   }
 
+  private async normalizeBranchAccessCodes(
+    tenantId: string,
+    role: string,
+    branchAccessCodes?: number[] | null,
+    fallbackCodes: number[] = [],
+  ) {
+    if (role === "ADMIN") return [];
+
+    const branches = (await listTenantBranches(this.prisma, tenantId)).filter(
+      (branch) => branch.isActive,
+    );
+
+    if (branches.length <= 1) {
+      return [branches[0]?.branchCode || DEFAULT_BRANCH_CODE];
+    }
+
+    const incomingCodes = Array.isArray(branchAccessCodes)
+      ? branchAccessCodes
+      : fallbackCodes.length > 0
+        ? fallbackCodes
+        : [];
+
+    const activeBranchCodes = new Set(
+      branches.map((branch) => branch.branchCode),
+    );
+    const normalizedCodes = Array.from(
+      new Set(
+        incomingCodes
+          .map((branchCode) => normalizeBranchCode(branchCode, -1))
+          .filter((branchCode) => branchCode >= DEFAULT_BRANCH_CODE),
+      ),
+    );
+
+    if (normalizedCodes.length === 0) {
+      throw new BadRequestException(
+        "Selecione pelo menos uma filial para este usuário.",
+      );
+    }
+
+    const invalidBranchCode = normalizedCodes.find(
+      (branchCode) => !activeBranchCodes.has(branchCode),
+    );
+    if (invalidBranchCode !== undefined) {
+      throw new BadRequestException("A filial informada não está ativa.");
+    }
+
+    return normalizedCodes;
+  }
+
+  private async syncUserBranchAccesses(
+    tenantId: string,
+    userId: string,
+    role: string,
+    branchAccessCodes: number[],
+  ) {
+    return this.runAsMasterTenantContext(tenantId, async () => {
+      if (role === "ADMIN") {
+        await this.prisma.userBranchAccess.updateMany({
+          where: { tenantId, userId, canceledAt: null },
+          data: {
+            canceledAt: new Date(),
+            canceledBy: this.masterAuditUser,
+            updatedBy: this.masterAuditUser,
+          },
+        });
+        return [];
+      }
+
+      const normalizedCodes = Array.from(new Set(branchAccessCodes));
+
+      await Promise.all(
+        normalizedCodes.map((branchCode, index) =>
+          this.prisma.userBranchAccess.upsert({
+            where: {
+              tenantId_userId_branchCode: {
+                tenantId,
+                userId,
+                branchCode,
+              },
+            },
+            update: {
+              isDefault: index === 0,
+              canceledAt: null,
+              canceledBy: null,
+              updatedBy: this.masterAuditUser,
+            },
+            create: {
+              tenantId,
+              userId,
+              branchCode,
+              isDefault: index === 0,
+              createdBy: this.masterAuditUser,
+              updatedBy: this.masterAuditUser,
+            },
+          }),
+        ),
+      );
+
+      await this.prisma.userBranchAccess.updateMany({
+        where: {
+          tenantId,
+          userId,
+          canceledAt: null,
+          branchCode: { notIn: normalizedCodes },
+        },
+        data: {
+          canceledAt: new Date(),
+          canceledBy: this.masterAuditUser,
+          updatedBy: this.masterAuditUser,
+        },
+      });
+
+      return this.prisma.userBranchAccess.findMany({
+        where: { tenantId, userId, canceledAt: null },
+        orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        select: { branchCode: true, isDefault: true },
+      });
+    });
+  }
+
   private mapAccessUser(
     record: {
       id: string;
@@ -1243,6 +1392,7 @@ export class TenantsService {
       role: string;
       accessProfile?: string | null;
       permissions?: string | null;
+      branchAccesses?: Array<{ branchCode: number; isDefault?: boolean }>;
       createdAt: Date;
       updatedAt: Date;
       canceledAt?: Date | null;
@@ -1267,6 +1417,13 @@ export class TenantsService {
       complement?: string | null;
     } | null,
   ) {
+    const branchAccesses =
+      record.role === "ADMIN"
+        ? []
+        : Array.isArray(record.branchAccesses)
+          ? record.branchAccesses
+          : [];
+
     return {
       id: record.id,
       tenantId: record.tenantId,
@@ -1286,6 +1443,8 @@ export class TenantsService {
         complementaryProfiles: record.complementaryProfiles,
         permissions: record.permissions,
       }),
+      branchAccessCodes: branchAccesses.map((access) => access.branchCode),
+      branchAccesses,
       birthDate: sharedPerson?.birthDate
         ? sharedPerson.birthDate.toISOString().split("T")[0]
         : null,
@@ -1323,24 +1482,36 @@ export class TenantsService {
       );
     }
 
-    const users = await this.prisma.user.findMany({
-      where: { tenantId, canceledAt: null },
-      orderBy: [{ role: "asc" }, { name: "asc" }],
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        photoUrl: true,
-        complementaryProfiles: true,
-        role: true,
-        accessProfile: true,
-        permissions: true,
-        createdAt: true,
-        updatedAt: true,
-        canceledAt: true,
-      },
-    });
+    const [branches, users] = await this.runAsMasterTenantContext(
+      tenantId,
+      async () =>
+        Promise.all([
+          listTenantBranches(this.prisma, tenantId),
+          this.prisma.user.findMany({
+            where: { tenantId, canceledAt: null },
+            orderBy: [{ role: "asc" }, { name: "asc" }],
+            select: {
+              id: true,
+              tenantId: true,
+              name: true,
+              email: true,
+              photoUrl: true,
+              complementaryProfiles: true,
+              role: true,
+              accessProfile: true,
+              permissions: true,
+              branchAccesses: {
+                where: { canceledAt: null },
+                orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+                select: { branchCode: true, isDefault: true },
+              },
+              createdAt: true,
+              updatedAt: true,
+              canceledAt: true,
+            },
+          }),
+        ]),
+    );
 
     const normalizedUserEmails = new Set(
       users.map((user) => this.normalizeEmail(user.email)).filter(Boolean),
@@ -1392,6 +1563,7 @@ export class TenantsService {
 
     return {
       tenant,
+      branches: branches.map(mapTenantBranchSummary),
       users: users.map((user) =>
         this.mapAccessUser(
           user,
@@ -1403,33 +1575,7 @@ export class TenantsService {
 
   async createAccessUser(
     tenantId: string,
-    payload: {
-      name?: string;
-      email?: string;
-      password?: string;
-      birthDate?: string;
-      rg?: string;
-      cpf?: string;
-      cnpj?: string;
-      nickname?: string;
-      corporateName?: string;
-      phone?: string;
-      whatsapp?: string;
-      cellphone1?: string;
-      cellphone2?: string;
-      zipCode?: string;
-      street?: string;
-      number?: string;
-      city?: string;
-      state?: string;
-      neighborhood?: string;
-      complement?: string;
-      photoUrl?: string | null;
-      complementaryProfiles?: string[];
-      role?: string;
-      accessProfile?: string;
-      permissions?: string[];
-    },
+    payload: AccessUserPayload,
   ) {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -1497,6 +1643,12 @@ export class TenantsService {
       throw new BadRequestException("Informe o nome do usuário de acesso.");
     }
 
+    const branchAccessCodes = await this.normalizeBranchAccessCodes(
+      tenantId,
+      role,
+      payload.branchAccessCodes,
+    );
+
     let hashedPassword: string | null = null;
     if (password) {
       if (password.length < 6) {
@@ -1545,6 +1697,13 @@ export class TenantsService {
       },
     });
 
+    const branchAccesses = await this.syncUserBranchAccesses(
+      tenantId,
+      user.id,
+      role,
+      branchAccessCodes,
+    );
+
     await this.runAsMasterTenantContext(tenantId, async () => {
       if (hashedPassword) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
@@ -1587,54 +1746,35 @@ export class TenantsService {
 
     return {
       message: "Usuário de acesso criado com sucesso.",
-      user: this.mapAccessUser(user),
+      user: this.mapAccessUser({ ...user, branchAccesses }),
     };
   }
 
   async updateAccessUser(
     tenantId: string,
     userId: string,
-    payload: {
-      name?: string;
-      email?: string;
-      password?: string;
-      birthDate?: string;
-      rg?: string;
-      cpf?: string;
-      cnpj?: string;
-      nickname?: string;
-      corporateName?: string;
-      phone?: string;
-      whatsapp?: string;
-      cellphone1?: string;
-      cellphone2?: string;
-      zipCode?: string;
-      street?: string;
-      number?: string;
-      city?: string;
-      state?: string;
-      neighborhood?: string;
-      complement?: string;
-      photoUrl?: string | null;
-      complementaryProfiles?: string[];
-      role?: string;
-      accessProfile?: string;
-      permissions?: string[];
-    },
+    payload: AccessUserPayload,
   ) {
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, tenantId, canceledAt: null },
-      select: {
-        id: true,
-        tenantId: true,
-        name: true,
-        email: true,
-        photoUrl: true,
-        complementaryProfiles: true,
-        role: true,
-        accessProfile: true,
-      },
-    });
+    const user = await this.runAsMasterTenantContext(tenantId, () =>
+      this.prisma.user.findFirst({
+        where: { id: userId, tenantId, canceledAt: null },
+        select: {
+          id: true,
+          tenantId: true,
+          name: true,
+          email: true,
+          photoUrl: true,
+          complementaryProfiles: true,
+          role: true,
+          accessProfile: true,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
+        },
+      }),
+    );
 
     if (!user) {
       throw new NotFoundException("Usuário de acesso não encontrado.");
@@ -1759,6 +1899,13 @@ export class TenantsService {
       throw new BadRequestException("Informe o nome do usuário de acesso.");
     }
 
+    const branchAccessCodes = await this.normalizeBranchAccessCodes(
+      tenantId,
+      role,
+      payload.branchAccessCodes,
+      user.branchAccesses.map((access) => access.branchCode),
+    );
+
     let hashedPassword: string | undefined;
     const normalizedCurrentEmail = this.normalizeEmail(user.email);
     const normalizedIncomingEmail = email ?? normalizedCurrentEmail;
@@ -1809,6 +1956,13 @@ export class TenantsService {
       },
     });
 
+    const branchAccesses = await this.syncUserBranchAccesses(
+      tenantId,
+      userId,
+      role,
+      branchAccessCodes,
+    );
+
     const emailForPasswordSync = email || user.email;
     await this.runAsMasterTenantContext(tenantId, async () => {
       if (emailForPasswordSync) {
@@ -1856,7 +2010,7 @@ export class TenantsService {
 
     return {
       message: "Usuário de acesso atualizado com sucesso.",
-      user: this.mapAccessUser(updated),
+      user: this.mapAccessUser({ ...updated, branchAccesses }),
     };
   }
 
@@ -1890,6 +2044,17 @@ export class TenantsService {
         updatedBy: this.masterAuditUser,
       },
     });
+
+    await this.runAsMasterTenantContext(tenantId, () =>
+      this.prisma.userBranchAccess.updateMany({
+        where: { tenantId, userId, canceledAt: null },
+        data: {
+          canceledAt: new Date(),
+          canceledBy: this.masterAuditUser,
+          updatedBy: this.masterAuditUser,
+        },
+      }),
+    );
 
     return { message: "Usuário de acesso desativado com sucesso." };
   }
@@ -2126,6 +2291,9 @@ export class TenantsService {
           teachers: (await tx.teacher.deleteMany({ where: { tenantId } }))
             .count,
           people: (await tx.person.deleteMany({ where: { tenantId } })).count,
+          userBranchAccesses: (
+            await tx.userBranchAccess.deleteMany({ where: { tenantId } })
+          ).count,
           users: (await tx.user.deleteMany({ where: { tenantId } })).count,
           tenantBranches: (
             await tx.tenantBranch.deleteMany({ where: { tenantId } })

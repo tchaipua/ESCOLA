@@ -10,7 +10,13 @@ import {
   getTenantContext,
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
-import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import {
+  filterRoleBranchRecordsForCurrentBranch,
+  isRoleBranchRecordVisibleInCurrentBranch,
+  resolveRoleBranchSelection,
+  syncRoleBranchAccesses,
+  withRoleBranchAccessCodes,
+} from "../../../../common/tenant/role-branch-accesses";
 import * as bcrypt from "bcrypt";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
@@ -174,7 +180,7 @@ export class TeachersService {
     T extends { accessProfile?: string | null; permissions?: string | null },
   >(teacher: T) {
     return {
-      ...teacher,
+      ...withRoleBranchAccessCodes(teacher as T & { branchCode: number }),
       accessProfile:
         normalizeAccessProfileCode(teacher.accessProfile, "PROFESSOR") ||
         getDefaultAccessProfileForRole("PROFESSOR"),
@@ -211,10 +217,14 @@ export class TeachersService {
             },
           },
         },
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
       },
     });
 
-    if (!teacher) {
+    if (!teacher || !isRoleBranchRecordVisibleInCurrentBranch(teacher)) {
       throw new NotFoundException("Professor não encontrado.");
     }
 
@@ -223,12 +233,14 @@ export class TeachersService {
 
   async create(createDto: CreateTeacherDto, currentUser?: ICurrentUser) {
     const tenantId = getTenantContext()!.tenantId;
-    const targetBranchCode = await resolveWritableTenantBranchCode(
+    const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       tenantId,
       createDto.branchCode,
+      createDto.branchAccessCodes,
       getTenantContext()!.branchCode,
     );
+    const targetBranchCode = branchSelection.branchCode;
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
     const sanitizedDto = this.sanitizeTeacherMutationDto(
@@ -271,20 +283,43 @@ export class TeachersService {
     const rawData = this.transformToUpperCase(sanitizedDto);
     delete rawData.permissions;
     delete rawData.accessProfile;
+    delete rawData.branchAccessCodes;
 
-    const createdTeacher = await this.prisma.teacher.create({
-      data: {
-        ...rawData,
-        password: null,
-        accessProfile,
-        permissions: explicitPermissions,
-        birthDate: sanitizedDto.birthDate
-          ? new Date(sanitizedDto.birthDate)
-          : undefined,
+    const createdTeacher = await this.prisma.$transaction(async (tx) => {
+      const teacher = await tx.teacher.create({
+        data: {
+          ...rawData,
+          password: null,
+          accessProfile,
+          permissions: explicitPermissions,
+          birthDate: sanitizedDto.birthDate
+            ? new Date(sanitizedDto.birthDate)
+            : undefined,
+          tenantId,
+          branchCode: targetBranchCode,
+          createdBy: getTenantContext()!.userId,
+        },
+      });
+
+      await syncRoleBranchAccesses(
+        tx,
+        "teacher",
         tenantId,
-        branchCode: targetBranchCode,
-        createdBy: getTenantContext()!.userId,
-      },
+        teacher.id,
+        branchSelection.explicitBranchCodes,
+        getTenantContext()!.userId,
+      );
+
+      return {
+        ...teacher,
+        branchAccesses: branchSelection.explicitBranchCodes.map(
+          (branchCode, index) => ({
+            branchCode,
+            isDefault: index === 0,
+            canceledAt: null,
+          }),
+        ),
+      };
     });
 
     await this.sharedProfilesService.syncSharedProfile(
@@ -347,10 +382,14 @@ export class TeachersService {
             },
           },
         },
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
       },
     });
 
-    return teachers.map((teacher) =>
+    return filterRoleBranchRecordsForCurrentBranch(teachers).map((teacher) =>
       sanitizeTeacherForViewer(this.mapTeacherAccess(teacher), currentUser),
     );
   }
@@ -388,10 +427,14 @@ export class TeachersService {
             },
           },
         },
+        branchAccesses: {
+          where: { canceledAt: null },
+          orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+        },
       },
     });
 
-    if (!teacher) {
+    if (!teacher || !isRoleBranchRecordVisibleInCurrentBranch(teacher)) {
       throw new NotFoundException("Professor não encontrado para esta escola.");
     }
 
@@ -413,14 +456,16 @@ export class TeachersService {
       updateDto,
       currentUser,
     );
-    const targetBranchCode = await resolveWritableTenantBranchCode(
+    const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       tenantId,
       sanitizedDto.branchCode,
+      sanitizedDto.branchAccessCodes,
       teacher.branchCode,
     );
+    const targetBranchCode = branchSelection.branchCode;
 
-    return runWithTenantBranchScope(targetBranchCode, async () => {
+    return runWithTenantBranchScope(teacher.branchCode, async () => {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
@@ -482,23 +527,46 @@ export class TeachersService {
     delete rawData.password;
     delete rawData.permissions;
     delete rawData.accessProfile;
+    delete rawData.branchAccessCodes;
 
-    const updatedTeacher = await this.prisma.teacher.update({
-      where: { id },
-      data: {
-        ...rawData,
-        password:
-          hashedPassword || shouldResolvePasswordForEmailChange
-            ? null
+    const updatedTeacher = await this.prisma.$transaction(async (tx) => {
+      const teacherResult = await tx.teacher.update({
+        where: { id },
+        data: {
+          ...rawData,
+          password:
+            hashedPassword || shouldResolvePasswordForEmailChange
+              ? null
+              : undefined,
+          accessProfile,
+          permissions: explicitPermissions,
+          birthDate: sanitizedDto.birthDate
+            ? new Date(sanitizedDto.birthDate)
             : undefined,
-        accessProfile,
-        permissions: explicitPermissions,
-        birthDate: sanitizedDto.birthDate
-          ? new Date(sanitizedDto.birthDate)
-          : undefined,
-        branchCode: targetBranchCode,
-        updatedBy: getTenantContext()!.userId,
-      },
+          branchCode: targetBranchCode,
+          updatedBy: getTenantContext()!.userId,
+        },
+      });
+
+      await syncRoleBranchAccesses(
+        tx,
+        "teacher",
+        tenantId,
+        id,
+        branchSelection.explicitBranchCodes,
+        getTenantContext()!.userId,
+      );
+
+      return {
+        ...teacherResult,
+        branchAccesses: branchSelection.explicitBranchCodes.map(
+          (branchCode, index) => ({
+            branchCode,
+            isDefault: index === 0,
+            canceledAt: null,
+          }),
+        ),
+      };
     });
 
     await this.sharedProfilesService.syncSharedProfile(

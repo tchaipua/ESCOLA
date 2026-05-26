@@ -11,8 +11,10 @@ import {
     hasDashboardPermission,
 } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const PARCELAS_SCREEN_ID = 'PRINCIPAL_PARCELAS';
 const FINANCEIRO_FRONTEND_URL =
     process.env.NEXT_PUBLIC_FINANCEIRO_FRONTEND_URL || 'http://localhost:3003';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_PARCELAS_ALERTA_GERAL';
@@ -179,6 +181,78 @@ function mapInstallmentStatusToGridFilter(status: InstallmentListStatus) {
     return 'INACTIVE' as const;
 }
 
+type ParcelasAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    filters: InstallmentFilters;
+    displayedRowsCount: number;
+    selectedRowsCount: number;
+    selectedTotalAmount: number;
+};
+
+function buildParcelasAuditSql(params: ParcelasAuditParams) {
+    const statusFilter = String(params.filters.status || 'OPEN').toUpperCase();
+    const studentName = params.filters.studentName.trim().toUpperCase();
+    const payerName = params.filters.payerName.trim().toUpperCase();
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :status = ${toSqlLiteral(statusFilter)}
+-- :studentName = ${toSqlLiteral(studentName)}
+-- :payerName = ${toSqlLiteral(payerName)}
+
+SELECT FI.*
+FROM financial_installments FI
+WHERE FI.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'OPEN' AND FI.status <> 'PAID' AND FI.openAmount > 0)
+    OR (${toSqlLiteral(statusFilter)} = 'PAID' AND FI.status = 'PAID')
+    OR (${toSqlLiteral(statusFilter)} = 'OVERDUE' AND FI.status <> 'PAID' AND FI.dueDate < CURRENT_DATE)
+  )
+  AND (
+    ${toSqlLiteral(studentName)} = ''
+    OR UPPER(COALESCE(FI.sourceEntityName, '')) LIKE '%' || UPPER(${toSqlLiteral(studentName)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(payerName)} = ''
+    OR UPPER(COALESCE(FI.payerNameSnapshot, '')) LIKE '%' || UPPER(${toSqlLiteral(payerName)}) || '%'
+  )
+ORDER BY FI.dueDate ASC, FI.sourceEntityName ASC;`;
+}
+
+function buildParcelasAuditText(params: ParcelasAuditParams) {
+    const statusFilter = String(params.filters.status || 'OPEN').toUpperCase();
+    const studentName = params.filters.studentName.trim().toUpperCase();
+    const payerName = params.filters.payerName.trim().toUpperCase();
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem financeira para baixa e manutencao de parcelas.
+
+TABELAS PRINCIPAIS:
+- financial_installments (FI) - parcelas financeiras
+- financial_cash_sessions - sessao de caixa atual usada na baixa
+
+RELACIONAMENTOS:
+- a baixa usa a sessao de caixa aberta do usuario autenticado
+- as parcelas sao filtradas por tenantId e pelos filtros aplicados no grid
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- situacao (:status): ${statusFilter}
+- aluno/origem (:studentName): ${formatAuditValue(studentName)}
+- pagador (:payerName): ${formatAuditValue(payerName)}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- parcelas selecionadas para baixa: ${params.selectedRowsCount}
+- valor selecionado para baixa: ${params.selectedTotalAmount.toFixed(2)}
+- ordenacao atual: vencimento ASC, aluno/origem ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- FI.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function PrincipalParcelasPage() {
     const [isMounted, setIsMounted] = useState(false);
     const [filters, setFilters] = useState<InstallmentFilters>(DEFAULT_FILTERS);
@@ -331,6 +405,33 @@ export default function PrincipalParcelasPage() {
     const selectedInstallments = installments.filter((item) => selectedIds.includes(item.id));
     const selectedTotalAmount = selectedInstallments.reduce((total, item) => total + Number(item.openAmount || 0), 0);
     const allSelectableChecked = selectableInstallments.length > 0 && selectableInstallments.every((item) => selectedIds.includes(item.id));
+    const parcelasAuditContext = {
+        auditText: buildParcelasAuditText({
+            tenantId: authContext.tenantId,
+            tenantName: tenantBranding?.schoolName,
+            filters: appliedFilters,
+            displayedRowsCount: installments.length,
+            selectedRowsCount: selectedInstallments.length,
+            selectedTotalAmount,
+        }),
+        sqlText: buildParcelasAuditSql({
+            tenantId: authContext.tenantId,
+            tenantName: tenantBranding?.schoolName,
+            filters: appliedFilters,
+            displayedRowsCount: installments.length,
+            selectedRowsCount: selectedInstallments.length,
+            selectedTotalAmount,
+        }),
+    };
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: PARCELAS_SCREEN_ID,
+            auditText: parcelasAuditContext.auditText,
+            sqlText: parcelasAuditContext.sqlText,
+        });
+    }, [parcelasAuditContext.auditText, parcelasAuditContext.sqlText]);
+
     if (!isMounted) {
         return (
             <div className="mx-auto flex min-h-[55vh] w-full max-w-3xl items-center justify-center">

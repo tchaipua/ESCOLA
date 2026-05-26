@@ -38,18 +38,21 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 - Todo novo popup/modal criado deve nascer por padrao com logotipo da escola no cabecalho, nome tecnico exclusivo e bloco de auditoria visual no rodape.
 - O nome tecnico de popup/modal deve ser exclusivo, estavel e nao pode ser reaproveitado por outro fluxo visual.
 - Ao clicar no botao de copiar, alem de copiar o nome da tela, deve abrir um popup central de "Logica Usada nessa Tela".
-- O popup deve seguir o padrao validado na tela `PRINCIPAL_FINANCEIRO_CAIXA_DETALHE`:
+- O popup deve seguir o padrao validado na tela `PRINCIPAL_PROFESSORES`:
   - overlay escuro com blur e modal central moderno;
   - card principal branco, bordas arredondadas grandes e sombra forte;
-  - cabecalho escuro em degradê, com `Auditoria SQL` como etiqueta e o identificador tecnico da tela logo abaixo;
-  - botao de fechar circular no canto superior direito do cabecalho;
-  - titulo central em formato de pill/etiqueta com `Logica Usada nessa Tela`;
-  - origem da tela logo abaixo do titulo, centralizada, em vermelho, contendo sistema dono e path completo do arquivo;
-  - area rolavel com estrutura, tabelas principais, relacionamentos, metricas/campos exibidos, filtros, ordenacao e SQL/base logica da consulta;
-  - area do SQL em card branco com borda, sombra interna, fonte monoespacada e scroll proprio;
+  - cabecalho escuro em degradê, com logotipo institucional no canto esquerdo, `Auditoria SQL` como etiqueta, identificador tecnico da tela logo abaixo e pill `ORIGEM: SISTEMA ...`;
+  - seletor de abas dentro do cabecalho, ao centro, com `Outras informações` aberta por padrao e `SQL` como segunda aba;
+  - botoes textuais no canto direito do cabecalho, com `Fechar` acima e `Copiar SQL` abaixo, ambos do mesmo tamanho;
+  - o botao `Copiar SQL` deve aparecer somente quando a aba `SQL` estiver selecionada;
+  - origem tecnica/path completo do arquivo logo abaixo do cabecalho, centralizada, em vermelho;
+  - a aba `Outras informações` deve conter estrutura, tabelas principais, relacionamentos, metricas/campos exibidos, filtros aplicados, ordenacao, observacoes e identificadores humanos de apoio;
+  - a aba `SQL` deve conter exclusivamente SQL/base logica copiavel, em card branco com borda, sombra interna, fonte monoespacada e scroll proprio;
+  - a aba `SQL` deve refletir os filtros atuais da tela no momento da abertura, usando valores reais para parametros como `schoolId`/`tenantId`, `branchCode`, busca digitada, status e demais filtros visiveis;
+  - nomes humanos como nome da escola ou filial podem aparecer em `Outras informações` entre parenteses, mas nao devem ser inseridos no SQL quando isso quebrar a execucao direta;
   - nomes fisicos das tabelas destacados em negrito e com fonte um pouco maior;
   - tabelas principais exibidas com alias entre parenteses e descricao em portugues, exemplo `cash_sessions (CS) - sessoes de caixa abertas/fechadas por operador.`;
-  - botoes modernos `Copiar SQL` e `Fechar`, centralizados abaixo da area do SQL.
+  - nao deve haver duplicidade dos botoes de acao no rodape do modal; `Copiar SQL` deve copiar somente o conteudo da aba `SQL`.
 - Em telas embutidas do Financeiro, o rodape da Escola deve continuar sendo o ponto unico do botao de copiar/abrir auditoria, evitando duplicar o identificador dentro do iframe.
 - Esse padrao deve ser considerado obrigatorio para novas telas da Escola, inclusive telas que consomem sistemas externos.
 

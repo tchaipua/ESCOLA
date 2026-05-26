@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { fetchAddressByCep, formatCepInput, normalizeDocumentDigits, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
+import { copyTextToClipboard } from '@/app/lib/clipboard';
 import {
   COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS,
   getDefaultAccessProfileForRole,
@@ -14,6 +15,7 @@ import {
 } from '@/app/lib/access-profiles';
 
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import ScreenAuditModal from '@/app/components/screen-audit-modal';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
@@ -56,7 +58,16 @@ type AccessUser = {
   role: 'ADMIN' | 'SECRETARIA' | 'COORDENACAO' | string;
   accessProfile?: AccessProfileCode | null;
   permissions: string[];
+  branchAccessCodes?: number[];
   canceledAt?: string | null;
+};
+
+type TenantBranchSummary = {
+  id: string;
+  branchCode: number;
+  name: string;
+  isActive: boolean;
+  isShared?: boolean;
 };
 
 type AccessFormState = {
@@ -84,6 +95,7 @@ type AccessFormState = {
   role: 'ADMIN' | 'SECRETARIA' | 'COORDENACAO';
   accessProfile: AccessProfileCode;
   permissions: string[];
+  branchAccessCodes: number[];
 };
 
 type TenantAccessManagerProps = {
@@ -118,6 +130,7 @@ const EMPTY_FORM: AccessFormState = {
   role: 'SECRETARIA',
   accessProfile: getDefaultAccessProfileForRole('SECRETARIA'),
   permissions: mergeAccessPermissions(getDefaultAccessProfileForRole('SECRETARIA'), []),
+  branchAccessCodes: [],
 };
 
 function summarizePermissions(permissions: string[]) {
@@ -147,6 +160,20 @@ function formatComplementaryProfiles(profiles?: ComplementaryAccessProfileCode[]
   return profiles
     .map((profile) => COMPLEMENTARY_ACCESS_PROFILE_DEFINITIONS[profile]?.label || profile)
     .join(' + ');
+}
+
+function formatBranchAccessSummary(user: AccessUser, branches: TenantBranchSummary[]) {
+  if (user.role === 'ADMIN') return 'Todas as filiais.';
+
+  const codes = Array.isArray(user.branchAccessCodes) ? user.branchAccessCodes : [];
+  if (!codes.length) return 'Filial padrão.';
+
+  return codes
+    .map((code) => {
+      const branch = branches.find((item) => item.branchCode === code);
+      return branch ? `${branch.branchCode} - ${branch.name}` : `FILIAL ${code}`;
+    })
+    .join(', ');
 }
 
 function getComplementaryProfileBadgeLabel(profile: ComplementaryAccessProfileCode) {
@@ -212,6 +239,117 @@ function buildSystemRoleBadges(roles?: string[]) {
   return Array.from(new Set(normalizedRoles));
 }
 
+function toSqlLiteral(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return 'NULL';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+type AccessManagerAuditParams = {
+  tenantId: string;
+  tenantName: string;
+  searchTerm: string;
+  usersLoaded: number;
+  usersDisplayed: number;
+  activeBranches: number;
+  formMode: string;
+  activeTab: string;
+  formStep: string;
+  selectedRole: string;
+};
+
+function buildAccessManagerAuditSql(params: AccessManagerAuditParams) {
+  const searchLiteral = toSqlLiteral(params.searchTerm);
+
+  return `SELECT
+  U.id,
+  U.name,
+  U.email,
+  U.role,
+  U.accessProfile,
+  U.permissions,
+  U.complementaryProfiles,
+  P.cpf,
+  P.phone,
+  P.whatsapp,
+  GROUP_CONCAT(UBA.branchCode, ',') AS branchAccessCodes
+FROM users U
+LEFT JOIN user_branch_accesses UBA
+  ON UBA.tenantId = U.tenantId
+ AND UBA.userId = U.id
+ AND UBA.canceledAt IS NULL
+LEFT JOIN tenant_branches TB
+  ON TB.tenantId = UBA.tenantId
+ AND TB.branchCode = UBA.branchCode
+ AND TB.canceledAt IS NULL
+LEFT JOIN people P
+  ON P.tenantId = U.tenantId
+ AND UPPER(COALESCE(P.email, '')) = UPPER(COALESCE(U.email, ''))
+ AND P.canceledAt IS NULL
+WHERE U.tenantId = ${toSqlLiteral(params.tenantId)}
+  AND U.canceledAt IS NULL
+  AND (
+    ${searchLiteral} IS NULL
+    OR ${searchLiteral} = ''
+    OR UPPER(COALESCE(U.name, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(U.email, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(U.role, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+  )
+GROUP BY
+  U.id,
+  U.name,
+  U.email,
+  U.role,
+  U.accessProfile,
+  U.permissions,
+  U.complementaryProfiles,
+  P.cpf,
+  P.phone,
+  P.whatsapp
+ORDER BY U.role ASC, U.name ASC;`;
+}
+
+function buildAccessManagerAuditText(params: AccessManagerAuditParams) {
+  const sqlText = buildAccessManagerAuditSql(params);
+
+  return `--- LOGICA DA TELA ---
+Tela master para manutencao dos acessos administrativos de uma escola/empresa.
+
+TABELAS PRINCIPAIS:
+- users (U) - usuarios administrativos da escola
+- user_branch_accesses (UBA) - filiais liberadas para cada usuario administrativo
+- tenant_branches (TB) - filiais ativas da escola
+- people (P) - cadastro-base compartilhado usado para complementar dados pessoais por e-mail
+
+RELACIONAMENTOS:
+- users.tenantId = tenant_branches.tenantId
+- users.id = user_branch_accesses.userId
+- user_branch_accesses.branchCode = tenant_branches.branchCode
+- people.email = users.email dentro do mesmo tenant
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${params.tenantId} (${params.tenantName})
+- busca digitada (:searchTerm): ${params.searchTerm || 'VAZIO'}
+- somente usuarios sem cancelamento logico: users.canceledAt IS NULL
+- somente vinculos de filial sem cancelamento logico: user_branch_accesses.canceledAt IS NULL
+- filiais ativas carregadas para permissao: ${params.activeBranches}
+- registros carregados antes da busca: ${params.usersLoaded}
+- registros exibidos apos a busca: ${params.usersDisplayed}
+- modo do formulario: ${params.formMode}
+- aba ativa do formulario: ${params.activeTab}
+- etapa ativa do formulario: ${params.formStep}
+- papel selecionado no formulario: ${params.selectedRole}
+- ordenacao atual: role ASC, name ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- U.tenantId e a coluna usada para isolar os dados da escola.
+- O endpoint usa senha master e executa a consulta no contexto da escola selecionada.
+- Nao existe delete fisico nesta gestao; a desativacao usa cancelamento logico.
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}`;
+}
+
 export default function TenantAccessManager({
   tenant,
   getMasterPass,
@@ -221,6 +359,7 @@ export default function TenantAccessManager({
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [users, setUsers] = useState<AccessUser[]>([]);
+  const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
   const [formData, setFormData] = useState<AccessFormState>(EMPTY_FORM);
   const [activeTab, setActiveTab] = useState<'DADOS' | 'FOTO' | 'ENDERECO' | 'PERFIL'>('DADOS');
   const [formStep, setFormStep] = useState<'BASICO' | 'PERMISSOES'>('BASICO');
@@ -235,6 +374,7 @@ export default function TenantAccessManager({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [isScreenAuditOpen, setIsScreenAuditOpen] = useState(false);
   const [cpfConflictAlert, setCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
   const [cpfConflictRoles, setCpfConflictRoles] = useState<string[]>([]);
   const [originalCpf, setOriginalCpf] = useState('');
@@ -256,6 +396,7 @@ export default function TenantAccessManager({
       }
 
       setUsers(Array.isArray(data.users) ? data.users : []);
+      setTenantBranches(Array.isArray(data.branches) ? data.branches.filter((branch: TenantBranchSummary) => branch.isActive) : []);
     } catch (error: any) {
       setErrorMessage(error.message || 'Nao foi possivel carregar os acessos.');
     } finally {
@@ -309,6 +450,9 @@ export default function TenantAccessManager({
 
   if (!tenant) return null;
 
+  const getDefaultBranchAccessCodes = () =>
+    tenantBranches.length > 0 ? [tenantBranches[0].branchCode] : [];
+
   const resetForm = (options?: { announce?: boolean }) => {
     setIsCreatingNew(false);
     setEditingUserId(null);
@@ -337,7 +481,7 @@ export default function TenantAccessManager({
     setIsCreatingNew(true);
     setEditingUserId(null);
     setFormStep('BASICO');
-    setFormData(EMPTY_FORM);
+    setFormData({ ...EMPTY_FORM, branchAccessCodes: getDefaultBranchAccessCodes() });
     setActiveTab('DADOS');
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -382,6 +526,11 @@ export default function TenantAccessManager({
       role: user.role === 'ADMIN' ? 'ADMIN' : user.role === 'COORDENACAO' ? 'COORDENACAO' : 'SECRETARIA',
       accessProfile: (user.accessProfile as AccessProfileCode) || getDefaultAccessProfileForRole(user.role === 'ADMIN' ? 'ADMIN' : user.role === 'COORDENACAO' ? 'COORDENACAO' : 'SECRETARIA'),
       permissions: Array.isArray(user.permissions) ? user.permissions : [],
+      branchAccessCodes: user.role === 'ADMIN'
+        ? []
+        : Array.isArray(user.branchAccessCodes) && user.branchAccessCodes.length > 0
+          ? user.branchAccessCodes
+          : getDefaultBranchAccessCodes(),
     });
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -401,6 +550,7 @@ export default function TenantAccessManager({
       accessProfile,
       complementaryProfiles,
       permissions: mergeAccessPermissions(accessProfile, complementaryProfiles),
+      branchAccessCodes: role === 'ADMIN' ? [] : (current.branchAccessCodes.length ? current.branchAccessCodes : getDefaultBranchAccessCodes()),
     }));
     setFormStep('BASICO');
   };
@@ -428,6 +578,21 @@ export default function TenantAccessManager({
         ? current.permissions.filter((item) => item !== permission)
         : [...current.permissions, permission],
     }));
+  };
+
+  const toggleBranchAccess = (branchCode: number) => {
+    setFormData((current) => {
+      if (current.role === 'ADMIN') return current;
+
+      const branchAccessCodes = current.branchAccessCodes.includes(branchCode)
+        ? current.branchAccessCodes.filter((code) => code !== branchCode)
+        : [...current.branchAccessCodes, branchCode].sort((left, right) => left - right);
+
+      return {
+        ...current,
+        branchAccessCodes,
+      };
+    });
   };
 
   const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -458,6 +623,7 @@ export default function TenantAccessManager({
       role: formData.role,
       accessProfile: formData.accessProfile,
       permissions: formData.role === 'ADMIN' ? [] : formData.permissions,
+      branchAccessCodes: formData.role === 'ADMIN' ? [] : formData.branchAccessCodes,
     };
 
     if (!payload.name) {
@@ -472,6 +638,11 @@ export default function TenantAccessManager({
 
     if (payload.role !== 'ADMIN' && formData.permissions.length === 0) {
       setErrorMessage('Selecione pelo menos uma permissão para este perfil.');
+      return;
+    }
+
+    if (payload.role !== 'ADMIN' && tenantBranches.length > 1 && formData.branchAccessCodes.length === 0) {
+      setErrorMessage('Selecione pelo menos uma filial para este usuário.');
       return;
     }
 
@@ -607,15 +778,13 @@ export default function TenantAccessManager({
   };
 
   const handleCopyScreenName = async () => {
-    if (!navigator?.clipboard?.writeText) {
-      setCopyFeedback('Copiar não suportado pelo navegador.');
-      return;
-    }
     try {
-      await navigator.clipboard.writeText(SCREEN_NAME);
-      setCopyFeedback('Nome copiado para a área de transferência.');
+      const copied = await copyTextToClipboard(SCREEN_NAME);
+      setCopyFeedback(copied ? 'Nome copiado para a área de transferência.' : 'Não foi possível copiar o nome.');
     } catch {
       setCopyFeedback('Não foi possível copiar o nome.');
+    } finally {
+      setIsScreenAuditOpen(true);
     }
   };
 
@@ -845,9 +1014,47 @@ export default function TenantAccessManager({
         </div>
       ) : null}
 
+      {formData.role !== 'ADMIN' && tenantBranches.length > 1 ? (
+        <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50/70 p-4">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Filiais permitidas</div>
+          <p className="mt-2 text-sm text-blue-800">
+            Marque em quais filiais este usuário poderá entrar. Registros comuns continuam visíveis dentro da filial selecionada.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+            {tenantBranches.map((branch) => {
+              const isSelected = formData.branchAccessCodes.includes(branch.branchCode);
+              return (
+                <button
+                  key={branch.id}
+                  type="button"
+                  onClick={() => toggleBranchAccess(branch.branchCode)}
+                  className={`rounded-2xl border px-4 py-4 text-left transition-colors ${
+                    isSelected
+                      ? 'border-blue-300 bg-white shadow-sm'
+                      : 'border-blue-100 bg-white/70 hover:border-blue-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-black text-slate-800">{branch.branchCode} - {branch.name}</div>
+                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Filial operacional</div>
+                    </div>
+                    <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm font-black ${
+                      isSelected ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                    }`}>
+                      {isSelected ? '✓' : 'X'}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {formData.role === 'ADMIN' ? (
         <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-4 text-sm text-indigo-700">
-          Este perfil tera autorizacao completa na escola.
+          Este perfil tera autorizacao completa na escola e acesso a todas as filiais.
         </div>
       ) : (
         <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
@@ -926,6 +1133,22 @@ export default function TenantAccessManager({
       user.email.toUpperCase().includes(normalizedUserSearch)
     );
   });
+  const accessAuditParams: AccessManagerAuditParams = {
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    searchTerm: userSearch.trim(),
+    usersLoaded: users.length,
+    usersDisplayed: filteredUsers.length,
+    activeBranches: tenantBranches.length,
+    formMode: editingUserId ? 'EDICAO' : isCreatingNew ? 'NOVO_ACESSO' : 'LISTAGEM',
+    activeTab,
+    formStep,
+    selectedRole: formData.role,
+  };
+  const accessAuditContext = {
+    auditText: buildAccessManagerAuditText(accessAuditParams),
+    sqlText: buildAccessManagerAuditSql(accessAuditParams),
+  };
 
   return (
     <div
@@ -1474,6 +1697,9 @@ export default function TenantAccessManager({
                           <div className="mt-2 text-sm text-slate-500">
                             {user.role === 'ADMIN' ? 'Acesso total da escola.' : 'Perfil administrativo configurado para esta escola.'}
                           </div>
+                          <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-600">
+                            Filiais: {formatBranchAccessSummary(user, tenantBranches)}
+                          </div>
                         </div>
                       </div>
 
@@ -1590,6 +1816,16 @@ export default function TenantAccessManager({
             </div>
           </div>
         </div>
+      ) : null}
+      {isScreenAuditOpen ? (
+        <ScreenAuditModal
+          screenId={SCREEN_NAME}
+          systemName="Sistema Escola"
+          originText="Origem: Sistema Escola - caminho fisico: C:/Sistemas/IA/Escola/frontend/src/app/msinfor-admin/components/tenant-access-manager.tsx"
+          auditText={accessAuditContext.auditText}
+          sqlText={accessAuditContext.sqlText}
+          onClose={() => setIsScreenAuditOpen(false)}
+        />
       ) : null}
     </div>
   );

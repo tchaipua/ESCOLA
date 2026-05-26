@@ -14,8 +14,10 @@ import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { type ConfigurableGridColumn } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dedupeSeriesClassOptions } from '@/app/lib/series-class-option-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const GRADE_ANUAL_SCREEN_ID = 'PRINCIPAL_GRADE_ANUAL';
 const GRADE_ANUAL_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_ANUAL_STATUS_MODAL';
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20';
 
@@ -339,6 +341,99 @@ function getMonthGridDays(year: string, month: string) {
 
 const WEEKDAY_LABELS = ['SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.', 'DOM.'];
 
+type GradeAnualAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    statusFilter: GridStatusFilterValue;
+    selectedSeriesClassId: string;
+    selectedSeriesClassLabel: string;
+    selectedYear: string;
+    selectedMonth: string;
+    dateFilterLabel: string;
+    visibleStartDate: string;
+    visibleEndDate: string;
+    displayedRecordsCount: number;
+    displayedLessonsCount: number;
+};
+
+function buildGradeAnualAuditSql(params: GradeAnualAuditParams) {
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+
+    return `-- PARAMETROS ATUAIS DO GRID/CALENDARIO
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+-- :seriesClassId = ${toSqlLiteral(params.selectedSeriesClassId)}
+-- :selectedYear = ${toSqlLiteral(params.selectedYear)}
+-- :selectedMonth = ${toSqlLiteral(params.selectedMonth)}
+-- :visibleStartDate = ${toSqlLiteral(params.visibleStartDate)}
+-- :visibleEndDate = ${toSqlLiteral(params.visibleEndDate)}
+
+SELECT LC.*
+FROM lesson_calendars LC
+LEFT JOIN school_years SY
+  ON SY.id = LC.schoolYearId
+ AND SY.tenantId = LC.tenantId
+LEFT JOIN series_classes SC
+  ON SC.id = LC.seriesClassId
+ AND SC.tenantId = LC.tenantId
+WHERE LC.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND ${toSqlLiteral(params.selectedSeriesClassId)} <> ''
+  AND LC.seriesClassId = ${toSqlLiteral(params.selectedSeriesClassId)}
+  AND (
+    ${toSqlLiteral(params.selectedYear)} = ''
+    OR CAST(SY.year AS TEXT) = ${toSqlLiteral(params.selectedYear)}
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND LC.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND LC.canceledAt IS NOT NULL)
+  )
+ORDER BY SY.year DESC;
+
+SELECT LCI.*
+FROM lesson_calendar_items LCI
+WHERE LCI.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (${toSqlLiteral(params.selectedSeriesClassId)} = '' OR LCI.seriesClassId = ${toSqlLiteral(params.selectedSeriesClassId)})
+  AND (${toSqlLiteral(params.visibleStartDate)} = '' OR LCI.date >= ${toSqlLiteral(params.visibleStartDate)})
+  AND (${toSqlLiteral(params.visibleEndDate)} = '' OR LCI.date <= ${toSqlLiteral(params.visibleEndDate)})
+ORDER BY LCI.date ASC, LCI.startTime ASC;`;
+}
+
+function buildGradeAnualAuditText(params: GradeAnualAuditParams) {
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/calendario para manutencao da grade anual de aulas.
+
+TABELAS PRINCIPAIS:
+- lesson_calendars (LC) - grade anual por ano letivo e turma
+- lesson_calendar_items (LCI) - aulas geradas no calendario
+- school_years (SY) - ano letivo
+- series_classes (SC) - turma/serie vinculada
+
+RELACIONAMENTOS:
+- lesson_calendars.schoolYearId = school_years.id
+- lesson_calendars.seriesClassId = series_classes.id
+- lesson_calendar_items.lessonCalendarId = lesson_calendars.id
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- status selecionado (:statusFilter): ${statusFilter}
+- turma/serie selecionada (:seriesClassId): ${formatAuditValue(params.selectedSeriesClassId, 'NAO SELECIONADA')} (${params.selectedSeriesClassLabel})
+- ano selecionado (:selectedYear): ${formatAuditValue(params.selectedYear, 'TODOS')}
+- mes selecionado (:selectedMonth): ${formatAuditValue(params.selectedMonth, 'TODOS')}
+- filtro de data atual: ${params.dateFilterLabel}
+- periodo visivel (:visibleStartDate/:visibleEndDate): ${formatAuditValue(params.visibleStartDate, 'VAZIO')} ate ${formatAuditValue(params.visibleEndDate, 'VAZIO')}
+- registros de grade exibidos apos os filtros: ${params.displayedRecordsCount}
+- aulas/eventos exibidos no calendario: ${params.displayedLessonsCount}
+- ordenacao atual: ano letivo DESC; calendario por data ASC e horario ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- LC.tenantId e LCI.tenantId isolam os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados na tela`;
+}
+
 export default function GradeAnualPage() {
     const calendarEventsRequestRef = useRef(0);
     const [records, setRecords] = useState<LessonCalendarRecord[]>([]);
@@ -553,6 +648,60 @@ export default function GradeAnualPage() {
         filteredStandaloneEvents.forEach((event) => days.add(event.date));
         return days.size;
     }, [filteredLessonItems, filteredStandaloneEvents]);
+    const gradeAnualAuditContext = useMemo(() => {
+        const selectedSeriesClass = seriesClasses.find((item) => item.id === selectedCalendarSeriesClassId);
+        const visibleStartDate = visibleCalendarDays[0] || '';
+        const visibleEndDate = visibleCalendarDays[visibleCalendarDays.length - 1] || '';
+        const dateFilterLabel = weekRange
+            ? `SEMANA ${weekRange.start} ATE ${weekRange.end}`
+            : specificDateFilter
+                ? `DATA ESPECIFICA ${specificDateFilter}`
+                : dateShortcut
+                    ? dateShortcut
+                    : 'MES INTEIRO';
+        const auditParams: GradeAnualAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: tenant?.name,
+            statusFilter,
+            selectedSeriesClassId: selectedCalendarSeriesClassId,
+            selectedSeriesClassLabel: selectedSeriesClass ? getSeriesClassLabel(selectedSeriesClass) : 'NAO SELECIONADA',
+            selectedYear,
+            selectedMonth,
+            dateFilterLabel,
+            visibleStartDate,
+            visibleEndDate,
+            displayedRecordsCount: sortedRecords.length,
+            displayedLessonsCount: filteredLessonItems.length + filteredStandaloneEvents.length,
+        };
+
+        return {
+            auditText: buildGradeAnualAuditText(auditParams),
+            sqlText: buildGradeAnualAuditSql(auditParams),
+        };
+    }, [
+        currentTenantId,
+        dateShortcut,
+        filteredLessonItems.length,
+        filteredStandaloneEvents.length,
+        selectedCalendarSeriesClassId,
+        selectedMonth,
+        selectedYear,
+        seriesClasses,
+        sortedRecords.length,
+        specificDateFilter,
+        statusFilter,
+        tenant?.name,
+        visibleCalendarDays,
+        weekRange,
+    ]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: GRADE_ANUAL_SCREEN_ID,
+            auditText: gradeAnualAuditContext.auditText,
+            sqlText: gradeAnualAuditContext.sqlText,
+        });
+    }, [gradeAnualAuditContext]);
 
     const buildWeekRange = (reference: Date) => {
         const start = new Date(reference);

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, hasAnyDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
@@ -135,15 +136,9 @@ export default function PrincipalMensalidadesDetalhesPage() {
     }, []);
 
     const handleCopyScreenName = useCallback(async (screenId: string) => {
-        if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-            setScreenCopyStatus('error');
-            resetCopyFeedback();
-            return;
-        }
-
         try {
-            await navigator.clipboard.writeText(screenId);
-            setScreenCopyStatus('copied');
+            const copied = await copyTextToClipboard(screenId);
+            setScreenCopyStatus(copied ? 'copied' : 'error');
         } catch (error) {
             console.error('Falha ao copiar nome da tela', error);
             setScreenCopyStatus('error');

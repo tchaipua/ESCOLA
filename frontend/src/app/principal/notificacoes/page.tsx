@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { dispatchScreenAuditContext, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const NOTIFICACOES_SCREEN_ID = 'PRINCIPAL_NOTIFICACOES';
 
 type NotificationItem = {
     id: string;
@@ -18,6 +20,55 @@ type NotificationItem = {
 };
 
 type FilterStatus = 'ALL' | 'UNREAD' | 'READ';
+
+type NotificacoesAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    filterStatus: FilterStatus;
+    displayedRowsCount: number;
+};
+
+function buildNotificacoesAuditSql(params: NotificacoesAuditParams) {
+    const statusFilter = String(params.filterStatus || 'UNREAD').toUpperCase();
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :status = ${toSqlLiteral(statusFilter)}
+
+SELECT N.*
+FROM notifications N
+WHERE N.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'UNREAD' AND N.readAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'READ' AND N.readAt IS NOT NULL)
+  )
+ORDER BY N.createdAt DESC;`;
+}
+
+function buildNotificacoesAuditText(params: NotificacoesAuditParams) {
+    const statusFilter = String(params.filterStatus || 'UNREAD').toUpperCase();
+
+    return `--- LOGICA DA TELA ---
+Tela de listagem das notificacoes internas do usuario logado.
+
+TABELAS PRINCIPAIS:
+- notifications (N) - notificacoes internas
+
+RELACIONAMENTOS:
+- a rota aplica o usuario autenticado alem do tenantId da escola
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- status selecionado (:status): ${statusFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: criado em DESC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- N.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- a rota tambem restringe as notificacoes ao usuario autenticado`;
+}
 
 export default function NotificationsPage() {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -59,6 +110,21 @@ export default function NotificationsPage() {
     useEffect(() => {
         void loadNotifications(filterStatus);
     }, [filterStatus]);
+
+    useEffect(() => {
+        const auditParams: NotificacoesAuditParams = {
+            tenantId,
+            tenantName: tenantBranding?.schoolName,
+            filterStatus,
+            displayedRowsCount: notifications.length,
+        };
+
+        dispatchScreenAuditContext({
+            screenId: NOTIFICACOES_SCREEN_ID,
+            auditText: buildNotificacoesAuditText(auditParams),
+            sqlText: buildNotificacoesAuditSql(auditParams),
+        });
+    }, [filterStatus, notifications.length, tenantBranding?.schoolName, tenantId]);
 
     const handleMarkAsRead = async (notificationId: string) => {
         try {

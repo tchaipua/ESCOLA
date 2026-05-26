@@ -258,6 +258,93 @@ function editorTabClassName(isActive: boolean) {
   ].join(' ');
 }
 
+type BranchManagerAuditParams = {
+  tenantId: string;
+  tenantName: string;
+  loadedRowsCount: number;
+  rowsCount: number;
+  activeRowsCount: number;
+  inactiveRowsCount: number;
+};
+
+function toSqlLiteral(value: string) {
+  return `'${String(value || '').replace(/'/g, "''")}'`;
+}
+
+function buildBranchManagerAuditSql({
+  tenantId,
+}: BranchManagerAuditParams) {
+  const tenantLiteral = tenantId ? toSqlLiteral(tenantId) : ':tenantId';
+
+  return `-- PARAMETROS ATUAIS DO GRID
+-- :tenantId = ${tenantId ? tenantLiteral : 'NAO IDENTIFICADO'}
+-- :statusFilter = ${toSqlLiteral('ALL')}
+-- :canceledFilter = ${toSqlLiteral('ACTIVE_RECORDS')}
+
+SELECT
+  TB.id,
+  TB.tenantId,
+  TB.branchCode,
+  TB.name,
+  TB.logoUrl,
+  TB.document,
+  TB.cnpj,
+  TB.cpf,
+  TB.corporateName,
+  TB.nickname,
+  TB.phone,
+  TB.whatsapp,
+  TB.email,
+  TB.street,
+  TB.number,
+  TB.neighborhood,
+  TB.city,
+  TB.state,
+  TB.isActive,
+  TB.updatedAt,
+  TB.updatedBy
+FROM tenant_branches TB
+WHERE TB.tenantId = ${tenantLiteral}
+  AND TB.canceledAt IS NULL
+ORDER BY TB.branchCode ASC, TB.name ASC;`;
+}
+
+function buildBranchManagerAuditText(params: BranchManagerAuditParams) {
+  const tenantLabel = params.tenantName ? `${params.tenantId} (${params.tenantName})` : params.tenantId;
+  const sqlText = buildBranchManagerAuditSql(params);
+
+  return `--- LOGICA DA TELA ---
+Tela master do MSINFOR ADMIN para listar e manter as filiais operacionais da escola/empresa selecionada.
+
+TABELAS PRINCIPAIS:
+- tenant_branches (TB) - cadastro das filiais operacionais por escola/empresa
+- tenants (T) - cadastro principal da escola/empresa usada como contexto da tela
+
+RELACIONAMENTOS:
+- tenant_branches.tenantId = tenants.id
+
+FILTROS APLICADOS AGORA:
+- escola/tenant selecionado (:tenantId): ${tenantLabel || 'NAO IDENTIFICADO'}
+- busca digitada (:searchTerm): NAO APLICAVEL - esta grid nao possui campo de busca
+- status selecionado (:statusFilter): ALL
+- cancelamento logico (:canceledFilter): TB.canceledAt IS NULL
+- registros carregados do backend: ${params.loadedRowsCount}
+- registros exibidos apos os filtros: ${params.rowsCount}
+- filiais ativas exibidas: ${params.activeRowsCount}
+- filiais inativas exibidas: ${params.inactiveRowsCount}
+- ordenacao atual: branchCode ASC, name ASC
+- colunas visiveis agora: Codigo, Filial, Documento / CNPJ, Contato, Endereco, Status, Acao
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- TB.tenantId e a coluna usada para isolar as filiais da escola/empresa selecionada
+- :tenantId acima ja esta preenchido com o tenantId real escolhido no MSINFOR ADMIN
+- o backend garante a existencia da filial principal branchCode = 1 quando necessario
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function TenantBranchManager({
   tenant,
   getMasterPass,
@@ -284,6 +371,22 @@ export default function TenantBranchManager({
     () => [...branches].sort((left, right) => (left.branchCode || 0) - (right.branchCode || 0) || left.name.localeCompare(right.name)),
     [branches],
   );
+
+  const branchAuditContext = useMemo(() => {
+    const auditParams: BranchManagerAuditParams = {
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      loadedRowsCount: branches.length,
+      rowsCount: sortedBranches.length,
+      activeRowsCount: sortedBranches.filter((branch) => branch.isActive).length,
+      inactiveRowsCount: sortedBranches.filter((branch) => !branch.isActive).length,
+    };
+
+    return {
+      auditText: buildBranchManagerAuditText(auditParams),
+      sqlText: buildBranchManagerAuditSql(auditParams),
+    };
+  }, [branches.length, sortedBranches, tenant.id, tenant.name]);
 
   const loadBranches = async () => {
     try {
@@ -579,7 +682,14 @@ export default function TenantBranchManager({
               )}
             </div>
             <div className="mt-4 flex justify-end">
-              <ScreenNameCopy screenId={BRANCH_MANAGER_SCREEN_ID} label="Tela" className="mt-0" disableMargin />
+              <ScreenNameCopy
+                screenId={BRANCH_MANAGER_SCREEN_ID}
+                label="Tela"
+                className="mt-0"
+                disableMargin
+                auditText={branchAuditContext.auditText}
+                sqlText={branchAuditContext.sqlText}
+              />
             </div>
 
           {isEditorOpen ? (
@@ -890,7 +1000,14 @@ export default function TenantBranchManager({
             ) : null}
 
             <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-              <ScreenNameCopy screenId={BRANCH_EDITOR_SCREEN_ID} label="Tela" className="mt-0" disableMargin />
+              <ScreenNameCopy
+                screenId={BRANCH_EDITOR_SCREEN_ID}
+                label="Tela"
+                className="mt-0"
+                disableMargin
+                auditText={branchAuditContext.auditText}
+                sqlText={branchAuditContext.sqlText}
+              />
               <div className="flex gap-3">
                 <button type="button" onClick={closeEditor} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-500 transition hover:bg-slate-50">
                   Cancelar

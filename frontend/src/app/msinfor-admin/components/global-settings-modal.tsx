@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 export type GeneralSettingsTab = 's3' | 'email';
@@ -58,6 +58,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsForm = {
 };
 
 const GLOBAL_SETTINGS_MODAL_SCREEN_ID = 'MSINFOR_ADMIN_CONFIGURACOES_GERAIS_MODAL';
+const GLOBAL_SETTINGS_KEY = 'MSINFOR_GENERAL_SETTINGS';
 
 type GlobalSettingsModalProps = {
     isOpen: boolean;
@@ -101,6 +102,67 @@ function inputClass() {
     return 'w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white';
 }
 
+function buildGlobalSettingsAuditSql() {
+    return `SELECT
+  GS.id,
+  GS.settingKey,
+  json_extract(GS.settingValue, '$.s3Enabled') AS s3Enabled,
+  json_extract(GS.settingValue, '$.s3EndpointType') AS s3EndpointType,
+  json_extract(GS.settingValue, '$.s3Region') AS s3Region,
+  json_extract(GS.settingValue, '$.s3Bucket') AS s3Bucket,
+  json_extract(GS.settingValue, '$.s3BaseFolder') AS s3BaseFolder,
+  json_extract(GS.settingValue, '$.emailEnabled') AS emailEnabled,
+  json_extract(GS.settingValue, '$.emailSenderEmail') AS emailSenderEmail,
+  json_extract(GS.settingValue, '$.emailSmtpHost') AS emailSmtpHost,
+  json_extract(GS.settingValue, '$.emailSmtpPort') AS emailSmtpPort,
+  GS.createdAt,
+  GS.updatedAt,
+  GS.updatedBy
+FROM global_settings GS
+WHERE GS.settingKey = '${GLOBAL_SETTINGS_KEY}'
+  AND GS.canceledAt IS NULL
+LIMIT 1;`;
+}
+
+function buildGlobalSettingsAuditText(activeTab: GeneralSettingsTab, values: GeneralSettingsForm) {
+    const sqlText = buildGlobalSettingsAuditSql();
+
+    return `--- LOGICA DA TELA ---
+Modal master global da MSINFOR para parametrizar S3 e e-mail usados pela softhouse.
+
+TABELAS PRINCIPAIS:
+- global_settings (GS) - armazena parametros globais em JSON por chave de configuracao
+
+RELACIONAMENTOS:
+- Nao aplicavel. A configuracao e global da softhouse e nao pertence a uma escola/tenant.
+
+METRICAS / CAMPOS EXIBIDOS:
+- aba ativa
+- parametros de S3
+- parametros de SMTP/e-mail
+- estado de teste de comunicacao
+- segredo S3 e senha SMTP apenas como campos sensiveis preenchidos ou vazios
+
+FILTROS APLICADOS AGORA:
+- chave global (:settingKey): ${GLOBAL_SETTINGS_KEY}
+- aba selecionada (:activeTab): ${activeTab.toUpperCase()}
+- modulo S3 ativo em tela: ${values.s3Enabled ? 'SIM' : 'NAO'}
+- bucket S3 informado: ${values.s3Bucket || 'VAZIO'}
+- pasta base S3 informada: ${values.s3BaseFolder || 'VAZIO'}
+- secret key S3 preenchida: ${values.s3SecretKey ? 'SIM' : 'NAO'}
+- modulo e-mail ativo em tela: ${values.emailEnabled ? 'SIM' : 'NAO'}
+- host SMTP informado: ${values.emailSmtpHost || 'VAZIO'}
+- porta SMTP informada: ${values.emailSmtpPort || 'VAZIO'}
+- senha SMTP preenchida: ${values.emailSmtpPassword ? 'SIM' : 'NAO'}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- Esta tela nao usa schoolId porque grava parametros globais da MSINFOR.
+- A auditoria de mutacao e registrada no backend com usuario tecnico MSINFOR_MASTER.
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}`;
+}
+
 export default function GlobalSettingsModal({
     isOpen,
     activeTab,
@@ -119,6 +181,8 @@ export default function GlobalSettingsModal({
 }: GlobalSettingsModalProps) {
     const [isS3SecretVisible, setIsS3SecretVisible] = useState(false);
     const [isEmailSmtpPasswordVisible, setIsEmailSmtpPasswordVisible] = useState(false);
+    const auditSqlText = useMemo(() => buildGlobalSettingsAuditSql(), []);
+    const auditText = useMemo(() => buildGlobalSettingsAuditText(activeTab, values), [activeTab, values]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -422,7 +486,14 @@ export default function GlobalSettingsModal({
                                         {isSaving ? 'Salvando...' : 'Salvar configurações gerais'}
                                     </button>
                                 </div>
-                                <ScreenNameCopy screenId={GLOBAL_SETTINGS_MODAL_SCREEN_ID} label="Tela" className="mt-0 justify-end" disableMargin />
+                                <ScreenNameCopy
+                                    screenId={GLOBAL_SETTINGS_MODAL_SCREEN_ID}
+                                    label="Tela"
+                                    className="mt-0 justify-end"
+                                    disableMargin
+                                    auditText={auditText}
+                                    sqlText={auditSqlText}
+                                />
                             </div>
                         </div>
                     </div>

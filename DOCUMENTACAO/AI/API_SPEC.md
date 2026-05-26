@@ -77,12 +77,37 @@
 - Uso: atualiza dados cadastrais e parametros operacionais da filial
 - Restricao: `branchCode` nao pode repetir dentro da mesma escola
 
+### GET `/tenants/:id/access-users`
+
+- Autenticacao: cabecalho `x-msinfor-master-pass`
+- Uso: lista usuarios administrativos da escola e as filiais liberadas para cada usuario
+- Resposta inclui `branches`, `branchAccessCodes` e `branchAccesses`
+- Regra: usuario com papel `ADMIN` deve ser interpretado como acesso a todas as filiais ativas, mesmo sem registros em `user_branch_accesses`
+
+### POST `/tenants/:id/access-users`
+
+- Autenticacao: cabecalho `x-msinfor-master-pass`
+- Uso: cria usuario administrativo da escola
+- Body aceita `name`, `email`, `password`, `role`, perfis/permissoes e `branchAccessCodes`
+- Regra: `branchAccessCodes` e obrigatorio para usuario nao-admin quando a escola possui mais de uma filial ativa
+- Regra: para `role = ADMIN`, o backend ignora `branchAccessCodes` e libera todas as filiais
+
+### PUT `/tenants/:id/access-users/:userId`
+
+- Autenticacao: cabecalho `x-msinfor-master-pass`
+- Uso: atualiza usuario administrativo e suas filiais liberadas
+- Body aceita `branchAccessCodes`
+- Regra: omitir `branchAccessCodes` preserva os acessos atuais; enviar a lista substitui os vinculos ativos
+- Regra: para `role = ADMIN`, os vinculos ativos sao cancelados logicamente e o acesso continua liberado para todas as filiais
+
 ### `branchCode` em cadastros operacionais
 
 - `branchCode = 1..n`: registro restrito a filial informada
 - `branchCode = 0`: registro comum a todas as filiais
 - quando a escola possui apenas uma filial, o backend ignora a filial enviada e grava na filial existente
 - endpoints de professor, aluno, responsavel, serie, turma, serie x turma, disciplina, ano letivo, horarios base, vinculo professor x disciplina e grade horaria aceitam `branchCode` nas mutacoes
+- endpoints de professor, aluno e responsavel tambem aceitam `branchAccessCodes` para selecionar filiais especificas; lista vazia com `branchCode = 0` significa uso em todas as filiais
+- quando `branchAccessCodes` possuir mais de uma filial, o cadastro fica com `branchCode = 0`, mas a visibilidade e o login respeitam apenas a lista informada
 
 ### DELETE `/tenants/:id`
 
@@ -138,7 +163,8 @@ Body atual:
   "password": "SENHA",
   "tenantId": "opcional-quando-ha-mais-de-uma-escola",
   "accountId": "opcional-quando-ha-mais-de-um-papel",
-  "accountType": "user|teacher|student|guardian"
+  "accountType": "user|teacher|student|guardian",
+  "branchCode": "opcional-quando-ha-mais-de-uma-filial"
 }
 ```
 
@@ -153,8 +179,11 @@ Respostas possiveis:
   "user": {
     "id": "uuid",
     "tenantId": "uuid",
+    "branchCode": 1,
     "role": "PROFESSOR",
-    "permissions": ["VIEW_DASHBOARD"]
+    "permissions": ["VIEW_DASHBOARD"],
+    "branchAccessCodes": [1],
+    "canAccessAllBranches": false
   }
 }
 ```
@@ -187,6 +216,29 @@ Respostas possiveis:
   ]
 }
 ```
+
+### Multiplas filiais liberadas
+
+```json
+{
+  "status": "MULTIPLE_BRANCHES",
+  "tenant": { "id": "uuid", "name": "ESCOLA", "logoUrl": null },
+  "account": {
+    "accountId": "uuid",
+    "accountType": "user",
+    "role": "ADMIN",
+    "roleLabel": "ADMINISTRADOR",
+    "name": "NOME"
+  },
+  "branches": [
+    { "id": "uuid", "branchCode": 1, "name": "FILIAL 1" },
+    { "id": "uuid", "branchCode": 2, "name": "FILIAL 2" }
+  ]
+}
+```
+
+- Regra: usuarios `ADMIN` e acesso master recebem todas as filiais ativas para escolha
+- Regra: usuarios nao-admin recebem somente as filiais presentes em `user_branch_accesses`
 
 ### E-mail pendente de confirmacao
 

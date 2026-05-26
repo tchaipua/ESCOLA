@@ -296,6 +296,143 @@ function extractAssessmentText(value: string, labels: string[]) {
     return '';
 }
 
+function toSqlLiteral(value: string | number | null | undefined) {
+    if (value === null || value === undefined || value === '') return 'NULL';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+    return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+type ResponsavelAuditParams = {
+    tenantId: string;
+    tenantName: string;
+    guardianName: string;
+    activeTab: string;
+    notificationFilter: NotificationFilter;
+    readStatusFilter: ReadStatusFilter;
+    attendanceFilter: AttendanceFilter | null;
+    studentsCount: number;
+    scheduleLinksCount: number;
+    notificationsLoaded: number;
+    notificationsDisplayed: number;
+    unreadCount: number;
+    readCount: number;
+    offlineMode: boolean;
+    pendingReadCount: number;
+    pendingDeleteCount: number;
+};
+
+function buildResponsavelAuditSql(params: ResponsavelAuditParams) {
+    const categoryLiteral = params.notificationFilter === 'TODAS'
+        ? 'NULL'
+        : toSqlLiteral(params.notificationFilter === 'AGENDA' ? 'AGENDA_ESCOLAR' : params.notificationFilter);
+
+    return `SELECT
+  G.id AS guardianId,
+  G.name AS guardianName,
+  GS.kinship,
+  ST.id AS studentId,
+  ST.name AS studentName,
+  E.schoolYearId,
+  E.status AS enrollmentStatus,
+  COUNT(DISTINCT N.id) AS notificationsCount,
+  COUNT(DISTINCT CASE WHEN N.readAt IS NULL THEN N.id END) AS unreadNotifications,
+  COUNT(DISTINCT LATT.id) AS attendanceRecords,
+  COUNT(DISTINCT LAG.id) AS releasedGrades
+FROM guardians G
+INNER JOIN guardian_students GS
+  ON GS.guardianId = G.id
+ AND GS.tenantId = G.tenantId
+ AND GS.canceledAt IS NULL
+INNER JOIN students ST
+  ON ST.id = GS.studentId
+ AND ST.tenantId = GS.tenantId
+ AND ST.canceledAt IS NULL
+LEFT JOIN enrollments E
+  ON E.studentId = ST.id
+ AND E.tenantId = ST.tenantId
+ AND E.canceledAt IS NULL
+ AND E.status = 'ATIVO'
+LEFT JOIN notifications N
+  ON N.tenantId = G.tenantId
+ AND N.recipientType = 'GUARDIAN'
+ AND N.recipientId = G.id
+ AND N.canceledAt IS NULL
+LEFT JOIN lesson_attendances LATT
+  ON LATT.tenantId = ST.tenantId
+ AND LATT.studentId = ST.id
+ AND LATT.canceledAt IS NULL
+LEFT JOIN lesson_assessment_grades LAG
+  ON LAG.tenantId = ST.tenantId
+ AND LAG.studentId = ST.id
+ AND LAG.canceledAt IS NULL
+WHERE G.tenantId = ${toSqlLiteral(params.tenantId)}
+  AND G.canceledAt IS NULL
+  AND G.id = :guardianIdFromAuthenticatedUser
+  AND (
+    ${categoryLiteral} IS NULL
+    OR N.category = ${categoryLiteral}
+  )
+GROUP BY
+  G.id,
+  G.name,
+  GS.kinship,
+  ST.id,
+  ST.name,
+  E.schoolYearId,
+  E.status
+ORDER BY ST.name ASC;`;
+}
+
+function buildResponsavelAuditText(params: ResponsavelAuditParams) {
+    const sqlText = buildResponsavelAuditSql(params);
+
+    return `--- LOGICA DA TELA ---
+Tela PWA do responsavel para acompanhar alunos vinculados, notificacoes, chamadas, notas e horarios.
+
+TABELAS PRINCIPAIS:
+- guardians (G) - cadastro do responsavel autenticado
+- guardian_students (GS) - vinculo responsavel/aluno
+- students (ST) - alunos vinculados ao responsavel
+- enrollments (E) - matricula atual do aluno
+- notifications (N) - comunicados, agenda, chamada e avaliacao enviados ao responsavel
+- lesson_attendances (LATT) - registros de presenca/falta usados no resumo
+- lesson_assessment_grades (LAG) - notas liberadas usadas no resumo
+
+RELACIONAMENTOS:
+- guardians.id = guardian_students.guardianId
+- students.id = guardian_students.studentId
+- students.id = enrollments.studentId
+- notifications.recipientId = guardians.id
+- lesson_attendances.studentId = students.id
+- lesson_assessment_grades.studentId = students.id
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${params.tenantId || 'NAO CARREGADO'} (${params.tenantName || 'NAO CARREGADA'})
+- responsavel autenticado: ${params.guardianName || 'NAO CARREGADO'}
+- aba ativa: ${params.activeTab.toUpperCase()}
+- categoria de notificacao (:notificationFilter): ${params.notificationFilter}
+- status de leitura (:readStatusFilter): ${params.readStatusFilter}
+- filtro de chamada (:attendanceFilter): ${params.attendanceFilter || 'TODOS'}
+- alunos vinculados exibidos: ${params.studentsCount}
+- vinculos de horario carregados: ${params.scheduleLinksCount}
+- notificacoes carregadas: ${params.notificationsLoaded}
+- notificacoes exibidas apos filtros: ${params.notificationsDisplayed}
+- notificacoes nao lidas: ${params.unreadCount}
+- notificacoes lidas: ${params.readCount}
+- modo offline: ${params.offlineMode ? 'SIM' : 'NAO'}
+- leituras pendentes de sincronizacao: ${params.pendingReadCount}
+- exclusoes de chamada pendentes de sincronizacao: ${params.pendingDeleteCount}
+- ordenacao atual: notificacoes por createdAt DESC e alunos por nome
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- Todas as tabelas usam tenantId para isolar a escola.
+- O responsavel e resolvido pelo usuario autenticado no backend, nao por parametro digitavel na tela.
+- Em modo offline, a tela pode exibir o ultimo cache salvo no navegador e sincronizar depois.
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}`;
+}
+
 export default function ResponsavelPwaPage() {
     const router = useRouter();
     const { role: currentRole } = getDashboardAuthContext();
@@ -663,6 +800,28 @@ export default function ResponsavelPwaPage() {
             .map((item) => [String(item?.student?.student?.id || ''), String(item?.student?.student?.name || '')] as const)
             .filter(([id, name]) => Boolean(id) && Boolean(name)),
     );
+    const responsavelAuditParams: ResponsavelAuditParams = {
+        tenantId: tenant?.id || '',
+        tenantName: tenant?.name || '',
+        guardianName: summary?.guardian?.name || '',
+        activeTab,
+        notificationFilter,
+        readStatusFilter,
+        attendanceFilter,
+        studentsCount: summary?.students?.length || 0,
+        scheduleLinksCount: schedule?.students?.length || 0,
+        notificationsLoaded: notifications.length,
+        notificationsDisplayed: attendanceVisibleNotifications.length,
+        unreadCount,
+        readCount,
+        offlineMode: isOfflineMode,
+        pendingReadCount,
+        pendingDeleteCount,
+    };
+    const responsavelAuditContext = {
+        auditText: buildResponsavelAuditText(responsavelAuditParams),
+        sqlText: buildResponsavelAuditSql(responsavelAuditParams),
+    };
 
     return (
         <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(29,78,216,0.16),_transparent_35%),linear-gradient(180deg,#eff6ff_0%,#f8fafc_36%,#e2e8f0_100%)] px-4 py-5">
@@ -717,7 +876,13 @@ export default function ResponsavelPwaPage() {
                             <button type="button" onClick={() => void syncData(false)} disabled={isSyncing} className="flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</button>
                         </div>
                         <div className="mt-3 flex justify-end">
-                            <ScreenNameCopy screenId="PRINCIPAL_RESPONSAVEL_PWA" disableMargin className="w-auto" />
+                            <ScreenNameCopy
+                                screenId="PRINCIPAL_RESPONSAVEL_PWA"
+                                disableMargin
+                                className="w-auto"
+                                auditText={responsavelAuditContext.auditText}
+                                sqlText={responsavelAuditContext.sqlText}
+                            />
                         </div>
                         {errorStatus ? <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{errorStatus}</div> : null}
                     </div>

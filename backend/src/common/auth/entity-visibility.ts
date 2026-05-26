@@ -92,6 +92,7 @@ export function sanitizeGuardianSummaryForViewer<T extends Record<string, any>>(
     result.email = null;
     result.accessProfile = null;
     result.permissions = [];
+    result.branchAccessCodes = [];
   }
 
   return result as T;
@@ -139,6 +140,7 @@ export function sanitizeStudentForViewer<T extends Record<string, any>>(
     result.email = null;
     result.accessProfile = null;
     result.permissions = [];
+    result.branchAccessCodes = [];
   }
 
   if (!canViewStudentAcademicData(viewer)) {
@@ -188,6 +190,7 @@ export function sanitizeTeacherForViewer<T extends Record<string, any>>(
     result.email = null;
     result.accessProfile = null;
     result.permissions = [];
+    result.branchAccessCodes = [];
   }
 
   if (!canViewTeacherAcademicData(viewer)) {

@@ -26,8 +26,10 @@ import {
 } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const TURMAS_SCREEN_ID = 'PRINCIPAL_TURMAS';
 const SHIFT_OPTIONS = [
     { value: 'MANHA', label: 'Manhã' },
     { value: 'TARDE', label: 'Tarde' },
@@ -217,6 +219,121 @@ const TURMAS_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_STUDENTS_MODAL';
 const TURMAS_NEW_CLASS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_NEW_CLASS_MODAL';
 const TURMAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_TURMAS_STATUS_MODAL';
 
+type TurmasAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    seriesFilter: string;
+    seriesFilterLabel: string;
+    displayedRowsCount: number;
+    sortColumn: SeriesClassColumnKey;
+    sortDirection: 'asc' | 'desc';
+};
+
+function getTurmasAuditOrderBy(column: SeriesClassColumnKey) {
+    const orderColumns: Record<SeriesClassColumnKey, string> = {
+        className: 'CL.name',
+        series: 'SE.name',
+        seriesSortOrder: 'SE.sortOrder',
+        seriesCode: 'SE.code',
+        shift: 'CL.shift',
+        studentsCount: 'studentCount',
+        defaultMonthlyFee: 'CL.defaultMonthlyFee',
+        totalMonthlyFee: 'totalMonthlyFee',
+        recordStatus: 'SC.canceledAt',
+    };
+
+    return orderColumns[column] || 'SE.sortOrder';
+}
+
+function buildTurmasAuditSql(params: TurmasAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const seriesFilter = String(params.seriesFilter || '').trim();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+-- :seriesId = ${toSqlLiteral(seriesFilter)}
+
+SELECT
+  SC.*,
+  COUNT(DISTINCT EN.studentId) AS studentCount,
+  SUM(COALESCE(ST.monthlyFee, 0)) AS totalMonthlyFee
+FROM series_classes SC
+LEFT JOIN series SE
+  ON SE.id = SC.seriesId
+ AND SE.tenantId = SC.tenantId
+LEFT JOIN classes CL
+  ON CL.id = SC.classId
+ AND CL.tenantId = SC.tenantId
+LEFT JOIN enrollments EN
+  ON EN.seriesClassId = SC.id
+ AND EN.tenantId = SC.tenantId
+ AND EN.canceledAt IS NULL
+LEFT JOIN students ST
+  ON ST.id = EN.studentId
+ AND ST.tenantId = SC.tenantId
+ AND ST.canceledAt IS NULL
+WHERE SC.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(CL.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(CL.shift, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(SE.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND SC.canceledAt IS NULL AND CL.canceledAt IS NULL AND SE.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND (SC.canceledAt IS NOT NULL OR CL.canceledAt IS NOT NULL OR SE.canceledAt IS NOT NULL))
+  )
+  AND (
+    ${toSqlLiteral(seriesFilter)} = ''
+    OR SC.seriesId = ${toSqlLiteral(seriesFilter)}
+  )
+GROUP BY SC.id, SE.id, CL.id
+ORDER BY ${getTurmasAuditOrderBy(params.sortColumn)} ${sortDirection};`;
+}
+
+function buildTurmasAuditText(params: TurmasAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const seriesFilter = params.seriesFilter ? `${params.seriesFilter} (${params.seriesFilterLabel})` : 'TODAS';
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao das turmas da escola.
+
+TABELAS PRINCIPAIS:
+- series_classes (SC) - vinculo entre serie e turma
+- series (SE) - cadastro de series
+- classes (CL) - cadastro de turmas
+- enrollments (EN) - matriculas vinculadas a turma
+- students (ST) - alunos contabilizados na turma
+
+RELACIONAMENTOS:
+- series_classes.seriesId = series.id
+- series_classes.classId = classes.id
+- series_classes.id = enrollments.seriesClassId
+- students.id = enrollments.studentId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- status selecionado (:statusFilter): ${statusFilter}
+- serie selecionada (:seriesId): ${seriesFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: ${getTurmasAuditOrderBy(params.sortColumn)} ${sortDirection}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- SC.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function TurmasPage() {
     const [links, setLinks] = useState<SeriesClassRecord[]>([]);
     const [series, setSeries] = useState<SeriesRecord[]>([]);
@@ -229,6 +346,7 @@ export default function TurmasPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentBranchCode, setCurrentBranchCode] = useState(1);
@@ -296,6 +414,33 @@ export default function TurmasPage() {
         () => buildGridAggregateSummaries(sortedFilteredLinks, visibleSeriesClassColumns, columnAggregations),
         [columnAggregations, sortedFilteredLinks, visibleSeriesClassColumns],
     );
+    const turmasAuditContext = useMemo(() => {
+        const selectedSeries = series.find((item) => item.id === seriesFilter);
+        const auditParams: TurmasAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: tenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            seriesFilter,
+            seriesFilterLabel: selectedSeries?.name || 'TODAS',
+            displayedRowsCount: sortedFilteredLinks.length,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+        };
+
+        return {
+            auditText: buildTurmasAuditText(auditParams),
+            sqlText: buildTurmasAuditSql(auditParams),
+        };
+    }, [currentTenantId, searchTerm, series, seriesFilter, sortState.column, sortState.direction, sortedFilteredLinks.length, statusFilter, tenantBranding?.schoolName]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: TURMAS_SCREEN_ID,
+            auditText: turmasAuditContext.auditText,
+            sqlText: turmasAuditContext.sqlText,
+        });
+    }, [turmasAuditContext]);
 
     const loadData = async () => {
         try {
@@ -378,6 +523,12 @@ export default function TurmasPage() {
         resetForm();
     };
 
+    const returnFromSaveSuccessPopup = () => {
+        setSaveSuccessPopup(null);
+        setIsModalOpen(false);
+        resetForm();
+    };
+
     const toggleShift = (shift: ShiftValue) => {
         setFormData((current) => ({
             ...current,
@@ -392,6 +543,9 @@ export default function TurmasPage() {
             item.id !== editingId
             && item.seriesId === seriesId
             && item.class?.name === name
+            && !item.canceledAt
+            && !item.class?.canceledAt
+            && !item.series?.canceledAt
         );
     };
 
@@ -457,7 +611,8 @@ export default function TurmasPage() {
                 throw new Error(`Já existe uma turma ${normalizedName} para esta série.`);
             }
 
-            if (editingId) {
+            const wasEditing = Boolean(editingId);
+            if (wasEditing && editingId) {
                 const current = links.find((item) => item.id === editingId);
                 if (!current?.class?.id) throw new Error('Turma selecionada para edição não foi encontrada.');
                 const targetBranchCode = tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode;
@@ -494,8 +649,6 @@ export default function TurmasPage() {
 
                 const linkData = await linkResponse.json().catch(() => null);
                 if (!linkResponse.ok) throw new Error(linkData?.message || 'Não foi possível atualizar o vínculo da turma.');
-
-                setSuccessStatus('Turma atualizada com sucesso.');
             } else {
                 await createClassAndLink(token, {
                     branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
@@ -504,11 +657,14 @@ export default function TurmasPage() {
                     shifts: formData.shifts,
                     defaultMonthlyFee: formData.defaultMonthlyFee,
                 });
-                setSuccessStatus('Turma cadastrada com sucesso.');
             }
 
             closeModal();
-            await loadData();
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Turma salva com sucesso' : 'Turma inserida com sucesso',
+                message: wasEditing ? 'A turma foi alterada e a lista já foi atualizada.' : 'A turma foi inserida e a lista já foi atualizada.',
+            });
+            void loadData();
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível salvar a turma.');
         } finally {
@@ -1017,7 +1173,23 @@ export default function TurmasPage() {
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h2 className="text-xl font-bold text-[#153a6a]">{editingId ? 'Editar turma' : 'Nova turma'}</h2>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {tenantBranding?.logoUrl ? (
+                                        <img src={tenantBranding.logoUrl} alt={tenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {tenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">{editingId ? 'Editar turma' : 'Nova turma'}</h2>
+                                </div>
+                            </div>
                             <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1068,8 +1240,9 @@ export default function TurmasPage() {
                                     branches={tenantBranches}
                                     value={formData.branchCode}
                                     onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
-                                    labelClassName="text-xs font-semibold uppercase tracking-[0.3em] text-slate-600"
-                                    selectClassName="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    variant="pills"
+                                    label="Filiais"
+                                    containerClassName="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 md:col-span-3"
                                 />
                             </div>
                             <div className={`rounded-lg px-4 py-3 ${hasShiftSelected ? 'border border-slate-300 bg-slate-50' : 'border border-red-200 bg-red-50'}`}>
@@ -1122,6 +1295,40 @@ export default function TurmasPage() {
                                 </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+            ) : null}
+
+            {saveSuccessPopup ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl animate-in zoom-in-95">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {tenantBranding?.logoUrl ? (
+                                        <img src={tenantBranding.logoUrl} alt={tenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={returnFromSaveSuccessPopup}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
             ) : null}

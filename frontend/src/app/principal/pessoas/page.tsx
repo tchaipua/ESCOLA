@@ -5,8 +5,10 @@ import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const PESSOAS_SCREEN_ID = 'PRINCIPAL_PESSOAS';
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
   ADMINISTRADOR: { label: 'Administrador', color: 'border-violet-200 bg-violet-50 text-violet-700' },
@@ -53,6 +55,84 @@ type PersonRecord = {
     accessProfile: string | null;
   }>;
 };
+
+type PessoasAuditParams = {
+  tenantId: string | null;
+  tenantName?: string | null;
+  searchTerm: string;
+  roleFilter: PersonRole | 'ALL';
+  displayedRowsCount: number;
+};
+
+function buildPessoasAuditSql(params: PessoasAuditParams) {
+  const searchTerm = params.searchTerm.trim().toUpperCase();
+  const roleFilter = String(params.roleFilter || 'ALL').toUpperCase();
+
+  return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :roleFilter = ${toSqlLiteral(roleFilter)}
+
+SELECT DISTINCT P.*
+FROM people P
+LEFT JOIN teachers T
+  ON T.personId = P.id
+ AND T.tenantId = P.tenantId
+LEFT JOIN students ST
+  ON ST.personId = P.id
+ AND ST.tenantId = P.tenantId
+LEFT JOIN guardians G
+  ON G.personId = P.id
+ AND G.tenantId = P.tenantId
+WHERE P.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(P.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(roleFilter)} = 'ALL'
+    OR (${toSqlLiteral(roleFilter)} = 'PROFESSOR' AND T.id IS NOT NULL)
+    OR (${toSqlLiteral(roleFilter)} = 'ALUNO' AND ST.id IS NOT NULL)
+    OR (${toSqlLiteral(roleFilter)} = 'RESPONSAVEL' AND G.id IS NOT NULL)
+    OR (${toSqlLiteral(roleFilter)} = 'ADMINISTRADOR' AND EXISTS (
+      SELECT 1 FROM users U WHERE U.personId = P.id AND U.tenantId = P.tenantId
+    ))
+  )
+ORDER BY P.name ASC;`;
+}
+
+function buildPessoasAuditText(params: PessoasAuditParams) {
+  const searchTerm = params.searchTerm.trim().toUpperCase();
+  const roleFilter = String(params.roleFilter || 'ALL').toUpperCase();
+
+  return `--- LOGICA DA TELA ---
+Tela de consulta global de cadastros/pessoas.
+
+TABELAS PRINCIPAIS:
+- people (P) - cadastro mestre de pessoas
+- teachers (T) - papel professor
+- students (ST) - papel aluno
+- guardians (G) - papel responsavel
+- users (U) - usuarios administrativos
+
+RELACIONAMENTOS:
+- people.id = teachers.personId
+- people.id = students.personId
+- people.id = guardians.personId
+- people.id = users.personId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- papel selecionado (:roleFilter): ${roleFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: nome ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- P.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
 
 export default function PessoasPage() {
   const [people, setPeople] = useState<PersonRecord[]>([]);
@@ -141,6 +221,28 @@ export default function PessoasPage() {
     () => readCachedTenantBranding(currentTenantId),
     [currentTenantId],
   );
+  const pessoasAuditContext = useMemo(() => {
+    const auditParams: PessoasAuditParams = {
+      tenantId: currentTenantId,
+      tenantName: currentTenantBranding?.schoolName,
+      searchTerm,
+      roleFilter: selectedRoleFilter,
+      displayedRowsCount: filteredPeople.length,
+    };
+
+    return {
+      auditText: buildPessoasAuditText(auditParams),
+      sqlText: buildPessoasAuditSql(auditParams),
+    };
+  }, [currentTenantBranding?.schoolName, currentTenantId, filteredPeople.length, searchTerm, selectedRoleFilter]);
+
+  useEffect(() => {
+    dispatchScreenAuditContext({
+      screenId: PESSOAS_SCREEN_ID,
+      auditText: pessoasAuditContext.auditText,
+      sqlText: pessoasAuditContext.sqlText,
+    });
+  }, [pessoasAuditContext]);
 
   if (!isLoading && !canView) {
     return (

@@ -129,6 +129,17 @@ export default function LoginPage() {
     email?: string | null;
     tenant: { id: string; name: string; logoUrl?: string | null };
   }> | null>(null);
+  const [multipleBranchOptions, setMultipleBranchOptions] = useState<{
+    tenant: { id: string; name: string; logoUrl?: string | null };
+    account?: {
+      accountId: string;
+      accountType: string;
+      role?: string;
+      roleLabel?: string;
+      name?: string;
+    } | null;
+    branches: Array<{ id: string; branchCode: number; name: string }>;
+  } | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
 
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -168,6 +179,17 @@ export default function LoginPage() {
       return true;
     }
 
+    if (data.status === 'MULTIPLE_BRANCHES') {
+      setMultipleBranchOptions({
+        tenant: data.tenant,
+        account: data.account || null,
+        branches: Array.isArray(data.branches) ? data.branches : [],
+      });
+      setMultipleSchools(null);
+      setMultipleAccessOptions(null);
+      return true;
+    }
+
     if (data.status === 'EMAIL_CONFIRMATION_REQUIRED') {
       setSuccessStatus({
         message: data.message || 'Vamos enviar um e-mail de confirmação para continuar.',
@@ -192,6 +214,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setErrorStatus(null);
+    setMultipleBranchOptions(null);
 
     try {
       const normalizedUser = email.trim().toUpperCase();
@@ -234,6 +257,7 @@ export default function LoginPage() {
   const handleSelectSchool = async (tenantId: string) => {
     setLoading(true);
     setMultipleSchools(null);
+    setMultipleBranchOptions(null);
     try {
       const normalizedUser = email.trim().toUpperCase();
       const passwordToSend = normalizedUser === 'MSINFOR' ? buildMasterPass(new Date()) : password;
@@ -319,6 +343,47 @@ export default function LoginPage() {
       router.push(resolveHomeRoute(resolvedRole, teacherAccessMode));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar o tipo de acesso.') });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectBranch = async (branchCode: number) => {
+    if (!multipleBranchOptions?.tenant?.id) return;
+    setLoading(true);
+    setMultipleBranchOptions(null);
+
+    try {
+      const normalizedUser = email.trim().toUpperCase();
+      const passwordToSend = normalizedUser === 'MSINFOR' ? buildMasterPass(new Date()) : password;
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: normalizedUser,
+          password: passwordToSend,
+          tenantId: multipleBranchOptions.tenant.id,
+          accountId: multipleBranchOptions.account?.accountId,
+          accountType: multipleBranchOptions.account?.accountType,
+          branchCode,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Falha na autenticação');
+      }
+
+      if (handleIntermediateAuthStatus(data)) {
+        return;
+      }
+
+      setStoredToken(data.access_token, rememberMe);
+      setMultipleBranchOptions(null);
+      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode));
+    } catch (err: any) {
+      setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar a filial.') });
     } finally {
       setLoading(false);
     }
@@ -763,6 +828,57 @@ export default function LoginPage() {
               <div className="mt-6 pt-4 border-t border-slate-100">
                 <button
                   onClick={() => setMultipleAccessOptions(null)}
+                  className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Voltar ao Login
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {multipleBranchOptions && (
+        <div className="fixed inset-0 z-[66] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#2272c7] p-6 text-center">
+              <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h.01M9 13h.01M9 17h.01M15 13h.01M15 17h.01" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-bold text-white mb-1">Escolha a Filial</h2>
+              <p className="text-blue-100 text-sm font-medium opacity-90">
+                {multipleBranchOptions.tenant.name}
+              </p>
+            </div>
+
+            <div className="p-6">
+              <div className="space-y-3 max-h-[45vh] overflow-y-auto custom-scrollbar pr-1">
+                {multipleBranchOptions.branches.map((branch) => (
+                  <button
+                    key={branch.id}
+                    onClick={() => handleSelectBranch(branch.branchCode)}
+                    className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all group active:scale-95"
+                  >
+                    <div className="text-left">
+                      <div className="text-base font-extrabold text-slate-800">
+                        {branch.branchCode} - {branch.name}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-600">
+                        Filial liberada
+                      </div>
+                    </div>
+                    <svg className="w-5 h-5 text-slate-300 group-hover:text-[#2272c7] transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <button
+                  onClick={() => setMultipleBranchOptions(null)}
                   className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Voltar ao Login

@@ -5,11 +5,14 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
+import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, hasAnyDashboardPermission, hasDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { clearStoredSession } from '@/app/lib/auth-storage';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const MENSALIDADES_SCREEN_ID = 'PRINCIPAL_MENSALIDADES';
 const CONFIRMATION_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_CONFIRMAR_EFETUAR_LANCAMENTOS';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_ALERTA_GERAL';
 
@@ -180,6 +183,90 @@ function isUnauthorizedError(error: unknown) {
     return error instanceof Error && error.message === 'Unauthorized';
 }
 
+type MensalidadesAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    formState: FormState;
+    selectedSeriesLabel: string;
+    selectedSeriesClassLabel: string;
+    historyCount: number;
+};
+
+function buildMensalidadesAuditSql(params: MensalidadesAuditParams) {
+    const launchType = String(params.formState.launchType || 'MENSALIDADE').toUpperCase();
+    const scope = String(params.formState.scope || 'ALL').toUpperCase();
+
+    return `-- PARAMETROS ATUAIS DA TELA
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :launchType = ${toSqlLiteral(launchType)}
+-- :scope = ${toSqlLiteral(scope)}
+-- :referenceMonth = ${toSqlLiteral(params.formState.referenceMonth)}
+-- :installmentCount = ${toSqlLiteral(params.formState.installmentCount)}
+-- :firstDueDate = ${toSqlLiteral(params.formState.firstDueDate)}
+-- :seriesId = ${toSqlLiteral(params.formState.scope === 'SERIES' ? params.formState.seriesId : '')}
+-- :seriesClassId = ${toSqlLiteral(params.formState.scope === 'SERIES_CLASS' ? params.formState.seriesClassId : '')}
+
+SELECT RB.*
+FROM receivable_batches RB
+WHERE RB.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND RB.sourceBatchType = ${toSqlLiteral(launchType)}
+ORDER BY RB.createdAt DESC;
+
+SELECT ST.*
+FROM students ST
+LEFT JOIN enrollments EN
+  ON EN.studentId = ST.id
+ AND EN.tenantId = ST.tenantId
+ AND EN.canceledAt IS NULL
+LEFT JOIN series_classes SC
+  ON SC.id = EN.seriesClassId
+ AND SC.tenantId = ST.tenantId
+ AND SC.canceledAt IS NULL
+WHERE ST.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND ST.canceledAt IS NULL
+  AND (
+    ${toSqlLiteral(scope)} = 'ALL'
+    OR (${toSqlLiteral(scope)} = 'SERIES' AND SC.seriesId = ${toSqlLiteral(params.formState.seriesId)})
+    OR (${toSqlLiteral(scope)} = 'SERIES_CLASS' AND SC.id = ${toSqlLiteral(params.formState.seriesClassId)})
+  )
+ORDER BY ST.name ASC;`;
+}
+
+function buildMensalidadesAuditText(params: MensalidadesAuditParams) {
+    const launchType = String(params.formState.launchType || 'MENSALIDADE').toUpperCase();
+    const scope = String(params.formState.scope || 'ALL').toUpperCase();
+
+    return `--- LOGICA DA TELA ---
+Tela financeira para gerar mensalidades e consultar o historico de lancamentos.
+
+TABELAS PRINCIPAIS:
+- receivable_batches (RB) - lotes de titulos enviados ao financeiro
+- students (ST) - alunos elegiveis para lancamento
+- enrollments (EN) - matriculas ativas usadas para filtrar serie/turma
+- series_classes (SC) - turma/serie alvo do lancamento
+
+RELACIONAMENTOS:
+- students.id = enrollments.studentId
+- enrollments.seriesClassId = series_classes.id
+- o lote financeiro e criado no modulo financeiro a partir dos alunos elegiveis
+
+FILTROS/PARAMETROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- tipo de lancamento (:launchType): ${launchType}
+- abrangencia (:scope): ${scope}
+- mes de referencia (:referenceMonth): ${formatAuditValue(params.formState.referenceMonth)}
+- quantidade de parcelas (:installmentCount): ${formatAuditValue(params.formState.installmentCount)}
+- primeiro vencimento (:firstDueDate): ${formatAuditValue(params.formState.firstDueDate)}
+- serie selecionada (:seriesId): ${formatAuditValue(params.formState.scope === 'SERIES' ? params.formState.seriesId : '', 'NAO APLICAVEL')} (${params.selectedSeriesLabel})
+- turma selecionada (:seriesClassId): ${formatAuditValue(params.formState.scope === 'SERIES_CLASS' ? params.formState.seriesClassId : '', 'NAO APLICAVEL')} (${params.selectedSeriesClassLabel})
+- registros no historico exibido: ${params.historyCount}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- RB.tenantId e ST.tenantId isolam os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os parametros acima refletem os campos visiveis do formulario e o historico carregado`;
+}
+
 export default function PrincipalMensalidadesPage() {
     const [bootstrapData, setBootstrapData] = useState<BootstrapResponse | null>(null);
     const [formState, setFormState] = useState<FormState>(() => createDefaultFormState());
@@ -262,13 +349,36 @@ export default function PrincipalMensalidadesPage() {
     const selectedSeriesClassLabel = useMemo(() => {
         return bootstrapData?.seriesClasses.find((item) => item.id === formState.seriesClassId)?.label || 'TURMA NÃO SELECIONADA';
     }, [bootstrapData?.seriesClasses, formState.seriesClassId]);
+    const selectedSeriesLabel = useMemo(() => {
+        return bootstrapData?.series.find((item) => item.id === formState.seriesId)?.name || 'SERIE NAO SELECIONADA';
+    }, [bootstrapData?.series, formState.seriesId]);
+    const mensalidadesAuditContext = useMemo(() => {
+        const auditParams: MensalidadesAuditParams = {
+            tenantId: authContext.tenantId,
+            tenantName: tenantBranding?.schoolName,
+            formState,
+            selectedSeriesLabel,
+            selectedSeriesClassLabel,
+            historyCount: bootstrapData?.history.length || 0,
+        };
+
+        return {
+            auditText: buildMensalidadesAuditText(auditParams),
+            sqlText: buildMensalidadesAuditSql(auditParams),
+        };
+    }, [authContext.tenantId, bootstrapData?.history.length, formState, selectedSeriesClassLabel, selectedSeriesLabel, tenantBranding?.schoolName]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: MENSALIDADES_SCREEN_ID,
+            auditText: mensalidadesAuditContext.auditText,
+            sqlText: mensalidadesAuditContext.sqlText,
+        });
+    }, [mensalidadesAuditContext]);
 
     const handleCopyConfirmationScreenName = useCallback(async () => {
         try {
-            if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-                return;
-            }
-            await navigator.clipboard.writeText(CONFIRMATION_SCREEN_ID);
+            await copyTextToClipboard(CONFIRMATION_SCREEN_ID);
         } catch (error) {
             console.error('Falha ao copiar nome da tela de confirmação', error);
         }
@@ -908,7 +1018,7 @@ export default function PrincipalMensalidadesPage() {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => void navigator.clipboard?.writeText(ALERT_SCREEN_ID)}
+                                            onClick={() => void copyTextToClipboard(ALERT_SCREEN_ID)}
                                             title="Copiar nome da tela"
                                             aria-label={`Copiar o identificador ${ALERT_SCREEN_ID}`}
                                             className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"

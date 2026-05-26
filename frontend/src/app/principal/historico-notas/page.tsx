@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const HISTORICO_NOTAS_SCREEN_ID = 'PRINCIPAL_HISTORICO_NOTAS';
 
 type CurrentTenant = {
     id: string;
@@ -79,6 +81,81 @@ function formatScore(value?: number | null) {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
     });
+}
+
+type HistoricoNotasAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    selectedSchoolYearId: string;
+    selectedTeacherSubjectId: string;
+    selectedSeriesClassId: string;
+    schoolYearLabel: string;
+    teacherSubjectLabel: string;
+    seriesClassLabel: string;
+    assessmentsCount: number;
+    studentsCount: number;
+};
+
+function buildHistoricoNotasAuditSql(params: HistoricoNotasAuditParams) {
+    return `-- PARAMETROS ATUAIS DA TELA
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :schoolYearId = ${toSqlLiteral(params.selectedSchoolYearId)}
+-- :teacherSubjectId = ${toSqlLiteral(params.selectedTeacherSubjectId)}
+-- :seriesClassId = ${toSqlLiteral(params.selectedSeriesClassId)}
+
+SELECT LA.*
+FROM lesson_assessments LA
+LEFT JOIN lesson_events LE
+  ON LE.id = LA.lessonEventId
+ AND LE.tenantId = LA.tenantId
+WHERE LA.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (${toSqlLiteral(params.selectedSchoolYearId)} = '' OR LE.schoolYearId = ${toSqlLiteral(params.selectedSchoolYearId)})
+  AND (${toSqlLiteral(params.selectedTeacherSubjectId)} = '' OR LE.teacherSubjectId = ${toSqlLiteral(params.selectedTeacherSubjectId)})
+  AND (${toSqlLiteral(params.selectedSeriesClassId)} = '' OR LE.seriesClassId = ${toSqlLiteral(params.selectedSeriesClassId)})
+  AND LA.canceledAt IS NULL
+ORDER BY LE.date ASC, LE.startTime ASC;
+
+SELECT ASG.*
+FROM lesson_assessment_students ASG
+LEFT JOIN lesson_assessments LA
+  ON LA.id = ASG.assessmentId
+ AND LA.tenantId = ASG.tenantId
+LEFT JOIN lesson_events LE
+  ON LE.id = LA.lessonEventId
+ AND LE.tenantId = ASG.tenantId
+WHERE ASG.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (${toSqlLiteral(params.selectedSchoolYearId)} = '' OR LE.schoolYearId = ${toSqlLiteral(params.selectedSchoolYearId)})
+  AND (${toSqlLiteral(params.selectedTeacherSubjectId)} = '' OR LE.teacherSubjectId = ${toSqlLiteral(params.selectedTeacherSubjectId)})
+  AND (${toSqlLiteral(params.selectedSeriesClassId)} = '' OR LE.seriesClassId = ${toSqlLiteral(params.selectedSeriesClassId)})
+ORDER BY ASG.studentName ASC;`;
+}
+
+function buildHistoricoNotasAuditText(params: HistoricoNotasAuditParams) {
+    return `--- LOGICA DA TELA ---
+Tela de consulta do historico de notas por ano letivo, materia e turma.
+
+TABELAS PRINCIPAIS:
+- lesson_assessments (LA) - avaliacoes/notas lancadas
+- lesson_assessment_students (ASG) - notas por aluno
+- lesson_events (LE) - evento/aula avaliativa de origem
+
+RELACIONAMENTOS:
+- lesson_assessments.lessonEventId = lesson_events.id
+- lesson_assessment_students.assessmentId = lesson_assessments.id
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- ano letivo (:schoolYearId): ${formatAuditValue(params.selectedSchoolYearId)} (${params.schoolYearLabel})
+- materia/professor (:teacherSubjectId): ${formatAuditValue(params.selectedTeacherSubjectId)} (${params.teacherSubjectLabel})
+- turma (:seriesClassId): ${formatAuditValue(params.selectedSeriesClassId)} (${params.seriesClassLabel})
+- avaliacoes exibidas apos filtros: ${params.assessmentsCount}
+- alunos exibidos apos filtros: ${params.studentsCount}
+- ordenacao atual: data ASC, horario ASC, aluno ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- LA.tenantId e ASG.tenantId isolam os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados na tela`;
 }
 
 export default function HistoricoNotasPage() {
@@ -158,6 +235,36 @@ export default function HistoricoNotasPage() {
     const subjectOptions = useMemo(() => data?.filters.teacherSubjects || [], [data]);
     const classOptions = useMemo(() => data?.filters.seriesClasses || [], [data]);
     const yearOptions = useMemo(() => data?.filters.schoolYears || [], [data]);
+    const historicoNotasAuditContext = useMemo(() => {
+        const selectedYear = yearOptions.find((item) => item.id === selectedSchoolYearId);
+        const selectedSubject = subjectOptions.find((item) => item.id === selectedTeacherSubjectId);
+        const selectedClass = classOptions.find((item) => item.id === selectedSeriesClassId);
+        const auditParams: HistoricoNotasAuditParams = {
+            tenantId: tenant?.id || null,
+            tenantName: tenant?.name,
+            selectedSchoolYearId,
+            selectedTeacherSubjectId,
+            selectedSeriesClassId,
+            schoolYearLabel: selectedYear?.label || data?.header?.schoolYearLabel || 'NAO INFORMADO',
+            teacherSubjectLabel: selectedSubject?.label || data?.header?.subjectName || 'NAO INFORMADO',
+            seriesClassLabel: selectedClass?.label || data?.header?.seriesClassLabel || 'NAO INFORMADO',
+            assessmentsCount: data?.summary.totalAssessments || 0,
+            studentsCount: data?.summary.totalStudents || 0,
+        };
+
+        return {
+            auditText: buildHistoricoNotasAuditText(auditParams),
+            sqlText: buildHistoricoNotasAuditSql(auditParams),
+        };
+    }, [classOptions, data?.header?.schoolYearLabel, data?.header?.seriesClassLabel, data?.header?.subjectName, data?.summary.totalAssessments, data?.summary.totalStudents, selectedSchoolYearId, selectedSeriesClassId, selectedTeacherSubjectId, subjectOptions, tenant?.id, tenant?.name, yearOptions]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: HISTORICO_NOTAS_SCREEN_ID,
+            auditText: historicoNotasAuditContext.auditText,
+            sqlText: historicoNotasAuditContext.sqlText,
+        });
+    }, [historicoNotasAuditContext]);
 
     return (
         <div className="mx-auto mt-6 max-w-[1720px] space-y-6">

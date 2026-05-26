@@ -95,4 +95,17 @@ export class CreateGuardianDto {
   @Min(0)
   @IsOptional()
   branchCode?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "Filiais liberadas para uso deste responsável. Envie vazio para todas as filiais.",
+    type: [Number],
+  })
+  @IsArray()
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @IsOptional()
+  branchAccessCodes?: number[];
 }

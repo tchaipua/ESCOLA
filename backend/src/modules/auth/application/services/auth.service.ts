@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../../../../prisma/prisma.service";
+import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { LoginDto } from "../dto/login.dto";
 import { RegisterDto } from "../dto/register.dto";
@@ -38,7 +39,12 @@ import {
   DEFAULT_BRANCH_CODE,
   getVisibleBranchCodes,
   normalizeBranchCode,
+  SHARED_BRANCH_CODE,
 } from "../../../../common/tenant/branch.constants";
+import {
+  listTenantBranches,
+  mapTenantBranchSummary,
+} from "../../../../common/tenant/tenant-branches";
 
 type AccountModelType = "user" | "teacher" | "student" | "guardian";
 
@@ -52,6 +58,7 @@ type AccountLookup = {
   role: string;
   complementaryProfiles?: string | null;
   permissions: string[];
+  branchAccessCodes?: number[];
   modelType: AccountModelType;
   tenant: {
     id: string;
@@ -110,9 +117,9 @@ export class AuthService {
       .toUpperCase();
   }
 
-  private getCrossTenantPrisma(): any {
+  private getCrossTenantPrisma(): PrismaClient {
     const prismaWithUnscoped = this.prisma as PrismaService & {
-      getUnscopedClient?: () => unknown;
+      getUnscopedClient?: () => PrismaClient;
     };
 
     return typeof prismaWithUnscoped.getUnscopedClient === "function"
@@ -132,6 +139,7 @@ export class AuthService {
 
   private async findAccountByEmail(email: string): Promise<AccountLookup[]> {
     const emailVariants = this.normalizeEmailVariants(email);
+    const prismaClient = this.getCrossTenantPrisma();
     const tenantSelect = {
       id: true,
       name: true,
@@ -161,25 +169,51 @@ export class AuthService {
     } as const;
 
     const [users, teachers, students, guardians] = await Promise.all([
-      this.prisma.user.findMany({
+      prismaClient.user.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
         select: {
           ...baseSelect,
           role: true,
           complementaryProfiles: true,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
         },
       }),
-      this.prisma.teacher.findMany({
+      prismaClient.teacher.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        select: baseSelect,
+        select: {
+          ...baseSelect,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
+        },
       }),
-      this.prisma.student.findMany({
+      prismaClient.student.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        select: baseSelect,
+        select: {
+          ...baseSelect,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
+        },
       }),
-      this.prisma.guardian.findMany({
+      prismaClient.guardian.findMany({
         where: { email: { in: emailVariants }, canceledAt: null },
-        select: baseSelect,
+        select: {
+          ...baseSelect,
+          branchAccesses: {
+            where: { canceledAt: null },
+            orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
+            select: { branchCode: true, isDefault: true },
+          },
+        },
       }),
     ]);
 
@@ -187,6 +221,15 @@ export class AuthService {
       ...users.map((u) => ({
         ...u,
         modelType: "user" as const,
+        branchAccessCodes: Array.from(
+          new Set(
+            (u.branchAccesses || [])
+              .map((access) =>
+                normalizeBranchCode(access.branchCode, DEFAULT_BRANCH_CODE),
+              )
+              .filter((branchCode) => branchCode >= DEFAULT_BRANCH_CODE),
+          ),
+        ),
         permissions: resolveAccountPermissions({
           role: u.role,
           accessProfile: u.accessProfile,
@@ -198,6 +241,15 @@ export class AuthService {
         ...t,
         modelType: "teacher" as const,
         role: "PROFESSOR",
+        branchAccessCodes: Array.from(
+          new Set(
+            (t.branchAccesses || [])
+              .map((access) =>
+                normalizeBranchCode(access.branchCode, DEFAULT_BRANCH_CODE),
+              )
+              .filter((branchCode) => branchCode >= DEFAULT_BRANCH_CODE),
+          ),
+        ),
         permissions: resolveAccountPermissions({
           role: "PROFESSOR",
           accessProfile: t.accessProfile,
@@ -208,6 +260,15 @@ export class AuthService {
         ...s,
         modelType: "student" as const,
         role: "ALUNO",
+        branchAccessCodes: Array.from(
+          new Set(
+            (s.branchAccesses || [])
+              .map((access) =>
+                normalizeBranchCode(access.branchCode, DEFAULT_BRANCH_CODE),
+              )
+              .filter((branchCode) => branchCode >= DEFAULT_BRANCH_CODE),
+          ),
+        ),
         permissions: resolveAccountPermissions({
           role: "ALUNO",
           accessProfile: s.accessProfile,
@@ -218,6 +279,15 @@ export class AuthService {
         ...g,
         modelType: "guardian" as const,
         role: "RESPONSAVEL",
+        branchAccessCodes: Array.from(
+          new Set(
+            (g.branchAccesses || [])
+              .map((access) =>
+                normalizeBranchCode(access.branchCode, DEFAULT_BRANCH_CODE),
+              )
+              .filter((branchCode) => branchCode >= DEFAULT_BRANCH_CODE),
+          ),
+        ),
         permissions: resolveAccountPermissions({
           role: "RESPONSAVEL",
           accessProfile: g.accessProfile,
@@ -237,6 +307,8 @@ export class AuthService {
       branchCode: normalizeBranchCode(sessionBranchCode, DEFAULT_BRANCH_CODE),
       role: account.role,
       permissions: account.permissions,
+      branchAccessCodes: account.branchAccessCodes || [],
+      canAccessAllBranches: this.canAccountAccessAllBranches(account),
       complementaryProfiles:
         account.modelType === "user"
           ? normalizeComplementaryAccessProfiles(account.complementaryProfiles)
@@ -378,6 +450,119 @@ export class AuthService {
     branches?: Array<{ logoUrl?: string | null }>;
   }) {
     return tenant?.logoUrl ?? tenant?.branches?.[0]?.logoUrl ?? null;
+  }
+
+  private canAccountAccessAllBranches(account: {
+    role?: string | null;
+    modelType?: AccountModelType | "master";
+  }) {
+    return (
+      account.modelType === "master" ||
+      String(account.role || "")
+        .trim()
+        .toUpperCase() === "ADMIN" ||
+      String(account.role || "")
+        .trim()
+        .toUpperCase() === MASTER_ROLE
+    );
+  }
+
+  private async listSelectableBranchesForTenant(tenantId: string) {
+    const branches = await listTenantBranches(this.prisma, tenantId);
+    return branches.filter((branch) => branch.isActive);
+  }
+
+  private async listAllowedBranchesForAccount(account: AccountLookup) {
+    const branches = await this.listSelectableBranchesForTenant(
+      account.tenantId,
+    );
+
+    if (this.canAccountAccessAllBranches(account)) {
+      return branches;
+    }
+
+    if (account.modelType === "user") {
+      const explicitCodes =
+        account.branchAccessCodes && account.branchAccessCodes.length > 0
+          ? account.branchAccessCodes
+          : [normalizeBranchCode(account.branchCode, DEFAULT_BRANCH_CODE)];
+      const allowedCodes = new Set(explicitCodes);
+      return branches.filter((branch) => allowedCodes.has(branch.branchCode));
+    }
+
+    const explicitCodes =
+      account.branchAccessCodes && account.branchAccessCodes.length > 0
+        ? account.branchAccessCodes
+        : [];
+
+    if (explicitCodes.length > 0) {
+      const allowedCodes = new Set(explicitCodes);
+      return branches.filter((branch) => allowedCodes.has(branch.branchCode));
+    }
+
+    const accountBranchCode = normalizeBranchCode(
+      account.branchCode,
+      DEFAULT_BRANCH_CODE,
+    );
+
+    if (accountBranchCode === SHARED_BRANCH_CODE) {
+      return branches;
+    }
+
+    return branches.filter((branch) => branch.branchCode === accountBranchCode);
+  }
+
+  private async resolveSessionBranchForAccount(
+    account: AccountLookup,
+    requestedBranchCode?: unknown,
+  ): Promise<
+    | { status: "READY"; branchCode: number; allowedBranches: any[] }
+    | { status: "NEEDS_SELECTION"; allowedBranches: any[] }
+  > {
+    const allowedBranches = await this.listAllowedBranchesForAccount(account);
+
+    if (allowedBranches.length === 0) {
+      throw new UnauthorizedException(
+        "Acesso negado: nenhuma filial liberada para este usuário.",
+      );
+    }
+
+    const hasRequestedBranch =
+      requestedBranchCode !== undefined &&
+      requestedBranchCode !== null &&
+      String(requestedBranchCode).trim() !== "";
+
+    if (!hasRequestedBranch) {
+      if (allowedBranches.length > 1) {
+        return { status: "NEEDS_SELECTION", allowedBranches };
+      }
+
+      return {
+        status: "READY",
+        branchCode: allowedBranches[0].branchCode,
+        allowedBranches,
+      };
+    }
+
+    const normalizedBranchCode = normalizeBranchCode(
+      requestedBranchCode,
+      DEFAULT_BRANCH_CODE,
+    );
+    const isAllowed = allowedBranches.some(
+      (branch) => branch.branchCode === normalizedBranchCode,
+    );
+
+    if (!isAllowed) {
+      throw new UnauthorizedException(
+        "Acesso negado para a filial selecionada.",
+      );
+    }
+
+    return {
+      status: "READY",
+      branchCode: normalizedBranchCode,
+      allowedBranches,
+    };
   }
 
   private getRoleLabel(role: string) {
@@ -636,12 +821,44 @@ export class AuthService {
         );
       }
 
+      const masterBranches = await this.listSelectableBranchesForTenant(
+        selectedTenant.id,
+      );
+      const hasRequestedBranch =
+        loginDto.branchCode !== undefined &&
+        loginDto.branchCode !== null &&
+        String(loginDto.branchCode).trim() !== "";
+
+      if (!hasRequestedBranch && masterBranches.length > 1) {
+        return {
+          status: "MULTIPLE_BRANCHES",
+          tenant: selectedTenant,
+          account: null,
+          branches: masterBranches.map(mapTenantBranchSummary),
+        };
+      }
+
+      const masterBranchCode = hasRequestedBranch
+        ? normalizeBranchCode(loginDto.branchCode, DEFAULT_BRANCH_CODE)
+        : masterBranches[0]?.branchCode || DEFAULT_BRANCH_CODE;
+
+      if (
+        masterBranches.length > 0 &&
+        !masterBranches.some((branch) => branch.branchCode === masterBranchCode)
+      ) {
+        throw new UnauthorizedException(
+          "Filial inválida para o acesso master.",
+        );
+      }
+
       const payload = {
         userId: MASTER_USER_ID,
         tenantId: selectedTenant.id,
-        branchCode: DEFAULT_BRANCH_CODE,
+        branchCode: masterBranchCode,
         role: MASTER_ROLE,
         permissions: MASTER_PERMISSIONS,
+        branchAccessCodes: masterBranches.map((branch) => branch.branchCode),
+        canAccessAllBranches: true,
         isMaster: true,
         name: MASTER_LOGIN_USERNAME,
         modelType: "master",
@@ -653,9 +870,11 @@ export class AuthService {
         user: {
           id: MASTER_USER_ID,
           tenantId: selectedTenant.id,
-          branchCode: DEFAULT_BRANCH_CODE,
+          branchCode: masterBranchCode,
           role: MASTER_ROLE,
           permissions: MASTER_PERMISSIONS,
+          branchAccessCodes: masterBranches.map((branch) => branch.branchCode),
+          canAccessAllBranches: true,
           name: MASTER_LOGIN_USERNAME,
           email: MASTER_LOGIN_USERNAME,
           modelType: "master",
@@ -696,10 +915,12 @@ export class AuthService {
     }
 
     const validUsers = accounts;
-    const requestedBranchCode = normalizeBranchCode(
-      loginDto.branchCode,
-      DEFAULT_BRANCH_CODE,
-    );
+    const requestedBranchCode =
+      loginDto.branchCode !== undefined &&
+      loginDto.branchCode !== null &&
+      String(loginDto.branchCode).trim() !== ""
+        ? normalizeBranchCode(loginDto.branchCode, DEFAULT_BRANCH_CODE)
+        : null;
 
     let userToLogin: AccountLookup | null = null;
     const validTenantIds = Array.from(
@@ -729,9 +950,11 @@ export class AuthService {
     const validUsersForTenant = validUsers.filter(
       (account) =>
         account.tenantId === selectedTenantId &&
-        getVisibleBranchCodes(requestedBranchCode).includes(
-          normalizeBranchCode(account.branchCode, DEFAULT_BRANCH_CODE),
-        ),
+        (requestedBranchCode === null ||
+          account.modelType === "user" ||
+          getVisibleBranchCodes(requestedBranchCode).includes(
+            normalizeBranchCode(account.branchCode, DEFAULT_BRANCH_CODE),
+          )),
     );
 
     if (validUsersForTenant.length === 0) {
@@ -791,12 +1014,34 @@ export class AuthService {
       );
     }
 
+    const branchResolution = await this.resolveSessionBranchForAccount(
+      userToLogin,
+      loginDto.branchCode,
+    );
+
+    if (branchResolution.status === "NEEDS_SELECTION") {
+      return {
+        status: "MULTIPLE_BRANCHES",
+        tenant: {
+          id: userToLogin.tenant.id,
+          name: userToLogin.tenant.name,
+          logoUrl: this.getTenantLogoUrl(userToLogin.tenant),
+        },
+        account: this.toLoginSelection(userToLogin),
+        branches: branchResolution.allowedBranches.map(mapTenantBranchSummary),
+      };
+    }
+
     const payload = {
       userId: userToLogin.id,
       tenantId: userToLogin.tenantId,
-      branchCode: requestedBranchCode,
+      branchCode: branchResolution.branchCode,
       role: userToLogin.role,
       permissions: userToLogin.permissions,
+      branchAccessCodes: branchResolution.allowedBranches.map(
+        (branch) => branch.branchCode,
+      ),
+      canAccessAllBranches: this.canAccountAccessAllBranches(userToLogin),
       name: userToLogin.name,
       modelType: userToLogin.modelType,
     };
@@ -804,7 +1049,12 @@ export class AuthService {
     return {
       status: "SUCCESS",
       access_token: this.jwtService.sign(payload),
-      user: this.toSafeLoginUser(userToLogin, requestedBranchCode),
+      user: {
+        ...this.toSafeLoginUser(userToLogin, branchResolution.branchCode),
+        branchAccessCodes: branchResolution.allowedBranches.map(
+          (branch) => branch.branchCode,
+        ),
+      },
     };
   }
 

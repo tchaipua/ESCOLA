@@ -279,6 +279,29 @@ Componentes/Telas:
 - `frontend/src/app/lib/tenant-branding-cache.ts`
 - popups e modais do painel principal e demais módulos administrativos
 
+### PAT-013.1 - Auditoria SQL em abas e com parametros reais
+
+- a referencia visual aprovada para este modal e a auditoria da tela `PRINCIPAL_PROFESSORES`
+- o cabecalho deve concentrar os controles principais:
+  - esquerda: logotipo institucional, etiqueta `Auditoria SQL`, identificador tecnico e pill `ORIGEM: SISTEMA ...`
+  - centro: seletor de abas `Outras informações` / `SQL`
+  - direita: botoes textuais `Fechar` e `Copiar SQL` com o mesmo tamanho
+- o botao `Copiar SQL` deve aparecer somente quando a aba `SQL` estiver ativa
+- os botoes de acao nao devem ser repetidos no rodape do modal
+- o path/origem tecnica do arquivo deve ficar abaixo do cabecalho em pill vermelha centralizada
+- a janela de auditoria aberta pelo identificador tecnico deve separar o conteudo em duas abas:
+  - `Outras informações`, aberta por padrao, contendo origem, tabelas, relacionamentos, metricas/campos exibidos, filtros aplicados, ordenacao e observacoes funcionais
+  - `SQL`, contendo exclusivamente a consulta SQL/base logica copiavel
+- a aba `SQL` nao deve misturar texto explicativo, nomes amigaveis ou comentarios que nao sejam uteis para executar/entender a consulta
+- o botao `Copiar SQL` deve copiar somente o conteudo da aba `SQL`
+- sempre que a tela possuir filtros visiveis, ordenacao, status, filial, periodo, busca digitada ou parametros derivados da sessao, a auditoria deve refletir os valores atuais do grid/lista no momento da abertura
+- no SQL copiavel, parametros obrigatorios devem aparecer com o valor real quando possivel, especialmente `schoolId`/`tenantId`, `branchCode`, busca digitada, status e filtros selecionados
+- para a Escola, o filtro de tenant deve ficar executavel no SQL, exemplo `WHERE T.tenantId = 'uuid-real-da-escola'`
+- nomes humanos de apoio, como nome da escola ou nome da filial, devem aparecer na aba `Outras informações` entre parenteses ao lado do identificador tecnico, mas nao devem alterar a SQL executavel
+- se algum parametro sensivel nao puder ser exibido, a auditoria deve declarar `NAO EXIBIDO POR SEGURANCA` e manter a consulta segura
+- quando novos filtros forem adicionados a uma tela com grid/lista, o gerador de auditoria dessa tela deve ser atualizado na mesma manutencao
+- referencia validada: `PRINCIPAL_PROFESSORES`, com primeira aba `Outras informações`, segunda aba `SQL`, SQL dinamico por filtro e `schoolId` real
+
 ### PAT-014 - Cabecalho padrao de programas Escola e Financeiro
 
 - faixa principal em degradê azul com cantos arredondados

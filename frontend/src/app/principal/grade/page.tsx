@@ -17,8 +17,10 @@ import { fetchTenantBranches, getDashboardAuthContext, hasDashboardPermission, t
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const GRADE_SCREEN_ID = 'PRINCIPAL_GRADE';
 const GRADE_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_GRADE_STATUS_MODAL';
 const PERIOD_OPTIONS = [
     { value: 'MANHA', label: 'Manhã' },
@@ -114,6 +116,84 @@ const DEFAULT_SORT: GridSortState<ScheduleColumnKey> = {
     direction: 'asc',
 };
 
+type GradeAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    displayedRowsCount: number;
+    sortColumn: ScheduleColumnKey;
+    sortDirection: 'asc' | 'desc';
+};
+
+function getGradeAuditOrderBy(column: ScheduleColumnKey) {
+    const orderColumns: Record<ScheduleColumnKey, string> = {
+        period: 'S.period',
+        lessonNumber: 'S.lessonNumber',
+        description: 'S.lessonNumber',
+        startTime: 'S.startTime',
+        endTime: 'S.endTime',
+        recordStatus: 'S.canceledAt',
+    };
+
+    return orderColumns[column] || 'S.period';
+}
+
+function buildGradeAuditSql(params: GradeAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+
+SELECT S.*
+FROM schedules S
+WHERE S.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(S.period, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(CAST(S.lessonNumber AS TEXT)) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(S.startTime, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(S.endTime, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND S.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND S.canceledAt IS NOT NULL)
+  )
+ORDER BY ${getGradeAuditOrderBy(params.sortColumn)} ${sortDirection};`;
+}
+
+function buildGradeAuditText(params: GradeAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao dos horarios base das aulas.
+
+TABELAS PRINCIPAIS:
+- schedules (S) - cadastro dos horarios base por periodo/aula
+
+RELACIONAMENTOS:
+- Nao ha relacionamento obrigatorio para a listagem principal.
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- status selecionado (:statusFilter): ${statusFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: ${getGradeAuditOrderBy(params.sortColumn)} ${sortDirection}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- S.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function GradeHorariaPage() {
     const [schedules, setSchedules] = useState<ScheduleRecord[]>([]);
     const [formData, setFormData] = useState<ScheduleFormState>(EMPTY_FORM);
@@ -124,6 +204,8 @@ export default function GradeHorariaPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
+    const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [sortState, setSortState] = useState<GridSortState<ScheduleColumnKey>>(DEFAULT_SORT);
@@ -176,6 +258,30 @@ export default function GradeHorariaPage() {
         [filteredSchedules, sortState],
     );
     const tenantBranding = useMemo(() => readCachedTenantBranding(currentTenantId), [currentTenantId]);
+    const gradeAuditContext = useMemo(() => {
+        const auditParams: GradeAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: tenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            displayedRowsCount: sortedFilteredSchedules.length,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+        };
+
+        return {
+            auditText: buildGradeAuditText(auditParams),
+            sqlText: buildGradeAuditSql(auditParams),
+        };
+    }, [currentTenantId, searchTerm, sortState.column, sortState.direction, sortedFilteredSchedules.length, statusFilter, tenantBranding?.schoolName]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: GRADE_SCREEN_ID,
+            auditText: gradeAuditContext.auditText,
+            sqlText: gradeAuditContext.sqlText,
+        });
+    }, [gradeAuditContext]);
 
     const loadSchedules = async () => {
         try {
@@ -254,6 +360,15 @@ export default function GradeHorariaPage() {
         resetForm();
     };
 
+    const requestCloseModal = () => {
+        setIsExitConfirmationOpen(true);
+    };
+
+    const confirmExitModal = () => {
+        setIsExitConfirmationOpen(false);
+        closeModal();
+    };
+
     const handleSave = async (event: React.FormEvent) => {
         event.preventDefault();
 
@@ -284,9 +399,13 @@ export default function GradeHorariaPage() {
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível salvar o horário.'));
 
-            setSuccessStatus(editingId ? 'Horário atualizado com sucesso.' : 'Horário cadastrado com sucesso.');
+            const wasEditing = Boolean(editingId);
             closeModal();
             await loadSchedules();
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Horário salvo com sucesso' : 'Horário inserido com sucesso',
+                message: wasEditing ? 'O horário foi alterado e a lista já foi atualizada.' : 'O horário foi inserido e a lista já foi atualizada.',
+            });
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível salvar o horário.');
         } finally {
@@ -647,8 +766,24 @@ export default function GradeHorariaPage() {
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
                         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <h2 className="text-xl font-bold text-[#153a6a]">{editingId ? 'Editar horário' : 'Novo horário'}</h2>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {tenantBranding?.logoUrl ? (
+                                        <img src={tenantBranding.logoUrl} alt={tenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {tenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">{editingId ? 'Editar horário' : 'Novo horário'}</h2>
+                                </div>
+                            </div>
+                            <button onClick={requestCloseModal} className="text-slate-400 hover:text-red-500">
                                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
@@ -685,11 +820,86 @@ export default function GradeHorariaPage() {
                                 <input type="time" value={formData.endTime} onChange={(event) => setFormData((current) => ({ ...current, endTime: event.target.value }))} className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
                             </div>
 
-                            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
-                                <button type="button" onClick={closeModal} className="px-5 py-2.5 text-slate-500 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">Cancelar</button>
-                                <button type="submit" disabled={!canManage || isSaving} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed">{isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar horário'}</button>
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                                <button type="button" onClick={requestCloseModal} className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100">Sair sem Gravar</button>
+                                <button type="submit" disabled={!canManage || isSaving} className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300">{isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar horário'}</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            ) : null}
+
+            {isExitConfirmationOpen ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-2xl animate-in zoom-in-95">
+                        <div className="border-b border-rose-100 bg-rose-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-sm">
+                                    {tenantBranding?.logoUrl ? (
+                                        <img src={tenantBranding.logoUrl} alt={tenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-rose-700">SAIR SEM GRAVAR</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">Deseja sair deste cadastro?</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">As alterações ainda não gravadas serão descartadas.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap justify-between gap-3 px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setIsExitConfirmationOpen(false)}
+                                className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                                Continuar editando
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmExitModal}
+                                className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                            >
+                                Sair sem Gravar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {saveSuccessPopup ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl animate-in zoom-in-95">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {tenantBranding?.logoUrl ? (
+                                        <img src={tenantBranding.logoUrl} alt={tenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
             ) : null}

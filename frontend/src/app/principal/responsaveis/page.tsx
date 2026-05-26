@@ -51,8 +51,11 @@ import {
 const RESPONSAVEIS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_STATUS_MODAL';
 const RESPONSAVEIS_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_POPUP_CPF_CONFLICT';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
+import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
+import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const RESPONSAVEIS_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS';
 
 type GuardianStudentLink = {
     id: string;
@@ -91,6 +94,7 @@ type GuardianRecord = {
     neighborhood?: string | null;
     complement?: string | null;
     branchCode?: number | null;
+    branchAccessCodes?: number[] | null;
     accessProfile?: AccessProfileCode | null;
     permissions?: string[];
     students?: GuardianStudentLink[];
@@ -101,6 +105,7 @@ type GuardianFormState = {
     phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string;
     zipCode: string; street: string; number: string; city: string; state: string; neighborhood: string; complement: string;
     branchCode: number;
+    branchAccessCodes: number[];
     accessProfile: AccessProfileCode; permissions: string[];
 };
 
@@ -111,6 +116,7 @@ const EMPTY_FORM: GuardianFormState = {
     phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
     zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
     branchCode: 1,
+    branchAccessCodes: [1],
     accessProfile: DEFAULT_GUARDIAN_PROFILE, permissions: getProfilePermissions(DEFAULT_GUARDIAN_PROFILE),
 };
 
@@ -202,6 +208,115 @@ const DEFAULT_SORT: GridSortState<GuardianColumnKey> = {
     direction: 'asc',
 };
 
+type ResponsaveisAuditParams = {
+    tenantId: string | null;
+    tenantName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    displayedRowsCount: number;
+    sortColumn: GuardianColumnKey;
+    sortDirection: 'asc' | 'desc';
+};
+
+function getResponsaveisAuditOrderBy(column: GuardianColumnKey) {
+    const orderColumns: Record<GuardianColumnKey, string> = {
+        name: 'G.name',
+        nickname: 'G.nickname',
+        corporateName: 'G.corporateName',
+        birthDate: 'G.birthDate',
+        cpf: 'G.cpf',
+        rg: 'G.rg',
+        cnpj: 'G.cnpj',
+        contact: 'COALESCE(G.email, G.whatsapp, G.phone, G.cellphone1)',
+        email: 'G.email',
+        phone: 'G.phone',
+        whatsapp: 'G.whatsapp',
+        cellphone1: 'G.cellphone1',
+        cellphone2: 'G.cellphone2',
+        zipCode: 'G.zipCode',
+        street: 'G.street',
+        number: 'G.number',
+        neighborhood: 'G.neighborhood',
+        complement: 'G.complement',
+        city: 'G.city',
+        state: 'G.state',
+        cityState: 'G.city',
+        address: 'G.street',
+        accessProfile: 'G.accessProfile',
+        students: 'COUNT(GS.id)',
+    };
+
+    return orderColumns[column] || 'G.name';
+}
+
+function buildResponsaveisAuditSql(params: ResponsaveisAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${toSqlLiteral(params.tenantId || '')}
+-- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :statusFilter = ${toSqlLiteral(statusFilter)}
+
+SELECT G.*
+FROM guardians G
+LEFT JOIN guardian_students GS
+  ON GS.guardianId = G.id
+ AND GS.tenantId = G.tenantId
+ AND GS.canceledAt IS NULL
+LEFT JOIN students ST
+  ON ST.id = GS.studentId
+ AND ST.tenantId = G.tenantId
+ AND ST.canceledAt IS NULL
+WHERE G.tenantId = ${toSqlLiteral(params.tenantId || '')}
+  AND (
+    ${toSqlLiteral(searchTerm)} = ''
+    OR UPPER(COALESCE(G.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(G.email, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(G.cpf, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(G.whatsapp, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(G.phone, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+  )
+  AND (
+    ${toSqlLiteral(statusFilter)} = 'ALL'
+    OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND G.canceledAt IS NULL)
+    OR (${toSqlLiteral(statusFilter)} = 'INACTIVE' AND G.canceledAt IS NOT NULL)
+  )
+GROUP BY G.id
+ORDER BY ${getResponsaveisAuditOrderBy(params.sortColumn)} ${sortDirection};`;
+}
+
+function buildResponsaveisAuditText(params: ResponsaveisAuditParams) {
+    const searchTerm = params.searchTerm.trim().toUpperCase();
+    const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutencao do cadastro de responsaveis.
+
+TABELAS PRINCIPAIS:
+- guardians (G) - cadastro operacional de responsaveis
+- guardian_students (GS) - vinculo entre responsavel e aluno
+- students (ST) - alunos vinculados ao responsavel
+
+RELACIONAMENTOS:
+- guardians.id = guardian_students.guardianId
+- students.id = guardian_students.studentId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
+- busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- status selecionado (:statusFilter): ${statusFilter}
+- registros exibidos apos os filtros: ${params.displayedRowsCount}
+- ordenacao atual: ${getResponsaveisAuditOrderBy(params.sortColumn)} ${sortDirection}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- G.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 function errorMessage(error: unknown, fallback: string) {
     return error instanceof Error ? error.message : fallback;
 }
@@ -280,6 +395,7 @@ export default function ResponsaveisPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [formData, setFormData] = useState<GuardianFormState>(EMPTY_FORM);
     const [selectedGuardianForStudents, setSelectedGuardianForStudents] = useState<GuardianRecord | null>(null);
     const [sortState, setSortState] = useState<GridSortState<GuardianColumnKey>>(DEFAULT_SORT);
@@ -372,6 +488,31 @@ export default function ResponsaveisPage() {
         () => readCachedTenantBranding(currentTenantId),
         [currentTenantId],
     );
+    const responsaveisAuditContext = useMemo(() => {
+        const auditParams: ResponsaveisAuditParams = {
+            tenantId: currentTenantId,
+            tenantName: currentTenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            displayedRowsCount: sortedFilteredGuardians.length,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+        };
+
+        return {
+            auditText: buildResponsaveisAuditText(auditParams),
+            sqlText: buildResponsaveisAuditSql(auditParams),
+        };
+    }, [currentTenantBranding?.schoolName, currentTenantId, searchTerm, sortState.column, sortState.direction, sortedFilteredGuardians.length, statusFilter]);
+
+    useEffect(() => {
+        dispatchScreenAuditContext({
+            screenId: RESPONSAVEIS_SCREEN_ID,
+            auditText: responsaveisAuditContext.auditText,
+            sqlText: responsaveisAuditContext.sqlText,
+        });
+    }, [responsaveisAuditContext]);
+
     const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
         const normalizedEmail = String(email || '').trim().toUpperCase();
@@ -499,7 +640,7 @@ export default function ResponsaveisPage() {
         setIsModalOpen(false);
         setEditingGuardianId(null);
         setActiveTab(1);
-        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode, branchAccessCodes: [currentBranchCode] });
         setPersonSystemRoles(['RESPONSAVEL']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -514,7 +655,7 @@ export default function ResponsaveisPage() {
     const openModal = () => {
         setEditingGuardianId(null);
         setActiveTab(1);
-        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
+        setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode, branchAccessCodes: [currentBranchCode] });
         setPersonSystemRoles(['RESPONSAVEL']);
         setNameSuggestions([]);
         setShowNameSuggestions(false);
@@ -550,6 +691,7 @@ export default function ResponsaveisPage() {
             neighborhood: guardian.neighborhood || '',
             complement: guardian.complement || '',
             branchCode: typeof guardian.branchCode === 'number' ? guardian.branchCode : currentBranchCode,
+            branchAccessCodes: resolveBranchAccessSelection(guardian, currentBranchCode),
             accessProfile: guardian.accessProfile || DEFAULT_GUARDIAN_PROFILE,
             permissions: Array.isArray(guardian.permissions) && guardian.permissions.length > 0
                 ? guardian.permissions
@@ -922,9 +1064,10 @@ export default function ResponsaveisPage() {
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
             const url = editingGuardianId ? `${API_BASE_URL}/guardians/${editingGuardianId}` : `${API_BASE_URL}/guardians`;
             const method = editingGuardianId ? 'PATCH' : 'POST';
-            const payload: Record<string, string | string[] | number> = {
+            const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
+            const payload: Record<string, string | string[] | number[] | number | undefined> = {
                 ...formData,
-                branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
+                ...branchPayload,
                 cpf: formatCpf(formData.cpf),
                 cnpj: formatCnpj(formData.cnpj),
                 phone: formatPhone(formData.phone),
@@ -932,6 +1075,9 @@ export default function ResponsaveisPage() {
                 cellphone1: formatPhone(formData.cellphone1),
                 cellphone2: formatPhone(formData.cellphone2),
             };
+            if (branchPayload.branchAccessCodes === undefined) {
+                delete payload.branchAccessCodes;
+            }
             if (!payload.birthDate) delete payload.birthDate;
             if (!guardianFieldAccess.access) {
                 delete payload.email;
@@ -948,8 +1094,13 @@ export default function ResponsaveisPage() {
                 const err = await response.json().catch(() => null);
                 throw new Error(err?.message || 'Erro ao salvar responsável.');
             }
+            const wasEditing = Boolean(editingGuardianId);
             closeModal();
             await fetchGuardians();
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Responsável salvo com sucesso' : 'Responsável inserido com sucesso',
+                message: wasEditing ? 'O responsável foi alterado e a lista já foi atualizada.' : 'O responsável foi inserido e a lista já foi atualizada.',
+            });
         } catch (error) {
             setSaveError(errorMessage(error, 'Erro ao salvar responsável.'));
         }
@@ -1202,8 +1353,8 @@ export default function ResponsaveisPage() {
                                 ))}
                             </div>
                         </div>
-                        <div className="flex gap-2 border-b border-slate-200 bg-slate-50/50 px-6 pt-4">
-                            {['1. DADOS BÁSICOS', '2. ENDEREÇO', '3. ACESSO PWA'].map((label, index) => (
+                        <div className="flex flex-wrap gap-2 border-b border-slate-200 bg-slate-50/50 px-6 pt-4">
+                            {['1. DADOS BÁSICOS', '2. ENDEREÇO', '3. ACESSO PWA', '4. FILIAIS DE ACESSO'].map((label, index) => (
                                 <button key={label} type="button" onClick={() => setActiveTab(index + 1)} className={`rounded-t-lg px-4 py-2.5 text-sm font-bold ${activeTab === index + 1 ? 'border border-slate-200 border-b-white bg-white text-blue-700' : 'text-slate-500 hover:bg-slate-100'}`}>{label}</button>
                             ))}
                         </div>
@@ -1278,13 +1429,6 @@ export default function ResponsaveisPage() {
                                         ) : null}
                                     </div>
                                     <div><label className={labelClass}>Data de nascimento</label><input type="date" value={formData.birthDate} onChange={(event) => setFormData((current) => ({ ...current, birthDate: event.target.value }))} className={inputClass} /></div>
-                                    <TenantBranchSelect
-                                        branches={tenantBranches}
-                                        value={formData.branchCode}
-                                        onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
-                                        labelClassName={labelClass}
-                                        selectClassName={`${inputClass} bg-white`}
-                                    />
                                     {guardianFieldAccess.sensitive ? (
                                         <>
                                             <div><label className={labelClass}>RG</label><input value={formData.rg} onChange={(event) => setFormData((current) => ({ ...current, rg: event.target.value.toUpperCase() }))} className={inputClass} /></div>
@@ -1451,10 +1595,27 @@ export default function ResponsaveisPage() {
                                     </div>
                                 )
                             ) : null}
+                            {activeTab === 4 ? (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Filiais de Acesso</h4>
+                                    <div className="grid grid-cols-1 gap-5 max-w-4xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                        <TenantBranchSelect
+                                            branches={tenantBranches}
+                                            value={formData.branchCode}
+                                            onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                            mode="multiple"
+                                            selectedBranchCodes={formData.branchAccessCodes}
+                                            onSelectedBranchCodesChange={(branchAccessCodes) => setFormData((current) => ({ ...current, branchAccessCodes }))}
+                                            labelClassName={labelClass}
+                                            selectClassName={`${inputClass} bg-white`}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
                             <div className="sticky bottom-0 -mx-6 mt-8 flex flex-col gap-3 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div className="flex flex-wrap gap-3">
-                                        <button type="button" onClick={closeModal} className="rounded-xl px-6 py-3 text-sm font-semibold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100">SAIR</button>
+                                        <button type="button" onClick={closeModal} className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100">Sair sem Gravar</button>
                                     </div>
                                     <div className="flex flex-wrap justify-end gap-3">
                                         <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingGuardianId ? 'Salvar' : 'Registrar responsável'}</button>
@@ -1470,6 +1631,40 @@ export default function ResponsaveisPage() {
                                 </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+            ) : null}
+
+            {saveSuccessPopup ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
             ) : null}

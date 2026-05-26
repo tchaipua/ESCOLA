@@ -186,3 +186,30 @@ Para cada decisao, registrar:
 - Impacto: permite centralizar storage na empresa para casos simples e sobrescrever por filial quando houver segregacao operacional de arquivos.
 - Alternativas consideradas: manter storage somente em configuracao global da softhouse; exigir storage em todas as filiais; mover storage totalmente para filial.
 - Status: aceita
+
+## DEC-0020
+
+- Data: 2026-05-23
+- Contexto: a tela `PRINCIPAL_PROFESSORES` consolidou o modelo visual do modal que mostra a auditoria SQL, separando informacoes funcionais e SQL executavel.
+- Decisao: adotar esse modelo como padrao oficial: cabecalho com logotipo/origem/identificador a esquerda, abas `Outras informações` e `SQL` no centro, botoes `Fechar` e `Copiar SQL` a direita, `Copiar SQL` visivel somente na aba `SQL` e sem botoes duplicados no rodape.
+- Impacto: novas telas da Escola e telas integradas ao Financeiro devem manter a mesma estrutura ao exibir auditoria SQL, reduzindo divergencia visual e evitando SQL copiado com parametros incompletos.
+- Alternativas consideradas: manter abas no corpo do modal; manter botoes no rodape; deixar cada sistema com modal diferente.
+- Status: aceita
+
+## DEC-0021
+
+- Data: 2026-05-23
+- Contexto: escolas podem possuir varias filiais, mas nem todo usuario administrativo deve operar em todas elas.
+- Decisao: controlar filiais liberadas por usuario em `user_branch_accesses`; usuarios com papel `ADMIN` e acesso master podem escolher qualquer filial ativa sem precisar de vinculo explicito.
+- Impacto: o login passa a solicitar escolha de filial quando houver mais de uma filial liberada, o `branchCode` escolhido entra no token e o modulo financeiro integrado recebe o mesmo `sourceBranchCode`.
+- Alternativas consideradas: criar usuarios duplicados por filial; permitir todos os usuarios em todas as filiais; controlar filial apenas no frontend.
+- Status: aceita
+
+## DEC-0022
+
+- Data: 2026-05-26
+- Contexto: professores, alunos e responsaveis podem ser usados em mais de uma filial especifica, sem necessariamente liberar todas as filiais da empresa.
+- Decisao: adicionar vinculos de filial por papel operacional em `teacher_branch_accesses`, `student_branch_accesses` e `guardian_branch_accesses`; manter `branchCode = 0` para "todas as filiais" e usar os vinculos apenas quando houver selecao parcial.
+- Impacto: cadastros passam a permitir marcar filial 1 e 3, por exemplo, e o login oferece somente as filiais liberadas para aquele papel.
+- Alternativas consideradas: duplicar cadastros por filial; usar apenas `branchCode = 0` para todos os casos; reaproveitar `user_branch_accesses` fora de usuarios administrativos.
+- Status: aceita

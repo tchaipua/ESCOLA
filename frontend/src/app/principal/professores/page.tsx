@@ -46,6 +46,8 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
+const PROFESSORES_SCREEN_ID = 'PRINCIPAL_PROFESSORES';
 const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
 const PROFESSORES_DETAIL_COPY_SCREEN_ID = 'PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO';
 const PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_EMAIL_USAGE_MODAL';
@@ -77,6 +79,7 @@ type TeacherSubjectAssignment = {
 type TeacherRecord = {
     id: string;
     branchCode?: number | null;
+    branchAccessCodes?: number[] | null;
     name: string;
     canceledAt?: string | null;
     email?: string | null;
@@ -109,6 +112,7 @@ type DisciplineBadgeTone = {
 
 type TeacherFormState = {
     branchCode: number;
+    branchAccessCodes: number[];
     name: string;
     rg: string;
     cpf: string;
@@ -537,6 +541,139 @@ const DEFAULT_SORT: GridSortState<TeacherColumnKey> = {
     direction: 'asc',
 };
 
+type ProfessoresAuditParams = {
+    schoolId: string | null;
+    schoolName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    subjectFilter: string;
+    sortColumn: TeacherColumnKey;
+    sortDirection: GridSortState<TeacherColumnKey>['direction'];
+    rowsCount: number;
+};
+
+function toSqlLiteral(value: string) {
+    return `'${String(value || '').replace(/'/g, "''")}'`;
+}
+
+function buildProfessoresAuditSql({
+    schoolId,
+    searchTerm,
+    statusFilter,
+    subjectFilter,
+    sortColumn,
+    sortDirection,
+}: ProfessoresAuditParams) {
+    const currentSearchTerm = searchTerm.trim().toUpperCase();
+    const currentStatusFilter = String(statusFilter || 'ACTIVE').toUpperCase();
+    const currentSubjectFilter = subjectFilter.trim().toUpperCase() || 'ALL';
+    const schoolLiteral = schoolId ? toSqlLiteral(schoolId) : ':schoolId';
+    const searchLiteral = toSqlLiteral(currentSearchTerm);
+    const statusLiteral = toSqlLiteral(currentStatusFilter);
+    const subjectLiteral = toSqlLiteral(currentSubjectFilter);
+    const orderColumnByGridColumn: Record<TeacherColumnKey, string> = {
+        name: 'T.name',
+        nickname: 'T.nickname',
+        corporateName: 'T.corporateName',
+        birthDate: 'T.birthDate',
+        cpf: 'T.cpf',
+        rg: 'T.rg',
+        cnpj: 'T.cnpj',
+        contact: 'T.name',
+        email: 'T.email',
+        phone: 'T.phone',
+        whatsapp: 'T.whatsapp',
+        cellphone1: 'T.cellphone1',
+        cellphone2: 'T.cellphone2',
+        zipCode: 'T.zipCode',
+        street: 'T.street',
+        number: 'T.number',
+        neighborhood: 'T.neighborhood',
+        complement: 'T.complement',
+        city: 'T.city',
+        state: 'T.state',
+        cityState: 'T.city',
+        address: 'T.street',
+        accessProfile: 'T.accessProfile',
+        pwaStatus: 'T.email',
+    };
+    const orderColumn = orderColumnByGridColumn[sortColumn] || 'T.name';
+    const orderDirection = sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${schoolId ? schoolLiteral : 'NAO IDENTIFICADO'}
+-- :searchTerm = ${searchLiteral}
+-- :statusFilter = ${statusLiteral}
+-- :subjectFilter = ${subjectLiteral}
+
+SELECT DISTINCT T.*
+FROM teachers T
+LEFT JOIN teacher_subjects TS
+  ON TS.teacherId = T.id
+ AND TS.tenantId = T.tenantId
+ AND TS.canceledAt IS NULL
+LEFT JOIN subjects S
+  ON S.id = TS.subjectId
+ AND S.tenantId = TS.tenantId
+ AND S.canceledAt IS NULL
+WHERE T.tenantId = ${schoolLiteral}
+  AND (
+    ${searchLiteral} = ''
+    OR UPPER(COALESCE(T.name, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.email, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.cpf, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.phone, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.whatsapp, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+  )
+  AND (
+    ${statusLiteral} = 'ALL'
+    OR (${statusLiteral} = 'ACTIVE' AND T.canceledAt IS NULL)
+    OR (${statusLiteral} = 'INACTIVE' AND T.canceledAt IS NOT NULL)
+  )
+  AND (
+    ${subjectLiteral} = 'ALL'
+    OR UPPER(COALESCE(S.name, '')) = UPPER(${subjectLiteral})
+  )
+ORDER BY T.canceledAt ASC, ${orderColumn} ${orderDirection};`;
+}
+
+function buildProfessoresAuditText(params: ProfessoresAuditParams) {
+    const currentSchoolId = params.schoolId || 'NAO IDENTIFICADO';
+    const currentSchoolLabel = params.schoolName ? `${currentSchoolId} (${params.schoolName})` : currentSchoolId;
+    const currentSearchTerm = params.searchTerm.trim().toUpperCase();
+    const currentStatusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const currentSubjectFilter = params.subjectFilter.trim().toUpperCase() || 'ALL';
+    const sqlText = buildProfessoresAuditSql(params);
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutenção do papel de professor.
+
+TABELAS PRINCIPAIS:
+- teachers (T) - cadastro operacional de professores
+- subjects (S) - cadastro de disciplinas da escola
+- teacher_subjects (TS) - vinculo entre professor e disciplina
+
+RELACIONAMENTOS:
+- teachers.id = teacher_subjects.teacherId
+- subjects.id = teacher_subjects.subjectId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${currentSchoolLabel}
+- busca digitada (:searchTerm): ${currentSearchTerm || 'VAZIO'}
+- status selecionado (:statusFilter): ${currentStatusFilter}
+- disciplina selecionada (:subjectFilter): ${currentSubjectFilter}
+- registros exibidos apos os filtros: ${params.rowsCount}
+- ordenacao atual: ${params.sortColumn} ${params.sortDirection.toUpperCase()}
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- T.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
 export default function ProfessoresPage() {
     const [professores, setProfessores] = useState<TeacherRecord[]>([]);
     const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
@@ -544,6 +681,7 @@ export default function ProfessoresPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [activeTab, setActiveTab] = useState(1);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
@@ -679,10 +817,41 @@ export default function ProfessoresPage() {
         [filteredProfessores, sortState],
     );
     const displayedTeachersCount = sortedFilteredProfessores.length;
+    const professoresAuditContext = useMemo(() => {
+        const subjectFilterLabel = selectedSubjectFilter === 'ALL'
+            ? 'ALL'
+            : disciplineOptions.find((discipline) => discipline.value === selectedSubjectFilter)?.label || selectedSubjectFilter;
+        const auditParams: ProfessoresAuditParams = {
+            schoolId: currentTenantId,
+            schoolName: currentTenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            subjectFilter: subjectFilterLabel,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+            rowsCount: displayedTeachersCount,
+        };
+
+        return {
+            auditText: buildProfessoresAuditText(auditParams),
+            sqlText: buildProfessoresAuditSql(auditParams),
+        };
+    }, [currentTenantBranding?.schoolName, currentTenantId, disciplineOptions, displayedTeachersCount, searchTerm, selectedSubjectFilter, sortState.column, sortState.direction, statusFilter]);
+
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('MSINFOR_SCREEN_AUDIT_CONTEXT', {
+            detail: {
+                screenId: PROFESSORES_SCREEN_ID,
+                auditText: professoresAuditContext.auditText,
+                sqlText: professoresAuditContext.sqlText,
+            },
+        }));
+    }, [professoresAuditContext]);
 
     // States do Formulário
     const [formData, setFormData] = useState<TeacherFormState>({
         branchCode: 1,
+        branchAccessCodes: [1],
         name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
         phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
         zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
@@ -902,6 +1071,7 @@ export default function ProfessoresPage() {
         setEditingEffectiveFromBySubject({});
         setFormData({
             branchCode: currentBranchCode,
+            branchAccessCodes: [currentBranchCode],
             name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
             phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
             zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
@@ -964,6 +1134,7 @@ export default function ProfessoresPage() {
         );
         setFormData({
             branchCode: typeof prof.branchCode === 'number' ? prof.branchCode : currentBranchCode,
+            branchAccessCodes: resolveBranchAccessSelection(prof, currentBranchCode),
             name: prof.name || '',
             rg: prof.rg || '',
             cpf: prof.cpf ? limitNumericDigits(prof.cpf, 11) : '',
@@ -1638,26 +1809,27 @@ export default function ProfessoresPage() {
                 : `${API_BASE_URL}/teachers`;
             const method = editingTeacherId ? 'PATCH' : 'POST';
 
-            const payload = { ...formData, permissions: formData.permissions };
-            if (tenantBranches.length <= 1) {
-                payload.branchCode = currentBranchCode;
+            const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
+            const payload: Record<string, string | number | string[] | number[] | undefined> = { ...formData, ...branchPayload, permissions: formData.permissions };
+            if (branchPayload.branchAccessCodes === undefined) {
+                delete payload.branchAccessCodes;
             }
             if (!teacherFieldAccess.access) {
-                delete (payload as any).email;
-                delete (payload as any).accessProfile;
-                delete (payload as any).permissions;
+                delete payload.email;
+                delete payload.accessProfile;
+                delete payload.permissions;
             }
             if (!payload.birthDate) {
-                delete (payload as any).birthDate;
+                delete payload.birthDate;
             }
 
-            if (payload.cpf) payload.cpf = formatCpf(payload.cpf);
-            if (payload.cnpj) payload.cnpj = formatCnpj(payload.cnpj);
+            if (payload.cpf) payload.cpf = formatCpf(String(payload.cpf));
+            if (payload.cnpj) payload.cnpj = formatCnpj(String(payload.cnpj));
 
-            if (payload.phone) payload.phone = formatPhone(payload.phone);
-            if (payload.whatsapp) payload.whatsapp = formatPhone(payload.whatsapp);
-            if (payload.cellphone1) payload.cellphone1 = formatPhone(payload.cellphone1);
-            if (payload.cellphone2) payload.cellphone2 = formatPhone(payload.cellphone2);
+            if (payload.phone) payload.phone = formatPhone(String(payload.phone));
+            if (payload.whatsapp) payload.whatsapp = formatPhone(String(payload.whatsapp));
+            if (payload.cellphone1) payload.cellphone1 = formatPhone(String(payload.cellphone1));
+            if (payload.cellphone2) payload.cellphone2 = formatPhone(String(payload.cellphone2));
 
             const res = await fetch(url, {
                 method,
@@ -1673,9 +1845,14 @@ export default function ProfessoresPage() {
                 throw new Error(errData.message || 'Erro ao salvar Professor');
             }
 
+            const wasEditing = Boolean(editingTeacherId);
             closeModal();
-            fetchProfessores();
+            await fetchProfessores();
             setEmailUsageAlert(null);
+            setSaveSuccessPopup({
+                title: wasEditing ? 'Professor salvo com sucesso' : 'Professor inserido com sucesso',
+                message: wasEditing ? 'O professor foi alterado e a lista já foi atualizada.' : 'O professor foi inserido e a lista já foi atualizada.',
+            });
 
         } catch (err: any) {
             let errorMsg = err.message || 'Ocorreu um erro.';
@@ -2051,6 +2228,9 @@ export default function ProfessoresPage() {
                             <button type="button" onClick={() => setActiveTab(4)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 4. ACESSO PWA (APP)
                             </button>
+                            <button type="button" onClick={() => setActiveTab(5)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                5. FILIAIS DE ACESSO
+                            </button>
                         </div>
 
                         {/* Formulário */}
@@ -2146,14 +2326,6 @@ export default function ProfessoresPage() {
                                             <label className="text-xs font-bold text-slate-600 mb-1 block">Data de Nascimento</label>
                                             <input type="date" value={formData.birthDate} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
                                         </div>
-                                        <TenantBranchSelect
-                                            branches={tenantBranches}
-                                            value={formData.branchCode}
-                                            onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
-                                            labelClassName="text-xs font-bold text-slate-600 mb-1 block"
-                                            selectClassName="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
-                                        />
-
                                         {teacherFieldAccess.sensitive ? (
                                             <>
                                                 <div>
@@ -2527,6 +2699,24 @@ export default function ProfessoresPage() {
                                 )
                             )}
 
+                            {activeTab === 5 && (
+                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Filiais de Acesso</h4>
+                                    <div className="grid grid-cols-1 gap-5 max-w-4xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                        <TenantBranchSelect
+                                            branches={tenantBranches}
+                                            value={formData.branchCode}
+                                            onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                            mode="multiple"
+                                            selectedBranchCodes={formData.branchAccessCodes}
+                                            onSelectedBranchCodesChange={(branchAccessCodes) => setFormData((current) => ({ ...current, branchAccessCodes }))}
+                                            labelClassName="text-xs font-bold text-slate-600 mb-1 block"
+                                            selectClassName="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
                         </form>
                         <div className="shrink-0 border-t border-slate-100 bg-white px-6 py-5 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
                         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2549,6 +2739,40 @@ export default function ProfessoresPage() {
                             />
                         </div>
                     </div>
+                    </div>
+                </div>
+            )}
+
+            {saveSuccessPopup && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

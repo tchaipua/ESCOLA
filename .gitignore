@@ -1,5 +1,6 @@
 /backend/node_modules/
 /backend/dist/
+/backend/*.log
 /backend/dev-server.log
 /backend/backend_runtime.log
 /backend/prisma/tmp-e2e.db
@@ -7,9 +8,13 @@
 /backend/prisma/tmp-e2e.db-wal
 /backend/prisma/tmp-e2e.db-shm
 /backend/prisma/dev.db
+/backend/prisma/dev.db-journal
+/backend/prisma/dev.db-wal
+/backend/prisma/dev.db-shm
 /backend/.env
 /frontend/node_modules/
 /frontend/.next/
+/frontend/*.log
 /frontend/frontend_runtime.log
 /financeiro-backend/node_modules/
 /financeiro-backend/dist/

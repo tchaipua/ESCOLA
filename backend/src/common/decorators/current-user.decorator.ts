@@ -9,6 +9,8 @@ export interface ICurrentUser {
   email?: string | null;
   isMaster?: boolean;
   modelType?: "user" | "teacher" | "student" | "guardian" | "master";
+  branchAccessCodes?: number[];
+  canAccessAllBranches?: boolean;
 }
 
 export const CurrentUser = createParamDecorator(

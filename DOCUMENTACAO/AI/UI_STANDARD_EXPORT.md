@@ -169,14 +169,14 @@ Contrato:
 - overlay escuro com blur;
 - modal central;
 - cabecalho escuro em degrade;
-- etiqueta `Auditoria SQL`;
-- identificador tecnico da tela;
-- botao circular de fechar;
-- titulo central `Logica Usada nessa Tela`;
-- origem do arquivo em destaque;
-- area rolavel com estrutura, tabelas, relacionamentos, metricas, filtros, ordenacao e SQL/base logica;
-- area SQL com fonte monoespacada e scroll proprio;
-- botoes `Copiar SQL` e `Fechar`.
+- lado esquerdo do cabecalho com logotipo institucional, etiqueta `Auditoria SQL`, identificador tecnico da tela e pill `ORIGEM: SISTEMA ...`;
+- seletor de abas `Outras informações` / `SQL` no centro do cabecalho;
+- lado direito do cabecalho com botoes `Fechar` e `Copiar SQL` do mesmo tamanho;
+- `Copiar SQL` visivel somente quando a aba `SQL` estiver ativa;
+- origem/path do arquivo em pill vermelha logo abaixo do cabecalho;
+- aba `Outras informações` aberta por padrao com estrutura, tabelas, relacionamentos, metricas, filtros, ordenacao e observacoes;
+- aba `SQL` separada com fonte monoespacada, scroll proprio e somente SQL/base logica copiavel;
+- sem botoes duplicados no rodape do modal.
 
 ## Modelo de AGENTS.md para o sistema de destino
 
@@ -272,4 +272,3 @@ Nao sao permitidas sem aprovacao explicita:
 ## Regra final
 
 Este padrao deve ser tratado como contrato de produto, nao como inspiracao visual.
-

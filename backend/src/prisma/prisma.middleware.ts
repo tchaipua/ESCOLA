@@ -16,7 +16,6 @@ const IGNORED_MODELS = [
 const PUBLIC_MODELS = ["User", "Teacher", "Student", "Guardian"];
 const BRANCH_MODELS = [
   "UserPreference",
-  "User",
   "Person",
   "SchoolYear",
   "Class",

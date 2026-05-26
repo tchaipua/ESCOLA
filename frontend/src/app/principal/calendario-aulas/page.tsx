@@ -375,6 +375,159 @@ function TenantLogoBadge({ tenant, wrapperClassName, imageClassName, fallbackCla
     );
 }
 
+function toSqlLiteral(value: string | number | null | undefined) {
+    if (value === null || value === undefined || value === '') return 'NULL';
+    if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+    return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+type CalendarioAuditParams = {
+    tenantId: string;
+    tenantName: string;
+    viewMode: CalendarViewMode;
+    referenceDate: string;
+    selectedDate: string;
+    rangeStart: string;
+    rangeEnd: string;
+    totalItems: number;
+    totalDaysWithLessons: number;
+    activePopup: string;
+    selectedLessonId?: string | null;
+    selectedEventId?: string | null;
+    selectedEventType?: string | null;
+    selectedDayItems: number;
+    assessmentStudents: number;
+    attendanceStudents: number;
+};
+
+function buildCalendarioAuditSql(params: CalendarioAuditParams) {
+    return `SELECT
+  LCI.id,
+  LCI.lessonDate,
+  LCI.startTime,
+  LCI.endTime,
+  T.name AS teacherName,
+  S.name AS subjectName,
+  SE.name AS seriesName,
+  C.name AS className,
+  LE.id AS lessonEventId,
+  LE.eventType,
+  LE.title AS eventTitle,
+  LA.id AS assessmentId,
+  COUNT(DISTINCT LAG.studentId) AS releasedGrades,
+  COUNT(DISTINCT LATT.studentId) AS attendanceRecords
+FROM lesson_calendar_items LCI
+INNER JOIN teacher_subjects TS
+  ON TS.id = LCI.teacherSubjectId
+ AND TS.tenantId = LCI.tenantId
+ AND TS.canceledAt IS NULL
+INNER JOIN teachers T
+  ON T.id = TS.teacherId
+ AND T.tenantId = TS.tenantId
+ AND T.canceledAt IS NULL
+INNER JOIN subjects S
+  ON S.id = TS.subjectId
+ AND S.tenantId = TS.tenantId
+ AND S.canceledAt IS NULL
+INNER JOIN series_classes SC
+  ON SC.id = LCI.seriesClassId
+ AND SC.tenantId = LCI.tenantId
+ AND SC.canceledAt IS NULL
+INNER JOIN series SE
+  ON SE.id = SC.seriesId
+ AND SE.tenantId = SC.tenantId
+ AND SE.canceledAt IS NULL
+INNER JOIN classes C
+  ON C.id = SC.classId
+ AND C.tenantId = SC.tenantId
+ AND C.canceledAt IS NULL
+LEFT JOIN lesson_events LE
+  ON LE.lessonCalendarItemId = LCI.id
+ AND LE.tenantId = LCI.tenantId
+ AND LE.canceledAt IS NULL
+LEFT JOIN lesson_assessments LA
+  ON LA.lessonEventId = LE.id
+ AND LA.tenantId = LE.tenantId
+ AND LA.canceledAt IS NULL
+LEFT JOIN lesson_assessment_grades LAG
+  ON LAG.lessonAssessmentId = LA.id
+ AND LAG.tenantId = LA.tenantId
+ AND LAG.canceledAt IS NULL
+LEFT JOIN lesson_attendances LATT
+  ON LATT.lessonCalendarItemId = LCI.id
+ AND LATT.tenantId = LCI.tenantId
+ AND LATT.canceledAt IS NULL
+WHERE LCI.tenantId = ${toSqlLiteral(params.tenantId)}
+  AND LCI.canceledAt IS NULL
+  AND date(LCI.lessonDate) BETWEEN date(${toSqlLiteral(params.rangeStart)}) AND date(${toSqlLiteral(params.rangeEnd)})
+GROUP BY
+  LCI.id,
+  LCI.lessonDate,
+  LCI.startTime,
+  LCI.endTime,
+  T.name,
+  S.name,
+  SE.name,
+  C.name,
+  LE.id,
+  LE.eventType,
+  LE.title,
+  LA.id
+ORDER BY LCI.lessonDate ASC, LCI.startTime ASC;`;
+}
+
+function buildCalendarioAuditText(params: CalendarioAuditParams) {
+    const sqlText = buildCalendarioAuditSql(params);
+
+    return `--- LOGICA DA TELA ---
+Tela de calendario do professor para consultar aulas geradas, lancar eventos, registrar chamada e lancar notas de prova.
+
+TABELAS PRINCIPAIS:
+- lesson_calendar_items (LCI) - aulas geradas no calendario
+- lesson_events (LE) - eventos vinculados a aula ou aviso avulso
+- lesson_assessments (LA) - avaliacoes criadas a partir de evento de prova
+- lesson_assessment_grades (LAG) - notas dos alunos na avaliacao
+- lesson_attendances (LATT) - presencas/faltas registradas por aula
+- teacher_subjects (TS) - vinculo professor/disciplina
+- teachers (T) - professor autenticado
+- subjects (S) - disciplina da aula
+- series_classes (SC), series (SE), classes (C) - turma exibida no calendario
+
+RELACIONAMENTOS:
+- lesson_calendar_items.teacherSubjectId = teacher_subjects.id
+- teacher_subjects.teacherId = teachers.id
+- teacher_subjects.subjectId = subjects.id
+- lesson_events.lessonCalendarItemId = lesson_calendar_items.id
+- lesson_assessments.lessonEventId = lesson_events.id
+- lesson_assessment_grades.lessonAssessmentId = lesson_assessments.id
+- lesson_attendances.lessonCalendarItemId = lesson_calendar_items.id
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${params.tenantId || 'NAO CARREGADO'} (${params.tenantName || 'NAO CARREGADA'})
+- visualizacao selecionada (:viewMode): ${params.viewMode}
+- data de referencia (:referenceDate): ${params.referenceDate}
+- data selecionada (:selectedDate): ${params.selectedDate}
+- periodo carregado (:rangeStart / :rangeEnd): ${params.rangeStart || 'NAO CARREGADO'} ate ${params.rangeEnd || 'NAO CARREGADO'}
+- popup aberto: ${params.activePopup}
+- aula selecionada: ${params.selectedLessonId || 'NENHUMA'}
+- evento selecionado: ${params.selectedEventId || 'NENHUM'}
+- tipo de evento selecionado: ${params.selectedEventType || 'NENHUM'}
+- aulas exibidas no periodo: ${params.totalItems}
+- dias com aula no periodo: ${params.totalDaysWithLessons}
+- aulas exibidas no dia expandido: ${params.selectedDayItems}
+- alunos no lancamento de notas: ${params.assessmentStudents}
+- alunos na chamada: ${params.attendanceStudents}
+- ordenacao atual: lessonDate ASC, startTime ASC
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- LCI.tenantId e a coluna usada para isolar os dados da escola.
+- O backend tambem restringe o calendario ao professor autenticado.
+- Avisos avulsos usam lesson_events.eventDate e os campos de turma/disciplina snapshot quando nao existe aula fisica.
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}`;
+}
+
 export default function CalendarioAulasPage() {
     const [tenant, setTenant] = useState<CurrentTenant | null>(null);
     const [viewMode, setViewMode] = useState<CalendarViewMode>('MONTH');
@@ -419,6 +572,66 @@ export default function CalendarioAulasPage() {
         if (!calendarData) return null;
         return calendarData.items?.[0]?.teacherName || null;
     }, [calendarData]);
+    const calendarioAuditContext = useMemo(() => {
+        const activePopup = attendanceModal
+            ? 'CHAMADA'
+            : assessmentModal
+                ? 'LANCAMENTO_NOTAS_PROVA'
+                : actionPickerItem
+                    ? 'ACAO_DA_AULA'
+                    : expandedDayModal
+                        ? 'DIA_EXPANDIDO'
+                        : modalState
+                            ? modalState.mode === 'standalone' ? 'EVENTO_AVULSO' : 'EVENTO_DA_AULA'
+                            : 'CALENDARIO';
+        const selectedLessonId =
+            attendanceModal?.lessonItem.id
+            || assessmentModal?.lessonItem.id
+            || actionPickerItem?.id
+            || (modalState?.mode === 'lesson' ? modalState.lessonItem.id : null);
+        const selectedEventId =
+            assessmentModal?.event.id
+            || (modalState?.existingEvent?.id ?? null);
+        const selectedEventType =
+            assessmentModal?.event.eventType
+            || (modalState?.mode === 'lesson' ? modalState.eventType : null);
+        const auditParams: CalendarioAuditParams = {
+            tenantId: tenant?.id || '',
+            tenantName: tenant?.name || '',
+            viewMode,
+            referenceDate,
+            selectedDate,
+            rangeStart: calendarData?.rangeStart || '',
+            rangeEnd: calendarData?.rangeEnd || '',
+            totalItems: calendarData?.totalItems ?? calendarData?.items?.length ?? 0,
+            totalDaysWithLessons: calendarData?.totalDaysWithLessons ?? 0,
+            activePopup,
+            selectedLessonId,
+            selectedEventId,
+            selectedEventType,
+            selectedDayItems: expandedDayModal?.items.length || 0,
+            assessmentStudents: assessmentForm.students.length,
+            attendanceStudents: attendanceForm.students.length,
+        };
+
+        return {
+            auditText: buildCalendarioAuditText(auditParams),
+            sqlText: buildCalendarioAuditSql(auditParams),
+        };
+    }, [
+        actionPickerItem,
+        assessmentForm.students.length,
+        assessmentModal,
+        attendanceForm.students.length,
+        attendanceModal,
+        calendarData,
+        expandedDayModal,
+        modalState,
+        referenceDate,
+        selectedDate,
+        tenant,
+        viewMode,
+    ]);
 
     const loadCalendar = async (nextReferenceDate: string, nextViewMode: CalendarViewMode) => {
         try {
@@ -1659,6 +1872,8 @@ const handleMonthChange = (value: string) => {
                                         screenId={modalState.mode === 'standalone' ? 'PRINCIPAL_CALENDARIO_AULAS_STANDALONE' : 'PRINCIPAL_CALENDARIO_AULAS'}
                                         label="Tela"
                                         className="text-[9px]"
+                                        auditText={calendarioAuditContext.auditText}
+                                        sqlText={calendarioAuditContext.sqlText}
                                     />
                                 </div>
                                 <div className="flex gap-3">
@@ -1745,6 +1960,8 @@ const handleMonthChange = (value: string) => {
                                     label="Tela"
                                     className="text-[11px]"
                                     disableMargin
+                                    auditText={calendarioAuditContext.auditText}
+                                    sqlText={calendarioAuditContext.sqlText}
                                 />
                             </div>
                         </div>
@@ -1877,6 +2094,8 @@ const handleMonthChange = (value: string) => {
                                         label="Tela"
                                         className="mt-0 text-[11px]"
                                         disableMargin
+                                        auditText={calendarioAuditContext.auditText}
+                                        sqlText={calendarioAuditContext.sqlText}
                                     />
                                 </div>
                                 <div className="flex gap-3">
@@ -2117,6 +2336,8 @@ const handleMonthChange = (value: string) => {
                                     screenId="PRINCIPAL_CALENDARIO_AULAS_CHAMADA"
                                     label="Tela"
                                     className="mt-0 text-[11px]"
+                                    auditText={calendarioAuditContext.auditText}
+                                    sqlText={calendarioAuditContext.sqlText}
                                 />
                                 <div className="flex gap-3">
                                     <button
@@ -2361,6 +2582,8 @@ const handleMonthChange = (value: string) => {
                                     screenId="PRINCIPAL_CALENDARIO_AULAS_LANCAMENTO_NOTAS_PROVA"
                                     label="Tela"
                                     disableMargin
+                                    auditText={calendarioAuditContext.auditText}
+                                    sqlText={calendarioAuditContext.sqlText}
                                 />
                             </div>
                         </div>

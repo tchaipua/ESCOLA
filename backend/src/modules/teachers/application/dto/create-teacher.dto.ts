@@ -24,6 +24,19 @@ export class CreateTeacherDto {
   @IsOptional()
   branchCode?: number;
 
+  @ApiPropertyOptional({
+    description:
+      "Filiais liberadas para uso deste professor. Envie vazio para todas as filiais.",
+    type: [Number],
+  })
+  @IsArray()
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @IsOptional()
+  branchAccessCodes?: number[];
+
   @ApiProperty({ description: "Nome do Professor" })
   @IsString()
   @IsNotEmpty()
