@@ -138,6 +138,116 @@ WHERE BA.canceledAt IS NULL
 ORDER BY BA.bankName ASC, BA.branchNumber ASC, BA.accountNumber ASC;`,
   },
   {
+    screenId: 'PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO',
+    match: 'prefix',
+    originPath: 'bancos/extrato/page.tsx',
+    description:
+      'Tela de extrato bancario aberta a partir do grid de bancos, com filtros de conta e periodo para consulta dos lancamentos reais da conta.',
+    tables: [
+      'companies (CO) - empresa financeira vinculada ao sistema de origem',
+      'bank_accounts (BA) - conta bancaria selecionada para consulta do extrato',
+    ],
+    relationships: [
+      'bank_accounts.companyId = companies.id',
+    ],
+    metrics: [
+      'banco selecionado, provedor e credenciais cadastradas',
+      'periodo de consulta informado na tela',
+      'creditos, debitos, saldo informado e lancamentos do extrato',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'banco selecionado por bankAccountId',
+      'periodo informado na tela para consultar extrato bancario',
+      'registros sem cancelamento logico',
+    ],
+    order: 'ordem bancaria retornada pela API Sicoob para o periodo consultado',
+    endpoints: ['GET /banks', 'GET /banks/{bankId}/statement'],
+    sqlText: `SELECT
+  BA.id,
+  BA.bankCode,
+  BA.bankName,
+  BA.branchNumber,
+  BA.branchDigit,
+  BA.accountNumber,
+  BA.accountDigit,
+  BA.billingProvider,
+  BA.status,
+  BA.updatedAt
+FROM bank_accounts BA
+INNER JOIN companies CO
+  ON CO.id = BA.companyId
+ AND CO.canceledAt IS NULL
+WHERE BA.canceledAt IS NULL
+  AND BA.status = 'ACTIVE'
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+  AND (:bankAccountId IS NULL OR BA.id = :bankAccountId)
+ORDER BY BA.bankName ASC, BA.branchNumber ASC, BA.accountNumber ASC;`,
+  },
+  {
+    screenId: 'PRINCIPAL_FINANCEIRO_BANCOS_MOVIMENTOS_ABERTOS',
+    match: 'prefix',
+    originPath: 'bancos/movimentos-abertos/page.tsx',
+    description:
+      'Tela de movimentos financeiros em aberto para conferencia e conciliacao bancaria.',
+    tables: [
+      'companies (CO) - empresa financeira vinculada ao sistema de origem',
+      'bank_accounts (BA) - conta bancaria selecionada',
+      'receivable_installments (RI) - parcelas recebidas vinculadas a banco',
+      'receivable_titles (RT) - titulos financeiros das parcelas',
+    ],
+    relationships: [
+      'receivable_installments.companyId = companies.id',
+      'receivable_installments.bankAccountId = bank_accounts.id',
+      'receivable_installments.titleId = receivable_titles.id',
+    ],
+    metrics: [
+      'data, tipo, historico, pessoa e banco',
+      'forma de recebimento e valor',
+      'situacao aberta para conferencia bancaria',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'parcelas pagas com banco vinculado',
+      'banco selecionado por bankAccountId quando informado',
+      'busca por pagador, historico ou parcela',
+      'registros sem cancelamento logico',
+    ],
+    order: 'receivable_installments.dueDate ASC, receivable_installments.createdAt ASC',
+    endpoints: ['GET /banks', 'GET /receivables/installments?status=PAID'],
+    sqlText: `SELECT
+  RI.id,
+  RI.settledAt,
+  RI.descriptionSnapshot,
+  RI.payerNameSnapshot,
+  RI.paidAmount,
+  RI.settlementMethod,
+  RI.bankAccountId,
+  RI.bankAccountLabel,
+  RT.businessKey,
+  BA.bankName
+FROM receivable_installments RI
+INNER JOIN companies CO
+  ON CO.id = RI.companyId
+ AND CO.canceledAt IS NULL
+LEFT JOIN receivable_titles RT
+  ON RT.id = RI.titleId
+ AND RT.companyId = RI.companyId
+ AND RT.canceledAt IS NULL
+LEFT JOIN bank_accounts BA
+  ON BA.id = RI.bankAccountId
+ AND BA.companyId = RI.companyId
+ AND BA.canceledAt IS NULL
+WHERE RI.canceledAt IS NULL
+  AND RI.status = 'PAID'
+  AND RI.bankAccountId IS NOT NULL
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+  AND (:bankAccountId IS NULL OR RI.bankAccountId = :bankAccountId)
+ORDER BY RI.dueDate ASC, RI.createdAt ASC;`,
+  },
+  {
     screenId: 'PRINCIPAL_FINANCEIRO_EMPRESA',
     match: 'prefix',
     originPath: 'empresas/page.tsx',
@@ -875,6 +985,72 @@ WHERE CO.canceledAt IS NULL
   AND (:sourceBranchCode IS NULL OR CB.branchCode = :sourceBranchCode)
 GROUP BY CO.id, CO.name, CB.branchCode, CB.name, CB.inventoryControlType, CB.quantityPrecision
 ORDER BY CB.branchCode ASC;`,
+  },
+  {
+    screenId: 'PRINCIPAL_FINANCEIRO_LOTES_PARCELAS',
+    match: 'exact',
+    originPath: 'recebiveis/lotes/[batchId]/page.tsx',
+    description:
+      'Tela de parcelas de um lote de recebiveis, aberta pela acao Ver parcelas na listagem de lotes.',
+    tables: [
+      'receivable_batches (RB) - lote importado',
+      'receivable_titles (RT) - titulos gerados pelo lote',
+      'receivable_installments (RI) - parcelas do lote',
+      'bank_accounts (BA) - conta bancaria usada para preparacao de boletos',
+      'companies (CO) - empresa financeira',
+    ],
+    relationships: [
+      'receivable_titles.batchId = receivable_batches.id',
+      'receivable_installments.batchId = receivable_batches.id',
+      'receivable_installments.titleId = receivable_titles.id',
+      'receivable_installments.bankAccountId = bank_accounts.id',
+      'receivable_batches.companyId = companies.id',
+    ],
+    metrics: [
+      'pagador, descricao, vencimento e numero da parcela',
+      'valor original, valor em aberto e status da parcela',
+      'status de boleto, banco selecionado e parcelas marcadas',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'lote atual por batchId',
+      'status e busca digitados na tela',
+      'parcelas sem cancelamento logico',
+    ],
+    order: 'receivable_installments.dueDate ASC, receivable_installments.installmentNumber ASC',
+    endpoints: [
+      'GET /receivables/batches/{batchId}',
+      'GET /receivables/installments',
+      'GET /banks',
+    ],
+    sqlText: `SELECT
+  RI.id,
+  RI.batchId,
+  RI.payerNameSnapshot,
+  RI.description,
+  RI.installmentNumber,
+  RI.installmentCount,
+  RI.dueDate,
+  RI.amount,
+  RI.openAmount,
+  RI.status,
+  RI.bankSlipStatus,
+  BA.bankName
+FROM receivable_installments RI
+INNER JOIN receivable_batches RB
+  ON RB.id = RI.batchId
+ AND RB.canceledAt IS NULL
+INNER JOIN companies CO
+  ON CO.id = RB.companyId
+ AND CO.canceledAt IS NULL
+LEFT JOIN bank_accounts BA
+  ON BA.id = RI.bankAccountId
+ AND BA.canceledAt IS NULL
+WHERE RI.canceledAt IS NULL
+  AND RI.batchId = :batchId
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+ORDER BY RI.dueDate ASC, RI.installmentNumber ASC;`,
   },
   {
     screenId: 'PRINCIPAL_FINANCEIRO_LOTES',

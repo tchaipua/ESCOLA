@@ -333,3 +333,15 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/CODING_RULES.md`
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado
+
+### UIP-0024
+
+- Data: 2026-05-28
+- Padrao: filtros diretos nas colunas do grid com limpeza global
+- Contexto: na validacao da tela `PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO`, foi aprovado o uso de filtros diretamente no cabecalho das colunas do grid
+- Alteracao: quando o usuario pedir filtros direto nas colunas, cada coluna solicitada deve receber uma lupa no cabecalho e painel compacto de filtro; sempre deve existir tambem um botao iconico no lado esquerdo do cabecalho do grid para `Limpar todos os filtros`, zerando todos os filtros e fechando paineis abertos
+- Componentes/Telas:
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/bancos/extrato/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado

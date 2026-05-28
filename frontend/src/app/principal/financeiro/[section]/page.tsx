@@ -63,6 +63,18 @@ const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
 };
 
 const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderContent> = {
+  PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO: {
+    eyebrow: 'Bancos',
+    title: 'Extrato bancário',
+    description:
+      'Controle os lançamentos reais da conta bancária, com créditos, débitos e saldo.',
+  },
+  PRINCIPAL_FINANCEIRO_BANCOS_MOVIMENTOS_ABERTOS: {
+    eyebrow: 'Bancos',
+    title: 'Movimentos em aberto',
+    description:
+      'Confira os movimentos financeiros que ainda precisam de conferência bancária.',
+  },
   PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS: {
     eyebrow: 'Contas a Pagar',
     title: 'IMPORTAÇÃO DE NOTAS',
@@ -208,6 +220,10 @@ export default function PrincipalFinanceiroSectionPage({
   }, []);
 
   const headerContent = useMemo(() => {
+    if (embeddedScreenId && EMBEDDED_FINANCE_SCREEN_HEADER_MAP[embeddedScreenId]) {
+      return EMBEDDED_FINANCE_SCREEN_HEADER_MAP[embeddedScreenId];
+    }
+
     if (section !== 'contas-a-pagar') {
       return {
         eyebrow: 'Financeiro integrado',
