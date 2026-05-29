@@ -345,3 +345,15 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado
+
+### UIP-0025
+
+- Data: 2026-05-29
+- Padrao: filtros de coluna com botoes/pills centralizados e largura uniforme
+- Contexto: na tela `PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO`, foi aprovado que filtros fechados no cabecalho do grid, como `Conf.`, `Tipo` e `Situacao`, devem usar botoes/pills coloridos em vez de select quando esse modelo for solicitado
+- Alteracao: os botoes/pills do painel devem ficar centralizados, com o mesmo tamanho, texto centralizado e cores por semantica; `AMBOS` deve ser azul quando usado como opcao geral; acoes em lote no painel devem atuar somente sobre os registros exibidos no grid no momento
+- Componentes/Telas:
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/bancos/extrato/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado

@@ -31,6 +31,12 @@ export type TenantBranchSummary = {
     name: string;
     isActive: boolean;
     isShared: boolean;
+    stockControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
+    stockIntegerQuantityMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
+    stockLotControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
+    stockExpirationControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
+    stockGridControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
+    stockNegativeControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
 };
 
 export type ViaCepAddress = {

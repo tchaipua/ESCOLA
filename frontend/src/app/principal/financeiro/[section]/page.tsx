@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
-import { getDashboardAuthContext, hasAnyDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import {
+  fetchTenantBranches,
+  getDashboardAuthContext,
+  hasAnyDashboardPermission,
+  type TenantBranchSummary,
+} from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 const FINANCEIRO_FRONTEND_URL =
@@ -35,7 +40,7 @@ const SECTION_CONFIG = {
     path: '/recebiveis/lotes',
   },
   retornos: {
-    label: 'Retornos',
+    label: 'Retorno Boletos Banco',
     path: '/recebiveis/retornos',
   },
   parcelas: {
@@ -56,6 +61,17 @@ type EmbeddedFinanceHeaderContent = {
   description: string;
 };
 
+type BranchStockParameterMode = 'NO' | 'YES' | 'BY_PRODUCT';
+
+type BranchStockParameters = {
+  stockControlMode: BranchStockParameterMode;
+  stockIntegerQuantityMode: BranchStockParameterMode;
+  stockLotControlMode: BranchStockParameterMode;
+  stockExpirationControlMode: BranchStockParameterMode;
+  stockGridControlMode: BranchStockParameterMode;
+  stockNegativeControlMode: BranchStockParameterMode;
+};
+
 const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
   eyebrow: 'Financeiro integrado',
   title: 'Contas a Pagar',
@@ -74,6 +90,12 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     title: 'Movimentos em aberto',
     description:
       'Confira os movimentos financeiros que ainda precisam de conferência bancária.',
+  },
+  PRINCIPAL_FINANCEIRO_BANCOS_DDAS_ABERTOS: {
+    eyebrow: 'Bancos',
+    title: 'DDAs em aberto',
+    description:
+      'Consulte os boletos DDA em aberto da conta bancária selecionada.',
   },
   PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS: {
     eyebrow: 'Contas a Pagar',
@@ -104,11 +126,35 @@ function normalizeDisplayText(value: string | null | undefined) {
   }
 }
 
+function normalizeStockParameterMode(value: unknown): BranchStockParameterMode {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase();
+
+  return normalized === 'NO' || normalized === 'YES' || normalized === 'BY_PRODUCT'
+    ? normalized
+    : 'BY_PRODUCT';
+}
+
+function getBranchStockParameters(branch?: TenantBranchSummary | null): BranchStockParameters | null {
+  if (!branch) return null;
+
+  return {
+    stockControlMode: normalizeStockParameterMode(branch.stockControlMode),
+    stockIntegerQuantityMode: normalizeStockParameterMode(branch.stockIntegerQuantityMode),
+    stockLotControlMode: normalizeStockParameterMode(branch.stockLotControlMode),
+    stockExpirationControlMode: normalizeStockParameterMode(branch.stockExpirationControlMode),
+    stockGridControlMode: normalizeStockParameterMode(branch.stockGridControlMode),
+    stockNegativeControlMode: normalizeStockParameterMode(branch.stockNegativeControlMode),
+  };
+}
+
 function buildFinanceFrameUrl(
   baseUrl: string,
   path: string,
   authContext: ReturnType<typeof getDashboardAuthContext>,
   tenantBranding?: ReturnType<typeof readCachedTenantBranding> | null,
+  branchStockParameters?: BranchStockParameters | null,
 ) {
   const normalizedBaseUrl = baseUrl.endsWith('/')
     ? baseUrl.slice(0, -1)
@@ -125,6 +171,15 @@ function buildFinanceFrameUrl(
 
   if (Number.isInteger(authContext.branchCode) && authContext.branchCode >= 0) {
     params.set('sourceBranchCode', String(authContext.branchCode));
+  }
+
+  if (branchStockParameters) {
+    params.set('stockControlMode', branchStockParameters.stockControlMode);
+    params.set('stockIntegerQuantityMode', branchStockParameters.stockIntegerQuantityMode);
+    params.set('stockLotControlMode', branchStockParameters.stockLotControlMode);
+    params.set('stockExpirationControlMode', branchStockParameters.stockExpirationControlMode);
+    params.set('stockGridControlMode', branchStockParameters.stockGridControlMode);
+    params.set('stockNegativeControlMode', branchStockParameters.stockNegativeControlMode);
   }
 
   if (authContext.userId) {
@@ -166,6 +221,8 @@ export default function PrincipalFinanceiroSectionPage({
   const [section, setSection] = useState<string | null>(null);
   const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
   const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
+  const [branchStockParameters, setBranchStockParameters] =
+    useState<BranchStockParameters | null>(null);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
     authContext.role,
@@ -187,8 +244,49 @@ export default function PrincipalFinanceiroSectionPage({
 
   const iframeSrc = useMemo(() => {
     if (!sectionConfig) return null;
-    return buildFinanceFrameUrl(FINANCEIRO_FRONTEND_URL, sectionConfig.path, authContext, tenantBranding);
-  }, [authContext, sectionConfig, tenantBranding]);
+    return buildFinanceFrameUrl(
+      FINANCEIRO_FRONTEND_URL,
+      sectionConfig.path,
+      authContext,
+      tenantBranding,
+      branchStockParameters,
+    );
+  }, [authContext, branchStockParameters, sectionConfig, tenantBranding]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadBranchStockParameters() {
+      try {
+        if (!authContext.token || !authContext.tenantId) {
+          if (isActive) setBranchStockParameters(null);
+          return;
+        }
+
+        const branches = await fetchTenantBranches();
+        const activeBranches = branches.filter(
+          (branch) => branch && branch.isActive !== false && !branch.isShared,
+        );
+        const currentBranch =
+          activeBranches.find((branch) => branch.branchCode === authContext.branchCode) ||
+          activeBranches.find((branch) => branch.branchCode === 1) ||
+          activeBranches[0] ||
+          null;
+
+        if (isActive) {
+          setBranchStockParameters(getBranchStockParameters(currentBranch));
+        }
+      } catch {
+        if (isActive) setBranchStockParameters(null);
+      }
+    }
+
+    void loadBranchStockParameters();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authContext.branchCode, authContext.tenantId, authContext.token]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setEmbeddedScreenId(null), 0);

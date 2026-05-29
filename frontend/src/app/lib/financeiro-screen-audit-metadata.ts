@@ -1165,8 +1165,8 @@ WHERE BRI.canceledAt IS NULL
 ORDER BY BRI.createdAt DESC;`,
   },
   {
-    screenId: 'FINANCEIRO_RETORNOS_BANCARIOS_DETALHE',
-    match: 'prefix',
+    screenId: 'PRINCIPAL_FINANCEIRO_RETORNOS_CONFERENCIA',
+    match: 'exact',
     originPath: 'recebiveis/retornos/[importId]/page.tsx',
     description:
       'Detalhe do retorno bancario para revisar movimentos, conciliacoes e liquidacoes aplicadas.',

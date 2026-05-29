@@ -78,6 +78,7 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_LOTES_PARCELAS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'lotes', '[batchId]', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_LOTES', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'lotes', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_RETORNOS_CONFERENCIA', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'retornos', '[importId]', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_RETORNOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'retornos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('MAPEAMENTO_ESPECIFICO_PENDENTE.tsx') },
