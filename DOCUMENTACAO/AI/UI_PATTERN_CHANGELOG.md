@@ -357,3 +357,15 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado
+
+### UIP-0026
+
+- Data: 2026-06-01
+- Padrao: filtros textuais de coluna com botao `Filtrar` e fechamento automatico
+- Contexto: na validacao da tela `PRINCIPAL_FINANCEIRO_ESTOQUE`, foi aprovado que filtros textuais por coluna nao devem aplicar enquanto o usuario digita; a telinha deve aplicar somente pelo botao `Filtrar` ou Enter e fechar em seguida
+- Alteracao: o PAT-015.1 passa a exigir rascunho local para filtro textual, botao `Filtrar`, fechamento automatico apos aplicar, fechamento ao limpar a coluna, destaque vermelho/rose no limpar filtros global quando houver filtro/ordenacao ativa, reserva de espaco para o painel nao sobrepor grid ou toolbar e `Limpar todos os filtros` como primeira informacao visual do cabecalho do grid
+- Componentes/Telas:
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/produtos/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
