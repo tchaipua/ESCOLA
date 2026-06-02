@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
-import RecordStatusIndicator from '@/app/components/record-status-indicator';
+import GridStandardFooter from '@/app/components/grid-standard-footer';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { fetchTenantBranches, getDashboardAuthContext, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
@@ -78,6 +77,7 @@ const EMPTY_FORM = {
 
 type SeriesColumnKey = 'name' | 'code' | 'sortOrder' | 'studentCount';
 type SeriesExportColumnKey = SeriesColumnKey;
+type SeriesColumnFilters = Record<SeriesColumnKey, string>;
 
 const SERIES_COLUMNS: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>[] = [
     { key: 'name', label: 'Série', getValue: (row) => row.name || '---', visibleByDefault: true },
@@ -103,6 +103,47 @@ const SERIES_EXPORT_COLUMNS: GridColumnDefinition<SeriesRecord, SeriesExportColu
 );
 const SERIES_COLUMN_KEYS = getAllGridColumnKeys(SERIES_COLUMNS);
 const DEFAULT_VISIBLE_SERIES_COLUMNS = getDefaultVisibleGridColumnKeys(SERIES_COLUMNS);
+const EMPTY_SERIES_COLUMN_FILTERS = SERIES_COLUMN_KEYS.reduce<SeriesColumnFilters>((accumulator, key) => {
+    accumulator[key] = '';
+    return accumulator;
+}, {} as SeriesColumnFilters);
+
+function normalizeSeriesGridFilterValue(value: unknown) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+}
+
+function normalizeSeriesGridDigits(value: unknown) {
+    return String(value ?? '').replace(/\D/g, '');
+}
+
+function matchesSeriesGridFilter(values: unknown[], filter: string) {
+    const normalizedFilter = normalizeSeriesGridFilterValue(filter);
+    const filterDigits = normalizeSeriesGridDigits(filter);
+
+    if (!normalizedFilter) {
+        return true;
+    }
+
+    return values.some((value) => {
+        const normalizedValue = normalizeSeriesGridFilterValue(value);
+
+        if (normalizedValue.includes(normalizedFilter)) {
+            return true;
+        }
+
+        return Boolean(filterDigits && normalizeSeriesGridDigits(value).includes(filterDigits));
+    });
+}
+
+function getSeriesColumnFilterValues(row: SeriesRecord, columnKey: SeriesColumnKey) {
+    const column = SERIES_COLUMNS.find((item) => item.key === columnKey);
+    const baseValue = column?.getValue(row) || '';
+    return [baseValue, row.name, row.code, row.sortOrder, row.studentCount, row.canceledAt ? 'INATIVO' : 'ATIVO'];
+}
 
 function getSeriesGridConfigStorageKey(tenantId: string | null) {
     return `dashboard:series:grid-config:${tenantId || 'default'}`;
@@ -239,6 +280,12 @@ export default function SeriesPage() {
     );
     const [columnAggregations, setColumnAggregations] = useState<GridColumnAggregations<SeriesColumnKey>>({});
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [seriesColumnFilters, setSeriesColumnFilters] = useState<SeriesColumnFilters>(EMPTY_SERIES_COLUMN_FILTERS);
+    const [seriesColumnFilterDrafts, setSeriesColumnFilterDrafts] = useState<SeriesColumnFilters>(EMPTY_SERIES_COLUMN_FILTERS);
+    const [activeSeriesFilterColumn, setActiveSeriesFilterColumn] = useState<SeriesColumnKey | null>(null);
+    const [seriesPageSize, setSeriesPageSize] = useState(10);
+    const [seriesPage, setSeriesPage] = useState(1);
+    const [selectedSeriesGridRowId, setSelectedSeriesGridRowId] = useState<string | null>(null);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [exportFormat, setExportFormat] = useState<'excel' | 'csv' | 'pdf' | 'json' | 'txt'>('excel');
     const [exportColumns, setExportColumns] = useState<Record<SeriesExportColumnKey, boolean>>(buildDefaultExportColumns(SERIES_EXPORT_COLUMNS));
@@ -267,23 +314,48 @@ export default function SeriesPage() {
         [series, seriesStudentCounts],
     );
 
-    const filteredSeries = seriesWithCounts.filter((item) => {
+    const filteredSeries = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
-        const isActive = !item.canceledAt;
-        const matchesStatus =
-            statusFilter === 'ALL'
-                ? true
-                : statusFilter === 'ACTIVE'
-                    ? isActive
-                    : !isActive;
+        const activeColumnFilters = (Object.entries(seriesColumnFilters) as Array<[SeriesColumnKey, string]>)
+            .filter(([, value]) => value.trim());
 
-        if (!matchesStatus) return false;
-        if (!term) return true;
-        return [item.name, item.code].some((value) => String(value || '').toUpperCase().includes(term));
-    });
+        return seriesWithCounts.filter((item) => {
+            const isActive = !item.canceledAt;
+            const matchesStatus =
+                statusFilter === 'ALL'
+                    ? true
+                    : statusFilter === 'ACTIVE'
+                        ? isActive
+                        : !isActive;
+
+            const matchesSearch =
+                !term ||
+                [item.name, item.code].some((value) => String(value || '').toUpperCase().includes(term));
+            const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
+                matchesSeriesGridFilter(getSeriesColumnFilterValues(item, columnKey), filter),
+            );
+
+            return matchesStatus && matchesSearch && matchesColumnFilters;
+        });
+    }, [searchTerm, seriesColumnFilters, seriesWithCounts, statusFilter]);
     const sortedFilteredSeries = useMemo(
         () => sortGridRows(filteredSeries, SERIES_COLUMNS, sortState),
         [filteredSeries, sortState],
+    );
+    const seriesTotalPages = Math.max(1, Math.ceil(sortedFilteredSeries.length / seriesPageSize));
+    const currentSeriesPage = Math.min(Math.max(seriesPage, 1), seriesTotalPages);
+    const paginatedSeries = useMemo(() => {
+        const startIndex = (currentSeriesPage - 1) * seriesPageSize;
+        return sortedFilteredSeries.slice(startIndex, startIndex + seriesPageSize);
+    }, [currentSeriesPage, seriesPageSize, sortedFilteredSeries]);
+    const hasSeriesGridFilters = useMemo(
+        () =>
+            Boolean(searchTerm.trim())
+            || statusFilter !== 'ACTIVE'
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction
+            || Object.values(seriesColumnFilters).some((value) => value.trim()),
+        [searchTerm, seriesColumnFilters, sortState.column, sortState.direction, statusFilter],
     );
     const aggregateSummaries = useMemo(
         () => buildGridAggregateSummaries(sortedFilteredSeries, visibleSeriesColumns, columnAggregations),
@@ -407,6 +479,14 @@ export default function SeriesPage() {
         }
         void loadSeriesStudentCounts(series);
     }, [series]);
+
+    useEffect(() => {
+        setSeriesPage(1);
+    }, [searchTerm, seriesColumnFilters, seriesPageSize, sortState.column, sortState.direction, statusFilter]);
+
+    useEffect(() => {
+        setSeriesPage((current) => Math.min(Math.max(current, 1), seriesTotalPages));
+    }, [seriesTotalPages]);
 
     if (!isLoading && !canView) {
         return (
@@ -553,13 +633,6 @@ export default function SeriesPage() {
         setSeriesStudentsError(null);
     };
 
-    const toggleSort = (column: SeriesColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
-    };
-
     const toggleExportColumn = (column: SeriesExportColumnKey) => {
         setExportColumns((current) => ({ ...current, [column]: !current[column] }));
     };
@@ -640,13 +713,92 @@ export default function SeriesPage() {
         });
     };
 
+    const clearAllSeriesGridFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('ACTIVE');
+        setSortState(DEFAULT_SORT);
+        setSeriesColumnFilters(EMPTY_SERIES_COLUMN_FILTERS);
+        setSeriesColumnFilterDrafts(EMPTY_SERIES_COLUMN_FILTERS);
+        setActiveSeriesFilterColumn(null);
+        setSeriesPage(1);
+    };
+
+    const openSeriesColumnFilter = (columnKey: SeriesColumnKey | null) => {
+        setActiveSeriesFilterColumn(columnKey);
+        if (!columnKey) return;
+        setSeriesColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: seriesColumnFilters[columnKey] || '',
+        }));
+    };
+
+    const applySeriesColumnFilter = (columnKey: SeriesColumnKey) => {
+        setSeriesColumnFilters((current) => ({
+            ...current,
+            [columnKey]: seriesColumnFilterDrafts[columnKey] || '',
+        }));
+        setActiveSeriesFilterColumn(null);
+    };
+
+    const clearSeriesColumnFilter = (columnKey: SeriesColumnKey) => {
+        setSeriesColumnFilters((current) => ({ ...current, [columnKey]: '' }));
+        setSeriesColumnFilterDrafts((current) => ({ ...current, [columnKey]: '' }));
+        setActiveSeriesFilterColumn(null);
+    };
+
+    const renderSeriesClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllSeriesGridFilters}
+            title="Limpar todos os filtros"
+            aria-label="Limpar todos os filtros"
+            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${
+                hasSeriesGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 7h14M10 11v6m4-6v6M9 7V5h6v2m-9 0 1 14h10l1-14" />
+            </svg>
+        </button>
+    );
+
+    const renderSeriesColumnHeader = (column: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>) => (
+        <GridColumnFilterHeader
+            label={column.label}
+            align={column.align}
+            isOpen={activeSeriesFilterColumn === column.key}
+            isActive={Boolean(seriesColumnFilters[column.key]?.trim()) || sortState.column === column.key}
+            filterValue={seriesColumnFilterDrafts[column.key] || ''}
+            onToggle={() => openSeriesColumnFilter(activeSeriesFilterColumn === column.key ? null : column.key)}
+            onSort={(direction) => {
+                setSortState({ column: column.key, direction });
+                setActiveSeriesFilterColumn(null);
+            }}
+            onFilterValueChange={(value) =>
+                setSeriesColumnFilterDrafts((current) => ({
+                    ...current,
+                    [column.key]: value,
+                }))
+            }
+            onApply={() => applySeriesColumnFilter(column.key)}
+            onClear={() => clearSeriesColumnFilter(column.key)}
+        />
+    );
+
     const renderSeriesGridCell = (item: SeriesRecord, columnKey: SeriesColumnKey) => {
         if (columnKey === 'name') {
+            const statusLabel = item.canceledAt ? 'INATIVO' : 'ATIVO';
             return (
                 <td key={columnKey} className={`px-6 py-4 font-semibold ${item.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
                     <div className="flex items-center gap-2">
+                        <span
+                            className={`h-3 w-3 shrink-0 rounded-full ${item.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                            title={statusLabel}
+                            aria-label={statusLabel}
+                        />
                         <span>{item.name}</span>
-                        <RecordStatusIndicator active={!item.canceledAt} />
                     </div>
                 </td>
             );
@@ -705,8 +857,8 @@ export default function SeriesPage() {
             {errorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{errorStatus}</div> : null}
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="dashboard-band border-b px-6 py-4">
+            <section className="mt-6 flex h-[calc(100vh-17rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="dashboard-band shrink-0 border-b px-6 py-4">
                     <div className="flex flex-wrap items-center gap-3">
                         {canManage ? (
                             <button
@@ -729,65 +881,87 @@ export default function SeriesPage() {
                         </div>
                     </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
+                <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                    <table className="min-w-[980px] border-collapse text-left">
                         <thead>
                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                    {renderSeriesClearAllButton()}
+                                </th>
                                 {visibleSeriesColumns.map((column) => (
-                                    <th key={column.key} className="px-6 py-4">
-                                        <GridSortableHeader
-                                            label={column.label}
-                                            isActive={sortState.column === column.key}
-                                            direction={sortState.direction}
-                                            onClick={() => toggleSort(column.key)}
-                                        />
+                                    <th key={column.key} className="sticky top-0 z-20 bg-slate-50 px-6 py-3">
+                                        {renderSeriesColumnHeader(column)}
                                     </th>
                                 ))}
-                                <th className="px-6 py-4 text-right">Ação</th>
+                                <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
                             </tr>
+                            {activeSeriesFilterColumn ? (
+                                <tr aria-hidden="true">
+                                    <th colSpan={visibleSeriesColumns.length + 2} className="h-56 bg-white p-0" />
+                                </tr>
+                            ) : null}
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {isLoading ? <tr><td colSpan={visibleSeriesColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando séries...</td></tr> : null}
-                            {!isLoading && sortedFilteredSeries.length === 0 ? <tr><td colSpan={visibleSeriesColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhuma série cadastrada.</td></tr> : null}
-                            {!isLoading && sortedFilteredSeries.map((item) => (
-                                <tr key={item.id} className={item.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                    {visibleSeriesColumns.map((column) => renderSeriesGridCell(item, column.key))}
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {renderSeriesInfoButton(item)}
-                                            <GridRowActionIconButton title="Ver alunos da série" onClick={() => handleShowSeriesStudents(item)} tone="slate">
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
-                                                    <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
-                                                </svg>
-                                            </GridRowActionIconButton>
-                                            <GridRowActionIconButton title="Editar série" onClick={() => handleEdit(item)} tone="blue">
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                </svg>
-                                            </GridRowActionIconButton>
-                                            <GridRowActionIconButton title={item.canceledAt ? 'Ativar série' : 'Inativar série'} onClick={() => openSeriesStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'}>
-                                                {item.canceledAt ? (
+                            {isLoading ? <tr><td colSpan={visibleSeriesColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Carregando séries...</td></tr> : null}
+                            {!isLoading && sortedFilteredSeries.length === 0 ? <tr><td colSpan={visibleSeriesColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Nenhuma série cadastrada.</td></tr> : null}
+                            {!isLoading && paginatedSeries.map((item, rowIndex) => {
+                                const zebraClass = rowIndex % 2 === 0
+                                    ? item.canceledAt
+                                        ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                        : 'bg-white hover:bg-slate-50'
+                                    : item.canceledAt
+                                        ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                        : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                const isSelectedRow = selectedSeriesGridRowId === item.id;
+                                const rowClass = isSelectedRow
+                                    ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                    : zebraClass;
+
+                                return (
+                                    <tr
+                                        key={item.id}
+                                        onClick={() => setSelectedSeriesGridRowId(item.id)}
+                                        aria-selected={isSelectedRow}
+                                        className={`group cursor-pointer transition-colors ${rowClass}`}
+                                    >
+                                        <td className="px-3 py-4" />
+                                        {visibleSeriesColumns.map((column) => renderSeriesGridCell(item, column.key))}
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                {renderSeriesInfoButton(item)}
+                                                <GridRowActionIconButton title="Ver alunos da série" onClick={() => handleShowSeriesStudents(item)} tone="slate">
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                        <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
                                                     </svg>
-                                                ) : (
+                                                </GridRowActionIconButton>
+                                                <GridRowActionIconButton title="Editar série" onClick={() => handleEdit(item)} tone="blue">
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                     </svg>
-                                                )}
-                                            </GridRowActionIconButton>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                                                </GridRowActionIconButton>
+                                                <GridRowActionIconButton title={item.canceledAt ? 'Ativar série' : 'Inativar série'} onClick={() => openSeriesStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'}>
+                                                    {item.canceledAt ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                        </svg>
+                                                    )}
+                                                </GridRowActionIconButton>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
-                <GridFooterControls
-                    key={`series-footer-${sortedFilteredSeries.length}`}
-                    recordsCount={Number(sortedFilteredSeries.length)}
+                <GridStandardFooter
+                    recordsCount={sortedFilteredSeries.length}
                     onOpenColumns={() => setIsGridConfigOpen(true)}
                     onOpenExport={() => setIsExportModalOpen(true)}
                     statusFilter={statusFilter}
@@ -796,6 +970,14 @@ export default function SeriesPage() {
                     allLabel="Mostrar séries ativas e inativas"
                     inactiveLabel="Mostrar somente séries inativas"
                     aggregateSummaries={aggregateSummaries}
+                    pageSize={seriesPageSize}
+                    onPageSizeChange={setSeriesPageSize}
+                    currentPage={currentSeriesPage}
+                    totalPages={seriesTotalPages}
+                    onFirstPage={() => setSeriesPage(1)}
+                    onPreviousPage={() => setSeriesPage((current) => Math.max(1, current - 1))}
+                    onNextPage={() => setSeriesPage((current) => Math.min(seriesTotalPages, current + 1))}
+                    onLastPage={() => setSeriesPage(seriesTotalPages)}
                 />
             </section>
 

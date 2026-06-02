@@ -52,24 +52,12 @@ export default function GridRecordPopover({
     const visibleSubjectBadges = useMemo(() => (subjectBadges || []).filter(Boolean), [subjectBadges]);
 
     const visibleSections = useMemo(() => getVisibleSections(sections), [sections]);
-    const brandingLogoUrl = useMemo(() => {
+    const branding = useMemo(() => {
         const { tenantId } = getDashboardAuthContext();
-        return readCachedTenantBranding(tenantId)?.logoUrl || null;
+        return readCachedTenantBranding(tenantId);
     }, []);
-    const effectiveAvatarUrl = avatarUrl || brandingLogoUrl || null;
-    const useContainedAvatar = !avatarUrl && Boolean(brandingLogoUrl);
-    const initials = useMemo(
-        () =>
-            title
-                .split(' ')
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part[0])
-                .join('')
-                .toUpperCase(),
-        [title],
-    );
-
+    const brandingLogoUrl = branding?.logoUrl || null;
+    const brandingName = branding?.schoolName || 'ESCOLA';
     useEffect(() => {
         if (!isOpen) return undefined;
 
@@ -104,27 +92,37 @@ export default function GridRecordPopover({
             </button>
 
             {isOpen ? (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-                    <div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-                        <div className="shrink-0 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-cyan-50 px-5 py-4">
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="flex min-w-0 items-start gap-4">
-                                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-cyan-100 bg-cyan-100 text-base font-black text-cyan-800 shadow-sm">
-                                        {effectiveAvatarUrl ? (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-2 backdrop-blur-sm">
+                    <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="shrink-0 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-cyan-50 px-4 py-2">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-start gap-2.5">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-cyan-100 bg-white text-xs font-black text-cyan-800 shadow-sm">
+                                        {brandingLogoUrl ? (
                                             // eslint-disable-next-line @next/next/no-img-element
                                             <img
-                                                src={effectiveAvatarUrl}
-                                                alt={title}
-                                                className={`h-full w-full ${useContainedAvatar ? 'object-contain bg-white p-1.5' : 'object-cover'}`}
+                                                src={brandingLogoUrl}
+                                                alt={brandingName}
+                                                className="h-full w-full object-contain p-1"
                                             />
                                         ) : (
-                                            initials || 'ID'
-                                        )}
+                                            String(brandingName).slice(0, 3).toUpperCase()
+                                    )}
                                     </div>
+                                    {avatarUrl ? (
+                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-xs font-black text-slate-500 shadow-sm">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                                src={avatarUrl}
+                                                alt={title}
+                                                className="h-full w-full object-cover"
+                                            />
+                                        </div>
+                                    ) : null}
                                     <div className="min-w-0">
-                                        <div className="text-lg font-black text-slate-800">{title}</div>
+                                        <div className="truncate text-sm font-black text-slate-800">{title}</div>
                                         {subtitle ? (
-                                            <div className="mt-1 text-sm font-medium text-slate-500">{subtitle}</div>
+                                            <div className="mt-0.5 text-[11px] font-medium text-slate-500">{subtitle}</div>
                                         ) : null}
                                     </div>
                                 </div>
@@ -132,7 +130,7 @@ export default function GridRecordPopover({
                                 <button
                                     type="button"
                                     onClick={() => setIsOpen(false)}
-                                    className="rounded-full bg-red-600 px-4 py-2 text-xs font-black uppercase tracking-[0.3em] text-white transition hover:bg-red-700"
+                                    className="rounded-full bg-red-600 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-red-700"
                                 >
                                     Fechar
                                 </button>
@@ -140,35 +138,37 @@ export default function GridRecordPopover({
                         </div>
 
                         {visibleDisciplines.length ? (
-                            <div className="border-b border-slate-100 bg-white px-5 py-4">
-                                <div className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
-                                    DISCIPLINAS
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                {visibleDisciplines.map((item) => (
-                                    <span
-                                        key={item}
-                                        className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-5 py-1.5 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-600 shadow-sm"
-                                    >
-                                        {item}
-                                    </span>
-                                ))}
+                            <div className="border-b border-slate-100 bg-white px-4 py-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                                        DISCIPLINAS
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                    {visibleDisciplines.map((item) => (
+                                        <span
+                                            key={item}
+                                            className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600 shadow-sm"
+                                        >
+                                            {item}
+                                        </span>
+                                    ))}
+                                    </div>
                                 </div>
                             </div>
                         ) : null}
 
-                        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                            <div className="flex min-h-[220px] min-w-0 flex-col gap-5">
+                        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+                            <div className="flex min-w-0 flex-col gap-2">
                                 {visibleSubjectBadges.length ? (
-                                    <section className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
-                                        <div className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                    <section className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
+                                        <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
                                             Matérias lecionadas
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex flex-wrap items-center gap-1.5">
                                             {visibleSubjectBadges.map((subject) => (
                                                 <span
                                                     key={`subject-${subject}`}
-                                                    className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-800"
+                                                    className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-800"
                                                 >
                                                     {subject}
                                                 </span>
@@ -176,22 +176,22 @@ export default function GridRecordPopover({
                                         </div>
                                     </section>
                                 ) : null}
-                                <div className="space-y-5">
+                                <div className="space-y-2">
                                     {visibleSections.map((section, sectionIndex) => (
-                                        <section key={`${section.title || 'section'}-${sectionIndex}`} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                                        <section key={`${section.title || 'section'}-${sectionIndex}`} className="rounded-lg border border-slate-100 bg-slate-50/60 p-2">
                                             {section.title ? (
-                                                <div className="mb-4 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                                <div className="mb-1.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
                                                     {section.title}
                                                 </div>
                                             ) : null}
 
-                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                            <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3 xl:grid-cols-4">
                                                 {section.items.map((item) => (
-                                                    <div key={`${sectionIndex}-${item.label}`} className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
-                                                        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+                                                    <div key={`${sectionIndex}-${item.label}`} className="rounded-lg border border-slate-100 bg-white px-2 py-1.5 shadow-sm">
+                                                        <div className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
                                                             {item.label}
                                                         </div>
-                                                        <div className="mt-1 break-words text-sm font-semibold text-slate-700">
+                                                        <div className="mt-0.5 break-words text-[11px] font-semibold text-slate-700">
                                                             {item.value}
                                                         </div>
                                                     </div>
@@ -201,8 +201,8 @@ export default function GridRecordPopover({
                                     ))}
                                 </div>
                                 {contextLabel ? (
-                                    <div className="mt-auto text-right">
-                                        <ScreenNameCopy screenId={contextLabel} className="justify-end" />
+                                    <div className="text-right">
+                                        <ScreenNameCopy screenId={contextLabel} className="justify-end" disableMargin />
                                     </div>
                                 ) : null}
                             </div>

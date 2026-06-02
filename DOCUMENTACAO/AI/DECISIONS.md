@@ -213,3 +213,21 @@ Para cada decisao, registrar:
 - Impacto: cadastros passam a permitir marcar filial 1 e 3, por exemplo, e o login oferece somente as filiais liberadas para aquele papel.
 - Alternativas consideradas: duplicar cadastros por filial; usar apenas `branchCode = 0` para todos os casos; reaproveitar `user_branch_accesses` fora de usuarios administrativos.
 - Status: aceita
+
+## DEC-0023
+
+- Data: 2026-06-02
+- Contexto: a tela `PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS` consolidou um modelo mais eficiente para telas com grid paginado, com foco no conteudo da listagem.
+- Decisao: adotar o modelo compartilhado em Escola e Financeiro: rolagem vertical apenas dentro do grid, cabecalho de colunas fixo, linhas do corpo zebradas com contraste perceptivel, linha clicada destacada ate outra linha ser selecionada, filtros no cabecalho com `Limpar todos os filtros` como primeiro botao a esquerda, botao de incluir/cadastrar no canto esquerdo da area da listagem como primeira informacao visual acima do grid quando existir essa acao, rodape em linha unica com `Colunas`, impressao/exportacao, semaforo/status, total de registros ao lado do semaforo, combobox de quantidade por pagina iniciado em `10` e navegacao `<< < pagina/total > >>`; o rodape nao deve exibir texto de intervalo como `1-10 de 100 registro(s)`.
+- Impacto: novas telas com grid paginado devem seguir `DOCUMENTACAO/AI/UI_PATTERNS.md`, `PAT-015.2`, preservando maior area util para registros e evitando rolagem duplicada.
+- Alternativas consideradas: manter cabecalho rolando junto com linhas; manter paginacao separada em outra linha; exibir contador de intervalo no rodape.
+- Status: aceita
+
+## DEC-0024
+
+- Data: 2026-06-02
+- Contexto: popups administrativos podem exibir foto/avatar do registro, mas o usuario aprovou que todo popup deve manter o logotipo institucional no cabecalho.
+- Decisao: em `Escola` e `Financeiro`, todo popup/modal deve ter logotipo institucional no cabecalho; se houver foto/avatar/icone do registro, ele deve aparecer como elemento adicional e nao substituir o logotipo.
+- Impacto: preserva identidade visual da escola/empresa e padroniza suporte/auditoria visual em popups dos dois sistemas.
+- Alternativas consideradas: usar apenas avatar do registro em popups de detalhe; manter a regra somente na Escola; tratar como opcional em popups pequenos.
+- Status: aceita

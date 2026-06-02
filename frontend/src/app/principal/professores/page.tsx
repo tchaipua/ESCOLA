@@ -1,20 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { getStoredToken } from '@/app/lib/auth-storage';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
-import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
-import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
+import GridStatusFilter, { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import {
     fetchAddressByCep,
     fetchEmailUsageByEmail,
@@ -257,15 +254,17 @@ type TeacherGridColumnDefinition = GridColumnDefinition<TeacherRecord, TeacherCo
     visibleByDefault?: boolean;
 };
 
+type TeacherColumnFilters = Record<TeacherColumnKey, string>;
+
 const TEACHER_COLUMNS: TeacherGridColumnDefinition[] = [
     { key: 'name', label: 'Nome oficial', getValue: (row) => row.name || '---', visibleByDefault: true },
     { key: 'nickname', label: 'Apelido', getValue: (row) => row.nickname || '---', visibleByDefault: false },
     { key: 'corporateName', label: 'Nome empresarial', getValue: (row) => row.corporateName || '---', visibleByDefault: false },
     { key: 'birthDate', label: 'Nascimento', getValue: (row) => row.birthDate ? new Date(row.birthDate).toLocaleDateString() : '---', visibleByDefault: false },
-    { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: true },
+    { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: false },
     { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
     { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
-    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.email || row.phone || row.whatsapp || '---', visibleByDefault: true },
+    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.email || row.phone || row.whatsapp || '---', visibleByDefault: false },
     { key: 'email', label: 'E-mail de login', getValue: (row) => row.email || '---', visibleByDefault: false },
     { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
     { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
@@ -280,7 +279,7 @@ const TEACHER_COLUMNS: TeacherGridColumnDefinition[] = [
     { key: 'state', label: 'UF', getValue: (row) => row.state || '---', visibleByDefault: false },
     { key: 'cityState', label: 'Cidade / UF', getValue: (row) => [row.city, row.state].filter(Boolean).join(' / ') || '---', visibleByDefault: false },
     { key: 'address', label: 'Endereço', getValue: (row) => [row.street, row.number, row.neighborhood].filter(Boolean).join(', ') || '---', visibleByDefault: false },
-    { key: 'pwaStatus', label: 'Status PWA', getValue: (row) => row.email ? 'APP LIBERADO' : 'SEM ACESSO', getSortValue: (row) => row.email ? 1 : 0, align: 'center', visibleByDefault: true },
+    { key: 'pwaStatus', label: 'Status PWA', getValue: (row) => row.email ? 'APP LIBERADO' : 'SEM ACESSO', getSortValue: (row) => row.email ? 1 : 0, align: 'center', visibleByDefault: false },
     { key: 'accessProfile', label: 'Perfil', getValue: (row) => row.accessProfile ? row.accessProfile.replaceAll('_', ' ') : 'PADRÃO', visibleByDefault: false },
 ];
 
@@ -362,6 +361,60 @@ function normalizeTeacherSubjectName(value?: string | null) {
         .toUpperCase();
 }
 
+function normalizeTeacherGridFilterValue(value?: string | number | null) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
+}
+
+function normalizeTeacherGridDigits(value?: string | number | null) {
+    return String(value ?? '').replace(/\D/g, '');
+}
+
+function matchesTeacherGridTextFilter(values: Array<string | number | null | undefined>, filterValue: string) {
+    const normalizedFilter = normalizeTeacherGridFilterValue(filterValue);
+    const filterDigits = normalizeTeacherGridDigits(filterValue);
+
+    if (!normalizedFilter) {
+        return true;
+    }
+
+    return values.some((value) => {
+        const normalizedValue = normalizeTeacherGridFilterValue(value);
+
+        if (normalizedValue.includes(normalizedFilter)) {
+            return true;
+        }
+
+        return Boolean(filterDigits && normalizeTeacherGridDigits(value).includes(filterDigits));
+    });
+}
+
+function getTeacherColumnFilterValues(row: TeacherRecord, columnKey: TeacherColumnKey) {
+    const column = TEACHER_COLUMNS.find((item) => item.key === columnKey);
+    const baseValue = column?.getValue(row) || '';
+
+    if (columnKey === 'name') {
+        return [row.name, row.nickname, formatTeacherSubjects(row) || '', baseValue];
+    }
+
+    if (columnKey === 'contact') {
+        return [row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+    }
+
+    if (columnKey === 'address') {
+        return [row.street, row.number, row.neighborhood, row.complement, row.city, row.state, row.zipCode, baseValue];
+    }
+
+    if (columnKey === 'cityState') {
+        return [row.city, row.state, baseValue];
+    }
+
+    return [baseValue];
+}
+
 function formatTeacherRateHistoryLabel(effectiveFrom?: string | null, effectiveTo?: string | null) {
     const start = effectiveFrom ? new Date(effectiveFrom).toLocaleDateString() : 'SEM INÍCIO';
     const end = effectiveTo ? new Date(effectiveTo).toLocaleDateString() : 'ATUAL';
@@ -391,9 +444,13 @@ const TEACHER_EXPORT_COLUMNS: GridColumnDefinition<TeacherRecord, TeacherExportC
 
 const ALL_TEACHER_COLUMN_KEYS = TEACHER_COLUMNS.map((column) => column.key);
 const DEFAULT_VISIBLE_TEACHER_COLUMNS = TEACHER_COLUMNS.filter((column) => column.visibleByDefault).map((column) => column.key);
+const EMPTY_TEACHER_COLUMN_FILTERS = ALL_TEACHER_COLUMN_KEYS.reduce<TeacherColumnFilters>((accumulator, key) => {
+    accumulator[key] = '';
+    return accumulator;
+}, {} as TeacherColumnFilters);
 
 function getTeacherGridConfigStorageKey(tenantId: string | null) {
-    return `dashboard:professores:grid-config:${tenantId || 'default'}`;
+    return `dashboard:professores:grid-config:nome-oficial:${tenantId || 'default'}`;
 }
 
 function getTeacherExportConfigStorageKey(tenantId: string | null) {
@@ -708,6 +765,12 @@ export default function ProfessoresPage() {
     const [exportFormat, setExportFormat] = useState<'excel' | 'csv' | 'pdf' | 'json' | 'txt'>('excel');
     const [exportColumns, setExportColumns] = useState<Record<TeacherExportColumnKey, boolean>>(buildDefaultExportColumns(TEACHER_EXPORT_COLUMNS));
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [teacherColumnFilters, setTeacherColumnFilters] = useState<TeacherColumnFilters>(EMPTY_TEACHER_COLUMN_FILTERS);
+    const [teacherColumnFilterDrafts, setTeacherColumnFilterDrafts] = useState<TeacherColumnFilters>(EMPTY_TEACHER_COLUMN_FILTERS);
+    const [activeTeacherFilterColumn, setActiveTeacherFilterColumn] = useState<TeacherColumnKey | null>(null);
+    const [teacherPageSize, setTeacherPageSize] = useState(10);
+    const [teacherPage, setTeacherPage] = useState(1);
+    const [selectedTeacherGridRowId, setSelectedTeacherGridRowId] = useState<string | null>(null);
     const [columnOrder, setColumnOrder] = useState<TeacherColumnKey[]>(normalizeTeacherColumnOrder(DEFAULT_VISIBLE_TEACHER_COLUMNS));
     const [hiddenColumns, setHiddenColumns] = useState<TeacherColumnKey[]>(
         ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)),
@@ -740,14 +803,8 @@ export default function ProfessoresPage() {
         access: 'VIEW_TEACHER_ACCESS_DATA',
     });
     const availableTeacherColumns = useMemo(
-        () => TEACHER_COLUMNS.filter((column) => {
-            if (['cpf', 'rg', 'cnpj'].includes(column.key) && !teacherFieldAccess.sensitive) return false;
-            if (['phone', 'whatsapp', 'cellphone1', 'cellphone2', 'zipCode', 'street', 'number', 'neighborhood', 'complement', 'city', 'state', 'cityState', 'address'].includes(column.key) && !teacherFieldAccess.contact) return false;
-            if (['email', 'accessProfile', 'pwaStatus'].includes(column.key) && !teacherFieldAccess.access) return false;
-            if (column.key === 'contact' && !teacherFieldAccess.contact && !teacherFieldAccess.access) return false;
-            return true;
-        }),
-        [teacherFieldAccess.access, teacherFieldAccess.contact, teacherFieldAccess.sensitive],
+        () => TEACHER_COLUMNS.filter((column) => column.key === 'name'),
+        [],
     );
     const availableTeacherExportColumns = useMemo(
         () => TEACHER_EXPORT_COLUMNS.filter((column) => {
@@ -794,7 +851,7 @@ export default function ProfessoresPage() {
         () => buildDisciplineToneMap(disciplineOptions.map((discipline) => discipline.label)),
         [disciplineOptions],
     );
-    const filteredProfessores = professores.filter((prof) => {
+    const filteredProfessores = useMemo(() => professores.filter((prof) => {
         const term = searchTerm.trim().toUpperCase();
         const matchesSearch = !term || [prof.name, prof.email, prof.cpf, prof.phone, prof.whatsapp]
             .some((value) => String(value || '').toUpperCase().includes(term));
@@ -809,14 +866,36 @@ export default function ProfessoresPage() {
             selectedSubjectFilter === 'ALL'
                 ? true
                 : getTeacherSubjects(prof).some((subjectName) => normalizeTeacherSubjectName(subjectName) === selectedSubjectFilter);
+        const matchesColumnFilters = ALL_TEACHER_COLUMN_KEYS.every((columnKey) =>
+            matchesTeacherGridTextFilter(
+                getTeacherColumnFilterValues(prof, columnKey),
+                teacherColumnFilters[columnKey],
+            ),
+        );
 
-        return matchesSearch && matchesStatus && matchesSubject;
-    });
+        return matchesSearch && matchesStatus && matchesSubject && matchesColumnFilters;
+    }), [professores, searchTerm, selectedSubjectFilter, statusFilter, teacherColumnFilters]);
     const sortedFilteredProfessores = useMemo(
         () => sortGridRows(filteredProfessores, TEACHER_COLUMNS, sortState),
         [filteredProfessores, sortState],
     );
+    const teacherTotalPages = Math.max(1, Math.ceil(sortedFilteredProfessores.length / teacherPageSize));
+    const currentTeacherPage = Math.min(teacherPage, teacherTotalPages);
+    const paginatedProfessores = useMemo(() => {
+        const startIndex = (currentTeacherPage - 1) * teacherPageSize;
+        return sortedFilteredProfessores.slice(startIndex, startIndex + teacherPageSize);
+    }, [currentTeacherPage, sortedFilteredProfessores, teacherPageSize]);
     const displayedTeachersCount = sortedFilteredProfessores.length;
+    const hasTeacherGridFilters = useMemo(
+        () =>
+            searchTerm.trim() !== ''
+            || selectedSubjectFilter !== 'ALL'
+            || statusFilter !== 'ACTIVE'
+            || Object.values(teacherColumnFilters).some((value) => value.trim() !== '')
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction,
+        [searchTerm, selectedSubjectFilter, sortState.column, sortState.direction, statusFilter, teacherColumnFilters],
+    );
     const professoresAuditContext = useMemo(() => {
         const subjectFilterLabel = selectedSubjectFilter === 'ALL'
             ? 'ALL'
@@ -847,6 +926,14 @@ export default function ProfessoresPage() {
             },
         }));
     }, [professoresAuditContext]);
+
+    useEffect(() => {
+        setTeacherPage(1);
+    }, [searchTerm, selectedSubjectFilter, sortState, statusFilter, teacherColumnFilters, teacherPageSize]);
+
+    useEffect(() => {
+        setTeacherPage((current) => Math.min(Math.max(current, 1), teacherTotalPages));
+    }, [teacherTotalPages]);
 
     // States do Formulário
     const [formData, setFormData] = useState<TeacherFormState>({
@@ -1328,13 +1415,6 @@ export default function ProfessoresPage() {
         }));
     };
 
-    const toggleSort = (column: TeacherColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
-    };
-
     const toggleExportColumn = (column: TeacherExportColumnKey) => {
         setExportColumns((current) => ({ ...current, [column]: !current[column] }));
     };
@@ -1353,7 +1433,6 @@ export default function ProfessoresPage() {
             title={teacher.name}
             subtitle={teacher.birthDate ? `Nascimento: ${formatTeacherDate(teacher.birthDate)}` : 'Docente sem data de nascimento informada'}
             buttonLabel={`Ver detalhes do professor ${teacher.name}`}
-            subjectBadges={getTeacherSubjectBadges(teacher)}
             badges={[
                 teacher.canceledAt ? 'INATIVO' : 'ATIVO',
             ]}
@@ -1430,38 +1509,207 @@ export default function ProfessoresPage() {
         setHiddenColumns(ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)));
     };
 
+    const clearAllTeacherGridFilters = () => {
+        setSearchTerm('');
+        setSelectedSubjectFilter('ALL');
+        setStatusFilter('ACTIVE');
+        setTeacherColumnFilters({ ...EMPTY_TEACHER_COLUMN_FILTERS });
+        setTeacherColumnFilterDrafts({ ...EMPTY_TEACHER_COLUMN_FILTERS });
+        setSortState(DEFAULT_SORT);
+        setActiveTeacherFilterColumn(null);
+    };
+
+    const openTeacherColumnFilter = (columnKey: TeacherColumnKey | null) => {
+        if (!columnKey) {
+            setActiveTeacherFilterColumn(null);
+            return;
+        }
+
+        setTeacherColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: teacherColumnFilters[columnKey] || '',
+        }));
+        setActiveTeacherFilterColumn(columnKey);
+    };
+
+    const applyTeacherColumnFilter = (columnKey: TeacherColumnKey) => {
+        setTeacherColumnFilters((current) => ({
+            ...current,
+            [columnKey]: teacherColumnFilterDrafts[columnKey] || '',
+        }));
+        setActiveTeacherFilterColumn(null);
+    };
+
+    const clearTeacherColumnFilter = (columnKey: TeacherColumnKey) => {
+        setTeacherColumnFilters((current) => ({
+            ...current,
+            [columnKey]: '',
+        }));
+        setTeacherColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: '',
+        }));
+        setActiveTeacherFilterColumn(null);
+    };
+
+    const handleTeacherColumnFilterKeyDown = (
+        event: KeyboardEvent<HTMLInputElement>,
+        columnKey: TeacherColumnKey,
+    ) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        applyTeacherColumnFilter(columnKey);
+    };
+
+    const renderTeacherClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllTeacherGridFilters}
+            aria-label="Limpar todos os filtros"
+            title="Limpar todos os filtros"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                hasTeacherGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 shadow-sm hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M4 6h16M7 12h10M10 18h4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M18 4 6 20" />
+            </svg>
+        </button>
+    );
+
+    const renderTeacherColumnHeader = (column: TeacherGridColumnDefinition) => {
+        const isOpen = activeTeacherFilterColumn === column.key;
+        const isActive = Boolean(teacherColumnFilters[column.key]?.trim()) || sortState.column === column.key;
+        const alignClass =
+            column.align === 'right'
+                ? 'justify-end'
+                : column.align === 'center'
+                    ? 'justify-center'
+                    : 'justify-start';
+
+        return (
+            <div className={`relative flex items-center gap-2 ${alignClass}`}>
+                <span>{column.label}</span>
+                <button
+                    type="button"
+                    onClick={() => openTeacherColumnFilter(isOpen ? null : column.key)}
+                    aria-label={`Filtrar ${column.label}`}
+                    title={`Filtrar ${column.label}`}
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                        isActive || isOpen
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-400 hover:border-blue-200 hover:text-blue-600'
+                    }`}
+                >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7" strokeWidth={1.8} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m20 20-3.5-3.5" />
+                    </svg>
+                </button>
+                {isOpen ? (
+                    <div className={`absolute top-full z-40 mt-2 w-[276px] rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl ${
+                        column.align === 'right' ? 'right-0' : 'left-0'
+                    }`}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                            Ordenar coluna
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'asc' });
+                                    setActiveTeacherFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Crescente
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'desc' });
+                                    setActiveTeacherFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Decrescente
+                            </button>
+                        </div>
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                Filtrar {column.label}
+                            </div>
+                            <input
+                                value={teacherColumnFilterDrafts[column.key] || ''}
+                                onChange={(event) =>
+                                    setTeacherColumnFilterDrafts((current) => ({
+                                        ...current,
+                                        [column.key]: event.target.value.toUpperCase(),
+                                    }))
+                                }
+                                onKeyDown={(event) => handleTeacherColumnFilterKeyDown(event, column.key)}
+                                placeholder="DIGITE O FILTRO"
+                                className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => applyTeacherColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 transition hover:bg-blue-100"
+                            >
+                                Filtrar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => clearTeacherColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Limpar
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
+
     const renderTeacherGridCell = (prof: TeacherRecord, columnKey: TeacherColumnKey) => {
         if (columnKey === 'name') {
+            const subjectList = getTeacherSubjects(prof);
+
             return (
                 <td key={columnKey} className="px-6 py-4">
                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border ${prof.canceledAt ? 'bg-rose-100 text-rose-700 border-rose-200/50' : 'bg-blue-100 text-blue-700 border-blue-200/50'}`}>
                             {prof.name.substring(0, 2).toUpperCase()}
                         </div>
-                        <div>
-                            <div className={`flex items-center gap-2 font-semibold ${prof.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
-                                <span>{prof.name}</span>
-                                <RecordStatusIndicator active={!prof.canceledAt} />
+                        <div className="min-w-0 flex-1">
+                            <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold ${prof.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
+                                <span
+                                    className={`inline-flex h-3 w-3 shrink-0 rounded-full ${prof.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                                    title={prof.canceledAt ? 'INATIVO' : 'ATIVO'}
+                                    aria-label={prof.canceledAt ? 'INATIVO' : 'ATIVO'}
+                                    role="img"
+                                />
+                                <span className="min-w-0 max-w-[420px] truncate">{prof.name}</span>
+                                {subjectList.map((subjectName, index) => {
+                                    const normalizedSubjectName = normalizeTeacherSubjectName(subjectName);
+                                    const tone = disciplineToneMap[normalizedSubjectName] || DISCIPLINE_BADGE_TONES[0];
+
+                                    return (
+                                        <span
+                                            key={`${normalizedSubjectName || subjectName}-${index}`}
+                                            title={subjectName}
+                                            className={`inline-flex max-w-[170px] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${tone.chip}`}
+                                        >
+                                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
+                                            <span className="truncate">{subjectName}</span>
+                                        </span>
+                                    );
+                                })}
                             </div>
-                            {(() => {
-                                const subjectList = getTeacherSubjects(prof);
-                                return subjectList.length > 0 ? (
-                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                        {subjectList.map((subjectName) => {
-                                            const tone = disciplineToneMap[normalizeTeacherSubjectName(subjectName)] || DISCIPLINE_BADGE_TONES[0];
-                                            return (
-                                                <span
-                                                    key={subjectName}
-                                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${tone.chip}`}
-                                                >
-                                                    <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
-                                                    <span className="max-w-[140px] truncate">{subjectName}</span>
-                                                </span>
-                                            );
-                                        })}
-                                    </div>
-                                ) : null;
-                            })()}
                         </div>
                     </div>
                 </td>
@@ -1936,15 +2184,15 @@ export default function ProfessoresPage() {
             )}
 
             {/* Tabela */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="dashboard-band px-6 py-4 border-b">
+                <section className="flex h-[calc(100vh-17rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="dashboard-band shrink-0 border-b px-4 py-3">
                     <div className="flex flex-wrap items-center gap-3">
                         {canManageTeachers && (
                             <button
                                 type="button"
                                 onClick={openModal}
-                                title="Cadastrar novo"
-                                aria-label="Cadastrar novo"
+                                title="Cadastrar novo professor"
+                                aria-label="Cadastrar novo professor"
                                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                             >
                                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1953,8 +2201,8 @@ export default function ProfessoresPage() {
                             </button>
                         )}
                         <div className="relative w-full max-w-xs">
-                            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} type="text" placeholder="Buscar docente..." className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all" />
-                            <svg className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} type="text" placeholder="Buscar docente..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                         </div>
@@ -1986,41 +2234,62 @@ export default function ProfessoresPage() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] uppercase tracking-wider font-bold">
+                <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                    <table className="w-full min-w-[1180px] border-collapse text-left">
+                        <thead className="bg-slate-50">
+                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                    {renderTeacherClearAllButton()}
+                                </th>
                                 {visibleTeacherColumns.map((column) => (
-                                    <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}>
-                                        <GridSortableHeader
-                                            label={column.label}
-                                            isActive={sortState.column === column.key}
-                                            direction={sortState.direction}
-                                            onClick={() => toggleSort(column.key)}
-                                            align={column.align === 'center' ? 'center' : 'left'}
-                                        />
+                                    <th key={column.key} className={`sticky top-0 z-20 bg-slate-50 px-6 py-3 ${column.align === 'center' ? 'text-center' : ''}`}>
+                                        {renderTeacherColumnHeader(column)}
                                     </th>
                                 ))}
-                                <th className="px-6 py-4 text-right">Ação</th>
+                                <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
                             </tr>
+                            {activeTeacherFilterColumn ? (
+                                <tr aria-hidden="true">
+                                    <th colSpan={visibleTeacherColumns.length + 2} className="h-56 bg-white p-0" />
+                                </tr>
+                            ) : null}
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={visibleTeacherColumns.length + 1} className="px-6 py-12 text-center text-slate-400 font-medium">
-                                        <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3"></div>
+                                    <td colSpan={visibleTeacherColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"></div>
                                         Sincronizando com Banco de Dados...
                                     </td>
                                 </tr>
                             ) : sortedFilteredProfessores.length === 0 ? (
                                 <tr>
-                                    <td colSpan={visibleTeacherColumns.length + 1} className="px-6 py-12 text-center text-slate-400 font-medium">
+                                    <td colSpan={visibleTeacherColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
                                         Nenhum professor cadastrado ainda.
                                     </td>
                                 </tr>
                             ) : (
-                                sortedFilteredProfessores.map((prof) => (
-                                    <tr key={prof.id} className={`transition-colors group ${prof.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}`}>
+                                paginatedProfessores.map((prof, rowIndex) => {
+                                    const zebraClass = rowIndex % 2 === 0
+                                        ? prof.canceledAt
+                                            ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                            : 'bg-white hover:bg-slate-50'
+                                        : prof.canceledAt
+                                            ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                            : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                    const isSelectedRow = selectedTeacherGridRowId === prof.id;
+                                    const rowClass = isSelectedRow
+                                        ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                        : zebraClass;
+
+                                    return (
+                                    <tr
+                                        key={prof.id}
+                                        onClick={() => setSelectedTeacherGridRowId(prof.id)}
+                                        aria-selected={isSelectedRow}
+                                        className={`group cursor-pointer transition-colors ${rowClass}`}
+                                    >
+                                        <td className="px-3 py-4" />
                                         {visibleTeacherColumns.map((column) => renderTeacherGridCell(prof, column.key))}
                                         <td className="px-6 py-4 text-right">
                                         {canManageTeachers ? (
@@ -2059,23 +2328,109 @@ export default function ProfessoresPage() {
                                         )}
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
                 </div>
-                <GridFooterControls
-                    key={`teacher-footer-${displayedTeachersCount}`}
-                    recordsCount={Number(displayedTeachersCount)}
-                    onOpenColumns={() => setIsGridConfigOpen(true)}
-                    onOpenExport={() => setIsExportModalOpen(true)}
-                    statusFilter={statusFilter}
-                    onStatusFilterChange={setStatusFilter}
-                    activeLabel="Mostrar somente professores ativos"
-                    allLabel="Mostrar professores ativos e inativos"
-                    inactiveLabel="Mostrar somente professores inativos"
-                />
-            </div>
+
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsGridConfigOpen(true)}
+                            title="Configurar colunas do grid"
+                            className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                            </svg>
+                            Colunas
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsExportModalOpen(true)}
+                            title="Abrir exportação e impressão"
+                            aria-label="Abrir exportação e impressão"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V4h12v5M6 18h12v2H6v-2zm-1-8h14a2 2 0 012 2v4H3v-4a2 2 0 012-2z" />
+                            </svg>
+                        </button>
+                        <GridStatusFilter
+                            value={statusFilter}
+                            onChange={setStatusFilter}
+                            activeLabel="Mostrar somente professores ativos"
+                            allLabel="Mostrar professores ativos e inativos"
+                            inactiveLabel="Mostrar somente professores inativos"
+                        />
+                        <div
+                            className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm"
+                            title={`${displayedTeachersCount} registro(s) encontrado(s)`}
+                        >
+                            Total registros: {new Intl.NumberFormat('pt-BR').format(displayedTeachersCount)}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        <select
+                            value={teacherPageSize}
+                            onChange={(event) => setTeacherPageSize(Number(event.target.value))}
+                            aria-label="Registros por página"
+                            className="h-8 rounded-full border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 outline-none transition hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        >
+                            {[10, 20, 50, 100].map((pageSize) => (
+                                <option key={pageSize} value={pageSize}>{pageSize}</option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            aria-label="Voltar para o início"
+                            title="Voltar para o início"
+                            onClick={() => setTeacherPage(1)}
+                            disabled={currentTeacherPage <= 1}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'<<'}
+                        </button>
+                        <button
+                            type="button"
+                            aria-label="Voltar uma página"
+                            title="Voltar uma página"
+                            onClick={() => setTeacherPage((current) => Math.max(1, current - 1))}
+                            disabled={currentTeacherPage <= 1}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'<'}
+                        </button>
+                        <div className="min-w-20 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            {currentTeacherPage}/{teacherTotalPages}
+                        </div>
+                        <button
+                            type="button"
+                            aria-label="Avançar uma página"
+                            title="Avançar uma página"
+                            onClick={() => setTeacherPage((current) => Math.min(teacherTotalPages, current + 1))}
+                            disabled={currentTeacherPage >= teacherTotalPages}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'>'}
+                        </button>
+                        <button
+                            type="button"
+                            aria-label="Ir para o fim"
+                            title="Ir para o fim"
+                            onClick={() => setTeacherPage(teacherTotalPages)}
+                            disabled={currentTeacherPage >= teacherTotalPages}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'>>'}
+                        </button>
+                    </div>
+                </div>
+            </section>
 
             <GridColumnConfigModal
                 isOpen={isGridConfigOpen}
@@ -2153,12 +2508,12 @@ export default function ProfessoresPage() {
 
             {/* MODAL MÁGICO DE CADASTRO / EDIÇÃO */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 animate-in fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[96vh]">
 
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-                            <div className="flex items-center gap-4 min-w-0">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                                     {currentTenantBranding?.logoUrl ? (
                                         <img
                                             src={currentTenantBranding.logoUrl}
@@ -2166,30 +2521,30 @@ export default function ProfessoresPage() {
                                             className="h-full w-full object-contain"
                                         />
                                     ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                        <span className="text-[11px] font-black tracking-[0.18em] text-[#153a6a]">
                                             {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
                                         </span>
                                     )}
                                 </div>
                                 <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-600">
                                         {currentTenantBranding?.schoolName || 'Escola'}
                                     </div>
-                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">
+                                    <h2 className="truncate text-lg font-bold text-[#153a6a]">
                                         {editingTeacherId ? `Editar dossiê do docente: ${formData.name || 'DOCENTE'}` : 'Cadastrar Novo Docente'}
                                     </h2>
                                 </div>
                             </div>
                         </div>
-                        <div className="border-b border-slate-100 bg-white px-6 py-3">
-                            <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
-                                Esta pessoa ja possui os seguintes papeis no sistema
-                            </div>
+                        <div className="border-b border-slate-100 bg-white px-4 py-2">
                             <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                                    Papéis no sistema
+                                </span>
                                 {personSystemRoles.map((role) => (
                                     <span
                                         key={role}
-                                        className="inline-flex min-h-10 items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-blue-700"
+                                        className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700"
                                     >
                                         {role}
                                     </span>
@@ -2197,15 +2552,15 @@ export default function ProfessoresPage() {
                             </div>
                         </div>
                         {currentTeacherAssignments.length ? (
-                            <div className="border-b border-slate-100 bg-white px-6 py-4">
-                                <div className="mb-2 text-[11px] font-black uppercase tracking-[0.3em] text-slate-400">
+                            <div className="border-b border-slate-100 bg-white px-4 py-2">
+                                <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
                                     DISCIPLINAS
                                 </div>
-                                <div className="flex flex-wrap gap-2">
+                                <div className="flex flex-wrap gap-1.5">
                                     {currentTeacherAssignments.map((assignment) => (
                                         <span
                                             key={assignment.id}
-                                            className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-5 py-1.5 text-[11px] font-bold uppercase tracking-[0.24em] text-emerald-600 shadow-sm"
+                                            className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-600 shadow-sm"
                                         >
                                             {assignment.subject?.name || 'DISCIPLINA'}
                                         </span>
@@ -2215,32 +2570,32 @@ export default function ProfessoresPage() {
                         ) : null}
 
                         {/* Abas */}
-                        <div className="flex border-b border-slate-200 bg-slate-50/50 px-6 pt-4 gap-2 shrink-0">
-                            <button type="button" onClick={() => setActiveTab(1)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                        <div className="flex border-b border-slate-200 bg-slate-50/50 px-4 pt-2 gap-1.5 shrink-0">
+                            <button type="button" onClick={() => setActiveTab(1)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 1. DADOS BÁSICOS E CONTATOS
                             </button>
-                            <button type="button" onClick={() => setActiveTab(2)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                            <button type="button" onClick={() => setActiveTab(2)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 2. ENDEREÇO E LOGÍSTICA
                             </button>
-                            <button type="button" onClick={() => setActiveTab(3)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                            <button type="button" onClick={() => setActiveTab(3)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 3. DISCIPLINAS
                             </button>
-                            <button type="button" onClick={() => setActiveTab(4)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                            <button type="button" onClick={() => setActiveTab(4)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 4. ACESSO PWA (APP)
                             </button>
-                            <button type="button" onClick={() => setActiveTab(5)} className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                            <button type="button" onClick={() => setActiveTab(5)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 5. FILIAIS DE ACESSO
                             </button>
                         </div>
 
                         {/* Formulário */}
-                        <form id="teacher-form" onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar bg-white p-6">
+                        <form id="teacher-form" onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar bg-white p-3">
 
                             {activeTab === 1 && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Identificação Pessoal / Contratual</h4>
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Identificação Pessoal / Contratual</h4>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                         {teacherFieldAccess.sensitive ? (
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">CPF</label>
@@ -2350,7 +2705,7 @@ export default function ProfessoresPage() {
                                         ) : null}
 
                                         {teacherFieldAccess.contact || teacherFieldAccess.access ? (
-                                            <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-slate-100">
+                                            <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
                                                 {teacherFieldAccess.contact ? (
                                                     <>
                                                         <div>
@@ -2403,9 +2758,9 @@ export default function ProfessoresPage() {
 
                             {activeTab === 2 && (
                                 teacherFieldAccess.contact ? (
-                                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Endereço Residencial do Docente</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Endereço Residencial do Docente</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">CEP</label>
                                                 <div className="flex gap-2">
@@ -2461,24 +2816,24 @@ export default function ProfessoresPage() {
 
                             {activeTab === 3 && (
                                 teacherFieldAccess.academic || canManageTeacherSubjects ? (
-                                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Disciplinas que o docente leciona</h4>
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Disciplinas que o docente leciona</h4>
 
                                         {!editingTeacherId || !currentTeacherForSubjects ? (
-                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-6 text-sm font-medium text-amber-800">
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-800">
                                                 Salve o cadastro do professor primeiro. Depois disso, esta aba libera o vínculo das disciplinas que ele poderá lecionar.
                                             </div>
                                         ) : (
                                             <>
                                                 {canManageTeacherSubjects ? (
-                                                    <div className="dashboard-band-soft grid grid-cols-1 gap-4 rounded-2xl border p-4 md:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
+                                                    <div className="dashboard-band-soft grid grid-cols-1 gap-3 rounded-2xl border p-3 md:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
                                                         <div>
                                                             <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Nova disciplina</label>
                                                             <select
                                                                 value={selectedSubjectIdForTeacher}
                                                                 onChange={(e) => setSelectedSubjectIdForTeacher(e.target.value)}
                                                                 disabled={isAssigningSubject}
-                                                                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
                                                             >
                                                                 <option value="">Selecione uma disciplina</option>
                                                                 {availableSubjectsForCurrentTeacher.map((subject) => (
@@ -2495,7 +2850,7 @@ export default function ProfessoresPage() {
                                                                     onChange={(e) => setHourlyRateForTeacher(e.target.value)}
                                                                     placeholder="Ex: 45,00"
                                                                     disabled={isAssigningSubject}
-                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
                                                                 />
                                                             ) : (
                                                                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
@@ -2511,7 +2866,7 @@ export default function ProfessoresPage() {
                                                                     value={effectiveFromForTeacher}
                                                                     onChange={(e) => setEffectiveFromForTeacher(e.target.value)}
                                                                     disabled={isAssigningSubject}
-                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
                                                                 />
                                                             ) : (
                                                                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
@@ -2524,7 +2879,7 @@ export default function ProfessoresPage() {
                                                                 type="button"
                                                                 onClick={() => void handleAssignSubjectToTeacher()}
                                                                 disabled={isAssigningSubject}
-                                                                className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-bold text-white shadow-md shadow-violet-600/20 transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                                className="w-full rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-violet-600/20 transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300"
                                                             >
                                                                 {isAssigningSubject ? 'Vinculando...' : 'Atribuir disciplina'}
                                                             </button>
@@ -2533,22 +2888,22 @@ export default function ProfessoresPage() {
                                                 ) : null}
 
                                                 {currentTeacherAssignments.length > 0 ? (
-                                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                                         {currentTeacherAssignments.map((assignment) => (
-                                                            <div key={assignment.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                                            <div key={assignment.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                                                                 <div className="flex items-start justify-between gap-3">
                                                                     <div>
                                                                         <div className="font-bold text-slate-800">{assignment.subject?.name || 'Disciplina sem nome'}</div>
                                                                         {teacherFieldAccess.financial ? (
-                                                                            <div className="mt-3 space-y-2">
+                                                                                <div className="mt-2 space-y-2">
                                                                                 <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
                                                                                     Valor hora-aula
                                                                                 </label>
-                                                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                                                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
                                                                                     <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">
                                                                                         Valor atual
                                                                                     </div>
-                                                                                    <div className="mt-1 text-base font-extrabold text-emerald-800">
+                                                                                    <div className="mt-0.5 text-sm font-extrabold text-emerald-800">
                                                                                         {typeof assignment.hourlyRate === 'number'
                                                                                             ? `R$ ${assignment.hourlyRate.toFixed(2).replace('.', ',')}`
                                                                                             : 'Hora-aula não informada'}
@@ -2584,7 +2939,7 @@ export default function ProfessoresPage() {
                                                                                     </div>
                                                                                 </div>
                                                                                 {assignment.rateHistories && assignment.rateHistories.length > 0 ? (
-                                                                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                                                                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                                                                                         <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                                                                                             Histórico de vigência
                                                                                         </div>
@@ -2608,7 +2963,7 @@ export default function ProfessoresPage() {
                                                                     </span>
                                                                 </div>
                                                                 {canManageTeacherSubjects ? (
-                                                                    <div className="mt-4 flex justify-end">
+                                                                    <div className="mt-3 flex justify-end">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleRemoveTeacherSubject(assignment.subjectId, assignment.subject?.name || 'Disciplina')}
@@ -2623,7 +2978,7 @@ export default function ProfessoresPage() {
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    <div className="dashboard-band-soft rounded-2xl border border-dashed px-6 py-12 text-center">
+                                                    <div className="dashboard-band-soft rounded-2xl border border-dashed px-6 py-8 text-center">
                                                         <div className="text-base font-bold text-slate-700">Nenhuma disciplina vinculada</div>
                                                         <p className="mt-2 text-sm font-medium text-slate-500">
                                                             Este professor ainda não possui disciplinas cadastradas para lecionar.
@@ -2642,13 +2997,13 @@ export default function ProfessoresPage() {
 
                             {activeTab === 4 && (
                                 teacherFieldAccess.access ? (
-                                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Configurações de Acesso ao App</h4>
-                                        <div className="grid grid-cols-1 gap-5 max-w-4xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Configurações de Acesso ao App</h4>
+                                        <div className="grid grid-cols-1 gap-3 max-w-7xl mx-auto mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200 md:grid-cols-2">
                                             <div className="md:col-span-2">
-                                                <h5 className="text-center text-sm font-semibold text-slate-600 mb-4">Forneça as credenciais para que o professor acesse chamadas e notas via PWA.</h5>
+                                                <h5 className="text-center text-sm font-semibold text-slate-600 mb-2">Forneça as credenciais para que o professor acesse chamadas e notas via PWA.</h5>
                                             </div>
-                                            <div className="md:col-span-2">
+                                            <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Perfil pré-definido do professor</label>
                                                 <select
                                                     value={formData.accessProfile}
@@ -2663,7 +3018,7 @@ export default function ProfessoresPage() {
                                                     Se este docente precisar de uma exceção, ajuste os checkboxes abaixo. Nesse caso, a permissão específica da tela passa a valer acima do perfil padrão.
                                                 </div>
                                             </div>
-                                            <div className="md:col-span-2">
+                                            <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail de Login PWA (Apenas para Acesso)</label>
                                                 <input
                                                     type="email"
@@ -2676,16 +3031,16 @@ export default function ProfessoresPage() {
                                             </div>
                                             <div className="md:col-span-2">
                                                 <div className="mb-2 text-xs font-bold text-slate-600">Permissões específicas do docente</div>
-                                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                                                     {PERMISSION_OPTIONS.map((permission) => (
-                                                        <label key={permission.value} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                                        <label key={permission.value} title={permission.label} className="flex min-h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={formData.permissions.includes(permission.value)}
                                                                 onChange={() => toggleTeacherPermission(permission.value)}
-                                                                className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                                                className="h-3 w-3 shrink-0 rounded border-slate-300 text-blue-600"
                                                             />
-                                                            <span className="text-sm font-medium text-slate-700">{permission.label}</span>
+                                                            <span className="min-w-0 truncate text-[11px] font-medium leading-tight text-slate-700">{permission.label}</span>
                                                         </label>
                                                     ))}
                                                 </div>
@@ -2700,9 +3055,9 @@ export default function ProfessoresPage() {
                             )}
 
                             {activeTab === 5 && (
-                                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-2 border-b border-blue-50">Filiais de Acesso</h4>
-                                    <div className="grid grid-cols-1 gap-5 max-w-4xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Filiais de Acesso</h4>
+                                    <div className="grid grid-cols-1 gap-3 max-w-4xl mx-auto mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                                         <TenantBranchSelect
                                             branches={tenantBranches}
                                             value={formData.branchCode}
@@ -2718,25 +3073,23 @@ export default function ProfessoresPage() {
                             )}
 
                         </form>
-                        <div className="shrink-0 border-t border-slate-100 bg-white px-6 py-5 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex flex-wrap gap-3">
-                                <button type="button" onClick={closeModal} className="px-6 py-3 font-semibold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 text-sm">Sair sem Gravar</button>
+                        <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-2 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button type="button" onClick={closeModal} className="px-5 py-2 font-semibold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 text-sm">Sair sem Gravar</button>
+                                <ScreenNameCopy
+                                    screenId={PROFESSORES_DETAIL_COPY_SCREEN_ID}
+                                    label="NOME DA TELA"
+                                    className="mt-0 max-w-[360px]"
+                                    disableMargin
+                                />
                             </div>
-                            <div className="flex flex-wrap justify-end gap-3">
-                                <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
+                            <div className="flex flex-wrap justify-end gap-2">
+                                <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                                                 {editingTeacherId ? 'Salvar' : 'Registrar Professor'}
                                 </button>
                             </div>
-                        </div>
-                        <div className="mt-3 flex justify-end">
-                            <ScreenNameCopy
-                                screenId={PROFESSORES_DETAIL_COPY_SCREEN_ID}
-                                label="NOME DA TELA"
-                                className="mt-0 justify-end"
-                                disableMargin
-                            />
                         </div>
                     </div>
                     </div>

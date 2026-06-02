@@ -1,19 +1,16 @@
 'use client';
 
-import { type ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
-import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
-import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
+import GridStatusFilter, { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import {
     fetchAddressByCep,
     fetchEmailUsageByEmail,
@@ -274,6 +271,7 @@ const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 type StudentColumnKey =
     | 'name'
     | 'currentEnrollment'
+    | 'currentClass'
     | 'nickname'
     | 'corporateName'
     | 'birthDate'
@@ -301,10 +299,22 @@ type StudentColumnKey =
     | 'notes';
 
 type StudentExportColumnKey = StudentColumnKey | 'recordStatus' | 'permissions';
+type StudentColumnFilters = Record<StudentColumnKey, string>;
+
+const HIDDEN_ALUNOS_DISPLAY_COLUMNS = new Set<StudentExportColumnKey>([
+    'cpf',
+    'contact',
+    'email',
+    'phone',
+    'whatsapp',
+    'cellphone1',
+    'cellphone2',
+]);
 
 const STUDENT_COLUMNS: ConfigurableGridColumn<StudentRecord, StudentColumnKey>[] = [
     { key: 'name', label: 'Aluno', getValue: (row) => row.name || '---', visibleByDefault: true },
-    { key: 'currentEnrollment', label: 'Turma atual', getValue: (row) => getStudentCurrentEnrollmentLabel(row, null), visibleByDefault: false },
+    { key: 'currentEnrollment', label: 'Série atual', getValue: (row) => getStudentCurrentSeriesLabel(row, null), visibleByDefault: true },
+    { key: 'currentClass', label: 'Turma atual', getValue: (row) => getStudentCurrentClassLabel(row, null), visibleByDefault: true },
     { key: 'nickname', label: 'Apelido', getValue: (row) => row.nickname || '---', visibleByDefault: false },
     { key: 'corporateName', label: 'Nome empresarial', getValue: (row) => row.corporateName || '---', visibleByDefault: false },
     { key: 'birthDate', label: 'Nascimento', getValue: (row) => formatStudentDate(row.birthDate), visibleByDefault: false },
@@ -348,8 +358,114 @@ const STUDENT_EXPORT_COLUMNS: GridColumnDefinition<StudentRecord, StudentExportC
         { key: 'permissions', label: 'Permissões específicas', getValue: (row) => formatStudentPermissions(row.permissions) },
     ],
 );
+const STUDENT_GRID_COLUMN_WIDTHS: Partial<Record<StudentColumnKey, string>> = {
+    name: 'w-[36%]',
+    currentEnrollment: 'w-[20%]',
+    currentClass: 'w-[16%]',
+    pwaStatus: 'w-[10%]',
+    birthDate: 'w-36',
+    monthlyFee: 'w-40',
+    accessProfile: 'w-40',
+    notes: 'w-56',
+    address: 'w-64',
+};
 const STUDENT_COLUMN_KEYS = getAllGridColumnKeys(STUDENT_COLUMNS);
 const DEFAULT_VISIBLE_STUDENT_COLUMNS = getDefaultVisibleGridColumnKeys(STUDENT_COLUMNS);
+const EMPTY_STUDENT_COLUMN_FILTERS = STUDENT_COLUMN_KEYS.reduce<StudentColumnFilters>((accumulator, key) => {
+    accumulator[key] = '';
+    return accumulator;
+}, {} as StudentColumnFilters);
+const REQUIRED_VISIBLE_STUDENT_GRID_COLUMNS: StudentColumnKey[] = ['currentEnrollment', 'currentClass'];
+
+function getStudentGridColumnWidthClass(columnKey: StudentColumnKey) {
+    return STUDENT_GRID_COLUMN_WIDTHS[columnKey] || 'w-40';
+}
+
+function ensureRequiredStudentGridColumns(order: StudentColumnKey[]) {
+    let nextOrder = [...order];
+
+    REQUIRED_VISIBLE_STUDENT_GRID_COLUMNS.forEach((columnKey) => {
+        if (nextOrder.includes(columnKey)) return;
+
+        const currentEnrollmentIndex = nextOrder.indexOf('currentEnrollment');
+        const nameIndex = nextOrder.indexOf('name');
+        const insertionIndex = currentEnrollmentIndex >= 0
+            ? currentEnrollmentIndex + 1
+            : nameIndex >= 0
+                ? nameIndex + 1
+                : 0;
+
+        nextOrder = [
+            ...nextOrder.slice(0, insertionIndex),
+            columnKey,
+            ...nextOrder.slice(insertionIndex),
+        ];
+    });
+
+    return nextOrder;
+}
+
+function normalizeStudentGridFilterValue(value: unknown) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+}
+
+function normalizeStudentGridDigits(value: unknown) {
+    return String(value ?? '').replace(/\D/g, '');
+}
+
+function matchesStudentGridFilter(values: unknown[], filter: string) {
+    const normalizedFilter = normalizeStudentGridFilterValue(filter);
+    const filterDigits = normalizeStudentGridDigits(filter);
+
+    if (!normalizedFilter) {
+        return true;
+    }
+
+    return values.some((value) => {
+        const normalizedValue = normalizeStudentGridFilterValue(value);
+
+        if (normalizedValue.includes(normalizedFilter)) {
+            return true;
+        }
+
+        return Boolean(filterDigits && normalizeStudentGridDigits(value).includes(filterDigits));
+    });
+}
+
+function getStudentColumnFilterValues(row: StudentRecord, columnKey: StudentColumnKey, activeSchoolYearId: string | null) {
+    const column = STUDENT_COLUMNS.find((item) => item.key === columnKey);
+    const baseValue = column?.getValue(row) || '';
+
+    if (columnKey === 'name') {
+        return [row.name, row.nickname, row.email, formatStudentDate(row.birthDate), baseValue];
+    }
+
+    if (columnKey === 'currentEnrollment') {
+        return [getStudentCurrentSeriesLabel(row, activeSchoolYearId), baseValue];
+    }
+
+    if (columnKey === 'currentClass') {
+        return [getStudentCurrentClassLabel(row, activeSchoolYearId), baseValue];
+    }
+
+    if (columnKey === 'contact') {
+        return [row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+    }
+
+    if (columnKey === 'address') {
+        return [row.street, row.number, row.neighborhood, row.complement, row.city, row.state, row.zipCode, baseValue];
+    }
+
+    if (columnKey === 'cityState') {
+        return [row.city, row.state, baseValue];
+    }
+
+    return [baseValue];
+}
 
 function getStudentGridConfigStorageKey(tenantId: string | null) {
     return `dashboard:alunos:grid-config:${tenantId || 'default'}`;
@@ -380,6 +496,7 @@ function getAlunosAuditOrderBy(column: StudentColumnKey) {
     const orderColumns: Record<StudentColumnKey, string> = {
         name: 'ST.name',
         currentEnrollment: 'SE.name',
+        currentClass: 'CL.name',
         nickname: 'ST.nickname',
         corporateName: 'ST.corporateName',
         birthDate: 'ST.birthDate',
@@ -601,6 +718,20 @@ function getStudentCurrentEnrollmentLabel(student: StudentRecord, activeSchoolYe
     return getSeriesClassLabel(currentEnrollment.seriesClass);
 }
 
+function getStudentCurrentSeriesLabel(student: StudentRecord, activeSchoolYearId: string | null) {
+    const currentEnrollment = student.enrollments?.find((item) => item.schoolYearId === activeSchoolYearId) || student.enrollments?.[0];
+    return currentEnrollment?.seriesClass?.series?.name || 'Sem série vinculada';
+}
+
+function getStudentCurrentClassLabel(student: StudentRecord, activeSchoolYearId: string | null) {
+    const currentEnrollment = student.enrollments?.find((item) => item.schoolYearId === activeSchoolYearId) || student.enrollments?.[0];
+    const currentClass = currentEnrollment?.seriesClass?.class;
+    if (!currentClass?.name) return 'Sem turma vinculada';
+
+    const shifts = splitClassShifts(currentClass.shift).join(' / ');
+    return shifts ? `${currentClass.name} (${shifts})` : currentClass.name;
+}
+
 function normalizeSystemRoleLabel(role: string) {
     const key = String(role || '').toUpperCase().trim();
     if (!key) return null;
@@ -675,8 +806,6 @@ export default function AlunosPage() {
     const [currentBranchCode, setCurrentBranchCode] = useState(1);
     const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [seriesFilter, setSeriesFilter] = useState('ALL');
-    const [classFilter, setClassFilter] = useState('ALL');
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
@@ -710,6 +839,12 @@ export default function AlunosPage() {
     );
     const [columnAggregations, setColumnAggregations] = useState<GridColumnAggregations<StudentColumnKey>>({});
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [studentColumnFilters, setStudentColumnFilters] = useState<StudentColumnFilters>(EMPTY_STUDENT_COLUMN_FILTERS);
+    const [studentColumnFilterDrafts, setStudentColumnFilterDrafts] = useState<StudentColumnFilters>(EMPTY_STUDENT_COLUMN_FILTERS);
+    const [activeStudentFilterColumn, setActiveStudentFilterColumn] = useState<StudentColumnKey | null>(null);
+    const [studentPageSize, setStudentPageSize] = useState(10);
+    const [studentPage, setStudentPage] = useState(1);
+    const [selectedStudentGridRowId, setSelectedStudentGridRowId] = useState<string | null>(null);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [exportFormat, setExportFormat] = useState<'excel' | 'csv' | 'pdf' | 'json' | 'txt'>('excel');
     const [exportColumns, setExportColumns] = useState<Record<StudentExportColumnKey, boolean>>(buildDefaultExportColumns(STUDENT_EXPORT_COLUMNS));
@@ -735,11 +870,12 @@ export default function AlunosPage() {
     });
     const availableStudentColumns = useMemo(
         () => STUDENT_COLUMNS.filter((column) => {
+            if (HIDDEN_ALUNOS_DISPLAY_COLUMNS.has(column.key)) return false;
             if (['cpf', 'rg', 'cnpj'].includes(column.key) && !studentFieldAccess.sensitive) return false;
             if (column.key === 'monthlyFee' && !studentFieldAccess.financial) return false;
             if (['phone', 'whatsapp', 'cellphone1', 'cellphone2', 'zipCode', 'street', 'number', 'neighborhood', 'complement', 'city', 'state', 'cityState', 'address'].includes(column.key) && !studentFieldAccess.contact) return false;
             if (['email', 'accessProfile', 'pwaStatus'].includes(column.key) && !studentFieldAccess.access) return false;
-            if (column.key === 'currentEnrollment' && !studentFieldAccess.academic) return false;
+            if (['currentEnrollment', 'currentClass'].includes(column.key) && !studentFieldAccess.academic) return false;
             if (column.key === 'contact' && !studentFieldAccess.contact && !studentFieldAccess.access) return false;
             if (column.key === 'notes' && !studentFieldAccess.academic) return false;
             return true;
@@ -748,11 +884,12 @@ export default function AlunosPage() {
     );
     const availableStudentExportColumns = useMemo(
         () => STUDENT_EXPORT_COLUMNS.filter((column) => {
+            if (HIDDEN_ALUNOS_DISPLAY_COLUMNS.has(column.key)) return false;
             if (['cpf', 'rg', 'cnpj'].includes(column.key) && !studentFieldAccess.sensitive) return false;
             if (column.key === 'monthlyFee' && !studentFieldAccess.financial) return false;
             if (['phone', 'whatsapp', 'cellphone1', 'cellphone2', 'zipCode', 'street', 'number', 'neighborhood', 'complement', 'city', 'state', 'cityState', 'address'].includes(column.key) && !studentFieldAccess.contact) return false;
             if (['email', 'accessProfile', 'pwaStatus', 'permissions'].includes(column.key) && !studentFieldAccess.access) return false;
-            if (column.key === 'currentEnrollment' && !studentFieldAccess.academic) return false;
+            if (['currentEnrollment', 'currentClass'].includes(column.key) && !studentFieldAccess.academic) return false;
             if (column.key === 'contact' && !studentFieldAccess.contact && !studentFieldAccess.access) return false;
             if (column.key === 'notes' && !studentFieldAccess.academic) return false;
             return true;
@@ -769,10 +906,6 @@ export default function AlunosPage() {
     );
     const linkedGuardianIds = new Set(studentGuardians.map((link) => link.guardian?.id).filter(Boolean));
     const availableGuardians = guardiansCatalog.filter((guardian) => !linkedGuardianIds.has(guardian.id));
-    const currentEnrollmentForStudent = (student: StudentRecord) => {
-        if (!Array.isArray(student.enrollments) || student.enrollments.length === 0) return null;
-        return student.enrollments.find((item) => item.schoolYearId === activeSchoolYearId) || student.enrollments[0] || null;
-    };
     const seriesOptions = useMemo(() => {
         const labels = new Map<string, string>();
         seriesClassesCatalog.forEach((seriesClass) => {
@@ -783,9 +916,9 @@ export default function AlunosPage() {
             .map(([value, label]) => ({ value, label }))
             .sort((left, right) => left.label.localeCompare(right.label, 'pt-BR'));
     }, [seriesClassesCatalog]);
-    const classOptions = useMemo(() => {
+    const studentClassOptions = useMemo(() => {
         const labels = new Map<string, string>();
-        const seriesFilterValue = seriesFilter === 'ALL' ? '' : seriesFilter;
+        const seriesFilterValue = studentColumnFilters.currentEnrollment.trim().toUpperCase();
         seriesClassesCatalog.forEach((seriesClass) => {
             const seriesName = seriesClass.series?.name?.trim().toUpperCase() || '';
             if (seriesFilterValue && seriesName !== seriesFilterValue) return;
@@ -795,9 +928,12 @@ export default function AlunosPage() {
         return Array.from(labels.entries())
             .map(([value, label]) => ({ value, label }))
             .sort((left, right) => left.label.localeCompare(right.label, 'pt-BR'));
-    }, [seriesClassesCatalog, seriesFilter]);
+    }, [seriesClassesCatalog, studentColumnFilters.currentEnrollment]);
     const filteredStudents = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
+        const activeColumnFilters = (Object.entries(studentColumnFilters) as Array<[StudentColumnKey, string]>)
+            .filter(([, value]) => value.trim());
+
         return students.filter((student) => {
             const isActive = !student.canceledAt;
             const matchesStatus =
@@ -810,48 +946,47 @@ export default function AlunosPage() {
                   !term ||
                   [student.name, student.email, student.cpf, student.whatsapp, student.phone]
                       .some((value) => String(value || '').toUpperCase().includes(term));
-              const currentEnrollment = currentEnrollmentForStudent(student);
-              const currentSeriesName = currentEnrollment?.seriesClass?.series?.name?.trim().toUpperCase() || '';
-              const currentClassName = currentEnrollment?.seriesClass?.class?.name?.trim().toUpperCase() || '';
-              const matchesSeries = seriesFilter === 'ALL' || currentSeriesName === seriesFilter;
-              const matchesClass = classFilter === 'ALL' || currentClassName === classFilter;
-              return matchesStatus && matchesSearch && matchesSeries && matchesClass;
+              const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
+                  matchesStudentGridFilter(getStudentColumnFilterValues(student, columnKey, activeSchoolYearId), filter),
+              );
+              return matchesStatus && matchesSearch && matchesColumnFilters;
           });
-    }, [classFilter, currentEnrollmentForStudent, searchTerm, seriesFilter, statusFilter, students]);
+    }, [activeSchoolYearId, searchTerm, statusFilter, studentColumnFilters, students]);
     const sortedFilteredStudents = useMemo(
         () => sortGridRows(filteredStudents, STUDENT_COLUMNS, sortState),
         [filteredStudents, sortState],
+    );
+    const studentTotalPages = Math.max(1, Math.ceil(sortedFilteredStudents.length / studentPageSize));
+    const currentStudentPage = Math.min(Math.max(studentPage, 1), studentTotalPages);
+    const paginatedStudents = useMemo(() => {
+        const startIndex = (currentStudentPage - 1) * studentPageSize;
+        return sortedFilteredStudents.slice(startIndex, startIndex + studentPageSize);
+    }, [currentStudentPage, sortedFilteredStudents, studentPageSize]);
+    const displayedStudentsCount = sortedFilteredStudents.length;
+    const hasStudentGridFilters = useMemo(
+        () =>
+            Boolean(searchTerm.trim())
+            || statusFilter !== 'ACTIVE'
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction
+            || Object.values(studentColumnFilters).some((value) => value.trim()),
+        [searchTerm, sortState.column, sortState.direction, statusFilter, studentColumnFilters],
     );
     const aggregateSummaries = useMemo(
         () => buildGridAggregateSummaries(sortedFilteredStudents, visibleStudentColumns, columnAggregations),
         [columnAggregations, sortedFilteredStudents, visibleStudentColumns],
     );
     const availableSeriesClasses = useMemo(() => {
-        const activeYearSeriesClasses = seriesFilter === 'ALL'
-            ? (activeSchoolYearId
-                ? seriesClassesCatalog.filter((item) => item.schoolYearId === activeSchoolYearId)
-                : seriesClassesCatalog)
-            : seriesClassesCatalog.filter((item) => (item.series?.name || '').trim().toUpperCase() === seriesFilter);
+        const activeYearSeriesClasses = activeSchoolYearId
+            ? seriesClassesCatalog.filter((item) => item.schoolYearId === activeSchoolYearId)
+            : seriesClassesCatalog;
         const currentStudentSeriesClass = seriesClassesCatalog.find((item) => item.id === formData.seriesClassId);
         const filteredSeriesClasses = activeYearSeriesClasses.length > 0 ? activeYearSeriesClasses : seriesClassesCatalog;
         const baseSeriesClasses = currentStudentSeriesClass && !filteredSeriesClasses.some((item) => item.id === currentStudentSeriesClass.id)
             ? [...filteredSeriesClasses, currentStudentSeriesClass]
             : filteredSeriesClasses;
         return dedupeSeriesClassOptions(baseSeriesClasses, getSeriesClassLabel, formData.seriesClassId);
-    }, [activeSchoolYearId, formData.seriesClassId, seriesClassesCatalog, seriesFilter]);
-
-    useEffect(() => {
-        if (classFilter === 'ALL') return;
-        if (seriesFilter === 'ALL') return;
-        const classMatchesSelectedSeries = seriesClassesCatalog.some((seriesClass) => {
-            const seriesName = (seriesClass.series?.name || '').trim().toUpperCase();
-            const className = (seriesClass.class?.name || '').trim().toUpperCase();
-            return seriesName === seriesFilter && className === classFilter;
-        });
-        if (!classMatchesSelectedSeries) {
-            setClassFilter('ALL');
-        }
-    }, [classFilter, seriesClassesCatalog, seriesFilter]);
+    }, [activeSchoolYearId, formData.seriesClassId, seriesClassesCatalog]);
     const currentTenantBranding = useMemo(
         () => readCachedTenantBranding(currentTenantId),
         [currentTenantId],
@@ -862,8 +997,8 @@ export default function AlunosPage() {
             tenantName: currentTenantBranding?.schoolName,
             searchTerm,
             statusFilter,
-            seriesFilter,
-            classFilter,
+            seriesFilter: studentColumnFilters.currentEnrollment.trim().toUpperCase() || 'ALL',
+            classFilter: studentColumnFilters.currentClass.trim().toUpperCase() || 'ALL',
             displayedRowsCount: sortedFilteredStudents.length,
             sortColumn: sortState.column,
             sortDirection: sortState.direction,
@@ -873,7 +1008,7 @@ export default function AlunosPage() {
             auditText: buildAlunosAuditText(auditParams),
             sqlText: buildAlunosAuditSql(auditParams),
         };
-    }, [classFilter, currentTenantBranding?.schoolName, currentTenantId, searchTerm, seriesFilter, sortState.column, sortState.direction, sortedFilteredStudents.length, statusFilter]);
+    }, [currentTenantBranding?.schoolName, currentTenantId, searchTerm, sortState.column, sortState.direction, sortedFilteredStudents.length, statusFilter, studentColumnFilters.currentClass, studentColumnFilters.currentEnrollment]);
 
     useEffect(() => {
         dispatchScreenAuditContext({
@@ -882,6 +1017,14 @@ export default function AlunosPage() {
             sqlText: alunosAuditContext.sqlText,
         });
     }, [alunosAuditContext]);
+
+    useEffect(() => {
+        setStudentPage(1);
+    }, [searchTerm, sortState.column, sortState.direction, statusFilter, studentColumnFilters, studentPageSize]);
+
+    useEffect(() => {
+        setStudentPage((current) => Math.min(Math.max(current, 1), studentTotalPages));
+    }, [studentTotalPages]);
 
     const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
@@ -1051,8 +1194,9 @@ export default function AlunosPage() {
         setIsGridConfigReady(false);
         void loadGridColumnConfig(getStudentGridConfigStorageKey(currentTenantId), STUDENT_COLUMN_KEYS, DEFAULT_VISIBLE_STUDENT_COLUMNS).then((config) => {
             if (!isMounted) return;
-            setColumnOrder(config.order);
-            setHiddenColumns(config.hidden);
+            const nextOrder = ensureRequiredStudentGridColumns(config.order);
+            setColumnOrder(nextOrder);
+            setHiddenColumns(config.hidden.filter((key) => !REQUIRED_VISIBLE_STUDENT_GRID_COLUMNS.includes(key)));
             setColumnAggregations(config.aggregations);
             setIsGridConfigReady(true);
         });
@@ -1154,13 +1298,6 @@ export default function AlunosPage() {
         setPhotoError(null);
     };
 
-    const toggleSort = (column: StudentColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
-    };
-
     const toggleExportColumn = (column: StudentExportColumnKey) => {
         setExportColumns((current) => ({ ...current, [column]: !current[column] }));
     };
@@ -1215,31 +1352,227 @@ export default function AlunosPage() {
         });
     };
 
+    const clearAllStudentGridFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('ACTIVE');
+        setSortState(DEFAULT_SORT);
+        setStudentColumnFilters({ ...EMPTY_STUDENT_COLUMN_FILTERS });
+        setStudentColumnFilterDrafts({ ...EMPTY_STUDENT_COLUMN_FILTERS });
+        setActiveStudentFilterColumn(null);
+        setStudentPage(1);
+    };
+
+    const openStudentColumnFilter = (columnKey: StudentColumnKey | null) => {
+        if (!columnKey) {
+            setActiveStudentFilterColumn(null);
+            return;
+        }
+
+        setStudentColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: studentColumnFilters[columnKey] || '',
+        }));
+        setActiveStudentFilterColumn(columnKey);
+    };
+
+    const applyStudentColumnFilter = (columnKey: StudentColumnKey) => {
+        setStudentColumnFilters((current) => ({
+            ...current,
+            [columnKey]: studentColumnFilterDrafts[columnKey] || '',
+            ...(columnKey === 'currentEnrollment' ? { currentClass: '' } : {}),
+        }));
+        setStudentColumnFilterDrafts((current) => ({
+            ...current,
+            ...(columnKey === 'currentEnrollment' ? { currentClass: '' } : {}),
+        }));
+        setActiveStudentFilterColumn(null);
+    };
+
+    const clearStudentColumnFilter = (columnKey: StudentColumnKey) => {
+        setStudentColumnFilters((current) => ({
+            ...current,
+            [columnKey]: '',
+            ...(columnKey === 'currentEnrollment' ? { currentClass: '' } : {}),
+        }));
+        setStudentColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: '',
+            ...(columnKey === 'currentEnrollment' ? { currentClass: '' } : {}),
+        }));
+        setActiveStudentFilterColumn(null);
+    };
+
+    const handleStudentColumnFilterKeyDown = (
+        event: KeyboardEvent<HTMLInputElement>,
+        columnKey: StudentColumnKey,
+    ) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        applyStudentColumnFilter(columnKey);
+    };
+
+    const renderStudentClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllStudentGridFilters}
+            aria-label="Limpar todos os filtros"
+            title="Limpar todos os filtros"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                hasStudentGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 shadow-sm hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M4 6h16M7 12h10M10 18h4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M18 4 6 20" />
+            </svg>
+        </button>
+    );
+
+    const renderStudentColumnHeader = (column: ConfigurableGridColumn<StudentRecord, StudentColumnKey>) => {
+        const isOpen = activeStudentFilterColumn === column.key;
+        const isActive = Boolean(studentColumnFilters[column.key]?.trim()) || sortState.column === column.key;
+        const alignClass =
+            column.align === 'right'
+                ? 'justify-end'
+                : column.align === 'center'
+                    ? 'justify-center'
+                    : 'justify-start';
+        const comboFilterOptions = column.key === 'currentEnrollment'
+            ? seriesOptions
+            : column.key === 'currentClass'
+                ? studentClassOptions
+                : null;
+        const comboFilterAllLabel = column.key === 'currentEnrollment' ? 'Todas as séries' : 'Todas as turmas';
+        const popoverAlignClass = column.align === 'right' || column.key === 'currentClass' ? 'right-0' : 'left-0';
+
+        return (
+            <div className={`relative flex items-center gap-2 ${alignClass}`}>
+                <span>{column.label}</span>
+                <button
+                    type="button"
+                    onClick={() => openStudentColumnFilter(isOpen ? null : column.key)}
+                    aria-label={`Filtrar ${column.label}`}
+                    title={`Filtrar ${column.label}`}
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                        isActive || isOpen
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-400 hover:border-blue-200 hover:text-blue-600'
+                    }`}
+                >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7" strokeWidth={1.8} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m20 20-3.5-3.5" />
+                    </svg>
+                </button>
+                {isOpen ? (
+                    <div className={`absolute top-full z-40 mt-2 w-[276px] rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl ${popoverAlignClass}`}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                            Ordenar coluna
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'asc' });
+                                    setActiveStudentFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Crescente
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'desc' });
+                                    setActiveStudentFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Decrescente
+                            </button>
+                        </div>
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                Filtrar {column.label}
+                            </div>
+                            {comboFilterOptions ? (
+                                <select
+                                    value={studentColumnFilterDrafts[column.key] || ''}
+                                    onChange={(event) =>
+                                        setStudentColumnFilterDrafts((current) => ({
+                                            ...current,
+                                            [column.key]: event.target.value,
+                                        }))
+                                    }
+                                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                >
+                                    <option value="">{comboFilterAllLabel}</option>
+                                    {comboFilterOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <input
+                                    value={studentColumnFilterDrafts[column.key] || ''}
+                                    onChange={(event) =>
+                                        setStudentColumnFilterDrafts((current) => ({
+                                            ...current,
+                                            [column.key]: event.target.value.toUpperCase(),
+                                        }))
+                                    }
+                                    onKeyDown={(event) => handleStudentColumnFilterKeyDown(event, column.key)}
+                                    placeholder="DIGITE O FILTRO"
+                                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                />
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => applyStudentColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 transition hover:bg-blue-100"
+                            >
+                                Filtrar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => clearStudentColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Limpar
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
+
     const renderStudentGridCell = (student: StudentRecord, columnKey: StudentColumnKey) => {
         if (columnKey === 'name') {
             return (
-                <td key={columnKey} className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                <td key={columnKey} className="overflow-hidden px-6 py-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                             {student.photoUrl ? (
                                 <img src={student.photoUrl} alt={`Foto de ${student.name}`} className="h-full w-full object-cover" />
                             ) : (
                                 <span className="text-xs font-bold text-slate-400">SEM FOTO</span>
                             )}
                         </div>
-                        <div>
-                            <div className={`flex items-center gap-2 font-semibold ${student.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
-                                <span>{student.name}</span>
-                                <RecordStatusIndicator active={!student.canceledAt} />
+                        <div className="min-w-0">
+                            <div className={`flex min-w-0 items-center gap-2 font-semibold ${student.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
+                                <span
+                                    className={`inline-flex h-3 w-3 shrink-0 rounded-full ${student.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                                    title={student.canceledAt ? 'INATIVO' : 'ATIVO'}
+                                    aria-label={student.canceledAt ? 'INATIVO' : 'ATIVO'}
+                                    role="img"
+                                />
+                                <span className="truncate">{student.name}</span>
                             </div>
                             <div className={`text-[13px] ${student.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
                                 {student.birthDate ? new Date(student.birthDate).toLocaleDateString() : 'Sem data de nascimento'}
                             </div>
-                            {student.email ? (
-                                <div className={`text-[13px] font-medium ${student.canceledAt ? 'text-rose-500' : 'text-slate-500'}`}>
-                                    E-mail: {student.email}
-                                </div>
-                            ) : null}
                         </div>
                     </div>
                 </td>
@@ -1271,6 +1604,22 @@ export default function AlunosPage() {
             );
         }
 
+        if (columnKey === 'currentEnrollment') {
+            return (
+                <td key={columnKey} className={`overflow-hidden px-6 py-4 text-sm font-medium ${student.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
+                    {getStudentCurrentSeriesLabel(student, activeSchoolYearId)}
+                </td>
+            );
+        }
+
+        if (columnKey === 'currentClass') {
+            return (
+                <td key={columnKey} className={`overflow-hidden px-6 py-4 text-sm font-medium ${student.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
+                    {getStudentCurrentClassLabel(student, activeSchoolYearId)}
+                </td>
+            );
+        }
+
         if (columnKey === 'pwaStatus') {
             return (
                 <td key={columnKey} className="px-6 py-4 text-center">
@@ -1282,7 +1631,7 @@ export default function AlunosPage() {
         }
         const value = STUDENT_COLUMNS.find((column) => column.key === columnKey)?.getValue(student) || '---';
         return (
-            <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${student.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
+            <td key={columnKey} className={`overflow-hidden px-6 py-4 text-sm font-medium ${student.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
                 {value}
             </td>
         );
@@ -1808,24 +2157,11 @@ export default function AlunosPage() {
                     title: 'Cadastro',
                     items: [
                         ...(studentFieldAccess.sensitive ? [
-                            { label: 'CPF', value: student.cpf || 'Não informado' },
                             { label: 'RG', value: student.rg || 'Não informado' },
                         ] : []),
                         { label: 'Apelido', value: student.nickname || 'Não informado' },
                     ],
                 },
-                ...(studentFieldAccess.contact || studentFieldAccess.access ? [{
-                    title: 'Contato',
-                    items: [
-                        ...(studentFieldAccess.access ? [{ label: 'E-mail', value: student.email || 'Não informado' }] : []),
-                        ...(studentFieldAccess.contact ? [
-                            { label: 'Telefone principal', value: student.whatsapp || student.phone || student.cellphone1 || student.cellphone2 || 'Não informado' },
-                            { label: 'Telefone 1', value: student.cellphone1 || 'Não informado' },
-                            { label: 'Telefone 2', value: student.cellphone2 || 'Não informado' },
-                            { label: 'WhatsApp', value: student.whatsapp || 'Não informado' },
-                        ] : []),
-                    ],
-                }] : []),
                 ...(studentFieldAccess.academic || studentFieldAccess.financial || studentFieldAccess.access ? [{
                     title: 'Acadêmico',
                     items: [
@@ -1899,16 +2235,15 @@ export default function AlunosPage() {
                 />
                 {errorStatus ? <div className="mb-6 rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">{errorStatus}</div> : null}
 
-                <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="dashboard-band border-b px-6 py-4">
-                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <section className="flex h-[calc(100vh-17rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="dashboard-band shrink-0 border-b px-4 py-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             {canManageStudents ? (
                                 <button
                                     type="button"
                                     onClick={openModal}
-                                    title="Cadastrar novo"
-                                    aria-label="Cadastrar novo"
+                                    title="Cadastrar novo aluno"
+                                    aria-label="Cadastrar novo aluno"
                                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                                 >
                                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1922,103 +2257,213 @@ export default function AlunosPage() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                                 </svg>
                             </div>
-                            <select
-                                value={seriesFilter}
-                                onChange={(event) => {
-                                    const nextSeries = event.target.value;
-                                    setSeriesFilter(nextSeries);
-                                    setClassFilter('ALL');
-                                }}
-                                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 lg:w-56"
-                            >
-                                <option value="ALL">Todas as séries</option>
-                                {seriesOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={classFilter}
-                                onChange={(event) => setClassFilter(event.target.value)}
-                                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 lg:w-56"
-                            >
-                                <option value="ALL">Todas as turmas</option>
-                                {classOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                            </div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                Filtros por série e turma
-                            </div>
                         </div>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-left">
-                            <thead>
+
+                    <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                        <table className="min-w-full table-fixed border-collapse text-left">
+                            <colgroup>
+                                <col className="w-12" />
+                                {visibleStudentColumns.map((column) => (
+                                    <col key={column.key} className={getStudentGridColumnWidthClass(column.key)} />
+                                ))}
+                                <col className="w-36" />
+                            </colgroup>
+                            <thead className="bg-slate-50">
                                 <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                    <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                        {renderStudentClearAllButton()}
+                                    </th>
                                     {visibleStudentColumns.map((column) => (
-                                        <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}><GridSortableHeader label={column.label} isActive={sortState.column === column.key} direction={sortState.direction} onClick={() => toggleSort(column.key)} align={column.align === 'center' ? 'center' : 'left'} /></th>
+                                        <th key={column.key} className={`sticky top-0 z-20 bg-slate-50 px-6 py-3 ${column.align === 'center' ? 'text-center' : ''}`}>
+                                            {renderStudentColumnHeader(column)}
+                                        </th>
                                     ))}
-                                    <th className="px-6 py-4 text-right">Ação</th>
+                                    <th className="sticky top-0 z-20 w-36 bg-slate-50 px-6 py-3 text-right">Ação</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {isLoading ? <tr><td colSpan={visibleStudentColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando alunos...</td></tr> : null}
-                                {!isLoading && sortedFilteredStudents.length === 0 ? <tr><td colSpan={visibleStudentColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum aluno encontrado.</td></tr> : null}
-                                {!isLoading && sortedFilteredStudents.map((student) => (
-                                    <tr key={student.id} className={student.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                        {visibleStudentColumns.map((column) => renderStudentGridCell(student, column.key))}
-                                        <td className="px-6 py-4 text-right">
-                                            {canManageStudents ? (
-                                                <div className="flex justify-end gap-2">
-                                                    {renderStudentInfoButton(student)}
-                                                    <GridRowActionIconButton title="Abrir responsáveis do aluno" onClick={() => handleManageGuardians(student)} tone="violet">
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
-                                                        </svg>
-                                                    </GridRowActionIconButton>
-                                                    <GridRowActionIconButton title="Editar aluno" onClick={() => handleEdit(student)} tone="blue">
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                        </svg>
-                                                    </GridRowActionIconButton>
-                                                    <GridRowActionIconButton title={student.canceledAt ? 'Ativar aluno' : 'Inativar aluno'} onClick={() => openStudentStatusModal(student)} tone={student.canceledAt ? 'emerald' : 'rose'}>
-                                                        {student.canceledAt ? (
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                            </svg>
-                                                        ) : (
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                            </svg>
-                                                        )}
-                                                    </GridRowActionIconButton>
-                                                </div>
-                                            ) : (
-                                                <div className="flex justify-end gap-2">
-                                                    {renderStudentInfoButton(student)}
-                                                    <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
-                                                </div>
-                                            )}
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={visibleStudentColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"></div>
+                                            Carregando alunos...
                                         </td>
                                     </tr>
-                                ))}
+                                ) : sortedFilteredStudents.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={visibleStudentColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                            Nenhum aluno encontrado.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedStudents.map((student, rowIndex) => {
+                                        const zebraClass = rowIndex % 2 === 0
+                                            ? student.canceledAt
+                                                ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                                : 'bg-white hover:bg-slate-50'
+                                            : student.canceledAt
+                                                ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                                : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                        const isSelectedRow = selectedStudentGridRowId === student.id;
+                                        const rowClass = isSelectedRow
+                                            ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                            : zebraClass;
+
+                                        return (
+                                            <tr
+                                                key={student.id}
+                                                onClick={() => setSelectedStudentGridRowId(student.id)}
+                                                aria-selected={isSelectedRow}
+                                                className={`group cursor-pointer transition-colors ${rowClass}`}
+                                            >
+                                                <td className="px-3 py-4" />
+                                                {visibleStudentColumns.map((column) => renderStudentGridCell(student, column.key))}
+                                                <td className="w-36 px-6 py-4 text-right">
+                                                    {canManageStudents ? (
+                                                        <div className="flex justify-end gap-2">
+                                                            {renderStudentInfoButton(student)}
+                                                            <GridRowActionIconButton title="Abrir responsáveis do aluno" onClick={() => handleManageGuardians(student)} tone="violet">
+                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
+                                                                </svg>
+                                                            </GridRowActionIconButton>
+                                                            <GridRowActionIconButton title="Editar aluno" onClick={() => handleEdit(student)} tone="blue">
+                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                                </svg>
+                                                            </GridRowActionIconButton>
+                                                            <GridRowActionIconButton title={student.canceledAt ? 'Ativar aluno' : 'Inativar aluno'} onClick={() => openStudentStatusModal(student)} tone={student.canceledAt ? 'emerald' : 'rose'}>
+                                                                {student.canceledAt ? (
+                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                                    </svg>
+                                                                )}
+                                                            </GridRowActionIconButton>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex justify-end gap-2">
+                                                            {renderStudentInfoButton(student)}
+                                                            <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
                             </tbody>
                         </table>
                     </div>
-                    <GridFooterControls
-                        key={`student-footer-${sortedFilteredStudents.length}`}
-                        recordsCount={Number(sortedFilteredStudents.length)}
-                        onOpenColumns={() => setIsGridConfigOpen(true)}
-                        onOpenExport={() => setIsExportModalOpen(true)}
-                        statusFilter={statusFilter}
-                        onStatusFilterChange={setStatusFilter}
-                        activeLabel="Mostrar somente alunos ativos"
-                        allLabel="Mostrar alunos ativos e inativos"
-                        inactiveLabel="Mostrar somente alunos inativos"
-                        aggregateSummaries={aggregateSummaries}
-                    />
-                </div>
+
+                    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setIsGridConfigOpen(true)}
+                                title="Configurar colunas do grid"
+                                className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                            >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                                </svg>
+                                Colunas
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsExportModalOpen(true)}
+                                title="Abrir exportação e impressão"
+                                aria-label="Abrir exportação e impressão"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                            >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V4h12v5M6 18h12v2H6v-2zm-1-8h14a2 2 0 012 2v4H3v-4a2 2 0 012-2z" />
+                                </svg>
+                            </button>
+                            <GridStatusFilter
+                                value={statusFilter}
+                                onChange={setStatusFilter}
+                                activeLabel="Mostrar somente alunos ativos"
+                                allLabel="Mostrar alunos ativos e inativos"
+                                inactiveLabel="Mostrar somente alunos inativos"
+                            />
+                            <div
+                                className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm"
+                                title={`${displayedStudentsCount} registro(s) encontrado(s)`}
+                            >
+                                Total registros: {new Intl.NumberFormat('pt-BR').format(displayedStudentsCount)}
+                            </div>
+                            {aggregateSummaries.map((summary) => (
+                                <div
+                                    key={summary.key}
+                                    className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm"
+                                >
+                                    {summary.label}: <span className="ml-1 text-blue-700">{summary.value}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <select
+                                value={studentPageSize}
+                                onChange={(event) => setStudentPageSize(Number(event.target.value))}
+                                aria-label="Registros por página"
+                                className="h-8 rounded-full border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 outline-none transition hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            >
+                                {[10, 20, 50, 100].map((pageSize) => (
+                                    <option key={pageSize} value={pageSize}>{pageSize}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                aria-label="Voltar para o início"
+                                title="Voltar para o início"
+                                onClick={() => setStudentPage(1)}
+                                disabled={currentStudentPage <= 1}
+                                className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {'<<'}
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Voltar uma página"
+                                title="Voltar uma página"
+                                onClick={() => setStudentPage((current) => Math.max(1, current - 1))}
+                                disabled={currentStudentPage <= 1}
+                                className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {'<'}
+                            </button>
+                            <div className="min-w-20 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                {currentStudentPage}/{studentTotalPages}
+                            </div>
+                            <button
+                                type="button"
+                                aria-label="Avançar uma página"
+                                title="Avançar uma página"
+                                onClick={() => setStudentPage((current) => Math.min(studentTotalPages, current + 1))}
+                                disabled={currentStudentPage >= studentTotalPages}
+                                className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {'>'}
+                            </button>
+                            <button
+                                type="button"
+                                aria-label="Ir para o fim"
+                                title="Ir para o fim"
+                                onClick={() => setStudentPage(studentTotalPages)}
+                                disabled={currentStudentPage >= studentTotalPages}
+                                className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                                {'>>'}
+                            </button>
+                        </div>
+                    </div>
+                </section>
 
             <GridColumnConfigModal
                 isOpen={isGridConfigOpen}
@@ -2799,9 +3244,24 @@ export default function AlunosPage() {
                 <div className="fixed inset-0 z-[57] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
                         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-[#153a6a]">Responsáveis do aluno</h2>
-                                <p className="mt-1 text-sm font-medium text-slate-500">{guardiansViewStudentName}</p>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {currentTenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="text-xl font-bold text-[#153a6a]">Responsáveis do aluno</h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">{guardiansViewStudentName}</p>
+                                </div>
                             </div>
                             <button onClick={closeGuardiansViewModal} className="text-slate-400 hover:text-red-500">×</button>
                         </div>
@@ -2837,9 +3297,7 @@ export default function AlunosPage() {
                                                     </div>
                                                 </div>
                                                 <div className="space-y-1 text-sm text-slate-600">
-                                                    <div>Telefone: {getGuardianPrimaryPhone(link.guardian)}</div>
-                                                    <div>E-mail: {link.guardian?.email || 'Não informado'}</div>
-                                                    <div>CPF: {link.guardian?.cpf || 'Não informado'}</div>
+                                                    <div>Dados de contato ocultos nesta tela.</div>
                                                 </div>
                                                 <div className="pt-1">
                                                     <button
@@ -2870,26 +3328,32 @@ export default function AlunosPage() {
                 <div className="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
                         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-[#153a6a]">Dados do responsável</h2>
-                                <p className="mt-1 text-sm font-medium text-slate-500">{selectedGuardianDetails.name}</p>
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                        {currentTenantBranding?.schoolName || 'Escola'}
+                                    </div>
+                                    <h2 className="text-xl font-bold text-[#153a6a]">Dados do responsável</h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">{selectedGuardianDetails.name}</p>
+                                </div>
                             </div>
                             <button onClick={() => setSelectedGuardianDetails(null)} className="text-slate-400 hover:text-red-500">×</button>
                         </div>
                         <div className="grid gap-6 p-6 md:grid-cols-2">
                             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                                 <h3 className="text-sm font-bold text-slate-800">Dados gerais</h3>
-                                <div className="text-sm text-slate-600">CPF: {selectedGuardianDetails.cpf || 'Não informado'}</div>
                                 <div className="text-sm text-slate-600">RG: {selectedGuardianDetails.rg || 'Não informado'}</div>
                                 <div className="text-sm text-slate-600">Nascimento: {selectedGuardianDetails.birthDate ? new Date(selectedGuardianDetails.birthDate).toLocaleDateString() : 'Não informado'}</div>
-                                <div className="text-sm text-slate-600">E-mail: {selectedGuardianDetails.email || 'Não informado'}</div>
-                            </div>
-                            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                                <h3 className="text-sm font-bold text-slate-800">Telefones</h3>
-                                <div className="text-sm text-slate-600">WhatsApp: {selectedGuardianDetails.whatsapp || 'Não informado'}</div>
-                                <div className="text-sm text-slate-600">Celular 1: {selectedGuardianDetails.cellphone1 || 'Não informado'}</div>
-                                <div className="text-sm text-slate-600">Celular 2: {selectedGuardianDetails.cellphone2 || 'Não informado'}</div>
-                                <div className="text-sm text-slate-600">Telefone: {selectedGuardianDetails.phone || 'Não informado'}</div>
                             </div>
                             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-5 md:col-span-2">
                                 <h3 className="text-sm font-bold text-slate-800">Endereço</h3>
@@ -2914,8 +3378,15 @@ export default function AlunosPage() {
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl border border-amber-200">
                         <div className="border-b border-amber-100 bg-amber-50 px-6 py-5">
                             <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
-                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">EA</span>
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="min-w-0">
                                     <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">E-mail já utilizado</div>
@@ -3054,7 +3525,32 @@ export default function AlunosPage() {
                         </div>
                     </div>
                 </div>
-            ) : saveError ? <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm"><div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-3 text-lg font-bold text-slate-800">Atenção</div><div className="text-sm font-medium text-red-600">{saveError}</div><div className="mt-4 text-right"><button onClick={() => setSaveError(null)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">Fechar</button></div></div></div> : null}
+            ) : saveError ? (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                    <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl">
+                        <div className="flex items-center gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                {currentTenantBranding?.logoUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
+                                ) : (
+                                    <span className="text-xs font-black tracking-[0.2em] text-[#153a6a]">
+                                        {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                    </span>
+                                )}
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-rose-700">Atenção</div>
+                                <div className="mt-1 text-lg font-bold text-slate-800">Não foi possível salvar</div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-5 text-sm font-medium text-red-600">{saveError}</div>
+                        <div className="border-t border-slate-100 bg-slate-50 px-6 py-4 text-right">
+                            <button onClick={() => setSaveError(null)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
             </div>
         </div>
     );

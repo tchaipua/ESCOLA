@@ -2,16 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
+import GridStandardFooter from '@/app/components/grid-standard-footer';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
-import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { getStoredToken } from '@/app/lib/auth-storage';
 import { fetchTenantBranches, getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
@@ -48,6 +47,7 @@ const DISCIPLINAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS_STATUS_MODAL';
 
 type SubjectColumnKey = 'name' | 'recordStatus';
 type SubjectExportColumnKey = SubjectColumnKey;
+type SubjectColumnFilters = Record<SubjectColumnKey, string>;
 
 const SUBJECT_COLUMNS: ConfigurableGridColumn<Subject, SubjectColumnKey>[] = [
     { key: 'name', label: 'Disciplina', getValue: (row) => row.name || '---', visibleByDefault: true },
@@ -58,6 +58,47 @@ const SUBJECT_EXPORT_COLUMNS: GridColumnDefinition<Subject, SubjectExportColumnK
 );
 const SUBJECT_COLUMN_KEYS = getAllGridColumnKeys(SUBJECT_COLUMNS);
 const DEFAULT_VISIBLE_SUBJECT_COLUMNS = getDefaultVisibleGridColumnKeys(SUBJECT_COLUMNS);
+const EMPTY_SUBJECT_COLUMN_FILTERS = SUBJECT_COLUMN_KEYS.reduce<SubjectColumnFilters>((accumulator, key) => {
+    accumulator[key] = '';
+    return accumulator;
+}, {} as SubjectColumnFilters);
+
+function normalizeSubjectGridFilterValue(value: unknown) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+}
+
+function normalizeSubjectGridDigits(value: unknown) {
+    return String(value ?? '').replace(/\D/g, '');
+}
+
+function matchesSubjectGridFilter(values: unknown[], filter: string) {
+    const normalizedFilter = normalizeSubjectGridFilterValue(filter);
+    const filterDigits = normalizeSubjectGridDigits(filter);
+
+    if (!normalizedFilter) {
+        return true;
+    }
+
+    return values.some((value) => {
+        const normalizedValue = normalizeSubjectGridFilterValue(value);
+
+        if (normalizedValue.includes(normalizedFilter)) {
+            return true;
+        }
+
+        return Boolean(filterDigits && normalizeSubjectGridDigits(value).includes(filterDigits));
+    });
+}
+
+function getSubjectColumnFilterValues(row: Subject, columnKey: SubjectColumnKey) {
+    const column = SUBJECT_COLUMNS.find((item) => item.key === columnKey);
+    const baseValue = column?.getValue(row) || '';
+    return [baseValue, row.name, row.canceledAt ? 'INATIVO' : 'ATIVO'];
+}
 
 function getSubjectGridConfigStorageKey(tenantId: string | null) {
     return `dashboard:disciplinas:grid-config:${tenantId || 'default'}`;
@@ -200,6 +241,12 @@ export default function DisciplinasPage() {
         SUBJECT_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SUBJECT_COLUMNS.includes(key)),
     );
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [subjectColumnFilters, setSubjectColumnFilters] = useState<SubjectColumnFilters>(EMPTY_SUBJECT_COLUMN_FILTERS);
+    const [subjectColumnFilterDrafts, setSubjectColumnFilterDrafts] = useState<SubjectColumnFilters>(EMPTY_SUBJECT_COLUMN_FILTERS);
+    const [activeSubjectFilterColumn, setActiveSubjectFilterColumn] = useState<SubjectColumnKey | null>(null);
+    const [subjectPageSize, setSubjectPageSize] = useState(10);
+    const [subjectPage, setSubjectPage] = useState(1);
+    const [selectedSubjectGridRowId, setSelectedSubjectGridRowId] = useState<string | null>(null);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [exportFormat, setExportFormat] = useState<'excel' | 'csv' | 'pdf' | 'json' | 'txt'>('excel');
     const [exportColumns, setExportColumns] = useState<Record<SubjectExportColumnKey, boolean>>(buildDefaultExportColumns(SUBJECT_EXPORT_COLUMNS));
@@ -377,6 +424,9 @@ export default function DisciplinasPage() {
 
     const filteredSubjects = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
+        const activeColumnFilters = (Object.entries(subjectColumnFilters) as Array<[SubjectColumnKey, string]>)
+            .filter(([, value]) => value.trim());
+
         return subjects.filter((subject) => {
             const isActive = !subject.canceledAt;
             const matchesStatus =
@@ -386,9 +436,12 @@ export default function DisciplinasPage() {
                         ? isActive
                         : !isActive;
             const matchesSearch = !term || subject.name.toUpperCase().includes(term);
-            return matchesStatus && matchesSearch;
+            const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
+                matchesSubjectGridFilter(getSubjectColumnFilterValues(subject, columnKey), filter),
+            );
+            return matchesStatus && matchesSearch && matchesColumnFilters;
         });
-    }, [searchTerm, statusFilter, subjects]);
+    }, [searchTerm, statusFilter, subjectColumnFilters, subjects]);
     const sortedFilteredSubjects = useMemo(
         () =>
             sortGridRows(
@@ -397,6 +450,21 @@ export default function DisciplinasPage() {
                 sortState,
             ),
         [filteredSubjects, sortState],
+    );
+    const subjectTotalPages = Math.max(1, Math.ceil(sortedFilteredSubjects.length / subjectPageSize));
+    const currentSubjectPage = Math.min(Math.max(subjectPage, 1), subjectTotalPages);
+    const paginatedSubjects = useMemo(() => {
+        const startIndex = (currentSubjectPage - 1) * subjectPageSize;
+        return sortedFilteredSubjects.slice(startIndex, startIndex + subjectPageSize);
+    }, [currentSubjectPage, subjectPageSize, sortedFilteredSubjects]);
+    const hasSubjectGridFilters = useMemo(
+        () =>
+            Boolean(searchTerm.trim())
+            || statusFilter !== 'ACTIVE'
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction
+            || Object.values(subjectColumnFilters).some((value) => value.trim()),
+        [searchTerm, sortState.column, sortState.direction, statusFilter, subjectColumnFilters],
     );
     const disciplinasAuditContext = useMemo(() => {
         const auditParams: DisciplinasAuditParams = {
@@ -422,6 +490,14 @@ export default function DisciplinasPage() {
             sqlText: disciplinasAuditContext.sqlText,
         });
     }, [disciplinasAuditContext]);
+
+    useEffect(() => {
+        setSubjectPage(1);
+    }, [searchTerm, sortState.column, sortState.direction, statusFilter, subjectColumnFilters, subjectPageSize]);
+
+    useEffect(() => {
+        setSubjectPage((current) => Math.min(Math.max(current, 1), subjectTotalPages));
+    }, [subjectTotalPages]);
 
     const openCreateModal = () => {
         setEditingSubjectId(null);
@@ -622,13 +698,6 @@ export default function DisciplinasPage() {
         }
     };
 
-    const toggleSort = (column: SubjectColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
-    };
-
     const toggleExportColumn = (column: SubjectExportColumnKey) => {
         setExportColumns((current) => ({ ...current, [column]: !current[column] }));
     };
@@ -670,21 +739,106 @@ export default function DisciplinasPage() {
         setHiddenColumns(SUBJECT_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SUBJECT_COLUMNS.includes(key)));
     };
 
+    const clearAllSubjectGridFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('ACTIVE');
+        setSortState(DEFAULT_SORT);
+        setSubjectColumnFilters(EMPTY_SUBJECT_COLUMN_FILTERS);
+        setSubjectColumnFilterDrafts(EMPTY_SUBJECT_COLUMN_FILTERS);
+        setActiveSubjectFilterColumn(null);
+        setSubjectPage(1);
+    };
+
+    const openSubjectColumnFilter = (columnKey: SubjectColumnKey | null) => {
+        setActiveSubjectFilterColumn(columnKey);
+        if (!columnKey) return;
+        setSubjectColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: subjectColumnFilters[columnKey] || '',
+        }));
+    };
+
+    const applySubjectColumnFilter = (columnKey: SubjectColumnKey) => {
+        setSubjectColumnFilters((current) => ({
+            ...current,
+            [columnKey]: subjectColumnFilterDrafts[columnKey] || '',
+        }));
+        setActiveSubjectFilterColumn(null);
+    };
+
+    const clearSubjectColumnFilter = (columnKey: SubjectColumnKey) => {
+        setSubjectColumnFilters((current) => ({ ...current, [columnKey]: '' }));
+        setSubjectColumnFilterDrafts((current) => ({ ...current, [columnKey]: '' }));
+        setActiveSubjectFilterColumn(null);
+    };
+
+    const renderSubjectClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllSubjectGridFilters}
+            title="Limpar todos os filtros"
+            aria-label="Limpar todos os filtros"
+            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${
+                hasSubjectGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 7h14M10 11v6m4-6v6M9 7V5h6v2m-9 0 1 14h10l1-14" />
+            </svg>
+        </button>
+    );
+
+    const renderSubjectColumnHeader = (column: ConfigurableGridColumn<Subject, SubjectColumnKey>) => (
+        <GridColumnFilterHeader
+            label={column.label}
+            align={column.align}
+            isOpen={activeSubjectFilterColumn === column.key}
+            isActive={Boolean(subjectColumnFilters[column.key]?.trim()) || sortState.column === column.key}
+            filterValue={subjectColumnFilterDrafts[column.key] || ''}
+            onToggle={() => openSubjectColumnFilter(activeSubjectFilterColumn === column.key ? null : column.key)}
+            onSort={(direction) => {
+                setSortState({ column: column.key, direction });
+                setActiveSubjectFilterColumn(null);
+            }}
+            onFilterValueChange={(value) =>
+                setSubjectColumnFilterDrafts((current) => ({
+                    ...current,
+                    [column.key]: value,
+                }))
+            }
+            onApply={() => applySubjectColumnFilter(column.key)}
+            onClear={() => clearSubjectColumnFilter(column.key)}
+        />
+    );
+
     const renderSubjectGridCell = (subject: Subject, columnKey: SubjectColumnKey) => {
         if (columnKey === 'name') {
+            const statusLabel = subject.canceledAt ? 'INATIVO' : 'ATIVO';
             return (
                 <td key={columnKey} className={`px-6 py-4 font-semibold ${subject.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
                     <div className="flex items-center gap-2">
+                        <span
+                            className={`h-3 w-3 shrink-0 rounded-full ${subject.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                            title={statusLabel}
+                            aria-label={statusLabel}
+                        />
                         <span>{subject.name}</span>
-                        <RecordStatusIndicator active={!subject.canceledAt} />
                     </div>
                 </td>
             );
         }
 
+        const statusLabel = subject.canceledAt ? 'INATIVO' : 'ATIVO';
+
         return (
             <td key={columnKey} className="px-6 py-4 text-center">
-                <RecordStatusIndicator active={!subject.canceledAt} />
+                <span
+                    className={`inline-flex h-3 w-3 rounded-full ${subject.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                    title={statusLabel}
+                    aria-label={statusLabel}
+                />
             </td>
         );
     };
@@ -743,8 +897,8 @@ export default function DisciplinasPage() {
                         </div>
                     ) : null}
 
-                    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        <div className="dashboard-band border-b px-6 py-4">
+                    <section className="mt-6 flex h-[calc(100vh-17rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="dashboard-band shrink-0 border-b px-6 py-4">
                             <div className="flex flex-wrap items-center gap-3">
                                 {canManage ? (
                                     <button
@@ -773,22 +927,30 @@ export default function DisciplinasPage() {
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-left">
+                        <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                            <table className="min-w-[860px] border-collapse text-left">
                                 <thead>
                                     <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                        <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                            {renderSubjectClearAllButton()}
+                                        </th>
                                         {visibleSubjectColumns.map((column) => (
-                                            <th key={column.key} className={`px-6 py-4 ${column.align === 'center' ? 'text-center' : ''}`}>
-                                                <GridSortableHeader label={column.label} isActive={sortState.column === column.key} direction={sortState.direction} onClick={() => toggleSort(column.key)} align={column.align === 'center' ? 'center' : 'left'} />
+                                            <th key={column.key} className={`sticky top-0 z-20 bg-slate-50 px-6 py-3 ${column.align === 'center' ? 'text-center' : ''}`}>
+                                                {renderSubjectColumnHeader(column)}
                                             </th>
                                         ))}
-                                        <th className="px-6 py-4 text-right">Ação</th>
+                                        <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
                                     </tr>
+                                    {activeSubjectFilterColumn ? (
+                                        <tr aria-hidden="true">
+                                            <th colSpan={visibleSubjectColumns.length + 2} className="h-56 bg-white p-0" />
+                                        </tr>
+                                    ) : null}
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {isLoading ? (
                                         <tr>
-                                            <td colSpan={visibleSubjectColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">
+                                            <td colSpan={visibleSubjectColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
                                                 Carregando disciplinas...
                                             </td>
                                         </tr>
@@ -796,15 +958,33 @@ export default function DisciplinasPage() {
 
                                     {!isLoading && sortedFilteredSubjects.length === 0 ? (
                                         <tr>
-                                            <td colSpan={visibleSubjectColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">
+                                            <td colSpan={visibleSubjectColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
                                                 Nenhuma disciplina cadastrada.
                                             </td>
                                         </tr>
                                     ) : null}
 
-                                    {!isLoading && sortedFilteredSubjects.map((subject) => {
+                                    {!isLoading && paginatedSubjects.map((subject, rowIndex) => {
+                                        const zebraClass = rowIndex % 2 === 0
+                                            ? subject.canceledAt
+                                                ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                                : 'bg-white hover:bg-slate-50'
+                                            : subject.canceledAt
+                                                ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                                : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                        const isSelectedRow = selectedSubjectGridRowId === subject.id;
+                                        const rowClass = isSelectedRow
+                                            ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                            : zebraClass;
+
                                         return (
-                                            <tr key={subject.id} className={subject.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
+                                            <tr
+                                                key={subject.id}
+                                                onClick={() => setSelectedSubjectGridRowId(subject.id)}
+                                                aria-selected={isSelectedRow}
+                                                className={`group cursor-pointer transition-colors ${rowClass}`}
+                                            >
+                                                <td className="px-3 py-4" />
                                                 {visibleSubjectColumns.map((column) => renderSubjectGridCell(subject, column.key))}
                                                 <td className="px-6 py-4 text-right">
                                                     {canManage ? (
@@ -845,9 +1025,8 @@ export default function DisciplinasPage() {
                             </table>
                         </div>
 
-                        <GridFooterControls
-                            key={`subject-footer-${sortedFilteredSubjects.length}`}
-                            recordsCount={Number(sortedFilteredSubjects.length)}
+                        <GridStandardFooter
+                            recordsCount={sortedFilteredSubjects.length}
                             onOpenColumns={() => setIsGridConfigOpen(true)}
                             onOpenExport={() => setIsExportModalOpen(true)}
                             statusFilter={statusFilter}
@@ -855,6 +1034,14 @@ export default function DisciplinasPage() {
                             activeLabel="Mostrar somente disciplinas ativas"
                             allLabel="Mostrar disciplinas ativas e inativas"
                             inactiveLabel="Mostrar somente disciplinas inativas"
+                            pageSize={subjectPageSize}
+                            onPageSizeChange={setSubjectPageSize}
+                            currentPage={currentSubjectPage}
+                            totalPages={subjectTotalPages}
+                            onFirstPage={() => setSubjectPage(1)}
+                            onPreviousPage={() => setSubjectPage((current) => Math.max(1, current - 1))}
+                            onNextPage={() => setSubjectPage((current) => Math.min(subjectTotalPages, current + 1))}
+                            onLastPage={() => setSubjectPage(subjectTotalPages)}
                         />
                     </section>
 

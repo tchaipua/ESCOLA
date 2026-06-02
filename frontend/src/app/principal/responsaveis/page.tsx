@@ -2,18 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
-import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import GridStandardFooter from '@/app/components/grid-standard-footer';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
 import {
     fetchAddressByCep,
     fetchEmailUsageByEmail,
@@ -151,6 +150,7 @@ type GuardianColumnKey =
     | 'students';
 
 type GuardianExportColumnKey = GuardianColumnKey | 'recordStatus' | 'permissions';
+type GuardianColumnFilters = Record<GuardianColumnKey, string>;
 
 const GUARDIAN_COLUMNS: ConfigurableGridColumn<GuardianRecord, GuardianColumnKey>[] = [
     { key: 'name', label: 'Responsável', getValue: (row) => row.name || '---', visibleByDefault: true },
@@ -194,6 +194,68 @@ const GUARDIAN_EXPORT_COLUMNS: GridColumnDefinition<GuardianRecord, GuardianExpo
 );
 const GUARDIAN_COLUMN_KEYS = getAllGridColumnKeys(GUARDIAN_COLUMNS);
 const DEFAULT_VISIBLE_GUARDIAN_COLUMNS = getDefaultVisibleGridColumnKeys(GUARDIAN_COLUMNS);
+const EMPTY_GUARDIAN_COLUMN_FILTERS = GUARDIAN_COLUMN_KEYS.reduce<GuardianColumnFilters>((accumulator, key) => {
+    accumulator[key] = '';
+    return accumulator;
+}, {} as GuardianColumnFilters);
+
+function normalizeGuardianGridFilterValue(value: unknown) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+}
+
+function normalizeGuardianGridDigits(value: unknown) {
+    return String(value ?? '').replace(/\D/g, '');
+}
+
+function matchesGuardianGridFilter(values: unknown[], filter: string) {
+    const normalizedFilter = normalizeGuardianGridFilterValue(filter);
+    const filterDigits = normalizeGuardianGridDigits(filter);
+
+    if (!normalizedFilter) {
+        return true;
+    }
+
+    return values.some((value) => {
+        const normalizedValue = normalizeGuardianGridFilterValue(value);
+
+        if (normalizedValue.includes(normalizedFilter)) {
+            return true;
+        }
+
+        return Boolean(filterDigits && normalizeGuardianGridDigits(value).includes(filterDigits));
+    });
+}
+
+function getGuardianColumnFilterValues(row: GuardianRecord, columnKey: GuardianColumnKey) {
+    const column = GUARDIAN_COLUMNS.find((item) => item.key === columnKey);
+    const baseValue = column?.getValue(row) || '';
+
+    if (columnKey === 'name') {
+        return [row.name, row.nickname, row.corporateName, row.email, formatGuardianDate(row.birthDate), baseValue];
+    }
+
+    if (columnKey === 'contact') {
+        return [row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+    }
+
+    if (columnKey === 'address') {
+        return [row.street, row.number, row.neighborhood, row.complement, row.city, row.state, row.zipCode, baseValue];
+    }
+
+    if (columnKey === 'cityState') {
+        return [row.city, row.state, baseValue];
+    }
+
+    if (columnKey === 'students') {
+        return [formatGuardianStudents(row), formatGuardianStudentLinks(row), baseValue];
+    }
+
+    return [baseValue];
+}
 
 function getGuardianGridConfigStorageKey(tenantId: string | null) {
     return `dashboard:responsaveis:grid-config:${tenantId || 'default'}`;
@@ -409,6 +471,12 @@ export default function ResponsaveisPage() {
         GUARDIAN_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_GUARDIAN_COLUMNS.includes(key)),
     );
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [guardianColumnFilters, setGuardianColumnFilters] = useState<GuardianColumnFilters>(EMPTY_GUARDIAN_COLUMN_FILTERS);
+    const [guardianColumnFilterDrafts, setGuardianColumnFilterDrafts] = useState<GuardianColumnFilters>(EMPTY_GUARDIAN_COLUMN_FILTERS);
+    const [activeGuardianFilterColumn, setActiveGuardianFilterColumn] = useState<GuardianColumnKey | null>(null);
+    const [guardianPageSize, setGuardianPageSize] = useState(10);
+    const [guardianPage, setGuardianPage] = useState(1);
+    const [selectedGuardianGridRowId, setSelectedGuardianGridRowId] = useState<string | null>(null);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [exportFormat, setExportFormat] = useState<'excel' | 'csv' | 'pdf' | 'json' | 'txt'>('excel');
     const [exportColumns, setExportColumns] = useState<Record<GuardianExportColumnKey, boolean>>(buildDefaultExportColumns(GUARDIAN_EXPORT_COLUMNS));
@@ -465,6 +533,9 @@ export default function ResponsaveisPage() {
     );
     const filteredGuardians = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
+        const activeColumnFilters = (Object.entries(guardianColumnFilters) as Array<[GuardianColumnKey, string]>)
+            .filter(([, value]) => value.trim());
+
         return guardians.filter((guardian) => {
             const isActive = !guardian.canceledAt;
             const matchesStatus =
@@ -477,12 +548,30 @@ export default function ResponsaveisPage() {
                 !term ||
                 [guardian.name, guardian.email, guardian.cpf, guardian.whatsapp, guardian.phone]
                     .some((value) => String(value || '').toUpperCase().includes(term));
-            return matchesStatus && matchesSearch;
+            const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
+                matchesGuardianGridFilter(getGuardianColumnFilterValues(guardian, columnKey), filter),
+            );
+            return matchesStatus && matchesSearch && matchesColumnFilters;
         });
-    }, [guardians, searchTerm, statusFilter]);
+    }, [guardianColumnFilters, guardians, searchTerm, statusFilter]);
     const sortedFilteredGuardians = useMemo(
         () => sortGridRows(filteredGuardians, GUARDIAN_COLUMNS, sortState),
         [filteredGuardians, sortState],
+    );
+    const guardianTotalPages = Math.max(1, Math.ceil(sortedFilteredGuardians.length / guardianPageSize));
+    const currentGuardianPage = Math.min(Math.max(guardianPage, 1), guardianTotalPages);
+    const paginatedGuardians = useMemo(() => {
+        const startIndex = (currentGuardianPage - 1) * guardianPageSize;
+        return sortedFilteredGuardians.slice(startIndex, startIndex + guardianPageSize);
+    }, [currentGuardianPage, guardianPageSize, sortedFilteredGuardians]);
+    const hasGuardianGridFilters = useMemo(
+        () =>
+            Boolean(searchTerm.trim())
+            || statusFilter !== 'ACTIVE'
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction
+            || Object.values(guardianColumnFilters).some((value) => value.trim()),
+        [guardianColumnFilters, searchTerm, sortState.column, sortState.direction, statusFilter],
     );
     const currentTenantBranding = useMemo(
         () => readCachedTenantBranding(currentTenantId),
@@ -512,6 +601,14 @@ export default function ResponsaveisPage() {
             sqlText: responsaveisAuditContext.sqlText,
         });
     }, [responsaveisAuditContext]);
+
+    useEffect(() => {
+        setGuardianPage(1);
+    }, [guardianColumnFilters, guardianPageSize, searchTerm, sortState.column, sortState.direction, statusFilter]);
+
+    useEffect(() => {
+        setGuardianPage((current) => Math.min(Math.max(current, 1), guardianTotalPages));
+    }, [guardianTotalPages]);
 
     const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
@@ -879,13 +976,6 @@ export default function ResponsaveisPage() {
         }
     };
 
-    const toggleSort = (column: GuardianColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
-    };
-
     const toggleExportColumn = (column: GuardianExportColumnKey) => {
         setExportColumns((current) => ({ ...current, [column]: !current[column] }));
     };
@@ -983,13 +1073,103 @@ export default function ResponsaveisPage() {
         setHiddenColumns(GUARDIAN_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_GUARDIAN_COLUMNS.includes(key)));
     };
 
+    const clearAllGuardianGridFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('ACTIVE');
+        setSortState(DEFAULT_SORT);
+        setGuardianColumnFilters({ ...EMPTY_GUARDIAN_COLUMN_FILTERS });
+        setGuardianColumnFilterDrafts({ ...EMPTY_GUARDIAN_COLUMN_FILTERS });
+        setActiveGuardianFilterColumn(null);
+        setGuardianPage(1);
+    };
+
+    const openGuardianColumnFilter = (columnKey: GuardianColumnKey | null) => {
+        if (!columnKey) {
+            setActiveGuardianFilterColumn(null);
+            return;
+        }
+
+        setGuardianColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: guardianColumnFilters[columnKey] || '',
+        }));
+        setActiveGuardianFilterColumn(columnKey);
+    };
+
+    const applyGuardianColumnFilter = (columnKey: GuardianColumnKey) => {
+        setGuardianColumnFilters((current) => ({
+            ...current,
+            [columnKey]: guardianColumnFilterDrafts[columnKey] || '',
+        }));
+        setActiveGuardianFilterColumn(null);
+    };
+
+    const clearGuardianColumnFilter = (columnKey: GuardianColumnKey) => {
+        setGuardianColumnFilters((current) => ({
+            ...current,
+            [columnKey]: '',
+        }));
+        setGuardianColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: '',
+        }));
+        setActiveGuardianFilterColumn(null);
+    };
+
+    const renderGuardianClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllGuardianGridFilters}
+            aria-label="Limpar todos os filtros"
+            title="Limpar todos os filtros"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                hasGuardianGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 shadow-sm hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M4 6h16M7 12h10M10 18h4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M18 4 6 20" />
+            </svg>
+        </button>
+    );
+
+    const renderGuardianColumnHeader = (column: ConfigurableGridColumn<GuardianRecord, GuardianColumnKey>) => (
+        <GridColumnFilterHeader
+            label={column.label}
+            align={column.align}
+            isOpen={activeGuardianFilterColumn === column.key}
+            isActive={Boolean(guardianColumnFilters[column.key]?.trim()) || sortState.column === column.key}
+            filterValue={guardianColumnFilterDrafts[column.key] || ''}
+            onToggle={() => openGuardianColumnFilter(activeGuardianFilterColumn === column.key ? null : column.key)}
+            onSort={(direction) => {
+                setSortState({ column: column.key, direction });
+                setActiveGuardianFilterColumn(null);
+            }}
+            onFilterValueChange={(value) =>
+                setGuardianColumnFilterDrafts((current) => ({
+                    ...current,
+                    [column.key]: value,
+                }))
+            }
+            onApply={() => applyGuardianColumnFilter(column.key)}
+            onClear={() => clearGuardianColumnFilter(column.key)}
+        />
+    );
+
     const renderGuardianGridCell = (guardian: GuardianRecord, columnKey: GuardianColumnKey) => {
         if (columnKey === 'name') {
             return (
                 <td key={columnKey} className="px-6 py-4">
                     <div className={`flex items-center gap-2 font-semibold ${guardian.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
+                        <span
+                            className={`inline-flex h-3 w-3 shrink-0 rounded-full ${guardian.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                            title={guardian.canceledAt ? 'INATIVO' : 'ATIVO'}
+                            aria-label={guardian.canceledAt ? 'INATIVO' : 'ATIVO'}
+                            role="img"
+                        />
                         <span>{guardian.name}</span>
-                        <RecordStatusIndicator active={!guardian.canceledAt} />
                     </div>
                     <div className={`text-[13px] ${guardian.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
                         {guardian.birthDate ? new Date(guardian.birthDate).toLocaleDateString() : 'Sem data de nascimento'}
@@ -1149,15 +1329,15 @@ export default function ResponsaveisPage() {
 
                 {errorStatus ? <div className="mb-6 mt-6 rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">{errorStatus}</div> : null}
 
-                <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <div className="dashboard-band border-b px-6 py-4">
+                <section className="mt-6 flex h-[calc(100vh-17rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="dashboard-band shrink-0 border-b px-4 py-3">
                         <div className="flex flex-wrap items-center gap-3">
                             {canManageGuardians ? (
                                 <button
                                     type="button"
                                     onClick={openModal}
-                                    title="Cadastrar novo"
-                                    aria-label="Cadastrar novo"
+                                    title="Cadastrar novo responsável"
+                                    aria-label="Cadastrar novo responsável"
                                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                                 >
                                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1173,67 +1353,104 @@ export default function ResponsaveisPage() {
                             </div>
                         </div>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-left">
-                            <thead>
+
+                    <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                        <table className="w-full min-w-[1280px] border-collapse text-left">
+                            <thead className="bg-slate-50">
                                 <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                    <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                        {renderGuardianClearAllButton()}
+                                    </th>
                                     {visibleGuardianColumns.map((column) => (
-                                        <th key={column.key} className="px-6 py-4">
-                                            <GridSortableHeader
-                                                label={column.label}
-                                                isActive={sortState.column === column.key}
-                                                direction={sortState.direction}
-                                                onClick={() => toggleSort(column.key)}
-                                            />
+                                        <th key={column.key} className={`sticky top-0 z-20 bg-slate-50 px-6 py-3 ${column.align === 'center' ? 'text-center' : ''}`}>
+                                            {renderGuardianColumnHeader(column)}
                                         </th>
                                     ))}
-                                    <th className="px-6 py-4 text-right">Ação</th>
+                                    <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
                                 </tr>
+                                {activeGuardianFilterColumn ? (
+                                    <tr aria-hidden="true">
+                                        <th colSpan={visibleGuardianColumns.length + 2} className="h-56 bg-white p-0" />
+                                    </tr>
+                                ) : null}
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {isLoading ? <tr><td colSpan={visibleGuardianColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando responsáveis...</td></tr> : null}
-                                {!isLoading && sortedFilteredGuardians.length === 0 ? <tr><td colSpan={visibleGuardianColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum responsável encontrado.</td></tr> : null}
-                                {!isLoading && sortedFilteredGuardians.map((guardian) => (
-                                    <tr key={guardian.id} className={guardian.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                        {visibleGuardianColumns.map((column) => renderGuardianGridCell(guardian, column.key))}
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                {renderGuardianInfoButton(guardian)}
-                                                <GridRowActionIconButton title="Abrir alunos do responsável" onClick={() => handleOpenStudentsModal(guardian)} tone="violet">
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
-                                                    </svg>
-                                                </GridRowActionIconButton>
-                                                {canManageGuardians ? (
-                                                    <>
-                                                        <GridRowActionIconButton title="Editar responsável" onClick={() => handleEdit(guardian)} tone="blue">
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                            </svg>
-                                                        </GridRowActionIconButton>
-                                                        <GridRowActionIconButton title={guardian.canceledAt ? 'Ativar responsável' : 'Inativar responsável'} onClick={() => openGuardianStatusModal(guardian)} tone={guardian.canceledAt ? 'emerald' : 'rose'}>
-                                                            {guardian.canceledAt ? (
-                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                            ) : (
-                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                                </svg>
-                                                            )}
-                                                        </GridRowActionIconButton>
-                                                    </>
-                                                ) : null}
-                                            </div>
+                                {isLoading ? (
+                                    <tr>
+                                        <td colSpan={visibleGuardianColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                            <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"></div>
+                                            Carregando responsáveis...
                                         </td>
                                     </tr>
-                                ))}
+                                ) : sortedFilteredGuardians.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={visibleGuardianColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                            Nenhum responsável encontrado.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedGuardians.map((guardian, rowIndex) => {
+                                        const zebraClass = rowIndex % 2 === 0
+                                            ? guardian.canceledAt
+                                                ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                                : 'bg-white hover:bg-slate-50'
+                                            : guardian.canceledAt
+                                                ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                                : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                        const isSelectedRow = selectedGuardianGridRowId === guardian.id;
+                                        const rowClass = isSelectedRow
+                                            ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                            : zebraClass;
+
+                                        return (
+                                            <tr
+                                                key={guardian.id}
+                                                onClick={() => setSelectedGuardianGridRowId(guardian.id)}
+                                                aria-selected={isSelectedRow}
+                                                className={`group cursor-pointer transition-colors ${rowClass}`}
+                                            >
+                                                <td className="px-3 py-4" />
+                                                {visibleGuardianColumns.map((column) => renderGuardianGridCell(guardian, column.key))}
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        {renderGuardianInfoButton(guardian)}
+                                                        <GridRowActionIconButton title="Abrir alunos do responsável" onClick={() => handleOpenStudentsModal(guardian)} tone="violet">
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
+                                                            </svg>
+                                                        </GridRowActionIconButton>
+                                                        {canManageGuardians ? (
+                                                            <>
+                                                                <GridRowActionIconButton title="Editar responsável" onClick={() => handleEdit(guardian)} tone="blue">
+                                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                                    </svg>
+                                                                </GridRowActionIconButton>
+                                                                <GridRowActionIconButton title={guardian.canceledAt ? 'Ativar responsável' : 'Inativar responsável'} onClick={() => openGuardianStatusModal(guardian)} tone={guardian.canceledAt ? 'emerald' : 'rose'}>
+                                                                    {guardian.canceledAt ? (
+                                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                                        </svg>
+                                                                    ) : (
+                                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                                        </svg>
+                                                                    )}
+                                                                </GridRowActionIconButton>
+                                                            </>
+                                                        ) : null}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
                             </tbody>
                         </table>
                     </div>
-                    <GridFooterControls
-                        key={`guardian-footer-${sortedFilteredGuardians.length}`}
-                        recordsCount={Number(sortedFilteredGuardians.length)}
+
+                    <GridStandardFooter
+                        recordsCount={sortedFilteredGuardians.length}
                         onOpenColumns={() => setIsGridConfigOpen(true)}
                         onOpenExport={() => setIsExportModalOpen(true)}
                         statusFilter={statusFilter}
@@ -1241,8 +1458,16 @@ export default function ResponsaveisPage() {
                         activeLabel="Mostrar somente responsáveis ativos"
                         allLabel="Mostrar responsáveis ativos e inativos"
                         inactiveLabel="Mostrar somente responsáveis inativos"
+                        pageSize={guardianPageSize}
+                        onPageSizeChange={setGuardianPageSize}
+                        currentPage={currentGuardianPage}
+                        totalPages={guardianTotalPages}
+                        onFirstPage={() => setGuardianPage(1)}
+                        onPreviousPage={() => setGuardianPage((current) => Math.max(1, current - 1))}
+                        onNextPage={() => setGuardianPage((current) => Math.min(guardianTotalPages, current + 1))}
+                        onLastPage={() => setGuardianPage(guardianTotalPages)}
                     />
-                </div>
+                </section>
 
             <GridColumnConfigModal
                 isOpen={isGridConfigOpen}
