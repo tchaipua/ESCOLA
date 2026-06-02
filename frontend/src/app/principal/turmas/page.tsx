@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
@@ -200,8 +200,11 @@ const SERIES_CLASS_COLUMNS: ConfigurableGridColumn<SeriesClassRecord, SeriesClas
 const SERIES_CLASS_EXPORT_COLUMNS: GridColumnDefinition<SeriesClassRecord, SeriesClassExportColumnKey>[] = buildExportColumnsFromGridColumns(
     SERIES_CLASS_COLUMNS,
 );
+const SERIES_CLASS_GRID_COLUMNS = SERIES_CLASS_COLUMNS.filter((column) => column.key !== 'recordStatus');
 const SERIES_CLASS_COLUMN_KEYS = getAllGridColumnKeys(SERIES_CLASS_COLUMNS);
-const DEFAULT_VISIBLE_SERIES_CLASS_COLUMNS = getDefaultVisibleGridColumnKeys(SERIES_CLASS_COLUMNS);
+const SERIES_CLASS_GRID_COLUMN_KEYS = getAllGridColumnKeys(SERIES_CLASS_GRID_COLUMNS);
+const DEFAULT_VISIBLE_SERIES_CLASS_GRID_COLUMNS = getDefaultVisibleGridColumnKeys(SERIES_CLASS_GRID_COLUMNS);
+const SERIES_CLASS_PRIMARY_GRID_COLUMN_KEYS: SeriesClassColumnKey[] = ['className', 'series', 'shift'];
 const EMPTY_SERIES_CLASS_COLUMN_FILTERS = SERIES_CLASS_COLUMN_KEYS.reduce<SeriesClassColumnFilters>((accumulator, key) => {
     accumulator[key] = '';
     return accumulator;
@@ -409,9 +412,9 @@ export default function TurmasPage() {
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
     const [isGridConfigReady, setIsGridConfigReady] = useState(false);
-    const [columnOrder, setColumnOrder] = useState<SeriesClassColumnKey[]>(SERIES_CLASS_COLUMN_KEYS);
+    const [columnOrder, setColumnOrder] = useState<SeriesClassColumnKey[]>(SERIES_CLASS_GRID_COLUMN_KEYS);
     const [hiddenColumns, setHiddenColumns] = useState<SeriesClassColumnKey[]>(
-        SERIES_CLASS_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SERIES_CLASS_COLUMNS.includes(key)),
+        SERIES_CLASS_GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SERIES_CLASS_GRID_COLUMNS.includes(key)),
     );
     const [columnAggregations, setColumnAggregations] = useState<GridColumnAggregations<SeriesClassColumnKey>>({});
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
@@ -441,13 +444,23 @@ export default function TurmasPage() {
     const hasShiftSelected = formData.shifts.length > 0;
     const tenantBranding = useMemo(() => readCachedTenantBranding(currentTenantId), [currentTenantId]);
     const orderedSeriesClassColumns = useMemo(
-        () => columnOrder.map((key) => SERIES_CLASS_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<SeriesClassRecord, SeriesClassColumnKey> => !!column),
+        () => columnOrder.map((key) => SERIES_CLASS_GRID_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<SeriesClassRecord, SeriesClassColumnKey> => !!column),
         [columnOrder],
     );
     const visibleSeriesClassColumns = useMemo(
         () => orderedSeriesClassColumns.filter((column) => !hiddenColumns.includes(column.key)),
         [hiddenColumns, orderedSeriesClassColumns],
     );
+    const primarySeriesClassColumns = useMemo(() => {
+        const primaryColumns = visibleSeriesClassColumns.filter((column) =>
+            SERIES_CLASS_PRIMARY_GRID_COLUMN_KEYS.includes(column.key),
+        );
+        return primaryColumns.length > 0 ? primaryColumns : visibleSeriesClassColumns.slice(0, 1);
+    }, [visibleSeriesClassColumns]);
+    const secondarySeriesClassColumns = useMemo(() => {
+        const primaryKeys = new Set(primarySeriesClassColumns.map((column) => column.key));
+        return visibleSeriesClassColumns.filter((column) => !primaryKeys.has(column.key));
+    }, [primarySeriesClassColumns, visibleSeriesClassColumns]);
     const filteredLinks = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
         const activeColumnFilters = (Object.entries(seriesClassColumnFilters) as Array<[SeriesClassColumnKey, string]>)
@@ -564,10 +577,10 @@ export default function TurmasPage() {
     useEffect(() => {
         let isMounted = true;
         setIsGridConfigReady(false);
-        void loadGridColumnConfig(getSeriesClassGridConfigStorageKey(currentTenantId), SERIES_CLASS_COLUMN_KEYS, DEFAULT_VISIBLE_SERIES_CLASS_COLUMNS).then((config) => {
+        void loadGridColumnConfig(getSeriesClassGridConfigStorageKey(currentTenantId), SERIES_CLASS_GRID_COLUMN_KEYS, DEFAULT_VISIBLE_SERIES_CLASS_GRID_COLUMNS).then((config) => {
             if (!isMounted) return;
-            setColumnOrder(config.order);
-            setHiddenColumns(config.hidden);
+            setColumnOrder(config.order.filter((key) => SERIES_CLASS_GRID_COLUMN_KEYS.includes(key)));
+            setHiddenColumns(config.hidden.filter((key) => SERIES_CLASS_GRID_COLUMN_KEYS.includes(key)));
             setColumnAggregations(config.aggregations);
             setIsGridConfigReady(true);
         });
@@ -578,7 +591,7 @@ export default function TurmasPage() {
 
     useEffect(() => {
         if (!isGridConfigReady) return;
-        writeGridColumnConfig(getSeriesClassGridConfigStorageKey(currentTenantId), SERIES_CLASS_COLUMN_KEYS, columnOrder, hiddenColumns, columnAggregations);
+        writeGridColumnConfig(getSeriesClassGridConfigStorageKey(currentTenantId), SERIES_CLASS_GRID_COLUMN_KEYS, columnOrder, hiddenColumns, columnAggregations);
     }, [columnAggregations, columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
 
     useEffect(() => {
@@ -904,7 +917,7 @@ export default function TurmasPage() {
 
     const toggleGridColumnVisibility = (columnKey: SeriesClassColumnKey) => {
         const isHidden = hiddenColumns.includes(columnKey);
-        const visibleCount = SERIES_CLASS_COLUMN_KEYS.length - hiddenColumns.length;
+        const visibleCount = SERIES_CLASS_GRID_COLUMN_KEYS.length - hiddenColumns.length;
         if (!isHidden && visibleCount === 1) {
             setErrorStatus('Pelo menos uma coluna precisa continuar visível no grid.');
             return;
@@ -926,8 +939,8 @@ export default function TurmasPage() {
     };
 
     const resetGridColumns = () => {
-        setColumnOrder(SERIES_CLASS_COLUMN_KEYS);
-        setHiddenColumns(SERIES_CLASS_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SERIES_CLASS_COLUMNS.includes(key)));
+        setColumnOrder(SERIES_CLASS_GRID_COLUMN_KEYS);
+        setHiddenColumns(SERIES_CLASS_GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SERIES_CLASS_GRID_COLUMNS.includes(key)));
         setColumnAggregations({});
     };
 
@@ -1113,6 +1126,72 @@ export default function TurmasPage() {
         );
     };
 
+    const renderSeriesClassGridDetailValue = (item: SeriesClassRecord, columnKey: SeriesClassColumnKey) => {
+        const isActive = !item.canceledAt && !item.class?.canceledAt && !item.series?.canceledAt;
+        const tone = isActive ? 'text-slate-700' : 'text-rose-700';
+        const statusLabel = isActive ? 'ATIVO' : 'INATIVO';
+
+        if (columnKey === 'className') {
+            return (
+                <div className={`flex min-w-0 items-center gap-2 font-semibold ${isActive ? 'text-slate-800' : 'text-rose-800'}`}>
+                    <span
+                        className={`h-3 w-3 shrink-0 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                        title={statusLabel}
+                        aria-label={statusLabel}
+                    />
+                    <span className="truncate">{item.class?.name || '---'}</span>
+                </div>
+            );
+        }
+
+        if (columnKey === 'series') return <span className={tone}>{item.series?.name || '---'}</span>;
+        if (columnKey === 'seriesSortOrder') return <span className={tone}>{item.series?.sortOrder !== null && item.series?.sortOrder !== undefined ? String(item.series.sortOrder) : '---'}</span>;
+        if (columnKey === 'seriesCode') return <span className={tone}>{item.series?.code || '---'}</span>;
+
+        if (columnKey === 'shift') {
+            return (
+                <div className="flex flex-wrap gap-2">
+                    {splitShiftValue(item.class?.shift || '').map((shift) => (
+                        <span key={`${item.id}-detail-${shift}`} className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ${getShiftTone(shift)}`}>
+                            {getShiftLabel(shift)}
+                        </span>
+                    ))}
+                </div>
+            );
+        }
+
+        if (columnKey === 'studentsCount') return <span className={tone}>{String(item.studentCount ?? item._count?.enrollments ?? 0)}</span>;
+
+        if (columnKey === 'defaultMonthlyFee') {
+            const value = formatMoneyValue(item.class?.defaultMonthlyFee);
+            return <span className={tone}>{value ? `R$ ${value}` : '---'}</span>;
+        }
+
+        if (columnKey === 'totalMonthlyFee') {
+            return <span className={tone}>{typeof item.totalMonthlyFee === 'number' ? `R$ ${formatMoneyValue(item.totalMonthlyFee)}` : 'Dado sensível'}</span>;
+        }
+
+        return (
+            <span
+                className={`inline-flex h-3 w-3 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                title={statusLabel}
+                aria-label={statusLabel}
+            />
+        );
+    };
+
+    const renderSeriesClassGridDetailItem = (
+        item: SeriesClassRecord,
+        column: ConfigurableGridColumn<SeriesClassRecord, SeriesClassColumnKey>,
+    ) => (
+        <div key={column.key} className="min-w-0">
+            <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{column.label}</div>
+            <div className="mt-1 min-w-0 text-sm font-semibold">
+                {renderSeriesClassGridDetailValue(item, column.key)}
+            </div>
+        </div>
+    );
+
     return (
         <div className="w-full space-y-8">
             <PrincipalProgramHeader
@@ -1196,28 +1275,48 @@ export default function TurmasPage() {
                     </div>
                 </div>
                 <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-                    <table className="min-w-[1440px] border-collapse text-left">
+                    <table className="min-w-full table-fixed border-collapse text-left">
+                        <colgroup>
+                            <col className="w-12" />
+                            {primarySeriesClassColumns.map((column) => (
+                                <col key={column.key} />
+                            ))}
+                            <col className="w-56" />
+                        </colgroup>
                         <thead>
                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
-                                <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                <th rowSpan={secondarySeriesClassColumns.length > 0 ? 2 : 1} className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
                                     {renderSeriesClassClearAllButton()}
                                 </th>
-                                {visibleSeriesClassColumns.map((column) => (
+                                {primarySeriesClassColumns.map((column) => (
                                     <th key={column.key} className="sticky top-0 z-20 bg-slate-50 px-6 py-3">
                                         {renderSeriesClassColumnHeader(column)}
                                     </th>
                                 ))}
-                                <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
+                                <th rowSpan={secondarySeriesClassColumns.length > 0 ? 2 : 1} className="sticky top-0 z-20 w-56 bg-slate-50 px-6 py-3 text-right">Ação</th>
                             </tr>
+                            {secondarySeriesClassColumns.length > 0 ? (
+                                <tr className="dashboard-table-head border-b border-slate-300 text-[12px] font-bold uppercase tracking-wider">
+                                    <th colSpan={primarySeriesClassColumns.length} className="sticky top-[45px] z-20 bg-slate-50 px-6 py-2">
+                                        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${secondarySeriesClassColumns.length}, minmax(0, 1fr))` }}>
+                                            {secondarySeriesClassColumns.map((column) => (
+                                                <div key={column.key} className="min-w-0">
+                                                    {renderSeriesClassColumnHeader(column)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </th>
+                                </tr>
+                            ) : null}
                             {activeSeriesClassFilterColumn ? (
                                 <tr aria-hidden="true">
-                                    <th colSpan={visibleSeriesClassColumns.length + 2} className="h-56 bg-white p-0" />
+                                    <th colSpan={primarySeriesClassColumns.length + 2} className="h-56 bg-white p-0" />
                                 </tr>
                             ) : null}
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {isLoading ? <tr><td colSpan={visibleSeriesClassColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Carregando turmas...</td></tr> : null}
-                            {!isLoading && sortedFilteredLinks.length === 0 ? <tr><td colSpan={visibleSeriesClassColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Nenhuma turma cadastrada.</td></tr> : null}
+                        <tbody>
+                            {isLoading ? <tr><td colSpan={primarySeriesClassColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Carregando turmas...</td></tr> : null}
+                            {!isLoading && sortedFilteredLinks.length === 0 ? <tr><td colSpan={primarySeriesClassColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Nenhuma turma cadastrada.</td></tr> : null}
                             {!isLoading && paginatedSeriesClasses.map((item, rowIndex) => {
                                 const isActive = !item.canceledAt && !item.class?.canceledAt && !item.series?.canceledAt;
                                 const zebraClass = rowIndex % 2 === 0
@@ -1231,47 +1330,62 @@ export default function TurmasPage() {
                                 const rowClass = isSelectedRow
                                     ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
                                     : zebraClass;
+                                const hasSecondLine = secondarySeriesClassColumns.length > 0;
 
                                 return (
-                                    <tr
-                                        key={item.id}
-                                        onClick={() => setSelectedSeriesClassGridRowId(item.id)}
-                                        aria-selected={isSelectedRow}
-                                        className={`group cursor-pointer transition-colors ${rowClass}`}
-                                    >
-                                        <td className="px-3 py-4" />
-                                        {visibleSeriesClassColumns.map((column) => renderSeriesClassGridCell(item, column.key))}
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                {canViewStudents ? (
-                                                    <GridRowActionIconButton title="Listar alunos da turma" onClick={() => void openStudentsModal(item)} tone="emerald">
+                                    <Fragment key={item.id}>
+                                        <tr
+                                            onClick={() => setSelectedSeriesClassGridRowId(item.id)}
+                                            aria-selected={isSelectedRow}
+                                            className={`group cursor-pointer border-t border-slate-100 transition-colors ${rowClass}`}
+                                        >
+                                            <td rowSpan={hasSecondLine ? 2 : 1} className="px-3 py-4" />
+                                            {primarySeriesClassColumns.map((column) => renderSeriesClassGridCell(item, column.key))}
+                                            <td rowSpan={hasSecondLine ? 2 : 1} className="w-56 px-6 py-4 text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    {canViewStudents ? (
+                                                        <GridRowActionIconButton title="Listar alunos da turma" onClick={() => void openStudentsModal(item)} tone="emerald">
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                                <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
+                                                            </svg>
+                                                        </GridRowActionIconButton>
+                                                    ) : null}
+                                                    {renderSeriesClassInfoButton(item)}
+                                                    <GridRowActionIconButton title="Editar turma" onClick={() => handleEdit(item)} tone="blue">
                                                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
-                                                            <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                         </svg>
                                                     </GridRowActionIconButton>
-                                                ) : null}
-                                                {renderSeriesClassInfoButton(item)}
-                                                <GridRowActionIconButton title="Editar turma" onClick={() => handleEdit(item)} tone="blue">
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                    </svg>
-                                                </GridRowActionIconButton>
-                                                <GridRowActionIconButton title={isActive ? 'Inativar turma' : 'Ativar turma'} onClick={() => openSeriesClassStatusModal(item)} tone={isActive ? 'rose' : 'emerald'}>
-                                                    {isActive ? (
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                        </svg>
-                                                    )}
-                                                </GridRowActionIconButton>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                                    <GridRowActionIconButton title={isActive ? 'Inativar turma' : 'Ativar turma'} onClick={() => openSeriesClassStatusModal(item)} tone={isActive ? 'rose' : 'emerald'}>
+                                                        {isActive ? (
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                        )}
+                                                    </GridRowActionIconButton>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {hasSecondLine ? (
+                                            <tr
+                                                onClick={() => setSelectedSeriesClassGridRowId(item.id)}
+                                                aria-selected={isSelectedRow}
+                                                className={`group cursor-pointer transition-colors ${rowClass}`}
+                                            >
+                                                <td colSpan={primarySeriesClassColumns.length} className="px-6 pb-4 pt-0">
+                                                    <div className="grid gap-x-5 gap-y-2 border-t border-slate-300/50 pt-3" style={{ gridTemplateColumns: `repeat(${secondarySeriesClassColumns.length}, minmax(0, 1fr))` }}>
+                                                        {secondarySeriesClassColumns.map((column) => renderSeriesClassGridDetailItem(item, column))}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ) : null}
+                                    </Fragment>
                                 );
                             })}
                         </tbody>

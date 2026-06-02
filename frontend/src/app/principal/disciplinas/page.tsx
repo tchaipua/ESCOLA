@@ -53,11 +53,13 @@ const SUBJECT_COLUMNS: ConfigurableGridColumn<Subject, SubjectColumnKey>[] = [
     { key: 'name', label: 'Disciplina', getValue: (row) => row.name || '---', visibleByDefault: true },
     { key: 'recordStatus', label: 'Status do cadastro', getValue: (row) => row.canceledAt ? 'INATIVO' : 'ATIVO', visibleByDefault: false },
 ];
+const SUBJECT_GRID_COLUMNS = SUBJECT_COLUMNS.filter((column) => column.key !== 'recordStatus');
 const SUBJECT_EXPORT_COLUMNS: GridColumnDefinition<Subject, SubjectExportColumnKey>[] = buildExportColumnsFromGridColumns(
     SUBJECT_COLUMNS,
 );
 const SUBJECT_COLUMN_KEYS = getAllGridColumnKeys(SUBJECT_COLUMNS);
-const DEFAULT_VISIBLE_SUBJECT_COLUMNS = getDefaultVisibleGridColumnKeys(SUBJECT_COLUMNS);
+const SUBJECT_GRID_COLUMN_KEYS = getAllGridColumnKeys(SUBJECT_GRID_COLUMNS);
+const DEFAULT_VISIBLE_SUBJECT_GRID_COLUMNS = getDefaultVisibleGridColumnKeys(SUBJECT_GRID_COLUMNS);
 const EMPTY_SUBJECT_COLUMN_FILTERS = SUBJECT_COLUMN_KEYS.reduce<SubjectColumnFilters>((accumulator, key) => {
     accumulator[key] = '';
     return accumulator;
@@ -236,9 +238,9 @@ export default function DisciplinasPage() {
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
     const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
     const [isGridConfigReady, setIsGridConfigReady] = useState(false);
-    const [columnOrder, setColumnOrder] = useState<SubjectColumnKey[]>(SUBJECT_COLUMN_KEYS);
+    const [columnOrder, setColumnOrder] = useState<SubjectColumnKey[]>(SUBJECT_GRID_COLUMN_KEYS);
     const [hiddenColumns, setHiddenColumns] = useState<SubjectColumnKey[]>(
-        SUBJECT_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SUBJECT_COLUMNS.includes(key)),
+        SUBJECT_GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SUBJECT_GRID_COLUMNS.includes(key)),
     );
     const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
     const [subjectColumnFilters, setSubjectColumnFilters] = useState<SubjectColumnFilters>(EMPTY_SUBJECT_COLUMN_FILTERS);
@@ -265,7 +267,7 @@ export default function DisciplinasPage() {
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_SUBJECTS', 'VIEW_TEACHERS']);
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SUBJECTS');
     const orderedSubjectColumns = useMemo(
-        () => columnOrder.map((key) => SUBJECT_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<Subject, SubjectColumnKey> => !!column),
+        () => columnOrder.map((key) => SUBJECT_GRID_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<Subject, SubjectColumnKey> => !!column),
         [columnOrder],
     );
     const visibleSubjectColumns = useMemo(
@@ -336,10 +338,10 @@ export default function DisciplinasPage() {
     useEffect(() => {
         let isMounted = true;
         setIsGridConfigReady(false);
-        void loadGridColumnConfig(getSubjectGridConfigStorageKey(currentTenantId), SUBJECT_COLUMN_KEYS, DEFAULT_VISIBLE_SUBJECT_COLUMNS).then((config) => {
+        void loadGridColumnConfig(getSubjectGridConfigStorageKey(currentTenantId), SUBJECT_GRID_COLUMN_KEYS, DEFAULT_VISIBLE_SUBJECT_GRID_COLUMNS).then((config) => {
             if (!isMounted) return;
-            setColumnOrder(config.order);
-            setHiddenColumns(config.hidden);
+            setColumnOrder(config.order.filter((key) => SUBJECT_GRID_COLUMN_KEYS.includes(key)));
+            setHiddenColumns(config.hidden.filter((key) => SUBJECT_GRID_COLUMN_KEYS.includes(key)));
             setIsGridConfigReady(true);
         });
         return () => {
@@ -349,17 +351,8 @@ export default function DisciplinasPage() {
 
     useEffect(() => {
         if (!isGridConfigReady) return;
-        writeGridColumnConfig(getSubjectGridConfigStorageKey(currentTenantId), SUBJECT_COLUMN_KEYS, columnOrder, hiddenColumns);
+        writeGridColumnConfig(getSubjectGridConfigStorageKey(currentTenantId), SUBJECT_GRID_COLUMN_KEYS, columnOrder, hiddenColumns);
     }, [columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
-
-    if (!isLoading && !canView) {
-        return (
-            <DashboardAccessDenied
-                title="Acesso restrito às disciplinas"
-                message="Seu perfil não possui permissão para consultar a grade de disciplinas e os professores vinculados desta escola."
-            />
-        );
-    }
 
     useEffect(() => {
         if (!errorStatus && !successStatus) return;
@@ -713,7 +706,7 @@ export default function DisciplinasPage() {
 
     const toggleGridColumnVisibility = (columnKey: SubjectColumnKey) => {
         const isHidden = hiddenColumns.includes(columnKey);
-        const visibleCount = SUBJECT_COLUMN_KEYS.length - hiddenColumns.length;
+        const visibleCount = SUBJECT_GRID_COLUMN_KEYS.length - hiddenColumns.length;
         if (!isHidden && visibleCount === 1) {
             setErrorStatus('Pelo menos uma coluna precisa continuar visível no grid.');
             return;
@@ -735,8 +728,8 @@ export default function DisciplinasPage() {
     };
 
     const resetGridColumns = () => {
-        setColumnOrder(SUBJECT_COLUMN_KEYS);
-        setHiddenColumns(SUBJECT_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SUBJECT_COLUMNS.includes(key)));
+        setColumnOrder(SUBJECT_GRID_COLUMN_KEYS);
+        setHiddenColumns(SUBJECT_GRID_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SUBJECT_GRID_COLUMNS.includes(key)));
     };
 
     const clearAllSubjectGridFilters = () => {
@@ -843,6 +836,15 @@ export default function DisciplinasPage() {
         );
     };
 
+    if (!isLoading && !canView) {
+        return (
+            <DashboardAccessDenied
+                title="Acesso restrito às disciplinas"
+                message="Seu perfil não possui permissão para consultar a grade de disciplinas e os professores vinculados desta escola."
+            />
+        );
+    }
+
     return (
         <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
             <div className="flex w-full flex-col bg-transparent">
@@ -928,7 +930,14 @@ export default function DisciplinasPage() {
                         </div>
 
                         <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-                            <table className="min-w-[860px] border-collapse text-left">
+                            <table className="min-w-full table-fixed border-collapse text-left">
+                                <colgroup>
+                                    <col className="w-12" />
+                                    {visibleSubjectColumns.map((column) => (
+                                        <col key={column.key} />
+                                    ))}
+                                    <col className="w-44" />
+                                </colgroup>
                                 <thead>
                                     <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
                                         <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
@@ -939,7 +948,7 @@ export default function DisciplinasPage() {
                                                 {renderSubjectColumnHeader(column)}
                                             </th>
                                         ))}
-                                        <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
+                                        <th className="sticky top-0 z-20 w-44 bg-slate-50 px-6 py-3 text-right">Ação</th>
                                     </tr>
                                     {activeSubjectFilterColumn ? (
                                         <tr aria-hidden="true">
@@ -986,7 +995,7 @@ export default function DisciplinasPage() {
                                             >
                                                 <td className="px-3 py-4" />
                                                 {visibleSubjectColumns.map((column) => renderSubjectGridCell(subject, column.key))}
-                                                <td className="px-6 py-4 text-right">
+                                                <td className="w-44 px-6 py-4 text-right">
                                                     {canManage ? (
                                                         <div className="flex justify-end gap-2">
                                                             {renderSubjectInfoButton(subject)}

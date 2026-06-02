@@ -909,7 +909,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         },
         {
             href: '/principal/mensalidades',
-            label: 'Mensalidades',
+            label: 'Gerar Mensalidades',
             allowWhen: hasAnyDashboardPermission(currentRole, currentPermissions, ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES']),
             icon: (
                 <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1217,6 +1217,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         );
                     })}
                 </nav>
+
+                <div className="border-t border-white/10 px-3 py-4">
+                    <button
+                        type="button"
+                        onClick={handleLogout}
+                        title="Abrir login"
+                        aria-label="Abrir login"
+                        className="flex w-full items-center rounded-lg px-3 py-2.5 font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+                    >
+                        <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                        {isSidebarOpen ? <span className="ml-3 text-sm">Login</span> : null}
+                    </button>
+                </div>
 
             </aside>
 

@@ -882,7 +882,14 @@ export default function SeriesPage() {
                     </div>
                 </div>
                 <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-                    <table className="min-w-[980px] border-collapse text-left">
+                    <table className="min-w-full table-fixed border-collapse text-left">
+                        <colgroup>
+                            <col className="w-12" />
+                            {visibleSeriesColumns.map((column) => (
+                                <col key={column.key} />
+                            ))}
+                            <col className="w-56" />
+                        </colgroup>
                         <thead>
                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
                                 <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
@@ -893,7 +900,7 @@ export default function SeriesPage() {
                                         {renderSeriesColumnHeader(column)}
                                     </th>
                                 ))}
-                                <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
+                                <th className="sticky top-0 z-20 w-56 bg-slate-50 px-6 py-3 text-right">Ação</th>
                             </tr>
                             {activeSeriesFilterColumn ? (
                                 <tr aria-hidden="true">
@@ -926,7 +933,7 @@ export default function SeriesPage() {
                                     >
                                         <td className="px-3 py-4" />
                                         {visibleSeriesColumns.map((column) => renderSeriesGridCell(item, column.key))}
-                                        <td className="px-6 py-4 text-right">
+                                        <td className="w-56 px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 {renderSeriesInfoButton(item)}
                                                 <GridRowActionIconButton title="Ver alunos da série" onClick={() => handleShowSeriesStudents(item)} tone="slate">

@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
-import GridFooterControls from '@/app/components/grid-footer-controls';
-import RecordStatusIndicator from '@/app/components/record-status-indicator';
+import GridStandardFooter from '@/app/components/grid-standard-footer';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
-import GridSortableHeader from '@/app/components/grid-sortable-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { fetchTenantBranches, getDashboardAuthContext, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
@@ -75,8 +74,9 @@ const getApiErrorMessage = (payload: unknown, fallback: string) => {
     return fallback;
 };
 
-type ScheduleColumnKey = 'period' | 'lessonNumber' | 'description' | 'startTime' | 'endTime' | 'recordStatus';
+type ScheduleColumnKey = 'period' | 'lessonNumber' | 'description' | 'startTime' | 'endTime';
 type ScheduleExportColumnKey = ScheduleColumnKey;
+type ScheduleColumnFilters = Record<ScheduleColumnKey, string>;
 
 const SCHEDULE_COLUMNS: ConfigurableGridColumn<ScheduleRecord, ScheduleColumnKey>[] = [
     { key: 'period', label: 'Período', getValue: (row) => getPeriodLabel(row.period) },
@@ -86,6 +86,7 @@ const SCHEDULE_COLUMNS: ConfigurableGridColumn<ScheduleRecord, ScheduleColumnKey
         getValue: (row) => String(row.lessonNumber),
         getSortValue: (row) => row.lessonNumber,
         visibleByDefault: false,
+        align: 'center',
     },
     {
         key: 'description',
@@ -93,15 +94,18 @@ const SCHEDULE_COLUMNS: ConfigurableGridColumn<ScheduleRecord, ScheduleColumnKey
         getValue: (row) => getScheduleDescription(row.lessonNumber),
         getSortValue: (row) => row.lessonNumber,
     },
-    { key: 'startTime', label: 'Horário inicial', getValue: (row) => row.startTime || '---' },
-    { key: 'endTime', label: 'Horário final', getValue: (row) => row.endTime || '---' },
-    { key: 'recordStatus', label: 'Status do cadastro', getValue: (row) => row.canceledAt ? 'INATIVO' : 'ATIVO', visibleByDefault: false },
+    { key: 'startTime', label: 'Horário inicial', getValue: (row) => row.startTime || '---', align: 'center' },
+    { key: 'endTime', label: 'Horário final', getValue: (row) => row.endTime || '---', align: 'center' },
 ];
 const SCHEDULE_EXPORT_COLUMNS: GridColumnDefinition<ScheduleRecord, ScheduleExportColumnKey>[] = buildExportColumnsFromGridColumns(
     SCHEDULE_COLUMNS,
 );
 const SCHEDULE_COLUMN_KEYS = getAllGridColumnKeys(SCHEDULE_COLUMNS);
 const DEFAULT_VISIBLE_SCHEDULE_COLUMNS = getDefaultVisibleGridColumnKeys(SCHEDULE_COLUMNS);
+const EMPTY_SCHEDULE_COLUMN_FILTERS = SCHEDULE_COLUMN_KEYS.reduce<ScheduleColumnFilters>((accumulator, columnKey) => {
+    accumulator[columnKey] = '';
+    return accumulator;
+}, {} as ScheduleColumnFilters);
 
 function getScheduleGridConfigStorageKey(tenantId: string | null) {
     return `dashboard:horarios-aulas:grid-config:${tenantId || 'default'}`;
@@ -115,11 +119,13 @@ const DEFAULT_SORT: GridSortState<ScheduleColumnKey> = {
     column: 'period',
     direction: 'asc',
 };
+const SCHEDULE_PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
 type GradeAuditParams = {
     tenantId: string | null;
     tenantName?: string | null;
     searchTerm: string;
+    columnFilters: ScheduleColumnFilters;
     statusFilter: GridStatusFilterValue;
     displayedRowsCount: number;
     sortColumn: ScheduleColumnKey;
@@ -133,7 +139,6 @@ function getGradeAuditOrderBy(column: ScheduleColumnKey) {
         description: 'S.lessonNumber',
         startTime: 'S.startTime',
         endTime: 'S.endTime',
-        recordStatus: 'S.canceledAt',
     };
 
     return orderColumns[column] || 'S.period';
@@ -141,12 +146,21 @@ function getGradeAuditOrderBy(column: ScheduleColumnKey) {
 
 function buildGradeAuditSql(params: GradeAuditParams) {
     const searchTerm = params.searchTerm.trim().toUpperCase();
+    const columnFilters = SCHEDULE_COLUMN_KEYS.reduce<ScheduleColumnFilters>((accumulator, columnKey) => {
+        accumulator[columnKey] = params.columnFilters[columnKey]?.trim().toUpperCase() || '';
+        return accumulator;
+    }, {} as ScheduleColumnFilters);
     const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
     const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
 
     return `-- PARAMETROS ATUAIS DO GRID
 -- :schoolId = ${toSqlLiteral(params.tenantId || '')}
 -- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :periodFilter = ${toSqlLiteral(columnFilters.period)}
+-- :lessonNumberFilter = ${toSqlLiteral(columnFilters.lessonNumber)}
+-- :descriptionFilter = ${toSqlLiteral(columnFilters.description)}
+-- :startTimeFilter = ${toSqlLiteral(columnFilters.startTime)}
+-- :endTimeFilter = ${toSqlLiteral(columnFilters.endTime)}
 -- :statusFilter = ${toSqlLiteral(statusFilter)}
 
 SELECT S.*
@@ -159,6 +173,14 @@ WHERE S.tenantId = ${toSqlLiteral(params.tenantId || '')}
     OR UPPER(COALESCE(S.startTime, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
     OR UPPER(COALESCE(S.endTime, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
   )
+  AND (${toSqlLiteral(columnFilters.period)} = '' OR UPPER(COALESCE(S.period, '')) LIKE '%' || UPPER(${toSqlLiteral(columnFilters.period)}) || '%')
+  AND (${toSqlLiteral(columnFilters.lessonNumber)} = '' OR UPPER(CAST(S.lessonNumber AS TEXT)) LIKE '%' || UPPER(${toSqlLiteral(columnFilters.lessonNumber)}) || '%')
+  AND (
+    ${toSqlLiteral(columnFilters.description)} = ''
+    OR UPPER(CASE WHEN S.lessonNumber = 0 THEN 'INTERVALO' ELSE CAST(S.lessonNumber AS TEXT) || 'ª AULA' END) LIKE '%' || UPPER(${toSqlLiteral(columnFilters.description)}) || '%'
+  )
+  AND (${toSqlLiteral(columnFilters.startTime)} = '' OR UPPER(COALESCE(S.startTime, '')) LIKE '%' || UPPER(${toSqlLiteral(columnFilters.startTime)}) || '%')
+  AND (${toSqlLiteral(columnFilters.endTime)} = '' OR UPPER(COALESCE(S.endTime, '')) LIKE '%' || UPPER(${toSqlLiteral(columnFilters.endTime)}) || '%')
   AND (
     ${toSqlLiteral(statusFilter)} = 'ALL'
     OR (${toSqlLiteral(statusFilter)} = 'ACTIVE' AND S.canceledAt IS NULL)
@@ -169,6 +191,13 @@ ORDER BY ${getGradeAuditOrderBy(params.sortColumn)} ${sortDirection};`;
 
 function buildGradeAuditText(params: GradeAuditParams) {
     const searchTerm = params.searchTerm.trim().toUpperCase();
+    const activeColumnFilters = SCHEDULE_COLUMN_KEYS
+        .map((columnKey) => {
+            const value = params.columnFilters[columnKey]?.trim().toUpperCase();
+            const label = SCHEDULE_COLUMNS.find((column) => column.key === columnKey)?.label || columnKey;
+            return value ? `${label}: ${value}` : '';
+        })
+        .filter(Boolean);
     const statusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
     const sortDirection = params.sortDirection === 'desc' ? 'DESC' : 'ASC';
 
@@ -184,6 +213,7 @@ RELACIONAMENTOS:
 FILTROS APLICADOS AGORA:
 - escola/tenant atual (:schoolId): ${formatTenantAuditValue(params.tenantId, params.tenantName)}
 - busca digitada (:searchTerm): ${formatAuditValue(searchTerm)}
+- filtros diretos por coluna: ${activeColumnFilters.length ? activeColumnFilters.join(' | ') : 'NENHUM'}
 - status selecionado (:statusFilter): ${statusFilter}
 - registros exibidos apos os filtros: ${params.displayedRowsCount}
 - ordenacao atual: ${getGradeAuditOrderBy(params.sortColumn)} ${sortDirection}
@@ -192,6 +222,20 @@ OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
 - S.tenantId e a coluna usada para isolar os dados da empresa / escola
 - :schoolId acima ja esta preenchido com o tenantId real da escola logada
 - os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
+function getScheduleColumnFilterValues(schedule: ScheduleRecord, columnKey: ScheduleColumnKey) {
+    if (columnKey === 'period') return [getPeriodLabel(schedule.period), schedule.period];
+    if (columnKey === 'lessonNumber') return [String(schedule.lessonNumber)];
+    if (columnKey === 'description') return [getScheduleDescription(schedule.lessonNumber)];
+    if (columnKey === 'startTime') return [schedule.startTime || ''];
+    return [schedule.endTime || ''];
+}
+
+function matchesScheduleColumnFilter(values: string[], filterValue: string) {
+    const normalizedFilter = filterValue.trim().toUpperCase();
+    if (!normalizedFilter) return true;
+    return values.some((value) => String(value || '').toUpperCase().includes(normalizedFilter));
 }
 
 export default function GradeHorariaPage() {
@@ -225,6 +269,12 @@ export default function GradeHorariaPage() {
     const [isProcessingScheduleToggle, setIsProcessingScheduleToggle] = useState(false);
     const [currentBranchCode, setCurrentBranchCode] = useState(1);
     const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
+    const [schedulePageSize, setSchedulePageSize] = useState<number>(SCHEDULE_PAGE_SIZE_OPTIONS[0]);
+    const [schedulePage, setSchedulePage] = useState(1);
+    const [selectedScheduleGridRowId, setSelectedScheduleGridRowId] = useState<string | null>(null);
+    const [scheduleColumnFilters, setScheduleColumnFilters] = useState<ScheduleColumnFilters>(EMPTY_SCHEDULE_COLUMN_FILTERS);
+    const [scheduleColumnFilterDrafts, setScheduleColumnFilterDrafts] = useState<ScheduleColumnFilters>(EMPTY_SCHEDULE_COLUMN_FILTERS);
+    const [activeScheduleFilterColumn, setActiveScheduleFilterColumn] = useState<ScheduleColumnKey | null>(null);
 
     const canView = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SCHEDULES');
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SCHEDULES');
@@ -238,6 +288,8 @@ export default function GradeHorariaPage() {
     );
     const filteredSchedules = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
+        const activeColumnFilters = (Object.entries(scheduleColumnFilters) as Array<[ScheduleColumnKey, string]>)
+            .filter(([, value]) => value.trim());
         return schedules.filter((item) => {
             const isActive = !item.canceledAt;
             const matchesStatus =
@@ -250,12 +302,24 @@ export default function GradeHorariaPage() {
                 !term ||
                 [getPeriodLabel(item.period), getScheduleDescription(item.lessonNumber), `${item.lessonNumber}`, item.startTime, item.endTime]
                     .some((value) => String(value || '').toUpperCase().includes(term));
-            return matchesStatus && matchesSearch;
+            const matchesColumnFilters = activeColumnFilters.every(([columnKey, filterValue]) =>
+                matchesScheduleColumnFilter(getScheduleColumnFilterValues(item, columnKey), filterValue),
+            );
+            return matchesStatus && matchesSearch && matchesColumnFilters;
         });
-    }, [schedules, searchTerm, statusFilter]);
+    }, [scheduleColumnFilters, schedules, searchTerm, statusFilter]);
     const sortedFilteredSchedules = useMemo(
         () => sortGridRows(filteredSchedules, SCHEDULE_COLUMNS, sortState),
         [filteredSchedules, sortState],
+    );
+    const scheduleTotalPages = Math.max(1, Math.ceil(sortedFilteredSchedules.length / schedulePageSize));
+    const currentSchedulePage = Math.min(schedulePage, scheduleTotalPages);
+    const paginatedSchedules = useMemo(
+        () => sortedFilteredSchedules.slice(
+            (currentSchedulePage - 1) * schedulePageSize,
+            currentSchedulePage * schedulePageSize,
+        ),
+        [currentSchedulePage, schedulePageSize, sortedFilteredSchedules],
     );
     const tenantBranding = useMemo(() => readCachedTenantBranding(currentTenantId), [currentTenantId]);
     const gradeAuditContext = useMemo(() => {
@@ -263,6 +327,7 @@ export default function GradeHorariaPage() {
             tenantId: currentTenantId,
             tenantName: tenantBranding?.schoolName,
             searchTerm,
+            columnFilters: scheduleColumnFilters,
             statusFilter,
             displayedRowsCount: sortedFilteredSchedules.length,
             sortColumn: sortState.column,
@@ -273,7 +338,16 @@ export default function GradeHorariaPage() {
             auditText: buildGradeAuditText(auditParams),
             sqlText: buildGradeAuditSql(auditParams),
         };
-    }, [currentTenantId, searchTerm, sortState.column, sortState.direction, sortedFilteredSchedules.length, statusFilter, tenantBranding?.schoolName]);
+    }, [currentTenantId, scheduleColumnFilters, searchTerm, sortState.column, sortState.direction, sortedFilteredSchedules.length, statusFilter, tenantBranding?.schoolName]);
+    const hasScheduleGridFilters = useMemo(
+        () =>
+            Boolean(searchTerm.trim())
+            || statusFilter !== 'ACTIVE'
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction
+            || Object.values(scheduleColumnFilters).some((value) => value.trim()),
+        [scheduleColumnFilters, searchTerm, sortState.column, sortState.direction, statusFilter],
+    );
 
     useEffect(() => {
         dispatchScreenAuditContext({
@@ -464,11 +538,9 @@ export default function GradeHorariaPage() {
         }
     };
 
-    const toggleSort = (column: ScheduleColumnKey) => {
-        setSortState((current) => ({
-            column,
-            direction: current.column === column && current.direction === 'asc' ? 'desc' : 'asc',
-        }));
+    const handleStatusFilterChange = (value: GridStatusFilterValue) => {
+        setStatusFilter(value);
+        setSchedulePage(1);
     };
 
     const toggleExportColumn = (column: ScheduleExportColumnKey) => {
@@ -539,29 +611,110 @@ export default function GradeHorariaPage() {
         setHiddenColumns(SCHEDULE_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_SCHEDULE_COLUMNS.includes(key)));
     };
 
+    const clearAllScheduleGridFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('ACTIVE');
+        setSortState(DEFAULT_SORT);
+        setScheduleColumnFilters(EMPTY_SCHEDULE_COLUMN_FILTERS);
+        setScheduleColumnFilterDrafts(EMPTY_SCHEDULE_COLUMN_FILTERS);
+        setActiveScheduleFilterColumn(null);
+        setSchedulePage(1);
+    };
+
+    const openScheduleColumnFilter = (columnKey: ScheduleColumnKey | null) => {
+        setActiveScheduleFilterColumn(columnKey);
+        if (!columnKey) return;
+        setScheduleColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: scheduleColumnFilters[columnKey] || '',
+        }));
+    };
+
+    const applyScheduleColumnFilter = (columnKey: ScheduleColumnKey) => {
+        setScheduleColumnFilters((current) => ({
+            ...current,
+            [columnKey]: scheduleColumnFilterDrafts[columnKey] || '',
+        }));
+        setActiveScheduleFilterColumn(null);
+        setSchedulePage(1);
+    };
+
+    const clearScheduleColumnFilter = (columnKey: ScheduleColumnKey) => {
+        setScheduleColumnFilters((current) => ({ ...current, [columnKey]: '' }));
+        setScheduleColumnFilterDrafts((current) => ({ ...current, [columnKey]: '' }));
+        setActiveScheduleFilterColumn(null);
+        setSchedulePage(1);
+    };
+
+    const renderScheduleClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllScheduleGridFilters}
+            title="Limpar todos os filtros"
+            aria-label="Limpar todos os filtros"
+            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition ${
+                hasScheduleGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 7h14M10 11v6m4-6v6M9 7V5h6v2m-9 0 1 14h10l1-14" />
+            </svg>
+        </button>
+    );
+
+    const renderScheduleColumnHeader = (column: ConfigurableGridColumn<ScheduleRecord, ScheduleColumnKey>) => (
+        <GridColumnFilterHeader
+            label={column.label}
+            align={column.align}
+            isOpen={activeScheduleFilterColumn === column.key}
+            isActive={Boolean(scheduleColumnFilters[column.key]?.trim()) || sortState.column === column.key}
+            filterValue={scheduleColumnFilterDrafts[column.key] || ''}
+            onToggle={() => openScheduleColumnFilter(activeScheduleFilterColumn === column.key ? null : column.key)}
+            onSort={(direction) => {
+                setSortState({ column: column.key, direction });
+                setActiveScheduleFilterColumn(null);
+                setSchedulePage(1);
+            }}
+            onFilterValueChange={(value) =>
+                setScheduleColumnFilterDrafts((current) => ({
+                    ...current,
+                    [column.key]: value,
+                }))
+            }
+            onApply={() => applyScheduleColumnFilter(column.key)}
+            onClear={() => clearScheduleColumnFilter(column.key)}
+        />
+    );
+
+    const renderScheduleStatusDot = (schedule: ScheduleRecord) => {
+        const statusLabel = schedule.canceledAt ? 'INATIVO' : 'ATIVO';
+        return (
+            <span
+                className={`inline-flex h-3 w-3 shrink-0 rounded-full ${schedule.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                title={statusLabel}
+                aria-label={statusLabel}
+            />
+        );
+    };
+
     const renderScheduleGridCell = (schedule: ScheduleRecord, columnKey: ScheduleColumnKey) => {
         const tone = schedule.canceledAt ? 'text-rose-700' : 'text-slate-600';
         if (columnKey === 'period') return <td key={columnKey} className={`px-6 py-4 font-semibold ${schedule.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>{getPeriodLabel(schedule.period)}</td>;
-        if (columnKey === 'lessonNumber') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{schedule.lessonNumber}</td>;
+        if (columnKey === 'lessonNumber') return <td key={columnKey} className={`px-6 py-4 text-center text-sm font-medium ${tone}`}>{schedule.lessonNumber}</td>;
         if (columnKey === 'description') {
             return (
                 <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>
                     <div className="flex items-center gap-2">
+                        {renderScheduleStatusDot(schedule)}
                         <span>{getScheduleDescription(schedule.lessonNumber)}</span>
-                        <RecordStatusIndicator active={!schedule.canceledAt} />
                     </div>
                 </td>
             );
         }
-        if (columnKey === 'startTime') return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{schedule.startTime || '---'}</td>;
-        if (columnKey === 'recordStatus') {
-            return (
-                <td key={columnKey} className="px-6 py-4 text-center">
-                    <RecordStatusIndicator active={!schedule.canceledAt} />
-                </td>
-            );
-        }
-        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${tone}`}>{schedule.endTime || '---'}</td>;
+        if (columnKey === 'startTime') return <td key={columnKey} className={`px-6 py-4 text-center text-sm font-medium ${tone}`}>{schedule.startTime || '---'}</td>;
+        return <td key={columnKey} className={`px-6 py-4 text-center text-sm font-medium ${tone}`}>{schedule.endTime || '---'}</td>;
     };
 
     return (
@@ -607,8 +760,8 @@ export default function GradeHorariaPage() {
             {errorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{errorStatus}</div> : null}
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
 
-            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="dashboard-band border-b px-6 py-4">
+            <section className="flex h-[calc(100vh-17rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="dashboard-band shrink-0 border-b px-4 py-3">
                     <div className="flex flex-wrap items-center gap-3">
                         {canManage ? (
                             <button
@@ -624,72 +777,129 @@ export default function GradeHorariaPage() {
                             </button>
                         ) : null}
                         <div className="relative w-full max-w-xs">
-                            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar horário..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                            <input
+                                value={searchTerm}
+                                onChange={(event) => {
+                                    setSearchTerm(event.target.value);
+                                    setSchedulePage(1);
+                                }}
+                                placeholder="Buscar horário..."
+                                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                            />
                             <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
                         </div>
                     </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
+                <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                    <table className="w-full min-w-[920px] border-collapse text-left">
+                        <colgroup>
+                            <col className="w-12" />
+                            {visibleScheduleColumns.map((column) => (
+                                <col key={column.key} />
+                            ))}
+                            <col className="w-44" />
+                        </colgroup>
                         <thead>
                             <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                    {renderScheduleClearAllButton()}
+                                </th>
                                 {visibleScheduleColumns.map((column) => (
-                                    <th key={column.key} className="px-6 py-4">
-                                        <GridSortableHeader
-                                            label={column.label}
-                                            isActive={sortState.column === column.key}
-                                            direction={sortState.direction}
-                                            onClick={() => toggleSort(column.key)}
-                                        />
+                                    <th
+                                        key={column.key}
+                                        className={`sticky top-0 z-20 bg-slate-50 px-6 py-3 ${
+                                            column.align === 'right'
+                                                ? 'text-right'
+                                                : column.align === 'center'
+                                                    ? 'text-center'
+                                            : 'text-left'
+                                        }`}
+                                    >
+                                        {renderScheduleColumnHeader(column)}
                                     </th>
                                 ))}
-                                <th className="px-6 py-4 text-right">Ação</th>
+                                <th className="sticky top-0 z-20 w-44 bg-slate-50 px-6 py-3 text-right">Ação</th>
                             </tr>
+                            {activeScheduleFilterColumn ? (
+                                <tr aria-hidden="true">
+                                    <th colSpan={visibleScheduleColumns.length + 2} className="h-56 bg-white p-0" />
+                                </tr>
+                            ) : null}
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {isLoading ? <tr><td colSpan={visibleScheduleColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Carregando horários...</td></tr> : null}
-                            {!isLoading && sortedFilteredSchedules.length === 0 ? <tr><td colSpan={visibleScheduleColumns.length + 1} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum horário cadastrado.</td></tr> : null}
-                            {!isLoading && sortedFilteredSchedules.map((schedule) => (
-                                <tr key={schedule.id} className={schedule.canceledAt ? 'bg-rose-50/40 hover:bg-rose-50' : 'hover:bg-slate-50'}>
-                                    {visibleScheduleColumns.map((column) => renderScheduleGridCell(schedule, column.key))}
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            {renderScheduleInfoButton(schedule)}
-                                            <GridRowActionIconButton title="Editar horário" onClick={() => handleEdit(schedule)} tone="blue">
-                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                                </svg>
-                                            </GridRowActionIconButton>
-                                            <GridRowActionIconButton title={schedule.canceledAt ? 'Ativar horário' : 'Inativar horário'} onClick={() => openScheduleStatusModal(schedule)} tone={schedule.canceledAt ? 'emerald' : 'rose'}>
-                                                {schedule.canceledAt ? (
+                            {isLoading ? <tr><td colSpan={visibleScheduleColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Carregando horários...</td></tr> : null}
+                            {!isLoading && sortedFilteredSchedules.length === 0 ? <tr><td colSpan={visibleScheduleColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">Nenhum horário cadastrado.</td></tr> : null}
+                            {!isLoading && paginatedSchedules.map((schedule, rowIndex) => {
+                                const zebraClass = rowIndex % 2 === 0
+                                    ? schedule.canceledAt
+                                        ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                        : 'bg-white hover:bg-slate-50'
+                                    : schedule.canceledAt
+                                        ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                        : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                const isSelectedRow = selectedScheduleGridRowId === schedule.id;
+                                const rowClass = isSelectedRow
+                                    ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                    : zebraClass;
+
+                                return (
+                                    <tr
+                                        key={schedule.id}
+                                        onClick={() => setSelectedScheduleGridRowId(schedule.id)}
+                                        aria-selected={isSelectedRow}
+                                        className={`group cursor-pointer transition-colors ${rowClass}`}
+                                    >
+                                        <td className="px-3 py-4" />
+                                        {visibleScheduleColumns.map((column) => renderScheduleGridCell(schedule, column.key))}
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                {renderScheduleInfoButton(schedule)}
+                                                <GridRowActionIconButton title="Editar horário" onClick={() => handleEdit(schedule)} tone="blue">
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                     </svg>
-                                                ) : (
-                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
-                                                    </svg>
-                                                )}
-                                            </GridRowActionIconButton>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
+                                                </GridRowActionIconButton>
+                                                <GridRowActionIconButton title={schedule.canceledAt ? 'Ativar horário' : 'Inativar horário'} onClick={() => openScheduleStatusModal(schedule)} tone={schedule.canceledAt ? 'emerald' : 'rose'}>
+                                                    {schedule.canceledAt ? (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                        </svg>
+                                                    )}
+                                                </GridRowActionIconButton>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
-                <GridFooterControls
-                    key={`schedule-footer-${sortedFilteredSchedules.length}`}
+                <GridStandardFooter
                     recordsCount={Number(sortedFilteredSchedules.length)}
                     onOpenColumns={() => setIsGridConfigOpen(true)}
                     onOpenExport={() => setIsExportModalOpen(true)}
                     statusFilter={statusFilter}
-                    onStatusFilterChange={setStatusFilter}
+                    onStatusFilterChange={handleStatusFilterChange}
                     activeLabel="Mostrar somente horários ativos"
                     allLabel="Mostrar horários ativos e inativos"
                     inactiveLabel="Mostrar somente horários inativos"
+                    pageSize={schedulePageSize}
+                    onPageSizeChange={(value) => {
+                        setSchedulePageSize(value);
+                        setSchedulePage(1);
+                    }}
+                    currentPage={currentSchedulePage}
+                    totalPages={scheduleTotalPages}
+                    onFirstPage={() => setSchedulePage(1)}
+                    onPreviousPage={() => setSchedulePage((current) => Math.max(1, current - 1))}
+                    onNextPage={() => setSchedulePage((current) => Math.min(scheduleTotalPages, current + 1))}
+                    onLastPage={() => setSchedulePage(scheduleTotalPages)}
                 />
             </section>
 

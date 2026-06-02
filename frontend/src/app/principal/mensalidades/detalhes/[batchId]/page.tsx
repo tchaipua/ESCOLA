@@ -4,8 +4,19 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
+import GridExportModal from '@/app/components/grid-export-modal';
+import GridSortableHeader from '@/app/components/grid-sortable-header';
 import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, hasAnyDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+import {
+    buildDefaultExportColumns,
+    exportGridRows,
+    sortGridRows,
+    type GridColumnDefinition,
+    type GridExportFormat,
+    type GridSortState,
+} from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -43,7 +54,9 @@ type HistoryDetailsResponse = {
     }>;
 };
 
-type DetailViewMode = 'all' | 'problem-only';
+type DetailTab = 'generated' | 'problem';
+type GeneratedColumnKey = 'studentName' | 'classLabel' | 'payerName' | 'installmentCount' | 'lastDueDate' | 'totalAmount';
+type ProblemColumnKey = 'studentName' | 'classLabel' | 'installmentCount' | 'problemReason';
 
 type StudentLaunchSummary = {
     status: 'OK' | 'PROBLEMA';
@@ -59,6 +72,7 @@ type StudentLaunchSummary = {
 };
 
 const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
+const DEFAULT_PAGE_SIZE = 10;
 const EMPTY_AUTH_CONTEXT: DashboardAuthContext = {
     token: null,
     userId: null,
@@ -69,6 +83,356 @@ const EMPTY_AUTH_CONTEXT: DashboardAuthContext = {
     name: null,
     modelType: null,
 };
+
+const generatedGridColumns: Array<GridColumnDefinition<StudentLaunchSummary, GeneratedColumnKey>> = [
+    {
+        key: 'studentName',
+        label: 'Aluno',
+        getValue: (row) => row.studentName,
+        getSortValue: (row) => row.studentName,
+    },
+    {
+        key: 'classLabel',
+        label: 'Turma',
+        getValue: (row) => row.classLabel || '---',
+        getSortValue: (row) => row.classLabel || '',
+    },
+    {
+        key: 'payerName',
+        label: 'Pagador',
+        getValue: (row) => row.payerName || '---',
+        getSortValue: (row) => row.payerName || '',
+    },
+    {
+        key: 'installmentCount',
+        label: 'Parcelas lançadas',
+        getValue: (row) => String(row.installmentCount),
+        getSortValue: (row) => row.installmentCount,
+        align: 'center',
+    },
+    {
+        key: 'lastDueDate',
+        label: 'Último vencimento',
+        getValue: (row) => formatDateLabel(row.lastDueDate),
+        getSortValue: (row) => row.lastDueDate ? new Date(row.lastDueDate).getTime() : 0,
+        align: 'center',
+    },
+    {
+        key: 'totalAmount',
+        label: 'Total lançado',
+        getValue: (row) => formatCurrency(row.totalAmount),
+        getSortValue: (row) => row.totalAmount,
+        align: 'right',
+    },
+];
+
+const problemGridColumns: Array<GridColumnDefinition<StudentLaunchSummary, ProblemColumnKey>> = [
+    {
+        key: 'studentName',
+        label: 'Aluno',
+        getValue: (row) => row.studentName,
+        getSortValue: (row) => row.studentName,
+    },
+    {
+        key: 'classLabel',
+        label: 'Turma',
+        getValue: (row) => row.classLabel || '---',
+        getSortValue: (row) => row.classLabel || '',
+    },
+    {
+        key: 'installmentCount',
+        label: 'Parcelas lançadas',
+        getValue: (row) => String(row.installmentCount),
+        getSortValue: (row) => row.installmentCount,
+        align: 'center',
+    },
+    {
+        key: 'problemReason',
+        label: 'Problema',
+        getValue: (row) => row.problemReason || '---',
+        getSortValue: (row) => row.problemReason || '',
+    },
+];
+
+function getTotalPages(recordsCount: number, pageSize: number) {
+    return Math.max(1, Math.ceil(recordsCount / pageSize));
+}
+
+function getVisibleOrderedColumns<ColumnKey extends string>(
+    columns: Array<GridColumnDefinition<StudentLaunchSummary, ColumnKey>>,
+    columnOrder: ColumnKey[],
+    hiddenColumns: ColumnKey[],
+) {
+    return columnOrder
+        .map((columnKey) => columns.find((column) => column.key === columnKey))
+        .filter((column): column is GridColumnDefinition<StudentLaunchSummary, ColumnKey> => Boolean(column))
+        .filter((column) => !hiddenColumns.includes(column.key));
+}
+
+function getMovedColumns<ColumnKey extends string>(columns: ColumnKey[], columnKey: ColumnKey, direction: 'up' | 'down') {
+    const currentIndex = columns.indexOf(columnKey);
+    if (currentIndex === -1) return columns;
+
+    const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (nextIndex < 0 || nextIndex >= columns.length) return columns;
+
+    const nextColumns = [...columns];
+    [nextColumns[currentIndex], nextColumns[nextIndex]] = [nextColumns[nextIndex], nextColumns[currentIndex]];
+    return nextColumns;
+}
+
+function getRowClassName(isSelected: boolean, isProblemRow: boolean, rowIndex: number) {
+    if (isSelected) {
+        return 'bg-blue-100 outline outline-2 -outline-offset-2 outline-blue-400';
+    }
+
+    if (isProblemRow) {
+        return rowIndex % 2 === 0
+            ? 'bg-rose-100/80 hover:bg-rose-200/80'
+            : 'bg-rose-200/70 hover:bg-rose-300/70';
+    }
+
+    return rowIndex % 2 === 0
+        ? 'bg-white hover:bg-blue-50/70'
+        : 'bg-slate-200/70 hover:bg-slate-300/70';
+}
+
+type DetailLaunchGridProps<ColumnKey extends string> = {
+    title: string;
+    statusLabel: string;
+    rows: StudentLaunchSummary[];
+    pagedRows: StudentLaunchSummary[];
+    columns: Array<GridColumnDefinition<StudentLaunchSummary, ColumnKey>>;
+    visibleColumns: Array<GridColumnDefinition<StudentLaunchSummary, ColumnKey>>;
+    sortState: GridSortState<ColumnKey>;
+    onSort: (columnKey: ColumnKey) => void;
+    selectedRowId: string | null;
+    onSelectedRowIdChange: (value: string) => void;
+    emptyMessage: string;
+    pageSize: number;
+    currentPage: number;
+    totalPages: number;
+    onPageSizeChange: (value: number) => void;
+    onFirstPage: () => void;
+    onPreviousPage: () => void;
+    onNextPage: () => void;
+    onLastPage: () => void;
+    onOpenColumns: () => void;
+    onOpenExport: () => void;
+    aggregateSummaries?: Array<{
+        key: string;
+        label: string;
+        value: string;
+    }>;
+};
+
+function DetailLaunchGrid<ColumnKey extends string>({
+    title,
+    statusLabel,
+    rows,
+    pagedRows,
+    visibleColumns,
+    sortState,
+    onSort,
+    selectedRowId,
+    onSelectedRowIdChange,
+    emptyMessage,
+    pageSize,
+    currentPage,
+    totalPages,
+    onPageSizeChange,
+    onFirstPage,
+    onPreviousPage,
+    onNextPage,
+    onLastPage,
+    onOpenColumns,
+    onOpenExport,
+    aggregateSummaries = [],
+}: DetailLaunchGridProps<ColumnKey>) {
+    const formattedCount = new Intl.NumberFormat('pt-BR').format(rows.length);
+
+    return (
+        <div className="flex min-h-[560px] flex-col">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                    <h2 className="text-base font-black uppercase tracking-[0.12em] text-slate-900">{title}</h2>
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700">
+                        {formattedCount}
+                    </span>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                    {statusLabel}
+                </span>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-x-auto">
+                <div className="max-h-[430px] min-h-[360px] overflow-auto">
+                    <table className="min-w-full border-separate border-spacing-0">
+                        <thead>
+                            <tr className="text-left text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                {visibleColumns.map((column) => {
+                                    const alignClass =
+                                        column.align === 'right'
+                                            ? 'text-right'
+                                            : column.align === 'center'
+                                                ? 'text-center'
+                                                : 'text-left';
+
+                                    return (
+                                        <th key={column.key} className={`sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 ${alignClass}`}>
+                                            <GridSortableHeader
+                                                label={column.label}
+                                                isActive={sortState.column === column.key}
+                                                direction={sortState.direction}
+                                                onClick={() => onSort(column.key)}
+                                                align={column.align}
+                                            />
+                                        </th>
+                                    );
+                                })}
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm font-semibold text-slate-700">
+                            {pagedRows.map((entry, rowIndex) => {
+                                const rowId = `${entry.status}-${entry.studentId}`;
+                                const isSelected = selectedRowId === rowId;
+
+                                return (
+                                    <tr
+                                        key={rowId}
+                                        aria-selected={isSelected}
+                                        onClick={() => onSelectedRowIdChange(rowId)}
+                                        className={`cursor-pointer transition-colors ${getRowClassName(isSelected, entry.status === 'PROBLEMA', rowIndex)}`}
+                                    >
+                                        {visibleColumns.map((column) => {
+                                            const alignClass =
+                                                column.align === 'right'
+                                                    ? 'text-right'
+                                                    : column.align === 'center'
+                                                        ? 'text-center'
+                                                        : 'text-left';
+                                            const valueClass = column.key === 'problemReason' ? 'text-rose-700' : '';
+
+                                            return (
+                                                <td key={column.key} className={`border-b border-white/60 px-4 py-4 ${alignClass} ${valueClass}`}>
+                                                    {column.getValue(entry)}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                );
+                            })}
+                            {!rows.length ? (
+                                <tr>
+                                    <td colSpan={Math.max(visibleColumns.length, 1)} className="px-4 py-16 text-center text-sm font-semibold text-slate-500">
+                                        {emptyMessage}
+                                    </td>
+                                </tr>
+                            ) : null}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700">
+                <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={onOpenColumns}
+                        title="Configurar colunas do grid"
+                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                        </svg>
+                        Colunas
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onOpenExport}
+                        title="Abrir exportação e impressão"
+                        aria-label="Abrir exportação e impressão"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V4h12v5M6 18h12v2H6v-2zm-1-8h14a2 2 0 012 2v4H3v-4a2 2 0 012-2z" />
+                        </svg>
+                    </button>
+                    <div className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm">
+                        {statusLabel}
+                    </div>
+                    <div className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm">
+                        Total registros: {formattedCount}
+                    </div>
+                    {aggregateSummaries.map((summary) => (
+                        <div
+                            key={summary.key}
+                            className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm"
+                        >
+                            {summary.label}: <span className="ml-1 text-blue-700">{summary.value}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <select
+                        value={pageSize}
+                        onChange={(event) => onPageSizeChange(Number(event.target.value))}
+                        aria-label="Registros por página"
+                        className="h-8 rounded-full border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 outline-none transition hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    >
+                        {[10, 20, 50, 100].map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                        ))}
+                    </select>
+                    <button
+                        type="button"
+                        aria-label="Voltar para o início"
+                        title="Voltar para o início"
+                        onClick={onFirstPage}
+                        disabled={currentPage <= 1}
+                        className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {'<<'}
+                    </button>
+                    <button
+                        type="button"
+                        aria-label="Voltar uma página"
+                        title="Voltar uma página"
+                        onClick={onPreviousPage}
+                        disabled={currentPage <= 1}
+                        className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {'<'}
+                    </button>
+                    <div className="min-w-20 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                        {currentPage}/{totalPages}
+                    </div>
+                    <button
+                        type="button"
+                        aria-label="Avançar uma página"
+                        title="Avançar uma página"
+                        onClick={onNextPage}
+                        disabled={currentPage >= totalPages}
+                        className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {'>'}
+                    </button>
+                    <button
+                        type="button"
+                        aria-label="Ir para o fim"
+                        title="Ir para o fim"
+                        onClick={onLastPage}
+                        disabled={currentPage >= totalPages}
+                        className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        {'>>'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 function formatCurrency(value?: number | null) {
     return new Intl.NumberFormat('pt-BR', {
@@ -108,7 +472,41 @@ export default function PrincipalMensalidadesDetalhesPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [screenCopyStatus, setScreenCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
-    const [viewMode, setViewMode] = useState<DetailViewMode>('all');
+    const [activeTab, setActiveTab] = useState<DetailTab>('generated');
+    const [generatedPageSize, setGeneratedPageSize] = useState(DEFAULT_PAGE_SIZE);
+    const [problemPageSize, setProblemPageSize] = useState(DEFAULT_PAGE_SIZE);
+    const [generatedPage, setGeneratedPage] = useState(1);
+    const [problemPage, setProblemPage] = useState(1);
+    const [selectedGeneratedRowId, setSelectedGeneratedRowId] = useState<string | null>(null);
+    const [selectedProblemRowId, setSelectedProblemRowId] = useState<string | null>(null);
+    const [generatedSortState, setGeneratedSortState] = useState<GridSortState<GeneratedColumnKey>>({
+        column: 'studentName',
+        direction: 'asc',
+    });
+    const [problemSortState, setProblemSortState] = useState<GridSortState<ProblemColumnKey>>({
+        column: 'studentName',
+        direction: 'asc',
+    });
+    const [generatedColumnOrder, setGeneratedColumnOrder] = useState<GeneratedColumnKey[]>(
+        () => generatedGridColumns.map((column) => column.key),
+    );
+    const [problemColumnOrder, setProblemColumnOrder] = useState<ProblemColumnKey[]>(
+        () => problemGridColumns.map((column) => column.key),
+    );
+    const [generatedHiddenColumns, setGeneratedHiddenColumns] = useState<GeneratedColumnKey[]>([]);
+    const [problemHiddenColumns, setProblemHiddenColumns] = useState<ProblemColumnKey[]>([]);
+    const [isGeneratedColumnsOpen, setIsGeneratedColumnsOpen] = useState(false);
+    const [isProblemColumnsOpen, setIsProblemColumnsOpen] = useState(false);
+    const [isGeneratedExportOpen, setIsGeneratedExportOpen] = useState(false);
+    const [isProblemExportOpen, setIsProblemExportOpen] = useState(false);
+    const [generatedExportFormat, setGeneratedExportFormat] = useState<GridExportFormat>('excel');
+    const [problemExportFormat, setProblemExportFormat] = useState<GridExportFormat>('excel');
+    const [generatedExportColumns, setGeneratedExportColumns] = useState<Record<GeneratedColumnKey, boolean>>(
+        () => ({ ...buildDefaultExportColumns(generatedGridColumns) }),
+    );
+    const [problemExportColumns, setProblemExportColumns] = useState<Record<ProblemColumnKey, boolean>>(
+        () => ({ ...buildDefaultExportColumns(problemGridColumns) }),
+    );
     const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const authContext = isClientReady ? getDashboardAuthContext() : EMPTY_AUTH_CONTEXT;
@@ -240,10 +638,148 @@ export default function PrincipalMensalidadesDetalhesPage() {
         return Array.from(grouped.values()).sort((left, right) => left.studentName.localeCompare(right.studentName));
     }, [details]);
 
-    const successItems = studentSummaries.filter((entry) => entry.status === 'OK');
-    const problemItems = studentSummaries.filter((entry) => entry.status === 'PROBLEMA');
+    const successItems = useMemo(
+        () => studentSummaries.filter((entry) => entry.status === 'OK'),
+        [studentSummaries],
+    );
+    const problemItems = useMemo(
+        () => studentSummaries.filter((entry) => entry.status === 'PROBLEMA'),
+        [studentSummaries],
+    );
     const successTotalInstallments = successItems.reduce((total, entry) => total + entry.installmentCount, 0);
     const successTotalAmount = successItems.reduce((total, entry) => total + entry.totalAmount, 0);
+    const visibleGeneratedColumns = useMemo(
+        () => getVisibleOrderedColumns(generatedGridColumns, generatedColumnOrder, generatedHiddenColumns),
+        [generatedColumnOrder, generatedHiddenColumns],
+    );
+    const visibleProblemColumns = useMemo(
+        () => getVisibleOrderedColumns(problemGridColumns, problemColumnOrder, problemHiddenColumns),
+        [problemColumnOrder, problemHiddenColumns],
+    );
+    const sortedGeneratedItems = useMemo(
+        () => sortGridRows(successItems, generatedGridColumns, generatedSortState, (left, right) => left.studentName.localeCompare(right.studentName)),
+        [generatedSortState, successItems],
+    );
+    const sortedProblemItems = useMemo(
+        () => sortGridRows(problemItems, problemGridColumns, problemSortState, (left, right) => left.studentName.localeCompare(right.studentName)),
+        [problemItems, problemSortState],
+    );
+    const generatedTotalPages = getTotalPages(sortedGeneratedItems.length, generatedPageSize);
+    const problemTotalPages = getTotalPages(sortedProblemItems.length, problemPageSize);
+    const currentGeneratedPage = Math.min(generatedPage, generatedTotalPages);
+    const currentProblemPage = Math.min(problemPage, problemTotalPages);
+    const generatedPagedItems = sortedGeneratedItems.slice(
+        (currentGeneratedPage - 1) * generatedPageSize,
+        currentGeneratedPage * generatedPageSize,
+    );
+    const problemPagedItems = sortedProblemItems.slice(
+        (currentProblemPage - 1) * problemPageSize,
+        currentProblemPage * problemPageSize,
+    );
+
+    const handleGeneratedSort = useCallback((columnKey: GeneratedColumnKey) => {
+        setGeneratedSortState((current) => ({
+            column: columnKey,
+            direction: current.column === columnKey && current.direction === 'asc' ? 'desc' : 'asc',
+        }));
+        setGeneratedPage(1);
+    }, []);
+
+    const handleProblemSort = useCallback((columnKey: ProblemColumnKey) => {
+        setProblemSortState((current) => ({
+            column: columnKey,
+            direction: current.column === columnKey && current.direction === 'asc' ? 'desc' : 'asc',
+        }));
+        setProblemPage(1);
+    }, []);
+
+    const toggleGeneratedColumnVisibility = useCallback((columnKey: GeneratedColumnKey) => {
+        setGeneratedHiddenColumns((current) => {
+            const isHidden = current.includes(columnKey);
+            if (!isHidden && generatedGridColumns.length - current.length <= 1) return current;
+            return isHidden ? current.filter((key) => key !== columnKey) : [...current, columnKey];
+        });
+    }, []);
+
+    const toggleProblemColumnVisibility = useCallback((columnKey: ProblemColumnKey) => {
+        setProblemHiddenColumns((current) => {
+            const isHidden = current.includes(columnKey);
+            if (!isHidden && problemGridColumns.length - current.length <= 1) return current;
+            return isHidden ? current.filter((key) => key !== columnKey) : [...current, columnKey];
+        });
+    }, []);
+
+    const setAllGeneratedExportColumns = useCallback((value: boolean) => {
+        setGeneratedExportColumns(
+            generatedGridColumns.reduce<Record<GeneratedColumnKey, boolean>>((accumulator, column) => {
+                accumulator[column.key] = value;
+                return accumulator;
+            }, {} as Record<GeneratedColumnKey, boolean>),
+        );
+    }, []);
+
+    const setAllProblemExportColumns = useCallback((value: boolean) => {
+        setProblemExportColumns(
+            problemGridColumns.reduce<Record<ProblemColumnKey, boolean>>((accumulator, column) => {
+                accumulator[column.key] = value;
+                return accumulator;
+            }, {} as Record<ProblemColumnKey, boolean>),
+        );
+    }, []);
+
+    const handleGeneratedExport = useCallback(async (config?: {
+        selectedColumns: Record<GeneratedColumnKey, boolean>;
+        orderedColumns: GeneratedColumnKey[];
+        orderedVisibleColumns: Array<{ key: GeneratedColumnKey; label: string }>;
+    }) => {
+        try {
+            await exportGridRows({
+                rows: sortedGeneratedItems,
+                columns: config?.orderedColumns
+                    ? config.orderedColumns
+                        .map((key) => generatedGridColumns.find((column) => column.key === key))
+                        .filter((column): column is GridColumnDefinition<StudentLaunchSummary, GeneratedColumnKey> => Boolean(column))
+                    : generatedGridColumns,
+                selectedColumns: config?.selectedColumns || generatedExportColumns,
+                format: generatedExportFormat,
+                fileBaseName: 'mensalidades-lancamentos-gerados',
+                branding: {
+                    title: 'Lançamentos gerados',
+                    subtitle: 'Detalhamento de parcelas registradas pelo Financeiro.',
+                },
+            });
+            setIsGeneratedExportOpen(false);
+        } catch (error) {
+            window.alert(error instanceof Error ? error.message : 'Não foi possível exportar os lançamentos gerados.');
+        }
+    }, [generatedExportColumns, generatedExportFormat, sortedGeneratedItems]);
+
+    const handleProblemExport = useCallback(async (config?: {
+        selectedColumns: Record<ProblemColumnKey, boolean>;
+        orderedColumns: ProblemColumnKey[];
+        orderedVisibleColumns: Array<{ key: ProblemColumnKey; label: string }>;
+    }) => {
+        try {
+            await exportGridRows({
+                rows: sortedProblemItems,
+                columns: config?.orderedColumns
+                    ? config.orderedColumns
+                        .map((key) => problemGridColumns.find((column) => column.key === key))
+                        .filter((column): column is GridColumnDefinition<StudentLaunchSummary, ProblemColumnKey> => Boolean(column))
+                    : problemGridColumns,
+                selectedColumns: config?.selectedColumns || problemExportColumns,
+                format: problemExportFormat,
+                fileBaseName: 'mensalidades-nao-geraram-parcelas',
+                branding: {
+                    title: 'Não geraram parcelas',
+                    subtitle: 'Detalhamento de registros bloqueados na geração financeira.',
+                },
+            });
+            setIsProblemExportOpen(false);
+        } catch (error) {
+            window.alert(error instanceof Error ? error.message : 'Não foi possível exportar os registros bloqueados.');
+        }
+    }, [problemExportColumns, problemExportFormat, sortedProblemItems]);
 
     if (!isClientReady) {
         return (
@@ -351,36 +887,14 @@ export default function PrincipalMensalidadesDetalhesPage() {
             {details ? (
                 <section className={`${cardClass} p-6`}>
                     <div className="grid gap-4 md:grid-cols-4">
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('all')}
-                            className={`rounded-2xl border px-4 py-4 text-left transition ${
-                                viewMode === 'all'
-                                    ? 'border-emerald-300 bg-emerald-100 shadow-sm'
-                                    : 'border-slate-200 bg-slate-50'
-                            }`}
-                        >
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
                             <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Lançamentos OK</div>
                             <div className="mt-2 text-2xl font-black text-emerald-700">{successItems.length}</div>
-                            <div className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
-                                Mostrar todos
-                            </div>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('problem-only')}
-                            className={`rounded-2xl border px-4 py-4 text-left transition ${
-                                viewMode === 'problem-only'
-                                    ? 'border-rose-500 bg-rose-200 shadow-sm shadow-rose-200/60'
-                                    : 'border-slate-200 bg-slate-50'
-                            }`}
-                        >
+                        </div>
+                        <div className="rounded-2xl border border-rose-300 bg-rose-100 px-4 py-4">
                             <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Com problema</div>
                             <div className="mt-2 text-2xl font-black text-rose-700">{problemItems.length}</div>
-                            <div className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-rose-700">
-                                Mostrar só problemas
-                            </div>
-                        </button>
+                        </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                             <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Valor total</div>
                             <div className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(details.batch.totalAmount)}</div>
@@ -389,109 +903,168 @@ export default function PrincipalMensalidadesDetalhesPage() {
                 </section>
             ) : null}
 
-            {viewMode === 'all' ? (
-            <section className={`${cardClass} p-6`}>
-                <div className="flex flex-col gap-2 border-b border-slate-100 pb-5 md:flex-row md:items-end md:justify-between">
-                    <div>
-                        <h2 className="text-xl font-black text-slate-900">Lançamentos gerados</h2>
-                        <p className="text-sm font-medium text-slate-500">
-                            Resumo por aluno das parcelas registradas pelo Financeiro neste lote.
-                        </p>
-                    </div>
-                    <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                        {isLoading ? 'CARREGANDO...' : `${successItems.length} REGISTRO(S)`}
+            <section className={`${cardClass} overflow-hidden`}>
+                <div className="border-b border-slate-200 bg-slate-50 px-4 pt-4">
+                    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Detalhamento de lançamentos financeiros">
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'generated'}
+                            onClick={() => setActiveTab('generated')}
+                            className={`rounded-t-2xl border px-5 py-3 text-sm font-black uppercase tracking-[0.14em] transition ${
+                                activeTab === 'generated'
+                                    ? 'border-slate-200 border-b-white bg-white text-emerald-700 shadow-sm'
+                                    : 'border-transparent bg-slate-100 text-slate-500 hover:bg-white'
+                            }`}
+                        >
+                            Lançamentos gerados
+                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-700">{successItems.length}</span>
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTab === 'problem'}
+                            onClick={() => setActiveTab('problem')}
+                            className={`rounded-t-2xl border px-5 py-3 text-sm font-black uppercase tracking-[0.14em] transition ${
+                                activeTab === 'problem'
+                                    ? 'border-slate-200 border-b-white bg-white text-rose-700 shadow-sm'
+                                    : 'border-transparent bg-slate-100 text-slate-500 hover:bg-white'
+                            }`}
+                        >
+                            Não geraram parcelas
+                            <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] text-rose-700">{problemItems.length}</span>
+                        </button>
                     </div>
                 </div>
 
-                <div className="mt-6 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead>
-                            <tr className="text-left text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-                                <th className="px-4 py-3">Aluno</th>
-                                <th className="px-4 py-3">Turma</th>
-                                <th className="px-4 py-3">Pagador</th>
-                                <th className="px-4 py-3">Parcelas lançadas</th>
-                                <th className="px-4 py-3">Último vencimento</th>
-                                <th className="px-4 py-3">Total lançado</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white text-sm font-semibold text-slate-700">
-                            {successItems.map((entry) => (
-                                <tr key={`${entry.status}-${entry.studentId}`}>
-                                    <td className="px-4 py-4">{entry.studentName}</td>
-                                    <td className="px-4 py-4">{entry.classLabel || '---'}</td>
-                                    <td className="px-4 py-4">{entry.payerName || '---'}</td>
-                                    <td className="px-4 py-4">{entry.installmentCount}</td>
-                                    <td className="px-4 py-4">{formatDateLabel(entry.lastDueDate)}</td>
-                                    <td className="px-4 py-4">{formatCurrency(entry.totalAmount)}</td>
-                                </tr>
-                            ))}
-                            {!isLoading && !successItems.length ? (
-                                <tr>
-                                    <td colSpan={7} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
-                                        Nenhuma parcela foi registrada pelo Financeiro neste lote.
-                                    </td>
-                                </tr>
-                            ) : null}
-                        </tbody>
-                        {successItems.length ? (
-                            <tfoot className="border-t border-slate-200 bg-slate-50 text-sm font-black text-slate-900">
-                                <tr>
-                                    <td className="px-4 py-4" colSpan={3}>TOTAL GERAL</td>
-                                    <td className="px-4 py-4">{successTotalInstallments}</td>
-                                    <td className="px-4 py-4">---</td>
-                                    <td className="px-4 py-4">{formatCurrency(successTotalAmount)}</td>
-                                </tr>
-                            </tfoot>
-                        ) : null}
-                    </table>
-                </div>
+                {activeTab === 'generated' ? (
+                    <DetailLaunchGrid
+                        title="Lançamentos gerados"
+                        statusLabel={isLoading ? 'CARREGANDO' : 'GERADOS'}
+                        rows={sortedGeneratedItems}
+                        pagedRows={generatedPagedItems}
+                        columns={generatedGridColumns}
+                        visibleColumns={visibleGeneratedColumns}
+                        sortState={generatedSortState}
+                        onSort={handleGeneratedSort}
+                        selectedRowId={selectedGeneratedRowId}
+                        onSelectedRowIdChange={setSelectedGeneratedRowId}
+                        emptyMessage="Nenhuma parcela foi registrada pelo Financeiro neste lote."
+                        pageSize={generatedPageSize}
+                        currentPage={currentGeneratedPage}
+                        totalPages={generatedTotalPages}
+                        onPageSizeChange={(value) => {
+                            setGeneratedPageSize(value);
+                            setGeneratedPage(1);
+                        }}
+                        onFirstPage={() => setGeneratedPage(1)}
+                        onPreviousPage={() => setGeneratedPage((page) => Math.max(1, page - 1))}
+                        onNextPage={() => setGeneratedPage((page) => Math.min(generatedTotalPages, page + 1))}
+                        onLastPage={() => setGeneratedPage(generatedTotalPages)}
+                        onOpenColumns={() => setIsGeneratedColumnsOpen(true)}
+                        onOpenExport={() => setIsGeneratedExportOpen(true)}
+                        aggregateSummaries={[
+                            { key: 'installments', label: 'Parcelas', value: String(successTotalInstallments) },
+                            { key: 'amount', label: 'Valor', value: formatCurrency(successTotalAmount) },
+                        ]}
+                    />
+                ) : (
+                    <DetailLaunchGrid
+                        title="Não geraram parcelas"
+                        statusLabel={isLoading ? 'CARREGANDO' : 'NÃO GERADOS'}
+                        rows={sortedProblemItems}
+                        pagedRows={problemPagedItems}
+                        columns={problemGridColumns}
+                        visibleColumns={visibleProblemColumns}
+                        sortState={problemSortState}
+                        onSort={handleProblemSort}
+                        selectedRowId={selectedProblemRowId}
+                        onSelectedRowIdChange={setSelectedProblemRowId}
+                        emptyMessage="Nenhum problema encontrado neste lote."
+                        pageSize={problemPageSize}
+                        currentPage={currentProblemPage}
+                        totalPages={problemTotalPages}
+                        onPageSizeChange={(value) => {
+                            setProblemPageSize(value);
+                            setProblemPage(1);
+                        }}
+                        onFirstPage={() => setProblemPage(1)}
+                        onPreviousPage={() => setProblemPage((page) => Math.max(1, page - 1))}
+                        onNextPage={() => setProblemPage((page) => Math.min(problemTotalPages, page + 1))}
+                        onLastPage={() => setProblemPage(problemTotalPages)}
+                        onOpenColumns={() => setIsProblemColumnsOpen(true)}
+                        onOpenExport={() => setIsProblemExportOpen(true)}
+                    />
+                )}
             </section>
-            ) : null}
 
-            <section className="rounded-3xl border border-rose-500 bg-rose-200 p-6 shadow-sm shadow-rose-200/60">
-                <div className="flex flex-col gap-2 border-b border-slate-100 pb-5 md:flex-row md:items-end md:justify-between">
-                    <div>
-                        <h2 className="text-xl font-black text-slate-900">Não geraram parcelas</h2>
-                        <p className="text-sm font-medium text-slate-500">
-                            Resumo por aluno dos registros que não geraram parcelas e o motivo do bloqueio.
-                        </p>
-                    </div>
-                    <div className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
-                        {isLoading ? 'CARREGANDO...' : `${problemItems.length} REGISTRO(S)`}
-                    </div>
-                </div>
+            <GridColumnConfigModal
+                isOpen={isGeneratedColumnsOpen}
+                title="Configurar colunas do grid"
+                description="Reordene, oculte ou inclua colunas dos lançamentos gerados."
+                columns={generatedGridColumns.map((column) => ({
+                    key: column.key,
+                    label: column.label,
+                    visibleByDefault: true,
+                }))}
+                orderedColumns={generatedColumnOrder}
+                hiddenColumns={generatedHiddenColumns}
+                onToggleColumnVisibility={toggleGeneratedColumnVisibility}
+                onMoveColumn={(columnKey, direction) => setGeneratedColumnOrder((columns) => getMovedColumns(columns, columnKey, direction))}
+                onReset={() => {
+                    setGeneratedColumnOrder(generatedGridColumns.map((column) => column.key));
+                    setGeneratedHiddenColumns([]);
+                }}
+                onClose={() => setIsGeneratedColumnsOpen(false)}
+            />
 
-                <div className="mt-6 overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead>
-                            <tr className="text-left text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
-                                <th className="px-4 py-3">Aluno</th>
-                                <th className="px-4 py-3">Turma</th>
-                                <th className="px-4 py-3">Parcelas lançadas</th>
-                                <th className="px-4 py-3">Problema</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-rose-100 bg-white text-sm font-semibold text-slate-700">
-                            {problemItems.map((entry) => (
-                                <tr key={`${entry.status}-${entry.studentId}`}>
-                                    <td className="px-4 py-4">{entry.studentName}</td>
-                                    <td className="px-4 py-4">{entry.classLabel || '---'}</td>
-                                    <td className="px-4 py-4">{entry.installmentCount}</td>
-                                    <td className="px-4 py-4 text-rose-700">{entry.problemReason || '---'}</td>
-                                </tr>
-                            ))}
-                            {!isLoading && !problemItems.length ? (
-                                <tr>
-                                    <td colSpan={4} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
-                                        Nenhum problema encontrado neste lote.
-                                    </td>
-                                </tr>
-                            ) : null}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+            <GridColumnConfigModal
+                isOpen={isProblemColumnsOpen}
+                title="Configurar colunas do grid"
+                description="Reordene, oculte ou inclua colunas dos registros que não geraram parcelas."
+                columns={problemGridColumns.map((column) => ({
+                    key: column.key,
+                    label: column.label,
+                    visibleByDefault: true,
+                }))}
+                orderedColumns={problemColumnOrder}
+                hiddenColumns={problemHiddenColumns}
+                onToggleColumnVisibility={toggleProblemColumnVisibility}
+                onMoveColumn={(columnKey, direction) => setProblemColumnOrder((columns) => getMovedColumns(columns, columnKey, direction))}
+                onReset={() => {
+                    setProblemColumnOrder(problemGridColumns.map((column) => column.key));
+                    setProblemHiddenColumns([]);
+                }}
+                onClose={() => setIsProblemColumnsOpen(false)}
+            />
+
+            <GridExportModal
+                isOpen={isGeneratedExportOpen}
+                title="Exportar lançamentos gerados"
+                description={`A exportação inclui ${sortedGeneratedItems.length} registro(s) da aba atual.`}
+                format={generatedExportFormat}
+                onFormatChange={setGeneratedExportFormat}
+                columns={generatedGridColumns.map((column) => ({ key: column.key, label: column.label }))}
+                selectedColumns={generatedExportColumns}
+                onToggleColumn={(columnKey) => setGeneratedExportColumns((current) => ({ ...current, [columnKey]: !current[columnKey] }))}
+                onSelectAll={setAllGeneratedExportColumns}
+                onClose={() => setIsGeneratedExportOpen(false)}
+                onExport={handleGeneratedExport}
+            />
+
+            <GridExportModal
+                isOpen={isProblemExportOpen}
+                title="Exportar registros sem parcelas"
+                description={`A exportação inclui ${sortedProblemItems.length} registro(s) da aba atual.`}
+                format={problemExportFormat}
+                onFormatChange={setProblemExportFormat}
+                columns={problemGridColumns.map((column) => ({ key: column.key, label: column.label }))}
+                selectedColumns={problemExportColumns}
+                onToggleColumn={(columnKey) => setProblemExportColumns((current) => ({ ...current, [columnKey]: !current[columnKey] }))}
+                onSelectAll={setAllProblemExportColumns}
+                onClose={() => setIsProblemExportOpen(false)}
+                onExport={handleProblemExport}
+            />
 
             <div className={`${cardClass} px-6 py-4`}>
                 <div className="flex justify-end">
