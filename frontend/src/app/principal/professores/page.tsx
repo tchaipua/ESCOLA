@@ -2367,7 +2367,7 @@ export default function ProfessoresPage() {
                             inactiveLabel="Mostrar somente professores inativos"
                         />
                         <div
-                            className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 shadow-sm"
+                            className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-700 shadow-sm"
                             title={`${displayedTeachersCount} registro(s) encontrado(s)`}
                         >
                             Total registros: {new Intl.NumberFormat('pt-BR').format(displayedTeachersCount)}

@@ -45,7 +45,7 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
     {
         id: 'grid-list-toolbar-school-finance',
         name: 'TOOLBAR PADRAO DE GRID ESCOLA/FINANCEIRO',
-        summary: 'BARRA OPERACIONAL DE LISTAGEM COM ACAO DE INCLUIR NO INICIO DA LINHA DA BUSCA QUANDO EXISTIR, BOTAO COLUNAS E BOTAO DE EXPORTACAO/IMPRESSAO A ESQUERDA, CONTROLES/TIPO SEMAFORO NO CENTRO E CONTADOR DE REGISTROS A DIREITA, SEM FAIXA EXPLICATIVA NEM FAIXA AZUL INTERNA DUPLICANDO TITULO/DESCRICAO, USADA SOMENTE EM TELAS COM GRID.',
+        summary: 'BARRA OPERACIONAL DE LISTAGEM COM ACAO DE INCLUIR NO INICIO DA LINHA DA BUSCA QUANDO EXISTIR, BOTAO COLUNAS E BOTAO DE EXPORTACAO/IMPRESSAO A ESQUERDA E SEMAFORO AO LADO DO BOTAO DE EXPORTACAO. O FINAL DO GRID TEM DOIS MODELOS: SEM TOTAIS AGREGADOS NAO USA FAIXA AZUL E MOSTRA APENAS TOTAL REGISTROS NO RODAPE; COM TOTAIS AGREGADOS USA FAIXA AZUL #1D4F91 COM TOTAL REGISTROS EM PILL BRANCO E VALORES ALINHADOS NAS COLUNAS.',
         documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-015---toolbar-padrao-de-grid-escola-e-financeiro',
         componentPaths: [
             'frontend/src/app/components/grid-footer-controls.tsx',
@@ -57,6 +57,7 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
             'frontend/src/app/principal/alunos/page.tsx',
             'frontend/src/app/principal/responsaveis/page.tsx',
             'frontend/src/app/principal/financeiro/[section]/page.tsx',
+            'C:/Sistemas/IA/Financeiro/frontend/src/app/recebiveis/retornos/page.tsx',
         ],
         status: 'approved',
     },

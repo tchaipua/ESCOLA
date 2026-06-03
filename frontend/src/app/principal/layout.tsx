@@ -274,6 +274,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }, [pathname]);
 
     useEffect(() => {
+        if (pathname === '/principal/financeiro/parcelas') {
+            setSidebarOpen(true);
+        }
+    }, [pathname]);
+
+    useEffect(() => {
         const handleEmbeddedScreenContext = (event: MessageEvent) => {
             const data = event.data as EmbeddedScreenContextMessage | null;
             if (!data || typeof data !== 'object' || data.type !== 'MSINFOR_SCREEN_CONTEXT') return;
@@ -918,7 +924,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/principal/parcelas',
+            href: '/principal/financeiro/parcelas',
             label: 'Parcelas',
             allowWhen: hasAnyDashboardPermission(currentRole, currentPermissions, ['VIEW_CASHIER', 'SETTLE_RECEIVABLES']),
             icon: (
@@ -999,7 +1005,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showDashboardProgram = pathname.startsWith('/principal/dashboard/') && pathname !== '/principal/dashboard';
     const showSummaryNav = showDashboardProgram;
     const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
-    const showInstallmentsHeroHeader = pathname === '/principal/parcelas';
+    const showFinanceiroParcelasScreen = pathname.startsWith('/principal/financeiro/parcelas');
     const showPrincipalHeroHeader = pathname === '/principal';
     const showNotificationsHeroHeader = pathname === '/principal/notificacoes';
     const showPeopleHeroHeader = pathname === '/principal/pessoas';
@@ -1016,7 +1022,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showSubjectsHeroHeader = pathname === '/principal/disciplinas';
     const showCustomHeroHeader =
         showFinanceiroModuleNav ||
-        showInstallmentsHeroHeader ||
         showPrincipalHeroHeader ||
         showNotificationsHeroHeader ||
         showPeopleHeroHeader ||
@@ -1073,6 +1078,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </svg>
             ),
         },
+        ...(showFinanceiroParcelasScreen
+            ? [
+                  {
+                      href: '/principal/financeiro/parcelas',
+                      label: 'Parcelas a Receber',
+                      allowWhen: true,
+                      icon: (
+                          <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10M7 12h6m-6 5h10M5 3h10l4 4v12a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                          </svg>
+                      ),
+                  },
+              ]
+            : []),
         {
             href: '/principal/financeiro/contas-a-pagar',
             label: 'Contas a Pagar',
@@ -1099,6 +1118,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         : showSummaryNav
             ? [...topLinks, ...summaryLinks]
             : [...topLinks, ...generalLinks];
+    const isCurrentNavItem = (item: NavItem) => {
+        const isExactOrChild = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        if (item.href !== '/principal/financeiro') {
+            return isExactOrChild;
+        }
+
+        const hasSpecificFinanceItem = filteredNavItems.some(
+            (navItem) =>
+                navItem.href !== item.href &&
+                navItem.href.startsWith('/principal/financeiro') &&
+                (pathname === navItem.href || pathname.startsWith(`${navItem.href}/`)),
+        );
+
+        return pathname.startsWith('/principal/financeiro') && !hasSpecificFinanceItem;
+    };
     const hasAllNotificationsRead = unreadSummary?.count === 0;
     const notificationsButtonTitle = hasAllNotificationsRead
         ? 'TODAS NOTIFICAÇÕES FORAM LIDAS'
@@ -1106,7 +1140,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const notificationsButtonClassName = hasAllNotificationsRead
         ? 'relative p-2 text-emerald-600 hover:text-emerald-700 transition-colors'
         : 'relative p-2 text-slate-400 hover:text-blue-600 transition-colors';
-    const userMenuButtonClassName = showFinanceiroModuleNav || showInstallmentsHeroHeader || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showGradeHeroHeader || showWeeklyGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader
+    const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showGradeHeroHeader || showWeeklyGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
     const userMenuTrigger = (
@@ -1187,9 +1221,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
                     {filteredNavItems.map((item) => {
-                        const isCurrent = item.href === '/principal/financeiro'
-                            ? pathname.startsWith('/principal/financeiro')
-                            : pathname === item.href;
+                        const isCurrent = isCurrentNavItem(item);
                         return (
                 <Link
                                 key={item.href}
@@ -1260,7 +1292,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {!showFinanceiroModuleNav && !showInstallmentsHeroHeader && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? (
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? (
                             <button
                                 type="button"
                                 onClick={() => router.push('/principal/notificacoes')}
@@ -1279,13 +1311,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </button>
                         ) : null}
 
-                        {!showFinanceiroModuleNav && !showInstallmentsHeroHeader && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
-                        {!showFinanceiroModuleNav && !showInstallmentsHeroHeader && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? userMenuTrigger : null}
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? userMenuTrigger : null}
                     </div>
                 </header>
 
                 <main className="relative flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
-                    {showFinanceiroModuleNav && !showInstallmentsHeroHeader ? (
+                    {showFinanceiroModuleNav ? (
                         <div className="pointer-events-none absolute left-6 right-6 top-8 z-20 flex justify-end md:left-8 md:right-12 md:top-10">
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
                                 {userMenuTrigger}
@@ -1298,23 +1330,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                     </svg>
                                     <span>Voltar</span>
-                                </button>
-                            </div>
-                        </div>
-                    ) : null}
-                    {showInstallmentsHeroHeader ? (
-                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
-                            <div className="pointer-events-auto flex flex-col items-end gap-3">
-                                {userMenuTrigger}
-                                <button
-                                    type="button"
-                                    onClick={() => router.back()}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
-                                >
-                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                    </svg>
-                                    Voltar
                                 </button>
                             </div>
                         </div>

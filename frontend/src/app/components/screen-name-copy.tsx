@@ -84,7 +84,7 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_FINANCEIRO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('MAPEAMENTO_ESPECIFICO_PENDENTE.tsx') },
 
   { screenId: 'POPUP_PRINCIPAL_MENSALIDADES', match: 'prefix', physicalPath: escolaAppPath('principal', 'mensalidades', 'page.tsx') },
-  { screenId: 'POPUP_PRINCIPAL_PARCELAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'parcelas', 'page.tsx') },
+  { screenId: 'POPUP_PRINCIPAL_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
   { screenId: 'PRINCIPAL_MENSALIDADES_DETALHES', match: 'prefix', physicalPath: escolaAppPath('principal', 'mensalidades', 'detalhes', '[batchId]', 'page.tsx') },
   { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_PERIODO_', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-periodo', '[shift]', 'page.tsx') },
   { screenId: 'PRINCIPAL_DASHBOARD_RESUMO_POR_SERIE_', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo-por-serie', '[seriesId]', 'page.tsx') },
@@ -107,7 +107,7 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_PROFESSORES', match: 'prefix', physicalPath: escolaAppPath('principal', 'professores', 'page.tsx') },
   { screenId: 'PRINCIPAL_DISCIPLINAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'disciplinas', 'page.tsx') },
   { screenId: 'PRINCIPAL_DASHBOARD', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'page.tsx') },
-  { screenId: 'PRINCIPAL_PARCELAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'parcelas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
   { screenId: 'PRINCIPAL_PESSOAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'pessoas', 'page.tsx') },
   { screenId: 'PRINCIPAL_TURMAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'turmas', 'page.tsx') },
   { screenId: 'PRINCIPAL_SERIES', match: 'prefix', physicalPath: escolaAppPath('principal', 'series', 'page.tsx') },

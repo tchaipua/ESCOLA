@@ -125,17 +125,13 @@ const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 
 type GuardianColumnKey =
     | 'name'
-    | 'nickname'
     | 'corporateName'
     | 'birthDate'
-    | 'cpf'
     | 'rg'
     | 'cnpj'
     | 'contact'
-    | 'email'
     | 'phone'
     | 'whatsapp'
-    | 'cellphone1'
     | 'cellphone2'
     | 'zipCode'
     | 'street'
@@ -154,17 +150,13 @@ type GuardianColumnFilters = Record<GuardianColumnKey, string>;
 
 const GUARDIAN_COLUMNS: ConfigurableGridColumn<GuardianRecord, GuardianColumnKey>[] = [
     { key: 'name', label: 'Responsável', getValue: (row) => row.name || '---', visibleByDefault: true },
-    { key: 'nickname', label: 'Apelido', getValue: (row) => row.nickname || '---', visibleByDefault: false },
     { key: 'corporateName', label: 'Nome empresarial', getValue: (row) => row.corporateName || '---', visibleByDefault: false },
     { key: 'birthDate', label: 'Nascimento', getValue: (row) => formatGuardianDate(row.birthDate), visibleByDefault: false },
-    { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: true },
     { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
     { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
-    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.email || row.whatsapp || row.phone || row.cellphone1 || '---', visibleByDefault: true },
-    { key: 'email', label: 'E-mail de login', getValue: (row) => row.email || '---', visibleByDefault: false },
+    { key: 'contact', label: 'Contato', getValue: (row) => row.whatsapp || row.phone || row.cellphone1 || row.cellphone2 || '---', visibleByDefault: true },
     { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
     { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
-    { key: 'cellphone1', label: 'Telefone 1', getValue: (row) => row.cellphone1 || '---', visibleByDefault: false },
     { key: 'cellphone2', label: 'Telefone 2', getValue: (row) => row.cellphone2 || '---', visibleByDefault: false },
     { key: 'zipCode', label: 'CEP', getValue: (row) => row.zipCode || '---', visibleByDefault: false },
     { key: 'street', label: 'Logradouro', getValue: (row) => row.street || '---', visibleByDefault: false },
@@ -239,7 +231,7 @@ function getGuardianColumnFilterValues(row: GuardianRecord, columnKey: GuardianC
     }
 
     if (columnKey === 'contact') {
-        return [row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+        return [row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
     }
 
     if (columnKey === 'address') {
@@ -283,17 +275,13 @@ type ResponsaveisAuditParams = {
 function getResponsaveisAuditOrderBy(column: GuardianColumnKey) {
     const orderColumns: Record<GuardianColumnKey, string> = {
         name: 'G.name',
-        nickname: 'G.nickname',
         corporateName: 'G.corporateName',
         birthDate: 'G.birthDate',
-        cpf: 'G.cpf',
         rg: 'G.rg',
         cnpj: 'G.cnpj',
-        contact: 'COALESCE(G.email, G.whatsapp, G.phone, G.cellphone1)',
-        email: 'G.email',
+        contact: 'COALESCE(G.whatsapp, G.phone, G.cellphone1, G.cellphone2)',
         phone: 'G.phone',
         whatsapp: 'G.whatsapp',
-        cellphone1: 'G.cellphone1',
         cellphone2: 'G.cellphone2',
         zipCode: 'G.zipCode',
         street: 'G.street',
@@ -1182,23 +1170,13 @@ export default function ResponsaveisPage() {
             return (
                 <td key={columnKey} className="px-6 py-4">
                     <div className={`text-sm font-medium ${guardian.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
-                        {guardianFieldAccess.access
-                            ? (guardian.email || <span className="italic text-slate-400">Sem login</span>)
-                            : (guardianFieldAccess.contact ? (guardian.whatsapp || guardian.phone || guardian.cellphone1 || guardian.cellphone2 || 'Sem contato') : '---')}
+                        {guardianFieldAccess.contact ? (guardian.whatsapp || guardian.phone || guardian.cellphone1 || guardian.cellphone2 || 'Sem contato') : '---'}
                     </div>
                     {guardianFieldAccess.contact ? (
                         <div className={`text-[13px] ${guardian.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
                             {guardian.whatsapp || guardian.phone || guardian.cellphone1 || '---'}
                         </div>
                     ) : null}
-                </td>
-            );
-        }
-
-        if (columnKey === 'cpf') {
-            return (
-                <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${guardian.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
-                    {guardian.cpf || '---'}
                 </td>
             );
         }

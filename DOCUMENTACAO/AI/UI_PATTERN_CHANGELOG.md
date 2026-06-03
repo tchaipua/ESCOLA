@@ -26,6 +26,17 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
 
 ---
 
+### UIP-2026-06-03-01
+
+- Data: 2026-06-03
+- Padrao: filtro de coluna de data sempre por periodo
+- Contexto: padronizacao compartilhada entre Escola e Financeiro para filtros diretos em colunas de grid
+- Alteracao: toda coluna que represente data deve abrir filtro por periodo, com campos `De` e `Ate`, mesmo quando o pedido mencionar apenas filtro de data
+- Componentes/Telas:
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - telas com grid e filtros por coluna
+- Status: aprovado
+
 ### UIP-0001
 
 - Data: 2026-03-16
@@ -477,4 +488,32 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `C:/Sistemas/IA/Financeiro/DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `C:/Sistemas/IA/Financeiro/DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0036
+
+- Data: 2026-06-03
+- Padrao: totais finais do grid em azul com contador em pill branco
+- Contexto: na tela `PRINCIPAL_FINANCEIRO_RETORNOS`, foi aprovado que a linha final de totais do grid use o azul institucional `#1d4f91` e que `Total registros: N` apareca em pill branco no canto esquerdo.
+- Alteracao: o `PAT-015.2` passa a registrar que grids com totais agregados devem manter a linha final fixa no fim do grid, alinhada pelas colunas, com borda `#153a6a`, valores em branco e contador `Total registros: N` no formato pill aprovado.
+- Componentes/Telas:
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/recebiveis/retornos/page.tsx`
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/lib/grid-page-standards.ts`
+  - `frontend/src/app/lib/ui-standards.ts`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0037
+
+- Data: 2026-06-03
+- Padrao: dois modelos de final de grid
+- Contexto: foi aprovado que telas com grid podem ter final simples sem faixa azul quando nao houver coluna a totalizar, e final com faixa azul somente quando houver totais agregados por coluna.
+- Alteracao: o `PAT-015.2` passa a registrar explicitamente que contar registros sozinho nao justifica a linha azul; grids sem totais agregados exibem `Total registros: N` apenas no rodape ao lado do semaforo/status, enquanto grids com totais por coluna exibem a faixa azul com contador em pill branco e valores alinhados, sem duplicar o contador no rodape.
+- Componentes/Telas:
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `frontend/src/app/principal/responsaveis/page.tsx`
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/recebiveis/retornos/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado

@@ -29,6 +29,7 @@ export type TenantBranchSummary = {
     id: string;
     branchCode: number;
     name: string;
+    logoUrl?: string | null;
     isActive: boolean;
     isShared: boolean;
     stockControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;

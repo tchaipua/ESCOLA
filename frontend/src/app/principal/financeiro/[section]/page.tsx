@@ -72,6 +72,11 @@ type BranchStockParameters = {
   stockNegativeControlMode: BranchStockParameterMode;
 };
 
+type FinanceBranding = {
+  schoolName?: string | null;
+  logoUrl?: string | null;
+};
+
 const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
   eyebrow: 'Financeiro integrado',
   title: 'Contas a Pagar',
@@ -153,7 +158,7 @@ function buildFinanceFrameUrl(
   baseUrl: string,
   path: string,
   authContext: ReturnType<typeof getDashboardAuthContext>,
-  tenantBranding?: ReturnType<typeof readCachedTenantBranding> | null,
+  financeBranding?: FinanceBranding | null,
   branchStockParameters?: BranchStockParameters | null,
 ) {
   const normalizedBaseUrl = baseUrl.endsWith('/')
@@ -201,12 +206,12 @@ function buildFinanceFrameUrl(
     params.set('permissions', authContext.permissions.join(',').toUpperCase());
   }
 
-  if (tenantBranding?.schoolName) {
-    params.set('companyName', tenantBranding.schoolName.toUpperCase());
+  if (financeBranding?.schoolName) {
+    params.set('companyName', financeBranding.schoolName.toUpperCase());
   }
 
-  if (tenantBranding?.logoUrl) {
-    params.set('logoUrl', tenantBranding.logoUrl);
+  if (financeBranding?.logoUrl) {
+    params.set('logoUrl', financeBranding.logoUrl);
   }
 
   return `${normalizedBaseUrl}${path}?${params.toString()}`;
@@ -223,6 +228,7 @@ export default function PrincipalFinanceiroSectionPage({
   const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
   const [branchStockParameters, setBranchStockParameters] =
     useState<BranchStockParameters | null>(null);
+  const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
     authContext.role,
@@ -230,6 +236,13 @@ export default function PrincipalFinanceiroSectionPage({
     ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES', 'VIEW_CASHIER', 'SETTLE_RECEIVABLES'],
   );
   const tenantBranding = readCachedTenantBranding(authContext.tenantId);
+  const financeBranding = useMemo(
+    () => ({
+      schoolName: tenantBranding?.schoolName || currentBranch?.name || null,
+      logoUrl: currentBranch?.logoUrl || tenantBranding?.logoUrl || null,
+    }),
+    [currentBranch?.logoUrl, currentBranch?.name, tenantBranding?.logoUrl, tenantBranding?.schoolName],
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIsMounted(true), 0);
@@ -248,10 +261,10 @@ export default function PrincipalFinanceiroSectionPage({
       FINANCEIRO_FRONTEND_URL,
       sectionConfig.path,
       authContext,
-      tenantBranding,
+      financeBranding,
       branchStockParameters,
     );
-  }, [authContext, branchStockParameters, sectionConfig, tenantBranding]);
+  }, [authContext, branchStockParameters, financeBranding, sectionConfig]);
 
   useEffect(() => {
     let isActive = true;
@@ -274,10 +287,14 @@ export default function PrincipalFinanceiroSectionPage({
           null;
 
         if (isActive) {
+          setCurrentBranch(currentBranch);
           setBranchStockParameters(getBranchStockParameters(currentBranch));
         }
       } catch {
-        if (isActive) setBranchStockParameters(null);
+        if (isActive) {
+          setCurrentBranch(null);
+          setBranchStockParameters(null);
+        }
       }
     }
 
@@ -294,6 +311,7 @@ export default function PrincipalFinanceiroSectionPage({
   }, [section]);
 
   const isFrameLoading = Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
+  const isCompactFinanceSection = section === 'parcelas';
 
   useEffect(() => {
     const handleEmbeddedScreenContext = (
@@ -378,18 +396,18 @@ export default function PrincipalFinanceiroSectionPage({
   }
 
   return (
-    <div className="space-y-6">
+    <div className={isCompactFinanceSection ? 'space-y-3' : 'space-y-6'}>
       <section className={`${cardClass} overflow-hidden`}>
-        <div className="bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-6 text-white">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex flex-col gap-3 pt-1">
+        <div className={`bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] text-white ${isCompactFinanceSection ? 'px-4 py-3' : 'px-6 py-6'}`}>
+          <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between ${isCompactFinanceSection ? 'gap-3' : 'gap-5'}`}>
+            <div className={`flex items-start ${isCompactFinanceSection ? 'gap-3' : 'gap-4'}`}>
+              <div className={`flex flex-col pt-1 ${isCompactFinanceSection ? 'gap-2' : 'gap-3'}`}>
                 <button
                   type="button"
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
                   }}
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceSection ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
                   title="Recolher menu lateral"
                   aria-label="Recolher menu lateral"
                 >
@@ -402,7 +420,7 @@ export default function PrincipalFinanceiroSectionPage({
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
                   }}
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceSection ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
                   title="Abrir notificações"
                   aria-label="Abrir notificações"
                 >
@@ -411,25 +429,25 @@ export default function PrincipalFinanceiroSectionPage({
                   </svg>
                 </button>
               </div>
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm">
-                {tenantBranding?.logoUrl ? (
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm ${isCompactFinanceSection ? 'h-14 w-14 rounded-2xl' : 'h-20 w-20 rounded-3xl'}`}>
+                {financeBranding.logoUrl ? (
                   <img
-                    src={tenantBranding.logoUrl}
-                    alt={`Logo de ${tenantBranding.schoolName}`}
-                    className="h-full w-full object-contain p-2"
+                    src={financeBranding.logoUrl}
+                    alt={`Logo de ${financeBranding.schoolName || 'ESCOLA'}`}
+                    className={`h-full w-full object-contain ${isCompactFinanceSection ? 'p-1.5' : 'p-2'}`}
                   />
                 ) : (
                   <span className="text-lg font-black uppercase tracking-[0.25em] text-white">
-                    {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                    {String(financeBranding.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
                   </span>
                 )}
               </div>
               <div>
-                <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200">
+                <div className={`${isCompactFinanceSection ? 'text-[10px]' : 'text-xs'} font-black uppercase tracking-[0.24em] text-cyan-200`}>
                   {headerContent.eyebrow}
                 </div>
-                <h1 className="mt-2 text-3xl font-black tracking-tight">{headerContent.title}</h1>
-                <p className="mt-2 max-w-3xl text-sm font-medium text-blue-100/90">
+                <h1 className={`${isCompactFinanceSection ? 'mt-1 text-2xl' : 'mt-2 text-3xl'} font-black tracking-tight`}>{headerContent.title}</h1>
+                <p className={`${isCompactFinanceSection ? 'mt-1 text-xs' : 'mt-2 text-sm'} max-w-3xl font-medium text-blue-100/90`}>
                   {headerContent.description}
                 </p>
               </div>
@@ -454,7 +472,7 @@ export default function PrincipalFinanceiroSectionPage({
             title={`Financeiro integrado - ${sectionConfig.label}`}
             src={iframeSrc}
             onLoad={() => setLoadedFrameSrc(iframeSrc)}
-            className="block h-[calc(100vh-11rem)] w-full bg-white"
+            className={`block ${isCompactFinanceSection ? 'h-[calc(100vh-7.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
           />
         </div>
       </section>
