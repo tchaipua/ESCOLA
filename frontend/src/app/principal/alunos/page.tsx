@@ -2194,7 +2194,7 @@ export default function AlunosPage() {
     );
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <PrincipalProgramHeader
                     eyebrow="Central discente"
@@ -2365,13 +2365,14 @@ export default function AlunosPage() {
                             <button
                                 type="button"
                                 onClick={() => setIsGridConfigOpen(true)}
-                                title="Configurar colunas do grid"
-                                className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                                title="ALTERAR COLUNAS GRID"
+                                aria-label="ALTERAR COLUNAS GRID"
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
                             >
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                                    <rect x="4" y="5" width="16" height="14" rx="2" strokeWidth={2} />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5v14M15 5v14" />
                                 </svg>
-                                Colunas
                             </button>
                             <button
                                 type="button"

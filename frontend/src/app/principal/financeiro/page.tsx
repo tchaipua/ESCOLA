@@ -46,13 +46,6 @@ const MENU_ITEMS = [
     image: '/principal-financeiro/retornos.svg?v=2',
   },
   {
-    id: 'parcelas',
-    label: 'Parcelas a Receber',
-    href: '/principal/financeiro/parcelas',
-    description: 'Parcelas abertas, vencidas e baixadas da escola.',
-    image: '/principal-financeiro/parcelas.svg?v=2',
-  },
-  {
     id: 'caixa',
     label: 'Controle Caixa',
     href: '/principal/financeiro/caixa',

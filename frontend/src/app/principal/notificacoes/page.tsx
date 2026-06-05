@@ -187,7 +187,7 @@ export default function NotificationsPage() {
     };
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <PrincipalProgramHeader
                     eyebrow="Centro de mensagens"

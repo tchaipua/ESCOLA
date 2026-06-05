@@ -26,6 +26,19 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
 
 ---
 
+### UIP-2026-06-05-01
+
+- Data: 2026-06-05
+- Padrao: botao iconico de colunas no rodape do grid
+- Contexto: padronizacao solicitada para todas as telas da Escola e do Financeiro com botao de colunas no rodape/grid
+- Alteracao: o botao de colunas passa a ser somente iconico, sem texto visivel, com tooltip e `aria-label` `ALTERAR COLUNAS GRID`
+- Componentes/Telas:
+  - `frontend/src/app/components/grid-standard-footer.tsx`
+  - `frontend/src/app/components/grid-footer-controls.tsx`
+  - telas com botao manual de colunas
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+- Status: aprovado
+
 ### UIP-2026-06-03-01
 
 - Data: 2026-06-03
@@ -516,4 +529,33 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `C:/Sistemas/IA/Financeiro/frontend/src/app/recebiveis/retornos/page.tsx`
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0038
+
+- Data: 2026-06-05
+- Padrao: rodape do grid sempre visivel sem rolagem externa
+- Contexto: na tela `PRINCIPAL_FINANCEIRO_PARCELAS`, foi aprovado que as informacoes finais do grid devem ficar sempre visiveis, sem exigir rolagem da pagina externa ou da casca hospedeira; a barra lateral vertical deve permanecer apenas dentro da area de registros do grid.
+- Alteracao: o `PAT-015.2` passa a registrar que o rodape final do grid, com ou sem faixa azul de totais, deve permanecer visivel na area util da tela; em telas embutidas por iframe, a casca hospedeira deve ajustar a altura do iframe para evitar uma segunda barra lateral fora do grid.
+- Componentes/Telas:
+  - `frontend/src/app/principal/financeiro/[section]/page.tsx`
+  - `frontend/src/app/principal/layout.tsx`
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/recebiveis/parcelas/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado
+
+### UIP-0039
+
+- Data: 2026-06-05
+- Padrao: cabecalho compacto e grid operacional sem rolagem externa
+- Contexto: na tela `PRINCIPAL_FINANCEIRO_PARCELAS`, foi aprovado o conjunto visual compacto para telas operacionais com grid: cabecalho azul mais baixo, card do usuario e `VOLTAR` dentro da faixa azul, toolbar superior alinhada a esquerda, cabecalho do grid fixo, rodape sempre visivel e rolagem vertical apenas dentro da area de registros.
+- Alteracao: `PAT-014` passa a registrar a variante compacta de cabecalho para telas com grid embutido; `PAT-015.2` passa a reforcar botao iconico de colunas com tooltip `CONFIGURAR COLUNAS DO GRID`, seletor/paginacao compactos, card do grid em coluna flexivel e ausencia de barra lateral externa.
+- Componentes/Telas:
+  - `frontend/src/app/principal/financeiro/[section]/page.tsx`
+  - `frontend/src/app/principal/layout.tsx`
+  - `C:/Sistemas/IA/Financeiro/frontend/src/app/recebiveis/parcelas/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+  - `frontend/src/app/lib/ui-standards.ts`
 - Status: aprovado

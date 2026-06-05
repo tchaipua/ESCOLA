@@ -254,7 +254,7 @@ export default function PessoasPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+    <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
       <div className="flex w-full flex-col bg-transparent">
         <PrincipalProgramHeader
           eyebrow="Central de pessoas"

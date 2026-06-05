@@ -370,6 +370,12 @@ export default function DashboardPage() {
         : effectiveUnreadNotificationsCount && effectiveUnreadNotificationsCount > 0
             ? 'flex h-11 min-w-[72px] items-center justify-center gap-1.5 rounded-2xl border border-red-300/80 bg-red-500 px-3 text-white shadow-lg shadow-red-900/35 backdrop-blur-sm transition hover:bg-red-400 animate-pulse'
             : 'flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20';
+    const compactNotificationsButtonClassName = notificationsButtonClassName
+        .replaceAll('h-11', 'h-9')
+        .replaceAll('w-11', 'w-9')
+        .replace('min-w-[72px]', 'min-w-[60px]')
+        .replace('px-3', 'px-2.5')
+        .replaceAll('rounded-2xl', 'rounded-xl');
 
     const adminCards = [
         {
@@ -407,6 +413,24 @@ export default function DashboardPage() {
             title: 'Financeiro',
             description: 'Abra o portal financeiro integrado para contas, caixa e mensalidades da escola.',
             image: '/principal/financeiro.svg',
+        },
+        {
+            href: '/principal/financeiro/contas-a-receber',
+            title: 'Contas a Receber',
+            description: 'Acesse os recebíveis e as parcelas da escola no Financeiro.',
+            image: '/principal-financeiro/parcelas.svg?v=2',
+        },
+        {
+            href: '/principal/financeiro/contas-a-pagar',
+            title: 'Contas a Pagar',
+            description: 'Acesse notas, fornecedores e lançamentos a pagar no Financeiro.',
+            image: '/principal-financeiro/contas-a-pagar.svg?v=2',
+        },
+        {
+            href: '/principal/financeiro/estoque',
+            title: 'Estoque',
+            description: 'Acesse produtos, movimentações e controle de estoque no Financeiro.',
+            image: '/principal-financeiro/estoque.svg?v=2',
         },
     ];
 
@@ -614,7 +638,7 @@ export default function DashboardPage() {
     }
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <PrincipalProgramHeader
                     eyebrow="Gestão administrativa"
@@ -622,6 +646,7 @@ export default function DashboardPage() {
                     description="Sistema operacional pronto para cadastrar professores, alunos, turmas e toda a rotina escolar."
                     schoolName={tenant?.name}
                     logoUrl={tenant?.logoUrl}
+                    density="compact"
                     secondaryAction={
                         <>
                             <button
@@ -629,7 +654,7 @@ export default function DashboardPage() {
                                 onClick={() => {
                                     window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
                                 }}
-                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
                                 title="Recolher menu lateral"
                                 aria-label="Recolher menu lateral"
                             >
@@ -642,7 +667,7 @@ export default function DashboardPage() {
                                 onClick={() => {
                                     window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
                                 }}
-                                className={notificationsButtonClassName}
+                                className={compactNotificationsButtonClassName}
                                 title={notificationsButtonTitle}
                                 aria-label={notificationsButtonTitle}
                             >

@@ -244,7 +244,7 @@ export default function CommunicationsPage() {
     }
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-4">
+        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
                     <PrincipalProgramHeader

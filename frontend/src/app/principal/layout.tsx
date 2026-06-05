@@ -1078,20 +1078,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </svg>
             ),
         },
-        ...(showFinanceiroParcelasScreen
-            ? [
-                  {
-                      href: '/principal/financeiro/parcelas',
-                      label: 'Parcelas a Receber',
-                      allowWhen: true,
-                      icon: (
-                          <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10M7 12h6m-6 5h10M5 3h10l4 4v12a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
-                          </svg>
-                      ),
-                  },
-              ]
-            : []),
+        {
+            href: '/principal/financeiro/contas-a-receber',
+            label: 'Contas a Receber',
+            allowWhen: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h10M7 12h6m-6 5h10M5 3h10l4 4v12a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+                </svg>
+            ),
+        },
         {
             href: '/principal/financeiro/contas-a-pagar',
             label: 'Contas a Pagar',
@@ -1316,11 +1312,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                 </header>
 
-                <main className="relative flex-1 overflow-y-auto bg-slate-50 p-6 md:p-8">
+                <main
+                    className={`relative flex-1 bg-slate-50 ${
+                        showFinanceiroParcelasScreen
+                            ? 'overflow-hidden px-6 pb-6 pt-2 md:px-8 md:pb-8 md:pt-2'
+                            : showCustomHeroHeader
+                                ? 'overflow-y-auto px-6 pb-6 pt-2 md:px-8 md:pb-8 md:pt-2'
+                            : 'overflow-y-auto p-6 md:p-8'
+                    }`}
+                >
                     {showFinanceiroModuleNav ? (
-                        <div className="pointer-events-none absolute left-6 right-6 top-8 z-20 flex justify-end md:left-8 md:right-12 md:top-10">
+                        <div
+                            className={`pointer-events-none absolute left-6 right-6 z-20 flex justify-end md:left-8 md:right-12 ${
+                                'top-5 md:top-5'
+                            }`}
+                        >
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
-                                {userMenuTrigger}
+                                <div className="translate-y-1">
+                                    {userMenuTrigger}
+                                </div>
                                 <button
                                     type="button"
                                     onClick={() => router.back()}
@@ -1335,7 +1345,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </div>
                     ) : null}
                     {showPrincipalHeroHeader ? (
-                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
+                        <div className="pointer-events-none absolute right-8 top-5 z-20 flex justify-end md:right-10 md:top-5">
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
                                 {userMenuTrigger}
                                 <button

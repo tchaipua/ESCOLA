@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import {
@@ -30,6 +31,26 @@ const SECTION_CONFIG = {
   'contas-a-pagar': {
     label: 'Contas a Pagar',
     path: '/contas-a-pagar',
+  },
+  'contas-a-receber': {
+    label: 'Contas a Receber',
+    path: '',
+  },
+  creditos: {
+    label: 'Controle de Créditos',
+    path: '/recebiveis/creditos',
+  },
+  'recebimentos-por-cliente': {
+    label: 'Recebimentos por Cliente',
+    path: '/recebiveis/recebimentos-por-cliente',
+  },
+  'historico-cliente': {
+    label: 'Histórico Cliente',
+    path: '/recebiveis/historico-cliente',
+  },
+  'historico-baixas': {
+    label: 'Histórico Baixas',
+    path: '/recebiveis/historico-baixas',
   },
   estoque: {
     label: 'Estoque',
@@ -83,6 +104,44 @@ const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
   description: 'Tela completa do Financeiro aberta dentro do sistema da Escola.',
 };
 
+const ACCOUNTS_RECEIVABLE_MENU_ITEMS = [
+  {
+    id: 'parcelas',
+    label: 'Parcelas a Receber',
+    href: '/principal/financeiro/parcelas',
+    description: 'Parcelas abertas, vencidas e baixadas da escola.',
+    image: '/principal-financeiro/parcelas.svg?v=2',
+  },
+  {
+    id: 'creditos',
+    label: 'Controle de Créditos',
+    href: '/principal/financeiro/creditos',
+    description: 'Controle de créditos em contas a receber.',
+    image: '/principal-financeiro/creditos.svg?v=1',
+  },
+  {
+    id: 'recebimentos-por-cliente',
+    label: 'Recebimentos por Cliente',
+    href: '/principal/financeiro/recebimentos-por-cliente',
+    description: 'Receba parcelas abertas agrupadas por cliente.',
+    image: '/principal-financeiro/recebimentos-por-cliente.svg?v=1',
+  },
+  {
+    id: 'historico-cliente',
+    label: 'Histórico Cliente',
+    href: '/principal/financeiro/historico-cliente',
+    description: 'Consulte compras, parcelas e pagamentos por cliente.',
+    image: '/principal-financeiro/historico-cliente.svg?v=1',
+  },
+  {
+    id: 'historico-baixas',
+    label: 'Histórico Baixas',
+    href: '/principal/financeiro/historico-baixas',
+    description: 'Consulte baixas realizadas e estorne recebimentos.',
+    image: '/principal-financeiro/historico-baixas.svg?v=1',
+  },
+] as const;
+
 const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderContent> = {
   PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO: {
     eyebrow: 'Bancos',
@@ -113,6 +172,30 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     title: 'Certificados Digitais',
     description:
       'Cadastre e mantenha os certificados A1 usados na integração fiscal do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_CREDITOS: {
+    eyebrow: 'Contas a Receber',
+    title: 'Controle de Créditos',
+    description:
+      'Consulte créditos de clientes e lance novos créditos manuais no caixa aberto.',
+  },
+  PRINCIPAL_FINANCEIRO_RECEBIMENTOS_POR_CLIENTE: {
+    eyebrow: 'Contas a Receber',
+    title: 'Recebimentos por Cliente',
+    description:
+      'Consulte clientes com parcelas abertas e abra a baixa manual agrupada.',
+  },
+  PRINCIPAL_FINANCEIRO_HISTORICO_CLIENTE: {
+    eyebrow: 'Contas a Receber',
+    title: 'Histórico Cliente',
+    description:
+      'Consulte compras, parcelas, pagamentos e valores em atraso por cliente.',
+  },
+  PRINCIPAL_FINANCEIRO_HISTORICO_BAIXAS: {
+    eyebrow: 'Contas a Receber',
+    title: 'Histórico Baixas',
+    description:
+      'Consulte baixas realizadas, veja parcelas agrupadas e estorne lançamentos.',
   },
 };
 
@@ -257,6 +340,8 @@ export default function PrincipalFinanceiroSectionPage({
 
   const iframeSrc = useMemo(() => {
     if (!sectionConfig) return null;
+    if (section === 'contas-a-receber') return null;
+
     return buildFinanceFrameUrl(
       FINANCEIRO_FRONTEND_URL,
       sectionConfig.path,
@@ -264,7 +349,7 @@ export default function PrincipalFinanceiroSectionPage({
       financeBranding,
       branchStockParameters,
     );
-  }, [authContext, branchStockParameters, financeBranding, sectionConfig]);
+  }, [authContext, branchStockParameters, financeBranding, section, sectionConfig]);
 
   useEffect(() => {
     let isActive = true;
@@ -312,6 +397,8 @@ export default function PrincipalFinanceiroSectionPage({
 
   const isFrameLoading = Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
   const isCompactFinanceSection = section === 'parcelas';
+  const isCompactFinanceHeader = true;
+  const isAccountsReceivableSection = section === 'contas-a-receber';
 
   useEffect(() => {
     const handleEmbeddedScreenContext = (
@@ -384,7 +471,7 @@ export default function PrincipalFinanceiroSectionPage({
     );
   }
 
-  if (!sectionConfig || !iframeSrc) {
+  if (!sectionConfig) {
     return (
       <div className="mx-auto flex min-h-[55vh] w-full max-w-3xl items-center justify-center">
         <div className="w-full rounded-3xl border border-amber-200 bg-white p-8 text-center shadow-sm">
@@ -396,18 +483,18 @@ export default function PrincipalFinanceiroSectionPage({
   }
 
   return (
-    <div className={isCompactFinanceSection ? 'space-y-3' : 'space-y-6'}>
-      <section className={`${cardClass} overflow-hidden`}>
-        <div className={`bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] text-white ${isCompactFinanceSection ? 'px-4 py-3' : 'px-6 py-6'}`}>
-          <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between ${isCompactFinanceSection ? 'gap-3' : 'gap-5'}`}>
-            <div className={`flex items-start ${isCompactFinanceSection ? 'gap-3' : 'gap-4'}`}>
-              <div className={`flex flex-col pt-1 ${isCompactFinanceSection ? 'gap-2' : 'gap-3'}`}>
+    <div className={isCompactFinanceSection ? 'flex h-full min-h-0 flex-col gap-3' : 'space-y-6'}>
+      <section className={`${cardClass} shrink-0 overflow-hidden`}>
+        <div className={`bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] text-white ${isCompactFinanceHeader ? 'px-4 py-5' : 'px-6 py-6'}`}>
+          <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between ${isCompactFinanceHeader ? 'gap-3' : 'gap-5'}`}>
+            <div className={`flex items-start ${isCompactFinanceHeader ? 'gap-3' : 'gap-4'}`}>
+              <div className={`flex flex-col pt-1 ${isCompactFinanceHeader ? 'gap-2' : 'gap-3'}`}>
                 <button
                   type="button"
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
                   }}
-                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceSection ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceHeader ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
                   title="Recolher menu lateral"
                   aria-label="Recolher menu lateral"
                 >
@@ -420,7 +507,7 @@ export default function PrincipalFinanceiroSectionPage({
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
                   }}
-                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceSection ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceHeader ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
                   title="Abrir notificações"
                   aria-label="Abrir notificações"
                 >
@@ -429,12 +516,12 @@ export default function PrincipalFinanceiroSectionPage({
                   </svg>
                 </button>
               </div>
-              <div className={`flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm ${isCompactFinanceSection ? 'h-14 w-14 rounded-2xl' : 'h-20 w-20 rounded-3xl'}`}>
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm ${isCompactFinanceHeader ? 'h-14 w-14 rounded-2xl' : 'h-20 w-20 rounded-3xl'}`}>
                 {financeBranding.logoUrl ? (
                   <img
                     src={financeBranding.logoUrl}
                     alt={`Logo de ${financeBranding.schoolName || 'ESCOLA'}`}
-                    className={`h-full w-full object-contain ${isCompactFinanceSection ? 'p-1.5' : 'p-2'}`}
+                    className={`h-full w-full object-contain ${isCompactFinanceHeader ? 'p-1.5' : 'p-2'}`}
                   />
                 ) : (
                   <span className="text-lg font-black uppercase tracking-[0.25em] text-white">
@@ -443,11 +530,11 @@ export default function PrincipalFinanceiroSectionPage({
                 )}
               </div>
               <div>
-                <div className={`${isCompactFinanceSection ? 'text-[10px]' : 'text-xs'} font-black uppercase tracking-[0.24em] text-cyan-200`}>
+                <div className={`${isCompactFinanceHeader ? 'text-[10px]' : 'text-xs'} font-black uppercase tracking-[0.24em] text-cyan-200`}>
                   {headerContent.eyebrow}
                 </div>
-                <h1 className={`${isCompactFinanceSection ? 'mt-1 text-2xl' : 'mt-2 text-3xl'} font-black tracking-tight`}>{headerContent.title}</h1>
-                <p className={`${isCompactFinanceSection ? 'mt-1 text-xs' : 'mt-2 text-sm'} max-w-3xl font-medium text-blue-100/90`}>
+                <h1 className={`${isCompactFinanceHeader ? 'mt-1 text-2xl' : 'mt-2 text-3xl'} font-black tracking-tight`}>{headerContent.title}</h1>
+                <p className={`${isCompactFinanceHeader ? 'mt-1 text-xs' : 'mt-2 text-sm'} max-w-3xl font-medium text-blue-100/90`}>
                   {headerContent.description}
                 </p>
               </div>
@@ -457,23 +544,55 @@ export default function PrincipalFinanceiroSectionPage({
         </div>
       </section>
 
-      <section className={`${cardClass} overflow-hidden`}>
-        <div className="relative bg-slate-100">
-          {isFrameLoading ? (
+      <section className={`${cardClass} ${isCompactFinanceSection ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'overflow-hidden'}`}>
+        <div className={`relative bg-slate-100 ${isCompactFinanceSection ? 'min-h-0 flex-1' : ''}`}>
+          {isAccountsReceivableSection ? (
+            <div className="h-[calc(100vh-11rem)] bg-slate-50 p-6">
+              <div className="h-full rounded-[28px] border border-slate-200 bg-white p-6 shadow-inner">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+                  {ACCOUNTS_RECEIVABLE_MENU_ITEMS.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      title={item.description}
+                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
+                    >
+                      <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
+                        <img
+                          src={item.image}
+                          alt={item.label}
+                          className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
+                        />
+                      </div>
+                      <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
+                        <div className="text-sm font-black text-slate-800">
+                          {item.label}
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {isFrameLoading ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm">
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
                 Carregando {sectionConfig.label.toLowerCase()}...
               </div>
             </div>
-          ) : null}
+              ) : null}
 
-          <iframe
-            key={iframeSrc}
-            title={`Financeiro integrado - ${sectionConfig.label}`}
-            src={iframeSrc}
-            onLoad={() => setLoadedFrameSrc(iframeSrc)}
-            className={`block ${isCompactFinanceSection ? 'h-[calc(100vh-7.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
-          />
+              <iframe
+                key={iframeSrc}
+                title={`Financeiro integrado - ${sectionConfig.label}`}
+                src={iframeSrc || undefined}
+                onLoad={() => setLoadedFrameSrc(iframeSrc)}
+                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
+              />
+            </>
+          )}
         </div>
       </section>
     </div>
