@@ -1,18 +1,12 @@
 
 > frontend@0.1.0 dev
-> next dev --hostname 0.0.0.0 --port 3000
+> next dev
 
 ▲ Next.js 16.1.6 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://0.0.0.0:3000
+- Network:       http://192.168.100.134:3000
 
 ✓ Starting...
-✓ Ready in 683ms
- GET / 200 in 794ms (compile: 696ms, render: 98ms)
- GET / 200 in 30ms (compile: 4ms, render: 27ms)
- GET / 200 in 27ms (compile: 3ms, render: 24ms)
- GET /principal 200 in 55ms (compile: 41ms, render: 14ms)
- GET /principal/financeiro/contas-a-receber 200 in 324ms (compile: 308ms, render: 15ms)
- GET /principal/financeiro/historico-baixas 200 in 17ms (compile: 7ms, render: 10ms)
- GET /principal/financeiro/historico-cliente 200 in 17ms (compile: 7ms, render: 10ms)
- GET /principal/financeiro/historico-cliente 200 in 73ms (compile: 6ms, render: 67ms)
+✓ Ready in 1156ms
+ GET / 200 in 934ms (compile: 795ms, render: 139ms)
+ GET / 200 in 34ms (compile: 5ms, render: 30ms)
