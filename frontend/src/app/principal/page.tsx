@@ -393,7 +393,7 @@ export default function DashboardPage() {
         {
             href: '/principal/grade',
             title: 'Grade Escolar',
-            description: 'Monte a grade semanal e organize os horários da escola.',
+            description: 'Monte os horários semanais vinculados às turmas da escola.',
             image: '/principal/grade.svg',
         },
         {

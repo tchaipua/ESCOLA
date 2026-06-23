@@ -2,12 +2,19 @@
 
 ## Estado atual
 
-O projeto esta organizado hoje como um monolito modular com dois blocos principais:
+O ecossistema local possui dois sistemas/repositories integrados e separados:
+
+- `C:\Sistemas\IA\Escola`: sistema escolar, painel academico/PWAs e integracao com financeiro
+- `C:\Sistemas\IA\Financeiro`: sistema financeiro desacoplado, com backend e frontend proprios
+
+Dentro do repositorio `Escola`, o projeto esta organizado hoje como um monolito modular com dois blocos principais:
 
 - `backend`: NestJS + Prisma
 - `frontend`: Next.js App Router
 
-A arquitetura continua preparada para evolucao futura, mas a entrega atual esta concentrada em uma base unica com foco em velocidade operacional, isolamento por tenant e regras de negocio auditaveis.
+A arquitetura da `Escola` continua preparada para evolucao futura, mas a entrega atual esta concentrada em uma base unica com foco em velocidade operacional, isolamento por tenant e regras de negocio auditaveis.
+
+O `Financeiro` nao deve ser tratado como apenas uma pasta interna da `Escola`. Ele e um projeto separado em `C:\Sistemas\IA\Financeiro`, com API propria e painel proprio. A `Escola` consome o `Financeiro` por integracao, mantendo a regra escolar de origem na `Escola` e a operacao financeira pesada no `Financeiro`.
 
 ## Estrutura real do repositorio
 
@@ -159,6 +166,25 @@ Exemplos atuais:
 
 - ViaCEP para preenchimento de endereco
 - SMTP por tenant para recuperacao de senha e comunicacoes
+- Financeiro separado em `C:\Sistemas\IA\Financeiro`
+
+### Integracao com Financeiro
+
+O `Financeiro` e o sistema oficial para titulos, parcelas, contas a pagar, caixa, produtos, estoque financeiro/fiscal e operacoes bancarias/fiscais.
+
+Convencao local atual:
+
+- backend do `Financeiro`: `localhost:3002`
+- frontend do `Financeiro`: `localhost:3003`
+- autenticacao tecnica entre sistemas: `x-api-key`
+- escopo financeiro resolvido por `sourceSystem`, `sourceTenantId` e, quando aplicavel, `sourceBranchCode`
+
+Responsabilidades:
+
+- `Escola`: resolve regra academica, aluno, responsavel/pagador, mensalidade, filial e contexto do usuario
+- `Financeiro`: persiste titulos, parcelas, caixa, baixas, produtos, contas a pagar, certificados e eventos financeiros
+
+Regra obrigatoria: alteracoes financeiras operacionais devem ser avaliadas no repositorio `C:\Sistemas\IA\Financeiro`; a `Escola` deve manter apenas integracao, contexto e telas hospedeiras quando aplicavel.
 
 ## Padrao de evolucao
 

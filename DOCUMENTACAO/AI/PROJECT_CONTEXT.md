@@ -10,6 +10,20 @@ Plataforma SaaS de gestao escolar multi-tenant com 5 frentes:
 4. PWA do aluno/responsavel (rotina escolar, notas, presenca, avisos)
 5. Gerenciamento financeiro (contas a receber, boletos, baixa e cobranca)
 
+## Sistemas integrados do ecossistema local
+
+O trabalho local acontece em dois sistemas/repositories separados e integrados:
+
+- `C:\Sistemas\IA\Escola`: sistema escolar, com backend/frontend da gestao academica, softhouse, PWAs e camada de integracao com o financeiro
+- `C:\Sistemas\IA\Financeiro`: sistema financeiro desacoplado, com backend/frontend proprios e documentacao propria em `C:\Sistemas\IA\Financeiro\DOCUMENTACAO\AI`
+
+O `Financeiro` nao deve ser considerado apenas um modulo interno do repositorio `Escola`. Ele e um sistema separado, integrado por API/contrato tecnico.
+
+Regra de responsabilidade:
+
+- a `Escola` continua dona das regras escolares, como aluno, responsavel/pagador, mensalidade, filial e permissao do usuario escolar
+- o `Financeiro` e dono da operacao financeira pesada, como titulos, parcelas, caixa, baixas, contas a pagar, produtos, estoque financeiro/fiscal, certificados e integracoes bancarias/fiscais
+
 ## Atores do sistema
 
 - `SOFTHOUSE_ADMIN`: opera cadastro macro de escolas

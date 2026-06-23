@@ -474,6 +474,54 @@ Regras atuais:
 - respeitam tenant e auditoria
 - mantem campos especificos do papel
 
+## Grade horaria por turma
+
+### Endpoints principais
+
+- `GET /class-schedule-items`
+- `POST /class-schedule-items`
+- `PATCH /class-schedule-items/:id`
+- `PATCH /class-schedule-items/:id/status`
+- `DELETE /class-schedule-items/:id` como compatibilidade tecnica, sempre com cancelamento logico
+
+### Regra oficial de lancamento
+
+- A tela `PRINCIPAL_GRADE` representa cadastro de turmas com horario das aulas.
+- Nao deve existir lancamento operacional de horario solto sem turma.
+- Todo registro da grade semanal deve gravar obrigatoriamente `schoolYearId`, `seriesClassId`, `dayOfWeek`, `startTime` e `endTime`.
+- Aula comum deve gravar `teacherSubjectId`, apontando para o vinculo professor x disciplina.
+- Intervalo deve ser gravado no mesmo endpoint, vinculado a turma e dia, com `teacherSubjectId = null`.
+- O backend deve bloquear sobreposicao de horario na mesma turma/dia e tambem conflito de professor em turmas diferentes quando houver `teacherSubjectId`.
+- Inativacao deve usar `canceledAt/canceledBy`; nao ha delete fisico operacional.
+
+Body de aula:
+
+```json
+{
+  "branchCode": 1,
+  "schoolYearId": "uuid-ano-letivo",
+  "seriesClassId": "uuid-serie-turma",
+  "dayOfWeek": "SEGUNDA",
+  "teacherSubjectId": "uuid-professor-disciplina",
+  "startTime": "07:00",
+  "endTime": "07:45"
+}
+```
+
+Body de intervalo:
+
+```json
+{
+  "branchCode": 1,
+  "schoolYearId": "uuid-ano-letivo",
+  "seriesClassId": "uuid-serie-turma",
+  "dayOfWeek": "SEGUNDA",
+  "teacherSubjectId": null,
+  "startTime": "07:45",
+  "endTime": "08:00"
+}
+```
+
 ### GET `/students/me/pwa-summary`
 
 - Autenticacao: `Authorization: Bearer <access_token>`
@@ -587,6 +635,13 @@ Resposta resumida:
 - Nao existe delete fisico nos dados de negocio
 
 ## Caixa financeiro integrado
+
+Observacao estrutural obrigatoria:
+
+- o `Financeiro` fica no repositorio separado `C:\Sistemas\IA\Financeiro`
+- a API propria do `Financeiro` roda localmente em `localhost:3002`
+- o painel proprio do `Financeiro` roda localmente em `localhost:3003`
+- os endpoints abaixo representam a camada consumida/exposta pela `Escola` para operar o financeiro integrado, mas a regra operacional financeira deve ser conferida tambem em `C:\Sistemas\IA\Financeiro\DOCUMENTACAO\AI\API_SPEC.md`
 
 ### GET `/financial-cashier/current-session`
 

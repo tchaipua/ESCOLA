@@ -965,8 +965,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         },
         {
             href: '/principal/grade',
-            label: 'Horário das aulas',
-            allowWhen: hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SCHEDULES'),
+            label: 'Turmas x horários',
+            allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_CLASS_SCHEDULES', 'VIEW_SCHOOL_YEARS', 'VIEW_SERIES_CLASSES', 'VIEW_SUBJECTS']),
             icon: (
                 <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />

@@ -1265,7 +1265,7 @@ export default function ResponsaveisPage() {
     };
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
+        <div className="flex h-[calc(100vh-4.5rem)] min-h-0 w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <PrincipalProgramHeader
                     eyebrow="Central familiar"
@@ -1307,7 +1307,7 @@ export default function ResponsaveisPage() {
 
                 {errorStatus ? <div className="mb-6 mt-6 rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-600">{errorStatus}</div> : null}
 
-                <section className="mt-6 flex h-[calc(100vh-17rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <section className="mt-6 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <div className="dashboard-band shrink-0 border-b px-4 py-3">
                         <div className="flex flex-wrap items-center gap-3">
                             {canManageGuardians ? (

@@ -791,26 +791,18 @@ export class ClassScheduleItemsService {
   async remove(id: string) {
     await this.findOne(id);
 
-    const linkedLessonItems = await this.prisma.lessonCalendarItem.count({
-      where: {
-        tenantId: this.tenantId(),
-        classScheduleItemId: id,
-      },
-    });
-
-    if (linkedLessonItems > 0) {
-      throw new ConflictException(
-        "Este lançamento já foi usado no calendário anual e não pode mais ser excluído fisicamente.",
-      );
-    }
-
     try {
-      await this.prisma.classScheduleItem.delete({
+      await this.prisma.classScheduleItem.update({
         where: { id },
+        data: {
+          canceledAt: new Date(),
+          canceledBy: this.userId(),
+          updatedBy: this.userId(),
+        },
       });
 
       return {
-        message: "Lançamento da grade excluído com sucesso.",
+        message: "Lançamento da grade inativado com sucesso.",
       };
     } catch (error) {
       this.rethrowPersistenceError(error);

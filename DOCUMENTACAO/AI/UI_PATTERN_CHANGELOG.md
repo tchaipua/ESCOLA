@@ -571,3 +571,17 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
   - `frontend/src/app/lib/ui-standards.ts`
 - Status: aprovado
+
+### UIP-0040
+
+- Data: 2026-06-23
+- Padrao: grid ocupando toda a area util da tela
+- Contexto: na tela `PRINCIPAL_PROFESSORES`, foi aprovado que telas com grid nao devem deixar faixa vazia abaixo do rodape do grid; o card/listagem deve ocupar toda a altura disponivel da area principal.
+- Alteracao: o `PAT-015.2` passa a registrar que telas com grid devem ocupar toda a area util disponivel, do fim do cabecalho ate o limite inferior visivel, usando ajuste de altura/flex da casca do grid sem redesenhar layout aprovado.
+- Componentes/Telas:
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+  - `C:/Sistemas/IA/Financeiro/DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `C:/Sistemas/IA/Financeiro/DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado

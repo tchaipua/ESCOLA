@@ -231,3 +231,21 @@ Para cada decisao, registrar:
 - Impacto: preserva identidade visual da escola/empresa e padroniza suporte/auditoria visual em popups dos dois sistemas.
 - Alternativas consideradas: usar apenas avatar do registro em popups de detalhe; manter a regra somente na Escola; tratar como opcional em popups pequenos.
 - Status: aceita
+
+## DEC-0025
+
+- Data: 2026-06-23
+- Contexto: o ecossistema local possui o sistema `Escola` em `C:\Sistemas\IA\Escola` e o sistema `Financeiro` em `C:\Sistemas\IA\Financeiro`; o financeiro nao e apenas uma pasta interna da Escola, mas um projeto separado com backend, frontend e documentacao propria.
+- Decisao: tratar `Escola` e `Financeiro` como dois sistemas/repositories separados e integrados por contrato/API. A `Escola` mantem as regras escolares e envia/consome contexto financeiro; o `Financeiro` e dono da operacao financeira pesada, incluindo titulos, parcelas, caixa, baixas, contas a pagar, produtos, estoque financeiro/fiscal, certificados e integracoes bancarias/fiscais.
+- Impacto: qualquer alteracao financeira operacional deve ser analisada tambem no repositorio `C:\Sistemas\IA\Financeiro`; a documentacao da Escola deve registrar a dependencia e nao assumir que o financeiro vive somente dentro do monolito da Escola.
+- Alternativas consideradas: manter o financeiro documentado como modulo interno da Escola; duplicar regra financeira no banco da Escola; acoplar nomenclaturas escolares ao core financeiro.
+- Status: aceita
+
+## DEC-0026
+
+- Data: 2026-06-23
+- Contexto: a tela `PRINCIPAL_GRADE` estava sendo tratada como lancamento de horarios de aula, mas o negocio exige que todo horario exista dentro de uma turma.
+- Decisao: `PRINCIPAL_GRADE` passa a ser cadastro de turmas com horario das aulas. O lancamento operacional oficial e `class_schedule_items`, sempre com `schoolYearId`, `seriesClassId`, `dayOfWeek`, `startTime` e `endTime`; aulas usam `teacherSubjectId`, intervalos usam `teacherSubjectId = null`.
+- Impacto: elimina cadastro operacional de horario solto, preserva isolamento por turma/ano/escola, permite intervalo na mesma grade e centraliza validacao de sobreposicao no backend.
+- Alternativas consideradas: manter `schedules` como cadastro principal; criar tela separada de intervalos; duplicar horarios por periodo sem vinculo direto com turma.
+- Status: aceita

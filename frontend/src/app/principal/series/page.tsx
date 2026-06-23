@@ -815,7 +815,7 @@ export default function SeriesPage() {
     };
 
     return (
-        <div className="w-full space-y-8">
+        <div className="flex h-[calc(100vh-4.5rem)] min-h-0 w-full flex-col">
             <PrincipalProgramHeader
                 eyebrow="Central acadêmica"
                 title="Séries"
@@ -857,7 +857,7 @@ export default function SeriesPage() {
             {errorStatus ? <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{errorStatus}</div> : null}
             {successStatus ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{successStatus}</div> : null}
 
-            <section className="mt-6 flex h-[calc(100vh-17rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <section className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band shrink-0 border-b px-6 py-4">
                     <div className="flex flex-wrap items-center gap-3">
                         {canManage ? (

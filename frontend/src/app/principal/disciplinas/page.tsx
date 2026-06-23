@@ -846,7 +846,7 @@ export default function DisciplinasPage() {
     }
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
+        <div className="flex h-[calc(100vh-4.5rem)] min-h-0 w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <PrincipalProgramHeader
                     eyebrow="Central curricular"
@@ -886,7 +886,7 @@ export default function DisciplinasPage() {
                     }
                 />
 
-                <div className="w-full space-y-8">
+                <div className="flex min-h-0 w-full flex-1 flex-col">
                     {errorStatus ? (
                         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                             {errorStatus}
@@ -899,7 +899,7 @@ export default function DisciplinasPage() {
                         </div>
                     ) : null}
 
-                    <section className="mt-6 flex h-[calc(100vh-17rem)] min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <section className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <div className="dashboard-band shrink-0 border-b px-6 py-4">
                             <div className="flex flex-wrap items-center gap-3">
                                 {canManage ? (

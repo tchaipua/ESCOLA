@@ -237,6 +237,42 @@ Cancelamento logico continua obrigatorio.
 - desativar pessoa nao deve apagar historico de papel
 - relacoes historicas continuam preservadas
 
+## Grade horaria semanal
+
+### `class_schedule_items`
+
+Tabela oficial para cadastro de turmas com horario das aulas na tela `PRINCIPAL_GRADE`.
+
+Campos principais:
+
+- `tenantId`
+- `branchCode`
+- `schoolYearId`
+- `seriesClassId`
+- `teacherSubjectId`
+- `dayOfWeek`
+- `startTime`
+- `endTime`
+- colunas de auditoria e cancelamento logico
+
+Regras:
+
+- `seriesClassId` e obrigatorio; nao existe lancamento operacional de horario solto sem turma.
+- aula comum usa `teacherSubjectId` preenchido com o vinculo professor x disciplina.
+- intervalo tambem pertence a turma e ao dia da semana, mas usa `teacherSubjectId = null`.
+- o backend deve impedir sobreposicao de horario na mesma turma/dia.
+- quando houver professor vinculado, o backend tambem deve impedir aula sobreposta do mesmo professor em outra turma.
+- inativacao usa `canceledAt/canceledBy`; delete fisico operacional permanece proibido.
+
+### `schedules`
+
+Tabela legada/auxiliar de horarios base por periodo.
+
+Regra atual:
+
+- nao deve ser usada como lancamento operacional solto da grade.
+- a tela `PRINCIPAL_GRADE` deve operar sobre `class_schedule_items`, sempre vinculando ano letivo, turma, dia e faixa de horario.
+
 ## Excecao de purge fisico de tenant
 
 - O backend possui um fluxo master exclusivo para excluir fisicamente uma escola e todos os registros associados por `tenantId`

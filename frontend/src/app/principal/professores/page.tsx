@@ -2129,7 +2129,7 @@ export default function ProfessoresPage() {
         toDateInputValue(assignment.rateHistories?.[0]?.effectiveFrom) || todayDateInput;
 
     return (
-        <div className="flex min-h-[calc(100vh-12rem)] w-full pt-0">
+        <div className="flex h-[calc(100vh-4.5rem)] min-h-0 w-full pt-0">
             <div className="flex w-full flex-col bg-transparent">
                 <PrincipalProgramHeader
                     eyebrow="Central docente"
@@ -2184,7 +2184,7 @@ export default function ProfessoresPage() {
             )}
 
             {/* Tabela */}
-                <section className="flex h-[calc(100vh-17rem)] min-h-[560px] min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="dashboard-band shrink-0 border-b px-4 py-3">
                     <div className="flex flex-wrap items-center gap-3">
                         {canManageTeachers && (

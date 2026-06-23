@@ -90,3 +90,5 @@
 - 2026-03-17: Resumo por turma agora ordena pelas séries conforme o `sortOrder` registrado no cadastro de séries para refletir a sequência natural de aprendizado.
 - 2026-03-31: Regra oficializada de e-mail compartilhado entre escolas apenas para autenticacao (`login`, `forgot-password`, validacao de senha compartilhada e troca global de senha), mantendo isolamento normal por `tenantId` fora desses fluxos.
 - 2026-05-17: Alerta residual de `npm audit` sobre Next/PostCSS pertence ao projeto `Financeiro`; a Escola apenas acompanha por consumir telas embutidas do Financeiro e nao requer alteracao tecnica local.
+- 2026-06-23: Confirmado e documentado que o `Financeiro` e um sistema/repositorio separado em `C:\Sistemas\IA\Financeiro`, integrado com a `Escola` por API/contrato tecnico.
+- 2026-06-23: `PRINCIPAL_GRADE` refatorada como cadastro de turmas com horario das aulas; todo lancamento da grade semanal fica obrigatoriamente vinculado a `seriesClassId`, e intervalos sao gravados em `class_schedule_items` com `teacherSubjectId = null`.
