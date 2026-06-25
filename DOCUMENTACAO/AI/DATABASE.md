@@ -26,6 +26,7 @@ Campos principais:
 - `name`
 - dados proprios da filial: logotipo, documento/CNPJ, contatos e endereco completo
 - configuracao SMTP propria da filial, opcional, com os mesmos campos SMTP da empresa
+- configuracao Telegram propria da filial, opcional, com token e usuario do bot
 - configuracao de arquivos/storage propria da filial, opcional, compativel com S3/Contabo
 - parametros operacionais de estoque por filial:
   - `stockControlMode`
@@ -42,7 +43,8 @@ Regras:
 - `branchCode = 0` representa cadastro comum/visivel para todas as filiais
 - ao cadastrar uma nova escola/empresa, a primeira filial operacional e criada automaticamente
 - dados operacionais como logotipo, CNPJ, endereco e contatos devem ficar na filial, deixando a empresa/tenant com parametros gerais compartilhados
-- se a filial possuir configuracao SMTP preenchida, ela tem prioridade sobre o SMTP da empresa; se nao possuir, o envio continua usando o SMTP da empresa
+- se a filial possuir configuracao SMTP preenchida, ela tem prioridade sobre o SMTP da empresa; se nao possuir, o envio continua usando o SMTP da empresa ou variaveis de ambiente
+- se a filial possuir configuracao Telegram preenchida, ela tem prioridade sobre o Telegram da empresa; se nao possuir, o envio continua usando o Telegram da empresa ou variaveis de ambiente
 - se a filial possuir configuracao de storage preenchida, ela tem prioridade sobre o storage da empresa; se nao possuir, leitura/gravação de arquivos deve usar o storage da empresa
 - parametros de estoque da filial aceitam `NO`, `YES` ou `BY_PRODUCT`; quando estiver `BY_PRODUCT`, a regra efetiva deve ser buscada no cadastro do produto
 - se a escola possuir apenas uma filial ativa, o cadastro deve ser transparente para o usuario e gravado automaticamente na filial existente
@@ -116,6 +118,10 @@ Campos principais:
 - `cellphone1`
 - `cellphone2`
 - `email`
+- `telegramChatId`
+- `telegramUsername`
+- `telegramOptInAt`
+- `telegramOptOutAt`
 - `password`
 - `resetPasswordToken`
 - `resetPasswordExpires`
@@ -175,6 +181,7 @@ Exemplos validos:
 - foto
 - mensalidade
 - observacoes academicas
+- dados de Telegram e aceite/saida de notificacao
 - definicao de pagador (`billingPayerType` e `billingGuardianId`) para integracao com o `Financeiro`
 
 ### `guardians`
@@ -182,6 +189,7 @@ Exemplos validos:
 - vinculos com alunos
 - parentesco
 - descricao de parentesco quando necessario
+- dados de Telegram e aceite/saida de notificacao
 
 ## Sincronizacao entre pessoa e papeis
 
@@ -236,6 +244,21 @@ Cancelamento logico continua obrigatorio.
 - desativar papel nao remove a pessoa
 - desativar pessoa nao deve apagar historico de papel
 - relacoes historicas continuam preservadas
+
+## Notificacoes Telegram
+
+- `tenants` e `tenant_branches` guardam `telegramEnabled`, `telegramBotToken` e `telegramBotUsername`.
+- `people`, `students` e `guardians` guardam `telegramChatId`, `telegramUsername`, `telegramOptInAt` e `telegramOptOutAt`.
+- `lesson_events` e `lesson_assessments` possuem `notifyByTelegram`.
+- `notifications` registra `telegramSentAt`, `telegramStatus` e `telegramError`.
+- o envio so pode ocorrer para aluno/responsavel com `telegramChatId`, `telegramOptInAt` preenchido e `telegramOptOutAt` vazio.
+
+## Notificacoes por e-mail
+
+- `tenants` e `tenant_branches` guardam configuracao SMTP.
+- a resolucao usa filial primeiro, depois escola, depois variaveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_TIMEOUT`, `SMTP_AUTHENTICATE`, `SMTP_SECURE`, `SMTP_EMAIL` e `SMTP_PASSWORD`.
+- `lesson_events` e `lesson_assessments` possuem `notifyByEmail`.
+- `notifications.emailedAt` registra quando a notificacao foi enviada por e-mail.
 
 ## Grade horaria semanal
 

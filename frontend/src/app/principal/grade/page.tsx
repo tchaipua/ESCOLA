@@ -1416,13 +1416,16 @@ export default function GradeHorariaPlanejadaPage() {
                             Nenhum lançamento encontrado para esta combinação.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-7">
+                        <div className="grid grid-cols-1 gap-4">
                             {DAY_OPTIONS.map((day) => {
                                 const dayItems = scheduleItemsByDay[day.value];
                                 return (
                                     <div key={day.value} className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
-                                        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                                        <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3">
                                             <div className="flex items-center gap-2">
+                                                <span className="text-sm font-semibold uppercase tracking-wide text-slate-800">{day.label}</span>
+                                            </div>
+                                            <div className="flex items-center">
                                                 {canManage ? (
                                                     <button
                                                         type="button"
@@ -1432,11 +1435,9 @@ export default function GradeHorariaPlanejadaPage() {
                                                         Novo lançamento
                                                     </button>
                                                 ) : null}
-                                                <span className="text-sm font-semibold uppercase tracking-wide text-slate-800">{day.label}</span>
                                             </div>
-                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{dayItems.length} registro(s)</span>
                                         </div>
-                                        <div className="flex flex-col gap-3 px-4 pb-4">
+                                        <div className="flex flex-wrap gap-2 px-3 pb-3">
                                             {dayItems.length === 0 ? (
                                                 <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-3 py-4 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                                                     Sem lançamentos
@@ -1446,7 +1447,7 @@ export default function GradeHorariaPlanejadaPage() {
                                                     const isIntervalItem = !item.teacherSubject;
 
                                                     return (
-                                                    <article key={`${day.value}-${item.id}`} className={`space-y-3 rounded-2xl border p-3 shadow-sm ${isIntervalItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} ${item.canceledAt ? 'opacity-80' : ''}`}>
+                                                    <article key={`${day.value}-${item.id}`} className={`flex min-w-[120px] flex-1 flex-col space-y-2 rounded-2xl border p-2 shadow-sm ${isIntervalItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} ${item.canceledAt ? 'opacity-80' : ''}`}>
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div>
                                                                 <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">{item.startTime} às {item.endTime}</p>
@@ -1465,10 +1466,10 @@ export default function GradeHorariaPlanejadaPage() {
                                                                 </>
                                                             )}
                                                         </div>
-                                                        <div className="flex items-center justify-between gap-2">
+                                                        <div className="mt-auto flex items-center justify-between gap-1">
                                                             {renderGridItemInfoButton(item)}
                                                             {canManage ? (
-                                                                <div className="flex flex-wrap items-center gap-1">
+                                                                <div className="flex flex-nowrap items-center gap-1">
                                                                     <GridRowActionIconButton title="Editar lançamento" onClick={() => handleEdit(item)} tone="blue">
                                                                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

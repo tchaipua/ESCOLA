@@ -24,6 +24,7 @@ type RecipientRecord = {
   recipientId: string;
   name: string;
   email?: string | null;
+  telegramChatId?: string | null;
 };
 
 type SmtpConfiguration = {
@@ -38,6 +39,14 @@ type SmtpConfiguration = {
   smtpPassword?: string | null;
 };
 
+type TelegramConfiguration = {
+  id: string;
+  name: string;
+  telegramEnabled?: boolean | null;
+  telegramBotToken?: string | null;
+  telegramBotUsername?: string | null;
+};
+
 @Injectable()
 export class CommunicationsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -46,6 +55,16 @@ export class CommunicationsService {
     return String(value || "")
       .trim()
       .toUpperCase();
+  }
+
+  private getOptedInTelegramChatId(contact?: {
+    telegramChatId?: string | null;
+    telegramOptInAt?: Date | null;
+    telegramOptOutAt?: Date | null;
+  } | null) {
+    if (!contact?.telegramChatId) return null;
+    if (!contact.telegramOptInAt || contact.telegramOptOutAt) return null;
+    return contact.telegramChatId;
   }
 
   private getAllowedScope(currentUser: ICurrentUser): AllowedAudienceScope {
@@ -217,6 +236,9 @@ export class CommunicationsService {
             id: true,
             name: true,
             email: true,
+            telegramChatId: true,
+            telegramOptInAt: true,
+            telegramOptOutAt: true,
             guardians: {
               where: {
                 canceledAt: null,
@@ -230,6 +252,9 @@ export class CommunicationsService {
                     id: true,
                     name: true,
                     email: true,
+                    telegramChatId: true,
+                    telegramOptInAt: true,
+                    telegramOptOutAt: true,
                   },
                 },
               },
@@ -244,6 +269,7 @@ export class CommunicationsService {
               recipientId: student.id,
               name: student.name,
               email: student.email,
+              telegramChatId: this.getOptedInTelegramChatId(student),
             });
           }
 
@@ -255,6 +281,7 @@ export class CommunicationsService {
                 recipientId: link.guardian.id,
                 name: link.guardian.name,
                 email: link.guardian.email,
+                telegramChatId: this.getOptedInTelegramChatId(link.guardian),
               });
             });
           }
@@ -274,6 +301,9 @@ export class CommunicationsService {
           id: true,
           name: true,
           email: true,
+          telegramChatId: true,
+          telegramOptInAt: true,
+          telegramOptOutAt: true,
         },
       });
 
@@ -283,6 +313,7 @@ export class CommunicationsService {
           recipientId: guardian.id,
           name: guardian.name,
           email: guardian.email,
+          telegramChatId: this.getOptedInTelegramChatId(guardian),
         }),
       );
 
@@ -313,6 +344,9 @@ export class CommunicationsService {
             id: true,
             name: true,
             email: true,
+            telegramChatId: true,
+            telegramOptInAt: true,
+            telegramOptOutAt: true,
             guardians: {
               where: {
                 canceledAt: null,
@@ -326,6 +360,9 @@ export class CommunicationsService {
                     id: true,
                     name: true,
                     email: true,
+                    telegramChatId: true,
+                    telegramOptInAt: true,
+                    telegramOptOutAt: true,
                   },
                 },
               },
@@ -342,6 +379,7 @@ export class CommunicationsService {
           recipientId: enrollment.student.id,
           name: enrollment.student.name,
           email: enrollment.student.email,
+          telegramChatId: this.getOptedInTelegramChatId(enrollment.student),
         });
       }
 
@@ -353,6 +391,7 @@ export class CommunicationsService {
             recipientId: link.guardian.id,
             name: link.guardian.name,
             email: link.guardian.email,
+            telegramChatId: this.getOptedInTelegramChatId(link.guardian),
           });
         });
       }
@@ -368,6 +407,68 @@ export class CommunicationsService {
       config?.smtpTimeout ||
       config?.smtpEmail ||
       config?.smtpPassword
+    );
+  }
+
+  private parseEnvBoolean(value: string | undefined, defaultValue: boolean) {
+    if (value === undefined || value === null || value.trim() === "") {
+      return defaultValue;
+    }
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized === "true" ||
+      normalized === "1" ||
+      normalized === "yes" ||
+      normalized === "sim"
+    );
+  }
+
+  private parseEnvInteger(value: string | undefined) {
+    if (value === undefined || value === null || value.trim() === "") {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+
+  private buildEnvSmtpConfiguration(
+    tenant: { id: string; name: string } | null,
+  ): SmtpConfiguration | null {
+    const smtpHost = process.env.SMTP_HOST?.trim() || "";
+    const smtpPort = this.parseEnvInteger(process.env.SMTP_PORT);
+    const smtpEmail = process.env.SMTP_EMAIL?.trim() || "";
+
+    if (!tenant || !smtpHost || !smtpPort || !smtpEmail) {
+      return null;
+    }
+
+    const smtpPassword = process.env.SMTP_PASSWORD?.trim() || null;
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      smtpHost,
+      smtpPort,
+      smtpTimeout: this.parseEnvInteger(process.env.SMTP_TIMEOUT) || 60,
+      smtpAuthenticate: this.parseEnvBoolean(
+        process.env.SMTP_AUTHENTICATE,
+        !!smtpPassword,
+      ),
+      smtpSecure: this.parseEnvBoolean(
+        process.env.SMTP_SECURE,
+        smtpPort === 465,
+      ),
+      smtpEmail,
+      smtpPassword,
+    };
+  }
+
+  private hasTelegramInformation(
+    config?: Partial<TelegramConfiguration> | null,
+  ) {
+    return !!(
+      config?.telegramBotToken ||
+      config?.telegramBotUsername ||
+      config?.telegramEnabled !== undefined
     );
   }
 
@@ -430,7 +531,74 @@ export class CommunicationsService {
     }
 
     const { branches: _branches, ...tenantSmtp } = tenant;
-    return tenantSmtp;
+    if (tenantSmtp.smtpHost && tenantSmtp.smtpPort && tenantSmtp.smtpEmail) {
+      return tenantSmtp;
+    }
+
+    return this.buildEnvSmtpConfiguration(tenant) || tenantSmtp;
+  }
+
+  private async getTenantTelegramConfiguration(
+    tenantId: string,
+    branchCode?: number | null,
+  ): Promise<TelegramConfiguration | null> {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: {
+        id: tenantId,
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        telegramEnabled: true,
+        telegramBotToken: true,
+        telegramBotUsername: true,
+        branches:
+          branchCode && branchCode >= DEFAULT_BRANCH_CODE
+            ? {
+                where: { branchCode, canceledAt: null, isActive: true },
+                select: {
+                  telegramEnabled: true,
+                  telegramBotToken: true,
+                  telegramBotUsername: true,
+                },
+                take: 1,
+              }
+            : false,
+      },
+    });
+
+    if (!tenant) {
+      throw new BadRequestException("Escola não encontrada para envio.");
+    }
+
+    const branch = tenant.branches?.[0];
+    if (this.hasTelegramInformation(branch)) {
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        telegramEnabled: branch.telegramEnabled,
+        telegramBotToken: branch.telegramBotToken,
+        telegramBotUsername: branch.telegramBotUsername,
+      };
+    }
+
+    if (tenant.telegramEnabled && tenant.telegramBotToken) {
+      const { branches: _branches, ...tenantTelegram } = tenant;
+      return tenantTelegram;
+    }
+
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        telegramEnabled: true,
+        telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+        telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || null,
+      };
+    }
+
+    return null;
   }
 
   private async sendTenantEmails(params: {
@@ -486,9 +654,10 @@ export class CommunicationsService {
       return 0;
     }
 
-    await Promise.allSettled(
-      uniqueRecipients.map((email) =>
-        transport.sendMail({
+    const results = await Promise.all(
+      uniqueRecipients.map(async (email) => {
+        try {
+          await transport.sendMail({
           from: `"${tenant.name}" <${tenant.smtpEmail}>`,
           to: email,
           replyTo: tenant.smtpEmail || undefined,
@@ -503,11 +672,78 @@ export class CommunicationsService {
               </p>
             </div>
           `,
-        }),
-      ),
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }),
     );
 
-    return uniqueRecipients.length;
+    return results.filter(Boolean).length;
+  }
+
+  private async sendTenantTelegrams(params: {
+    tenantId: string;
+    branchCode?: number | null;
+    title: string;
+    message: string;
+    recipients: RecipientRecord[];
+  }) {
+    const tenant = await this.getTenantTelegramConfiguration(
+      params.tenantId,
+      params.branchCode,
+    );
+
+    if (!tenant?.telegramBotToken || tenant.telegramEnabled === false) {
+      throw new BadRequestException(
+        "Esta escola ainda não possui o Telegram configurado para envio.",
+      );
+    }
+
+    const uniqueRecipients = Array.from(
+      new Map(
+        params.recipients
+          .filter((recipient) => recipient.telegramChatId?.trim())
+          .map((recipient) => [recipient.telegramChatId!.trim(), recipient]),
+      ).values(),
+    );
+
+    if (uniqueRecipients.length === 0) {
+      return 0;
+    }
+
+    const text = [
+      params.title,
+      "",
+      params.message,
+      "",
+      `ENVIADO PELA ESCOLA ${tenant.name}.`,
+    ].join("\n");
+
+    const results = await Promise.all(
+      uniqueRecipients.map(async (recipient) => {
+        try {
+          const response = await fetch(
+            `https://api.telegram.org/bot${tenant.telegramBotToken}/sendMessage`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: recipient.telegramChatId,
+                text,
+              }),
+            },
+          );
+          const responseBody = await response.json().catch(() => null);
+          return response.ok && responseBody?.ok === true;
+        } catch {
+          return false;
+        }
+      }),
+    );
+
+    return results.filter(Boolean).length;
   }
 
   async getMyScope(currentUser: ICurrentUser) {
@@ -531,6 +767,10 @@ export class CommunicationsService {
       },
     });
     const smtpConfiguration = await this.getTenantSmtpConfiguration(
+      currentUser.tenantId,
+      currentUser.branchCode,
+    ).catch(() => null);
+    const telegramConfiguration = await this.getTenantTelegramConfiguration(
       currentUser.tenantId,
       currentUser.branchCode,
     ).catch(() => null);
@@ -570,6 +810,9 @@ export class CommunicationsService {
         !!smtpConfiguration?.smtpHost &&
         !!smtpConfiguration?.smtpPort &&
         !!smtpConfiguration?.smtpEmail,
+      telegramConfigured:
+        !!telegramConfiguration?.telegramBotToken &&
+        telegramConfiguration.telegramEnabled !== false,
       tenant: tenant
         ? {
             ...tenant,
@@ -618,9 +861,13 @@ export class CommunicationsService {
 
     const scope = this.assertRequestedGroups(currentUser, normalizedGroups);
 
-    if (!createDto.sendInternal && !createDto.sendEmail) {
+    if (
+      !createDto.sendInternal &&
+      !createDto.sendEmail &&
+      !createDto.sendTelegram
+    ) {
       throw new BadRequestException(
-        "Selecione pelo menos um canal: notificação interna ou e-mail.",
+        "Selecione pelo menos um canal: notificação interna, e-mail ou Telegram.",
       );
     }
 
@@ -671,6 +918,7 @@ export class CommunicationsService {
         message,
         sendInternal: createDto.sendInternal,
         sendEmail: createDto.sendEmail,
+        sendTelegram: createDto.sendTelegram === true,
         recipientGroups: JSON.stringify(normalizedGroups),
         createdBy: currentUser.userId,
         updatedBy: currentUser.userId,
@@ -712,6 +960,17 @@ export class CommunicationsService {
       });
     }
 
+    let telegramCount = 0;
+    if (createDto.sendTelegram) {
+      telegramCount = await this.sendTenantTelegrams({
+        tenantId: currentUser.tenantId,
+        branchCode: currentUser.branchCode,
+        title,
+        message,
+        recipients,
+      });
+    }
+
     const updatedCampaign = await this.prisma.communicationCampaign.update({
       where: {
         id: campaign.id,
@@ -720,6 +979,7 @@ export class CommunicationsService {
         totalRecipients: recipients.length,
         internalCount,
         emailCount,
+        telegramCount,
         lastSentAt: new Date(),
         updatedBy: currentUser.userId,
       },
@@ -734,6 +994,7 @@ export class CommunicationsService {
       delivery: {
         internalCount,
         emailCount,
+        telegramCount,
         totalRecipients: recipients.length,
       },
     };

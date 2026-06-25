@@ -121,7 +121,7 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
         ],
         referenceScreens: [
             'frontend/src/app/principal/professores/page.tsx',
-            'frontend/src/app/principal/grade-horaria/page.tsx',
+            'frontend/src/app/principal/grade/page.tsx',
         ],
         status: 'approved',
     },

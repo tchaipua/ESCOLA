@@ -127,7 +127,7 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `frontend/src/app/dashboard/turmas/page.tsx`
   - `frontend/src/app/dashboard/grade/page.tsx`
   - `frontend/src/app/dashboard/grade-anual/page.tsx`
-  - `frontend/src/app/dashboard/grade-horaria/page.tsx`
+  - `frontend/src/app/principal/grade/page.tsx`
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
 - Status: aprovado
 

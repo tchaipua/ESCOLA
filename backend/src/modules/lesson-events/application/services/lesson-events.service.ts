@@ -421,6 +421,52 @@ export class LessonEventsService {
     return lessonItem;
   }
 
+  private async findLessonItemForAdministrativeLaunch(
+    lessonCalendarItemId: string,
+  ): Promise<any> {
+    const lessonItem = (await this.prisma.lessonCalendarItem.findFirst({
+      where: {
+        id: lessonCalendarItemId,
+        tenantId: this.tenantId(),
+        canceledAt: null,
+        teacherSubject: {
+          is: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+            teacher: {
+              is: {
+                tenantId: this.tenantId(),
+                canceledAt: null,
+              },
+            },
+          },
+        },
+      },
+      include: {
+        teacherSubject: {
+          include: {
+            subject: true,
+            teacher: true,
+          },
+        },
+        seriesClass: {
+          include: {
+            series: true,
+            class: true,
+          },
+        },
+      },
+    })) as any;
+
+    if (!lessonItem?.teacherSubject?.teacherId) {
+      throw new NotFoundException(
+        "Aula anual não encontrada para lançamento administrativo.",
+      );
+    }
+
+    return lessonItem;
+  }
+
   private async findLessonEventForTeacher(id: string) {
     const lessonEvent = await this.prisma.lessonEvent.findFirst({
       where: {
@@ -543,6 +589,7 @@ export class LessonEventsService {
       notifyStudents: event.notifyStudents,
       notifyGuardians: event.notifyGuardians,
       notifyByEmail: event.notifyByEmail,
+      notifyByTelegram: event.notifyByTelegram,
       isStandaloneNotice: !event.lessonCalendarItemId,
       lastNotifiedAt: event.lastNotifiedAt,
       createdAt: event.createdAt,
@@ -712,6 +759,7 @@ export class LessonEventsService {
         notifyStudents: createDto.notifyStudents !== false,
         notifyGuardians: createDto.notifyGuardians !== false,
         notifyByEmail: createDto.notifyByEmail !== false,
+        notifyByTelegram: createDto.notifyByTelegram === true,
         eventDate,
         schoolYearId: target.schoolYearId,
         seriesClassId: target.seriesClassId,
@@ -748,6 +796,9 @@ export class LessonEventsService {
       ...this.mapEvent(syncedEvent),
       notificationsCreated: dispatchResult.notificationsCreated,
       emailSent: dispatchResult.emailSent,
+      emailCount: dispatchResult.emailCount,
+      telegramSent: dispatchResult.telegramSent,
+      telegramCount: dispatchResult.telegramCount,
     };
   }
 
@@ -788,6 +839,7 @@ export class LessonEventsService {
         notifyStudents: createDto.notifyStudents !== false,
         notifyGuardians: createDto.notifyGuardians !== false,
         notifyByEmail: createDto.notifyByEmail !== false,
+        notifyByTelegram: createDto.notifyByTelegram === true,
         createdBy: this.userId(),
         updatedBy: this.userId(),
       },
@@ -813,6 +865,85 @@ export class LessonEventsService {
       ...this.mapEvent(syncedEvent),
       notificationsCreated: dispatchResult.notificationsCreated,
       emailSent: dispatchResult.emailSent,
+      emailCount: dispatchResult.emailCount,
+      telegramSent: dispatchResult.telegramSent,
+      telegramCount: dispatchResult.telegramCount,
+    };
+  }
+
+  async createAdministrative(createDto: CreateLessonEventDto) {
+    const lessonItem = await this.findLessonItemForAdministrativeLaunch(
+      createDto.lessonCalendarItemId,
+    );
+
+    const eventType = this.normalizeText(createDto.eventType);
+    if (eventType !== "PROVA" && eventType !== "TRABALHO") {
+      throw new BadRequestException(
+        "Lançamento administrativo aceita somente PROVA ou TRABALHO.",
+      );
+    }
+
+    const teacherId = lessonItem.teacherSubject!.teacherId;
+    const existingEvent = await this.prisma.lessonEvent.findFirst({
+      where: {
+        tenantId: this.tenantId(),
+        lessonCalendarItemId: lessonItem.id,
+        teacherId,
+        eventType,
+        canceledAt: null,
+      },
+    });
+
+    if (existingEvent) {
+      throw new ConflictException(
+        "Já existe um evento deste tipo cadastrado para esta aula.",
+      );
+    }
+
+    const lessonEvent = await this.prisma.lessonEvent.create({
+      data: {
+        tenantId: this.tenantId(),
+        lessonCalendarItemId: lessonItem.id,
+        teacherId,
+        eventType,
+        title: this.normalizeText(
+          createDto.title || this.getDefaultTitle(eventType),
+        ),
+        description: createDto.description
+          ? this.normalizeText(createDto.description)
+          : null,
+        notifyStudents: createDto.notifyStudents !== false,
+        notifyGuardians: createDto.notifyGuardians !== false,
+        notifyByEmail: createDto.notifyByEmail !== false,
+        notifyByTelegram: createDto.notifyByTelegram === true,
+        createdBy: this.userId(),
+        updatedBy: this.userId(),
+      },
+    });
+
+    const dispatchResult =
+      await this.notificationsService.dispatchLessonEventNotifications({
+        lessonEvent,
+        lessonItem,
+        action: "CREATE",
+      });
+
+    const syncedEvent = await this.prisma.lessonEvent.update({
+      where: { id: lessonEvent.id },
+      data: {
+        lastNotifiedAt:
+          dispatchResult.notificationsCreated > 0 ? new Date() : null,
+        updatedBy: this.userId(),
+      },
+    });
+
+    return {
+      ...this.mapEvent(syncedEvent),
+      notificationsCreated: dispatchResult.notificationsCreated,
+      emailSent: dispatchResult.emailSent,
+      emailCount: dispatchResult.emailCount,
+      telegramSent: dispatchResult.telegramSent,
+      telegramCount: dispatchResult.telegramCount,
     };
   }
 
@@ -869,6 +1000,7 @@ export class LessonEventsService {
         notifyStudents: updateDto.notifyStudents,
         notifyGuardians: updateDto.notifyGuardians,
         notifyByEmail: updateDto.notifyByEmail,
+        notifyByTelegram: updateDto.notifyByTelegram,
         updatedBy: this.userId(),
       },
       include: {
@@ -916,6 +1048,9 @@ export class LessonEventsService {
       ...this.mapEvent(syncedEvent),
       notificationsCreated: dispatchResult.notificationsCreated,
       emailSent: dispatchResult.emailSent,
+      emailCount: dispatchResult.emailCount,
+      telegramSent: dispatchResult.telegramSent,
+      telegramCount: dispatchResult.telegramCount,
     };
   }
 

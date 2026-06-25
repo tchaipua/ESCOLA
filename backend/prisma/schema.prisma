@@ -29,6 +29,9 @@ model Tenant {
   smtpAuthType                   String?
   smtpEmail                      String?
   smtpPassword                   String?
+  telegramEnabled                Boolean   @default(false)
+  telegramBotToken               String?
+  telegramBotUsername            String?
   storageProviderAccessKeyId     String?
   storageProviderSecretAccessKey String?
   storageBucketName              String?
@@ -120,6 +123,9 @@ model TenantBranch {
   smtpAuthType                   String?
   smtpEmail                      String?
   smtpPassword                   String?
+  telegramEnabled                Boolean?
+  telegramBotToken               String?
+  telegramBotUsername            String?
   storageProviderAccessKeyId     String?
   storageProviderSecretAccessKey String?
   storageBucketName              String?
@@ -342,6 +348,10 @@ model Person {
   cellphone1           String?
   cellphone2           String?
   email                String?
+  telegramChatId       String?
+  telegramUsername     String?
+  telegramOptInAt      DateTime?
+  telegramOptOutAt     DateTime?
   password             String?
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
@@ -493,6 +503,10 @@ model Guardian {
   cellphone1           String?
   cellphone2           String?
   email                String?
+  telegramChatId       String?
+  telegramUsername     String?
+  telegramOptInAt      DateTime?
+  telegramOptOutAt     DateTime?
   accessProfile        String?
   permissions          String?
   // Segurança e Recuperação
@@ -550,6 +564,10 @@ model Student {
   cellphone1           String?
   cellphone2           String?
   email                String?
+  telegramChatId       String?
+  telegramUsername     String?
+  telegramOptInAt      DateTime?
+  telegramOptOutAt     DateTime?
   accessProfile        String?
   permissions          String?
   monthlyFee           Float?
@@ -958,6 +976,7 @@ model LessonEvent {
   notifyStudents       Boolean   @default(true)
   notifyGuardians      Boolean   @default(true)
   notifyByEmail        Boolean   @default(true)
+  notifyByTelegram     Boolean   @default(false)
   lastNotifiedAt       DateTime?
 
   createdAt  DateTime  @default(now())
@@ -994,6 +1013,7 @@ model LessonAssessment {
   notifyStudents       Boolean   @default(true)
   notifyGuardians      Boolean   @default(true)
   notifyByEmail        Boolean   @default(true)
+  notifyByTelegram     Boolean   @default(false)
   lastNotifiedAt       DateTime?
 
   createdAt  DateTime  @default(now())
@@ -1089,6 +1109,9 @@ model Notification {
   readAt        DateTime?
   readBy        String?
   emailedAt     DateTime?
+  telegramSentAt DateTime?
+  telegramStatus String?
+  telegramError  String?
   metadata      String?
 
   createdAt  DateTime  @default(now())
@@ -1118,10 +1141,12 @@ model CommunicationCampaign {
   message         String
   sendInternal    Boolean   @default(true)
   sendEmail       Boolean   @default(false)
+  sendTelegram    Boolean   @default(false)
   recipientGroups String
   totalRecipients Int       @default(0)
   internalCount   Int       @default(0)
   emailCount      Int       @default(0)
+  telegramCount   Int       @default(0)
   lastSentAt      DateTime?
 
   createdAt  DateTime  @default(now())

@@ -101,3 +101,175 @@
  GET /principal/grade 200 in 240ms (compile: 172ms, render: 68ms)
 ✓ Compiled in 52ms
  GET /principal/grade 200 in 254ms (compile: 187ms, render: 68ms)
+ GET / 200 in 75ms (compile: 20ms, render: 55ms)
+ GET / 200 in 29ms (compile: 2ms, render: 26ms)
+ GET /principal 200 in 133ms (compile: 106ms, render: 27ms)
+ GET /principal/financeiro 200 in 128ms (compile: 114ms, render: 14ms)
+ GET /principal 200 in 13ms (compile: 3ms, render: 11ms)
+ GET /principal/turmas 200 in 290ms (compile: 269ms, render: 20ms)
+ GET /principal/grade 200 in 175ms (compile: 158ms, render: 17ms)
+ GET /principal/turmas 200 in 125ms (compile: 115ms, render: 10ms)
+ GET /principal/grade 200 in 120ms (compile: 112ms, render: 9ms)
+✓ Compiled in 72ms
+ GET /principal/grade 200 in 291ms (compile: 189ms, render: 102ms)
+✓ Compiled in 53ms
+ GET /principal/grade 200 in 313ms (compile: 208ms, render: 105ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 290ms (compile: 196ms, render: 94ms)
+✓ Compiled in 71ms
+ GET /principal/grade 200 in 276ms (compile: 187ms, render: 89ms)
+✓ Compiled in 94ms
+ GET /principal/grade 200 in 306ms (compile: 210ms, render: 96ms)
+✓ Compiled in 99ms
+ GET /principal/grade 200 in 266ms (compile: 179ms, render: 87ms)
+✓ Compiled in 83ms
+ GET /principal/grade 200 in 256ms (compile: 171ms, render: 85ms)
+ GET /principal/grade-horaria 200 in 201ms (compile: 183ms, render: 18ms)
+ GET /principal/grade 200 in 121ms (compile: 112ms, render: 9ms)
+ GET /principal/grade-horaria 200 in 140ms (compile: 131ms, render: 9ms)
+ GET /principal/grade 200 in 126ms (compile: 117ms, render: 9ms)
+ GET /principal/grade-horaria 200 in 129ms (compile: 118ms, render: 11ms)
+ GET /principal/grade-anual 200 in 857ms (compile: 842ms, render: 15ms)
+ GET /principal/grade 200 in 122ms (compile: 113ms, render: 9ms)
+ GET /principal/grade-horaria 200 in 121ms (compile: 113ms, render: 8ms)
+ GET /principal/grade 200 in 118ms (compile: 109ms, render: 9ms)
+✓ Compiled in 54ms
+ GET /principal/grade 200 in 421ms (compile: 212ms, render: 209ms)
+ GET /principal/grade 200 in 338ms (compile: 176ms, render: 162ms)
+ GET /principal/grade 200 in 292ms (compile: 135ms, render: 157ms)
+ GET /principal/grade 200 in 315ms (compile: 134ms, render: 181ms)
+ GET /principal/grade 200 in 332ms (compile: 160ms, render: 172ms)
+ GET /principal/grade 200 in 304ms (compile: 142ms, render: 163ms)
+ GET /principal/grade 200 in 284ms (compile: 131ms, render: 153ms)
+ GET /principal/grade 200 in 280ms (compile: 131ms, render: 149ms)
+ GET /principal/grade 200 in 277ms (compile: 128ms, render: 149ms)
+ GET /principal/grade 200 in 311ms (compile: 126ms, render: 185ms)
+ GET /principal/grade 200 in 325ms (compile: 160ms, render: 165ms)
+ GET /principal/grade 200 in 311ms (compile: 142ms, render: 170ms)
+ GET /principal/grade 200 in 317ms (compile: 149ms, render: 168ms)
+ GET /principal/grade 200 in 470ms (compile: 146ms, render: 324ms)
+ GET /principal/grade 200 in 459ms (compile: 145ms, render: 314ms)
+ GET /principal/grade 200 in 300ms (compile: 141ms, render: 159ms)
+ GET /principal/grade 200 in 289ms (compile: 133ms, render: 156ms)
+ GET /principal/grade 200 in 434ms (compile: 134ms, render: 300ms)
+ GET /principal/grade 200 in 293ms (compile: 134ms, render: 159ms)
+ GET /principal/grade 200 in 308ms (compile: 137ms, render: 171ms)
+ GET /principal/grade 200 in 465ms (compile: 146ms, render: 319ms)
+ GET /principal/grade 200 in 309ms (compile: 142ms, render: 166ms)
+ GET /principal/grade 200 in 313ms (compile: 145ms, render: 169ms)
+ GET /principal/grade 200 in 313ms (compile: 147ms, render: 166ms)
+ GET /principal/grade 200 in 320ms (compile: 143ms, render: 177ms)
+ GET /principal/grade 200 in 313ms (compile: 153ms, render: 160ms)
+ GET /principal/grade 200 in 298ms (compile: 138ms, render: 160ms)
+ GET /principal/grade 200 in 301ms (compile: 140ms, render: 161ms)
+ GET /principal/grade 200 in 299ms (compile: 141ms, render: 158ms)
+ GET /principal/grade 200 in 438ms (compile: 136ms, render: 302ms)
+ GET /principal/grade 200 in 293ms (compile: 139ms, render: 154ms)
+ GET /principal/grade 200 in 331ms (compile: 131ms, render: 200ms)
+ GET /principal/grade 200 in 355ms (compile: 176ms, render: 178ms)
+ GET /principal/grade 200 in 331ms (compile: 155ms, render: 177ms)
+ GET /principal/grade 200 in 475ms (compile: 153ms, render: 322ms)
+ GET /principal/grade 200 in 311ms (compile: 140ms, render: 172ms)
+ GET /principal/grade 200 in 322ms (compile: 147ms, render: 175ms)
+ GET /principal/grade 200 in 322ms (compile: 152ms, render: 170ms)
+ GET /principal/grade 200 in 319ms (compile: 149ms, render: 169ms)
+ GET /principal/grade 200 in 319ms (compile: 147ms, render: 172ms)
+ GET /principal/grade 200 in 319ms (compile: 148ms, render: 171ms)
+ GET /principal/grade 200 in 318ms (compile: 147ms, render: 171ms)
+ GET /principal/grade 200 in 327ms (compile: 149ms, render: 178ms)
+ GET /principal/grade 200 in 321ms (compile: 157ms, render: 165ms)
+ GET /principal/grade 200 in 500ms (compile: 142ms, render: 358ms)
+ GET /principal/grade 200 in 349ms (compile: 156ms, render: 193ms)
+ GET /principal/grade 200 in 359ms (compile: 166ms, render: 192ms)
+ GET /principal/grade 200 in 353ms (compile: 168ms, render: 184ms)
+ GET /principal/grade 200 in 334ms (compile: 163ms, render: 171ms)
+ GET /principal/grade 200 in 324ms (compile: 148ms, render: 176ms)
+ GET /principal/grade 200 in 340ms (compile: 150ms, render: 190ms)
+ GET /principal/grade 200 in 559ms (compile: 165ms, render: 394ms)
+ GET /principal/grade 200 in 384ms (compile: 168ms, render: 216ms)
+ GET /principal/grade 200 in 345ms (compile: 191ms, render: 153ms)
+ GET /principal/grade 200 in 278ms (compile: 130ms, render: 148ms)
+ GET /principal/grade 200 in 283ms (compile: 126ms, render: 158ms)
+ GET /principal/grade 200 in 299ms (compile: 135ms, render: 163ms)
+ GET /principal/grade 200 in 296ms (compile: 142ms, render: 155ms)
+ GET /principal/grade 200 in 282ms (compile: 132ms, render: 150ms)
+ GET /principal/grade 200 in 276ms (compile: 126ms, render: 149ms)
+ GET /principal/grade 200 in 281ms (compile: 127ms, render: 154ms)
+ GET /principal/grade 200 in 275ms (compile: 132ms, render: 143ms)
+ GET /principal/grade 200 in 268ms (compile: 123ms, render: 146ms)
+ GET /principal/grade 200 in 278ms (compile: 125ms, render: 152ms)
+ GET /principal/grade 200 in 279ms (compile: 131ms, render: 148ms)
+ GET /principal/grade 200 in 283ms (compile: 128ms, render: 155ms)
+ GET /principal/grade 200 in 305ms (compile: 136ms, render: 170ms)
+ GET /principal/grade 200 in 298ms (compile: 149ms, render: 148ms)
+ GET /principal/grade 200 in 280ms (compile: 126ms, render: 153ms)
+ GET /principal/grade 200 in 290ms (compile: 130ms, render: 160ms)
+ GET /principal/grade 200 in 303ms (compile: 138ms, render: 165ms)
+ GET /principal/grade 200 in 308ms (compile: 144ms, render: 164ms)
+ GET /principal/grade 200 in 306ms (compile: 144ms, render: 162ms)
+ GET /principal/grade 200 in 310ms (compile: 141ms, render: 170ms)
+ GET /principal/grade 200 in 305ms (compile: 146ms, render: 159ms)
+ GET /principal/grade 200 in 306ms (compile: 136ms, render: 170ms)
+ GET /principal/grade 200 in 317ms (compile: 149ms, render: 168ms)
+ GET /principal/grade 200 in 316ms (compile: 148ms, render: 168ms)
+ GET /principal/grade 200 in 317ms (compile: 146ms, render: 171ms)
+ GET /principal/grade 200 in 311ms (compile: 146ms, render: 165ms)
+ GET /principal/grade 200 in 306ms (compile: 142ms, render: 164ms)
+ GET /principal/grade 200 in 155ms (compile: 144ms, render: 11ms)
+ GET /principal/grade 200 in 243ms (compile: 159ms, render: 83ms)
+ GET /principal/grade-anual 200 in 497ms (compile: 445ms, render: 51ms)
+ GET /principal/grade-anual 200 in 159ms (compile: 148ms, render: 11ms)
+ GET /principal/grade 200 in 141ms (compile: 130ms, render: 10ms)
+ GET /principal/grade-anual 200 in 163ms (compile: 152ms, render: 11ms)
+ GET /principal/grade-anual 200 in 242ms (compile: 154ms, render: 89ms)
+ GET / 200 in 24ms (compile: 14ms, render: 9ms)
+ GET / 200 in 28ms (compile: 2ms, render: 26ms)
+ GET /principal 200 in 78ms (compile: 61ms, render: 17ms)
+ GET /principal/grade-anual 200 in 145ms (compile: 135ms, render: 10ms)
+ GET /principal/grade 200 in 150ms (compile: 139ms, render: 11ms)
+✓ Compiled in 83ms
+✓ Compiled in 51ms
+✓ Compiled in 47ms
+✓ Compiled in 131ms
+ GET /principal/grade-anual 200 in 293ms (compile: 197ms, render: 96ms)
+✓ Compiled in 53ms
+✓ Compiled in 43ms
+✓ Compiled in 49ms
+✓ Compiled in 49ms
+✓ Compiled in 86ms
+✓ Compiled in 48ms
+✓ Compiled in 82ms
+ GET /principal/grade-anual 200 in 263ms (compile: 192ms, render: 71ms)
+ GET /principal/notificacoes 200 in 68ms (compile: 58ms, render: 10ms)
+ GET /principal/grade-anual 200 in 133ms (compile: 123ms, render: 9ms)
+✓ Compiled in 49ms
+✓ Compiled in 45ms
+✓ Compiled in 52ms
+✓ Compiled in 48ms
+✓ Compiled in 45ms
+✓ Compiled in 85ms
+ GET /principal/grade-anual 200 in 282ms (compile: 210ms, render: 72ms)
+✓ Compiled in 104ms
+ GET /principal/grade-anual 200 in 298ms (compile: 213ms, render: 84ms)
+✓ Compiled in 52ms
+ GET /principal/grade-anual 200 in 289ms (compile: 214ms, render: 75ms)
+✓ Compiled in 52ms
+✓ Compiled in 45ms
+ GET /principal/grade-anual 200 in 260ms (compile: 189ms, render: 71ms)
+✓ Compiled in 55ms
+✓ Compiled in 50ms
+✓ Compiled in 55ms
+ GET /principal/grade-anual 200 in 268ms (compile: 190ms, render: 78ms)
+✓ Compiled in 53ms
+✓ Compiled in 80ms
+ GET /principal/grade-anual 200 in 259ms (compile: 188ms, render: 71ms)
+✓ Compiled in 66ms
+✓ Compiled in 50ms
+ GET /principal/grade-anual 200 in 286ms (compile: 210ms, render: 77ms)
+✓ Compiled in 49ms
+ GET /principal/grade-anual 200 in 304ms (compile: 228ms, render: 76ms)
+✓ Compiled in 52ms
+✓ Compiled in 56ms
+ GET /principal/grade-anual 200 in 276ms (compile: 200ms, render: 76ms)
+✓ Compiled in 60ms
+ GET /principal/grade-anual 200 in 286ms (compile: 209ms, render: 77ms)

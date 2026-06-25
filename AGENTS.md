@@ -28,6 +28,8 @@ Toda a documentacao-base do projeto fica em `DOCUMENTACAO/AI`.
 - Texto em uppercase, exceto senha.
 - Login validado via `VIEWUSUARIOS`.
 - Isolamento total entre escolas.
+- Este projeto trabalha junto com outro sistema separado em `C:\Sistemas\IA\financeiro`; nao tratar o financeiro apenas como pasta interna da Escola.
+- Sempre que a demanda envolver regra operacional financeira, conferir tambem a documentacao/codigo do sistema `C:\Sistemas\IA\financeiro`.
 
 ## Sequencia recomendada de agentes
 

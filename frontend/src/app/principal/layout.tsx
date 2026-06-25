@@ -974,16 +974,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/principal/grade-horaria',
-            label: 'Grade horária',
-            allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_CLASS_SCHEDULES', 'VIEW_SCHOOL_YEARS', 'VIEW_SERIES_CLASSES', 'VIEW_SUBJECTS', 'VIEW_SCHEDULES']),
-            icon: (
-                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9h6m-6 4h6m-6-8h6" />
-                </svg>
-            ),
-        },
-        {
             href: '/principal/grade-anual',
             label: 'Grade anual',
             allowWhen: hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_LESSON_CALENDARS', 'VIEW_SCHOOL_YEARS', 'VIEW_SERIES_CLASSES', 'VIEW_CLASS_SCHEDULES']),
@@ -1014,7 +1004,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showSeriesHeroHeader = pathname === '/principal/series';
     const showClassesHeroHeader = pathname === '/principal/turmas';
     const showGradeHeroHeader = pathname === '/principal/grade';
-    const showWeeklyGradeHeroHeader = pathname === '/principal/grade-horaria';
     const showAnnualGradeHeroHeader = pathname === '/principal/grade-anual';
     const showStudentsHeroHeader = pathname === '/principal/alunos';
     const showTeachersHeroHeader = pathname === '/principal/professores';
@@ -1030,7 +1019,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         showSeriesHeroHeader ||
         showClassesHeroHeader ||
         showGradeHeroHeader ||
-        showWeeklyGradeHeroHeader ||
         showAnnualGradeHeroHeader ||
         showStudentsHeroHeader ||
         showTeachersHeroHeader ||
@@ -1136,7 +1124,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const notificationsButtonClassName = hasAllNotificationsRead
         ? 'relative p-2 text-emerald-600 hover:text-emerald-700 transition-colors'
         : 'relative p-2 text-slate-400 hover:text-blue-600 transition-colors';
-    const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showGradeHeroHeader || showWeeklyGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader
+    const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
     const userMenuTrigger = (
@@ -1288,7 +1276,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
 
                     <div className="flex items-center gap-4">
-                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? (
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? (
                             <button
                                 type="button"
                                 onClick={() => router.push('/principal/notificacoes')}
@@ -1307,8 +1295,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </button>
                         ) : null}
 
-                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
-                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showWeeklyGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? userMenuTrigger : null}
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? <div className="h-6 w-px bg-slate-200"></div> : null}
+                        {!showFinanceiroModuleNav && !showPrincipalHeroHeader && !showNotificationsHeroHeader && !showPeopleHeroHeader && !showCommunicationsHeroHeader && !showGuardiansHeroHeader && !showSeriesHeroHeader && !showClassesHeroHeader && !showGradeHeroHeader && !showAnnualGradeHeroHeader && !showStudentsHeroHeader && !showTeachersHeroHeader && !showMonthlyFeesHeroHeader && !showSubjectsHeroHeader ? userMenuTrigger : null}
                     </div>
                 </header>
 
@@ -1498,23 +1486,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </div>
                     ) : null}
                     {showGradeHeroHeader ? (
-                        <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
-                            <div className="pointer-events-auto flex flex-col items-end gap-3">
-                                {userMenuTrigger}
-                                <button
-                                    type="button"
-                                    onClick={() => router.back()}
-                                    className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
-                                >
-                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                    </svg>
-                                    <span>Voltar</span>
-                                </button>
-                            </div>
-                        </div>
-                    ) : null}
-                    {showWeeklyGradeHeroHeader ? (
                         <div className={PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS}>
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
                                 {userMenuTrigger}

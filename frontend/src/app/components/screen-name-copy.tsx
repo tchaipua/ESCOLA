@@ -102,7 +102,6 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_DASHBOARD_RESUMO', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo', 'page.tsx') },
 
   { screenId: 'PRINCIPAL_CALENDARIO_AULAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'calendario-aulas', 'page.tsx') },
-  { screenId: 'PRINCIPAL_GRADE_HORARIA', match: 'prefix', physicalPath: escolaAppPath('principal', 'grade-horaria', 'page.tsx') },
   { screenId: 'PRINCIPAL_GRADE_ANUAL', match: 'prefix', physicalPath: escolaAppPath('principal', 'grade-anual', 'page.tsx') },
   { screenId: 'PRINCIPAL_HISTORICO_NOTAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'historico-notas', 'page.tsx') },
   { screenId: 'PRINCIPAL_LANCAR_NOTAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'lancar-notas', 'page.tsx') },

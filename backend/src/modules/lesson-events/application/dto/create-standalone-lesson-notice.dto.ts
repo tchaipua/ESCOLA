@@ -42,4 +42,8 @@ export class CreateStandaloneLessonNoticeDto {
   @IsOptional()
   @IsBoolean()
   notifyByEmail?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyByTelegram?: boolean;
 }

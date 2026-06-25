@@ -69,6 +69,11 @@ export class CreateTenantDto {
   @IsOptional() @IsString() smtpEmail?: string;
   @IsOptional() @IsString() smtpPassword?: string;
 
+  // (TELEGRAM) BOT DE MENSAGERIA
+  @IsOptional() @IsBoolean() telegramEnabled?: boolean;
+  @IsOptional() @IsString() telegramBotToken?: string;
+  @IsOptional() @IsString() telegramBotUsername?: string;
+
   // (STORAGE) ARQUIVOS / S3 COMPATIVEL
   @IsOptional() @IsString() storageProviderAccessKeyId?: string;
   @IsOptional() @IsString() storageProviderSecretAccessKey?: string;

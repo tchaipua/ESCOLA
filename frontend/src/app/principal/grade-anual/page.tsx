@@ -128,6 +128,27 @@ type ExpandedDayModalState = {
     standaloneEvents: AnnualStandaloneEvent[];
 };
 
+type ExpandedWeekdayModalState = {
+    weekdayLabel: string;
+    dates: string[];
+    lessonItems: AnnualCalendarLessonItem[];
+    standaloneEvents: AnnualStandaloneEvent[];
+};
+
+type AdministrativeEventModalState = {
+    lessonItem: AnnualCalendarLessonItem;
+    eventType: 'PROVA' | 'TRABALHO';
+};
+
+type AdministrativeEventFormState = {
+    title: string;
+    description: string;
+    notifyStudents: boolean;
+    notifyGuardians: boolean;
+    notifyByEmail: boolean;
+    notifyByTelegram: boolean;
+};
+
 type WeeklySourceItem = {
     id: string;
     dayOfWeek: string;
@@ -339,7 +360,15 @@ function getMonthGridDays(year: string, month: string) {
     return days;
 }
 
-const WEEKDAY_LABELS = ['SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.', 'DOM.'];
+const WEEKDAY_LABELS = ['SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO', 'DOMINGO'];
+const DEFAULT_ADMINISTRATIVE_EVENT_FORM: AdministrativeEventFormState = {
+    title: '',
+    description: '',
+    notifyStudents: true,
+    notifyGuardians: true,
+    notifyByEmail: true,
+    notifyByTelegram: false,
+};
 
 type GradeAnualAuditParams = {
     tenantId: string | null;
@@ -447,6 +476,10 @@ export default function GradeAnualPage() {
     const [lessonEditTeacherSubjectId, setLessonEditTeacherSubjectId] = useState('');
     const [isSavingLessonEdit, setIsSavingLessonEdit] = useState(false);
     const [lessonEditError, setLessonEditError] = useState<string | null>(null);
+    const [administrativeEventModal, setAdministrativeEventModal] = useState<AdministrativeEventModalState | null>(null);
+    const [administrativeEventForm, setAdministrativeEventForm] = useState<AdministrativeEventFormState>(DEFAULT_ADMINISTRATIVE_EVENT_FORM);
+    const [administrativeEventError, setAdministrativeEventError] = useState<string | null>(null);
+    const [isSavingAdministrativeEvent, setIsSavingAdministrativeEvent] = useState(false);
     const [formData, setFormData] = useState<FormState>({ ...EMPTY_FORM, periods: buildDefaultPeriods() });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [weeklySource, setWeeklySource] = useState<WeeklySourceResponse | null>(null);
@@ -459,6 +492,7 @@ export default function GradeAnualPage() {
     const [dateShortcut, setDateShortcut] = useState<'TODAY' | 'YESTERDAY' | 'TOMORROW' | 'WEEK' | null>(null);
     const [weekRange, setWeekRange] = useState<{ start: string; end: string } | null>(null);
     const [expandedDayModal, setExpandedDayModal] = useState<ExpandedDayModalState | null>(null);
+    const [expandedWeekdayModal, setExpandedWeekdayModal] = useState<ExpandedWeekdayModalState | null>(null);
     const [expandedDaySeriesClassId, setExpandedDaySeriesClassId] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -468,7 +502,7 @@ export default function GradeAnualPage() {
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
-    const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [statusFilter] = useState<GridStatusFilterValue>('ACTIVE');
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [exportFormat, setExportFormat] = useState<GridExportFormat>('excel');
     const [exportColumns, setExportColumns] = useState<Record<AnnualExportColumnKey, boolean>>(buildDefaultExportColumns(GRID_EXPORT_COLUMNS));
@@ -479,6 +513,7 @@ export default function GradeAnualPage() {
     const lastModalSelectionSyncRef = useRef<string | null>(null);
     const GRADE_ANNUAL_MODAL_LABEL = 'PRINCIPAL_GRADE_ANUAL_MODAL';
     const LESSON_EDIT_MODAL_LABEL = 'PRINCIPAL_GRADE_ANUAL_MODAL_ALTERAR_AULA';
+    const ADMINISTRATIVE_EVENT_MODAL_LABEL = 'PRINCIPAL_GRADE_ANUAL_MODAL_LANCAR_PROVA_TRABALHO';
 
     const canView = hasAllDashboardPermissions(currentRole, currentPermissions, [
         'VIEW_LESSON_CALENDARS',
@@ -489,10 +524,12 @@ export default function GradeAnualPage() {
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_LESSON_CALENDARS');
     const hideCardFooter = currentRole === 'ADMIN' || currentRole === 'PROFESSOR';
     const expandedDaySeriesClassOptions = useMemo(() => {
-        if (!expandedDayModal) return [];
+        const lessonItems = expandedDayModal?.lessonItems || expandedWeekdayModal?.lessonItems || [];
+        const standaloneEvents = expandedDayModal?.standaloneEvents || expandedWeekdayModal?.standaloneEvents || [];
+        if (!lessonItems.length && !standaloneEvents.length) return [];
 
         const seen = new Set<string>();
-        return [...expandedDayModal.lessonItems, ...expandedDayModal.standaloneEvents]
+        return [...lessonItems, ...standaloneEvents]
             .map((item) => ({ id: item.seriesClassId || '', label: item.seriesClassLabel || 'SEM TURMA' }))
             .filter((item) => item.id)
             .filter((item) => {
@@ -500,7 +537,7 @@ export default function GradeAnualPage() {
                 seen.add(item.id);
                 return true;
             });
-    }, [expandedDayModal]);
+    }, [expandedDayModal, expandedWeekdayModal]);
 
     const expandedDayLessonItems = useMemo(() => {
         if (!expandedDayModal) return [];
@@ -513,6 +550,44 @@ export default function GradeAnualPage() {
         if (!expandedDaySeriesClassId) return expandedDayModal.standaloneEvents;
         return expandedDayModal.standaloneEvents.filter((item) => item.seriesClassId === expandedDaySeriesClassId);
     }, [expandedDayModal, expandedDaySeriesClassId]);
+
+    const expandedWeekdayLessonItemsByDate = useMemo(() => {
+        const map = new Map<string, AnnualCalendarLessonItem[]>();
+        expandedWeekdayModal?.lessonItems
+            .filter((item) => !expandedDaySeriesClassId || item.seriesClassId === expandedDaySeriesClassId)
+            .forEach((item) => {
+                const current = map.get(item.date) || [];
+                current.push(item);
+                map.set(item.date, current);
+            });
+        map.forEach((items, dateKey) => {
+            items.sort((left, right) => `${left.startTime}`.localeCompare(`${right.startTime}`));
+            map.set(dateKey, items);
+        });
+        return map;
+    }, [expandedDaySeriesClassId, expandedWeekdayModal]);
+
+    const expandedWeekdayStandaloneEventsByDate = useMemo(() => {
+        const map = new Map<string, AnnualStandaloneEvent[]>();
+        expandedWeekdayModal?.standaloneEvents
+            .filter((event) => !expandedDaySeriesClassId || event.seriesClassId === expandedDaySeriesClassId)
+            .forEach((event) => {
+                const current = map.get(event.date) || [];
+                current.push(event);
+                map.set(event.date, current);
+            });
+        return map;
+    }, [expandedDaySeriesClassId, expandedWeekdayModal]);
+
+    const expandedWeekdayLessonItemsCount = useMemo(
+        () => Array.from(expandedWeekdayLessonItemsByDate.values()).reduce((total, items) => total + items.length, 0),
+        [expandedWeekdayLessonItemsByDate],
+    );
+
+    const expandedWeekdayStandaloneEventsCount = useMemo(
+        () => Array.from(expandedWeekdayStandaloneEventsByDate.values()).reduce((total, events) => total + events.length, 0),
+        [expandedWeekdayStandaloneEventsByDate],
+    );
 
     const filteredRecords = useMemo(() => {
         if (!selectedCalendarSeriesClassId) {
@@ -1141,6 +1216,7 @@ export default function GradeAnualPage() {
     };
 
     const openExpandedDayModal = (date: string, lessonItems: AnnualCalendarLessonItem[], standaloneEvents: AnnualStandaloneEvent[]) => {
+        setExpandedWeekdayModal(null);
         setExpandedDaySeriesClassId('');
         setExpandedDayModal({
             date,
@@ -1149,8 +1225,44 @@ export default function GradeAnualPage() {
         });
     };
 
+    const handleOpenDay = (date: string, lessonItems: AnnualCalendarLessonItem[], standaloneEvents: AnnualStandaloneEvent[]) => {
+        setDateShortcut(null);
+        setWeekRange(null);
+        setSelectedDate(date);
+        openExpandedDayModal(date, lessonItems, standaloneEvents);
+    };
+
+    const handleOpenWeekday = (weekdayIndex: number, weekdayLabel: string) => {
+        const dates = visibleCalendarDays.filter((date) => {
+            const [year, month, day] = date.split('-').map((part) => Number.parseInt(part, 10));
+            const parsedDate = new Date(year, month - 1, day);
+            return ((parsedDate.getDay() + 6) % 7) === weekdayIndex;
+        });
+        const dateSet = new Set(dates);
+        const lessonItems = filteredLessonItems
+            .filter((item) => dateSet.has(item.date))
+            .sort((left, right) => `${left.date}-${left.startTime}`.localeCompare(`${right.date}-${right.startTime}`));
+        const standaloneEvents = filteredStandaloneEvents
+            .filter((event) => dateSet.has(event.date))
+            .sort((left, right) => `${left.date}-${left.startTime || ''}`.localeCompare(`${right.date}-${right.startTime || ''}`));
+
+        setExpandedDaySeriesClassId('');
+        setExpandedDayModal(null);
+        setExpandedWeekdayModal({
+            weekdayLabel,
+            dates,
+            lessonItems,
+            standaloneEvents,
+        });
+    };
+
     const closeExpandedDayModal = () => {
         setExpandedDayModal(null);
+        setExpandedDaySeriesClassId('');
+    };
+
+    const closeExpandedWeekdayModal = () => {
+        setExpandedWeekdayModal(null);
         setExpandedDaySeriesClassId('');
     };
 
@@ -1262,6 +1374,22 @@ export default function GradeAnualPage() {
         setLessonEditTeacherSubjectId(lesson.teacherSubjectId || '');
     };
 
+    const openAdministrativeEventModal = (lesson: AnnualCalendarLessonItem, eventType: 'PROVA' | 'TRABALHO') => {
+        setAdministrativeEventError(null);
+        setAdministrativeEventForm({
+            ...DEFAULT_ADMINISTRATIVE_EVENT_FORM,
+            title: eventType === 'PROVA' ? 'PROVA AGENDADA' : 'TRABALHO AGENDADO',
+        });
+        setAdministrativeEventModal({ lessonItem: lesson, eventType });
+    };
+
+    const closeAdministrativeEventModal = (force = false) => {
+        if (!force && isSavingAdministrativeEvent) return;
+        setAdministrativeEventModal(null);
+        setAdministrativeEventError(null);
+        setAdministrativeEventForm(DEFAULT_ADMINISTRATIVE_EVENT_FORM);
+    };
+
     const closeLessonEdit = () => {
         if (isSavingLessonEdit) return;
         setEditingLesson(null);
@@ -1297,6 +1425,100 @@ export default function GradeAnualPage() {
         } finally {
             setIsSavingLessonEdit(false);
         }
+    };
+
+    const saveAdministrativeEvent = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!administrativeEventModal?.lessonItem.id) return;
+
+        try {
+            setIsSavingAdministrativeEvent(true);
+            setAdministrativeEventError(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado, faça login novamente.');
+
+            const eventUrl = `${API_BASE_URL}/lesson-events/admin`;
+            const response = await fetch(eventUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    lessonCalendarItemId: administrativeEventModal.lessonItem.id,
+                    eventType: administrativeEventModal.eventType,
+                    title: administrativeEventForm.title,
+                    description: administrativeEventForm.description,
+                    notifyStudents: administrativeEventForm.notifyStudents,
+                    notifyGuardians: administrativeEventForm.notifyGuardians,
+                    notifyByEmail: administrativeEventForm.notifyByEmail,
+                    notifyByTelegram: administrativeEventForm.notifyByTelegram,
+                }),
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, eventUrl, 'Não foi possível lançar prova/trabalho nesta aula.'));
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível lançar prova/trabalho nesta aula.'));
+
+            setSuccessStatus(`${administrativeEventModal.eventType} lançad${administrativeEventModal.eventType === 'PROVA' ? 'a' : 'o'} com sucesso.`);
+            closeAdministrativeEventModal(true);
+            await loadCalendarEvents();
+        } catch (error) {
+            setAdministrativeEventError(error instanceof Error ? error.message : 'Não foi possível lançar prova/trabalho nesta aula.');
+        } finally {
+            setIsSavingAdministrativeEvent(false);
+        }
+    };
+
+    const renderWeekdayAdministrativeEventButtons = (lesson: AnnualCalendarLessonItem, isIntervalItem: boolean) => {
+        if (!canManage || isIntervalItem) return null;
+        const hasProva = lesson.events.some((event) => event.eventType === 'PROVA');
+        const hasTrabalho = lesson.events.some((event) => event.eventType === 'TRABALHO');
+
+        return (
+            <div className="flex w-full flex-col gap-1">
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        openAdministrativeEventModal(lesson, 'TRABALHO');
+                    }}
+                    disabled={hasTrabalho}
+                    title={hasTrabalho ? 'Trabalho já lançado' : 'Lançar trabalho'}
+                    aria-label={hasTrabalho ? 'Trabalho já lançado' : 'Lançar trabalho'}
+                    className="inline-flex h-8 w-full items-center justify-center rounded-lg bg-amber-50 px-2 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300"
+                >
+                    TRABALHO
+                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            openAdministrativeEventModal(lesson, 'PROVA');
+                        }}
+                        disabled={hasProva}
+                        title={hasProva ? 'Prova já lançada' : 'Lançar prova'}
+                        aria-label={hasProva ? 'Prova já lançada' : 'Lançar prova'}
+                        className="inline-flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg bg-red-50 px-2 text-[10px] font-black uppercase tracking-[0.12em] text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300"
+                    >
+                        PROVA
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => openLessonEdit(lesson)}
+                        title="Alterar aula"
+                        aria-label="Alterar aula"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300"
+                    >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        );
     };
 
     const renderInfoButton = (record: LessonCalendarRecord) => (
@@ -1384,6 +1606,19 @@ export default function GradeAnualPage() {
                 <div className="sticky top-[72px] z-30 border-b border-slate-200 bg-white/95 px-8 py-6 backdrop-blur-sm">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                         <div className="flex flex-wrap gap-3">
+                            {canManage ? (
+                                <button
+                                    type="button"
+                                    onClick={openCreateModal}
+                                    title="Cadastrar nova grade anual"
+                                    aria-label="Cadastrar nova grade anual"
+                                    className="inline-flex h-10 w-10 shrink-0 self-end items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                                >
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                            ) : null}
                             <label className="flex flex-col text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                                 Turma
                                 <select
@@ -1479,38 +1714,6 @@ export default function GradeAnualPage() {
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3">
-                            {canManage ? (
-                                <button
-                                    type="button"
-                                    onClick={openCreateModal}
-                                    title="Cadastrar nova grade anual"
-                                    aria-label="Cadastrar nova grade anual"
-                                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
-                                >
-                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                                    </svg>
-                                </button>
-                            ) : null}
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { value: 'ACTIVE', label: 'Ativas' },
-                                    { value: 'ALL', label: 'Todas' },
-                                    { value: 'INACTIVE', label: 'Inativas' },
-                                ].map((option) => {
-                                    const active = statusFilter === option.value;
-                                    return (
-                                        <button
-                                            key={option.value}
-                                            type="button"
-                                            onClick={() => setStatusFilter(option.value as GridStatusFilterValue)}
-                                            className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.18em] transition ${active ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-700'}`}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
                             <button
                                 type="button"
                                 onClick={openExportModal}
@@ -1518,9 +1721,6 @@ export default function GradeAnualPage() {
                             >
                                 Exportar
                             </button>
-                            <div className="text-sm font-extrabold text-slate-700" title={`${new Intl.NumberFormat('pt-BR').format(sortedRecords.length)} registro(s) exibido(s)`}>
-                                Registros exibidos ({new Intl.NumberFormat('pt-BR').format(sortedRecords.length)})
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -1541,10 +1741,15 @@ export default function GradeAnualPage() {
                         {!isLoading && sortedRecords.length > 0 ? (
                             <div className="space-y-4">
                                 <div className="sticky top-[188px] z-20 grid grid-cols-7 gap-3 bg-slate-50/95 pt-1 backdrop-blur-sm">
-                                    {WEEKDAY_LABELS.map((label) => (
-                                        <div key={label} className="rounded-xl bg-white px-3 py-2 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
+                                    {WEEKDAY_LABELS.map((label, index) => (
+                                        <button
+                                            key={label}
+                                            type="button"
+                                            onClick={() => handleOpenWeekday(index, label)}
+                                            className="rounded-xl bg-white px-3 py-2 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm transition hover:text-blue-700 hover:ring-2 hover:ring-blue-100"
+                                        >
                                             {label}
-                                        </div>
+                                        </button>
                                     ))}
                                 </div>
 
@@ -1581,11 +1786,7 @@ export default function GradeAnualPage() {
                                                 >
                                                         <button
                                                             type="button"
-                                                            onClick={() => {
-                                                                setDateShortcut(null);
-                                                                setWeekRange(null);
-                                                                setSelectedDate(day);
-                                                            }}
+                                                            onClick={() => handleOpenDay(day, dayLessonItems, dayStandaloneEvents)}
                                                             className="flex items-center justify-between rounded-xl text-left outline-none transition hover:opacity-90"
                                                         >
                                                         <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
@@ -1632,23 +1833,18 @@ export default function GradeAnualPage() {
                                                         {dayLessonItems.slice(0, 3).map((entry) => {
                                                             const hasProva = entry.events.some((event) => event.eventType === 'PROVA');
                                                             const extraEvent = entry.events.find((event) => event.eventType !== 'PROVA');
+                                                            const isIntervalItem = !entry.teacherSubjectId || entry.subjectName.toUpperCase().includes('INTERVALO');
 
                                                             return (
                                                                 <div
                                                                     key={entry.id}
                                                                     role="button"
                                                                 tabIndex={0}
-                                                                onClick={() => {
-                                                                    setDateShortcut(null);
-                                                                    setWeekRange(null);
-                                                                    setSelectedDate(day);
-                                                                }}
+                                                                onClick={() => handleOpenDay(day, dayLessonItems, dayStandaloneEvents)}
                                                                 onKeyDown={(event) => {
                                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                                         event.preventDefault();
-                                                                        setDateShortcut(null);
-                                                                        setWeekRange(null);
-                                                                        setSelectedDate(day);
+                                                                        handleOpenDay(day, dayLessonItems, dayStandaloneEvents);
                                                                     }
                                                                 }}
                                                                     className="rounded-2xl border border-blue-200 bg-[#eef5ff] text-blue-800 px-3 py-3 text-left shadow-sm transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-white"
@@ -1676,13 +1872,7 @@ export default function GradeAnualPage() {
                                                                         </div>
                                                                     ) : null}
                                                                     <div className="mt-3">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => openLessonEdit(entry)}
-                                                                            className="inline-flex w-full justify-center rounded-full bg-blue-600 px-3 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-blue-500 disabled:bg-slate-300 disabled:text-slate-500"
-                                                                        >
-                                                                            Alterar aula
-                                                                        </button>
+                                                                        {renderWeekdayAdministrativeEventButtons(entry, isIntervalItem)}
                                                                     </div>
                                                                 </div>
                                                             );
@@ -1690,12 +1880,7 @@ export default function GradeAnualPage() {
                                                         {dayLessonItems.length > 3 ? (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => {
-                                                                    setDateShortcut(null);
-                                                                    setWeekRange(null);
-                                                                    setSelectedDate(day);
-                                                                    openExpandedDayModal(day, dayLessonItems, dayStandaloneEvents);
-                                                                }}
+                                                                onClick={() => handleOpenDay(day, dayLessonItems, dayStandaloneEvents)}
                                                                 className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-blue-700"
                                                             >
                                                                 +{dayLessonItems.length - 3} horário(s)
@@ -1768,35 +1953,73 @@ export default function GradeAnualPage() {
                             </div>
 
                             {expandedDayLessonItems.length ? (
-                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                                    {expandedDayLessonItems.map((item) => (
-                                        <div key={item.id} className="rounded-2xl border border-blue-200 bg-[#eef5ff] px-4 py-4 shadow-sm">
-                                            <div className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">
-                                                {item.startTime} - {item.endTime}
-                                            </div>
-                                            <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">{item.subjectName}</div>
-                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-600">{item.teacherName}</div>
-                                            <div className="mt-1 text-xs font-medium uppercase text-slate-500">{item.seriesClassLabel}</div>
-                                            {item.events.length ? (
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    {item.events.map((event) => (
-                                                        <span
-                                                            key={event.id}
-                                                            className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
-                                                                event.eventType === 'PROVA'
-                                                                    ? 'bg-red-100 text-red-700'
-                                                                    : event.eventType === 'TRABALHO'
-                                                                        ? 'bg-amber-100 text-amber-700'
-                                                                        : 'bg-blue-100 text-blue-700'
-                                                            }`}
-                                                        >
-                                                            {event.title || event.eventTypeLabel}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            ) : null}
-                                        </div>
-                                    ))}
+                                <div className="overflow-x-auto pb-2">
+                                    <div className="grid min-w-[1180px] grid-cols-7 gap-3">
+                                        {expandedDayLessonItems.map((item) => {
+                                            const isIntervalItem = !item.teacherSubjectId || item.subjectName.toUpperCase().includes('INTERVALO');
+
+                                            return (
+                                                <article
+                                                    key={item.id}
+                                                    className={`flex min-h-[198px] flex-col rounded-2xl border p-2.5 shadow-sm ${
+                                                        isIntervalItem
+                                                            ? 'border-emerald-200 bg-emerald-50'
+                                                            : 'border-slate-200 bg-white'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">
+                                                            {item.startTime} ÀS {item.endTime}
+                                                        </p>
+                                                        <RecordStatusIndicator active />
+                                                    </div>
+
+                                                    <div className="mt-2 min-h-[88px]">
+                                                        {isIntervalItem ? (
+                                                            <div className="rounded-xl bg-emerald-500 px-3 py-2 text-center text-sm font-extrabold uppercase tracking-[0.25em] text-white">
+                                                                INTERVALO
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <p className="text-sm font-bold uppercase leading-snug text-[#153a6a]">
+                                                                    {item.subjectName}
+                                                                </p>
+                                                                <p className="mt-2 text-[11px] font-semibold uppercase leading-snug text-slate-500">
+                                                                    {item.seriesClassLabel}
+                                                                </p>
+                                                                <p className="text-[11px] font-semibold uppercase leading-snug text-slate-500">
+                                                                    PROFESSOR {item.teacherName}
+                                                                </p>
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {item.events.length ? (
+                                                        <div className="mt-2 flex flex-wrap gap-1">
+                                                            {item.events.map((event) => (
+                                                                <span
+                                                                    key={event.id}
+                                                                    className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                                                                        event.eventType === 'PROVA'
+                                                                            ? 'bg-red-100 text-red-700'
+                                                                            : event.eventType === 'TRABALHO'
+                                                                                ? 'bg-amber-100 text-amber-700'
+                                                                                : 'bg-blue-100 text-blue-700'
+                                                                    }`}
+                                                                >
+                                                                    {event.title || event.eventTypeLabel}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    ) : null}
+
+                                                    <div className="mt-auto pt-3">
+                                                        {renderWeekdayAdministrativeEventButtons(item, isIntervalItem)}
+                                                    </div>
+                                                </article>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             ) : null}
 
@@ -1819,6 +2042,176 @@ export default function GradeAnualPage() {
                         <div className="border-t border-slate-100 px-6 py-4">
                             <div className="flex justify-end">
                                 <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL_DIA_EXPANDIDO" className="mt-0 text-[11px]" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {expandedWeekdayModal ? (
+                <div className="fixed inset-0 z-[56] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                    <div className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {tenant?.logoUrl ? (
+                                        <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Dia da semana expandido</div>
+                                    <h2 className="mt-2 text-2xl font-extrabold text-slate-800">{expandedWeekdayModal.weekdayLabel}</h2>
+                                    <p className="mt-2 text-sm font-medium text-slate-500">
+                                        {expandedWeekdayModal.dates.length} data(s), {expandedWeekdayLessonItemsCount} horário(s) e {expandedWeekdayStandaloneEventsCount} evento(s) no período selecionado.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeExpandedWeekdayModal}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+
+                        <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
+                            <div className="mb-5 max-w-sm">
+                                <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                                    Filtrar por turma
+                                </label>
+                                <select
+                                    value={expandedDaySeriesClassId}
+                                    onChange={(event) => setExpandedDaySeriesClassId(event.target.value)}
+                                    className={inputClass}
+                                >
+                                    <option value="">Todas as turmas</option>
+                                    {expandedDaySeriesClassOptions.map((option) => (
+                                        <option key={option.id} value={option.id}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="space-y-4">
+                                {expandedWeekdayModal.dates.map((date) => {
+                                    const dateLessonItems = expandedWeekdayLessonItemsByDate.get(date) || [];
+                                    const dateStandaloneEvents = expandedWeekdayStandaloneEventsByDate.get(date) || [];
+
+                                    return (
+                                        <section key={date} className="rounded-[24px] border border-slate-200 bg-slate-50 p-3 shadow-sm">
+                                            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                                                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">
+                                                    {getFullDateLabel(date)}
+                                                </h3>
+                                                <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm">
+                                                    {dateLessonItems.length} horário(s)
+                                                </span>
+                                            </div>
+
+                                            {dateLessonItems.length ? (
+                                                <div className="overflow-x-auto pb-1">
+                                                    <div className="grid min-w-[1180px] grid-cols-7 gap-3">
+                                                        {dateLessonItems.map((item) => {
+                                                            const isIntervalItem = !item.teacherSubjectId || item.subjectName.toUpperCase().includes('INTERVALO');
+
+                                                            return (
+                                                                <article
+                                                                    key={item.id}
+                                                                    className={`flex min-h-[198px] flex-col rounded-2xl border p-2.5 shadow-sm ${
+                                                                        isIntervalItem
+                                                                            ? 'border-emerald-200 bg-emerald-50'
+                                                                            : 'border-slate-200 bg-white'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-start justify-between gap-2">
+                                                                        <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">
+                                                                            {item.startTime} ÀS {item.endTime}
+                                                                        </p>
+                                                                        <RecordStatusIndicator active />
+                                                                    </div>
+
+                                                                    <div className="mt-2 min-h-[88px]">
+                                                                        {isIntervalItem ? (
+                                                                            <div className="rounded-xl bg-emerald-500 px-3 py-2 text-center text-sm font-extrabold uppercase tracking-[0.25em] text-white">
+                                                                                INTERVALO
+                                                                            </div>
+                                                                        ) : (
+                                                                            <>
+                                                                                <p className="text-sm font-bold uppercase leading-snug text-[#153a6a]">
+                                                                                    {item.subjectName}
+                                                                                </p>
+                                                                                <p className="mt-2 text-[11px] font-semibold uppercase leading-snug text-slate-500">
+                                                                                    {item.seriesClassLabel}
+                                                                                </p>
+                                                                                <p className="text-[11px] font-semibold uppercase leading-snug text-slate-500">
+                                                                                    PROFESSOR {item.teacherName}
+                                                                                </p>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {item.events.length ? (
+                                                                        <div className="mt-2 flex flex-wrap gap-1">
+                                                                            {item.events.map((event) => (
+                                                                                <span
+                                                                                    key={event.id}
+                                                                                    className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                                                                                        event.eventType === 'PROVA'
+                                                                                            ? 'bg-red-100 text-red-700'
+                                                                                            : event.eventType === 'TRABALHO'
+                                                                                                ? 'bg-amber-100 text-amber-700'
+                                                                                                : 'bg-blue-100 text-blue-700'
+                                                                                    }`}
+                                                                                >
+                                                                                    {event.title || event.eventTypeLabel}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : null}
+
+                                                                    <div className="mt-auto pt-3">
+                                                                        {renderWeekdayAdministrativeEventButtons(item, isIntervalItem)}
+                                                                    </div>
+                                                                </article>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                    Sem turmas nesse dia
+                                                </div>
+                                            )}
+
+                                            {dateStandaloneEvents.length ? (
+                                                <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                                    {dateStandaloneEvents.map((event) => (
+                                                        <div key={event.id} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 shadow-sm">
+                                                            <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
+                                                                EVENTO EXTRA
+                                                            </div>
+                                                            <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">{event.title || event.eventTypeLabel}</div>
+                                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-500">{event.seriesClassLabel}</div>
+                                                            <div className="text-xs font-semibold uppercase text-slate-500">{event.subjectName}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : null}
+                                        </section>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL_DIA_SEMANA_EXPANDIDO" className="mt-0 text-[11px]" />
                             </div>
                         </div>
                     </div>
@@ -1964,6 +2357,116 @@ export default function GradeAnualPage() {
                             </div>
                             </div>
                         </form>
+                    </div>
+                </div>
+            ) : null}
+
+            {administrativeEventModal ? (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-4">
+                    <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                    {tenant?.logoUrl ? (
+                                        <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
+                                    ) : (
+                                        <span className="text-xs font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Lançamento administrativo</div>
+                                    <h2 className="mt-1 text-xl font-bold text-[#153a6a]">
+                                        Lançar {administrativeEventModal.eventType === 'PROVA' ? 'prova' : 'trabalho'}
+                                    </h2>
+                                    <p className="mt-1 text-sm font-semibold uppercase text-slate-500">
+                                        {administrativeEventModal.lessonItem.date} • {administrativeEventModal.lessonItem.startTime} ÀS {administrativeEventModal.lessonItem.endTime} • {administrativeEventModal.lessonItem.subjectName}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => closeAdministrativeEventModal()} className="text-slate-400 hover:text-red-500">
+                                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        <form onSubmit={saveAdministrativeEvent} className="space-y-4 px-6 py-6">
+                            {administrativeEventError ? (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                                    {administrativeEventError}
+                                </div>
+                            ) : null}
+
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold uppercase text-slate-600">
+                                Professor {administrativeEventModal.lessonItem.teacherName} • {administrativeEventModal.lessonItem.seriesClassLabel}
+                            </div>
+
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Título</span>
+                                <input
+                                    value={administrativeEventForm.title}
+                                    onChange={(event) => setAdministrativeEventForm((current) => ({ ...current, title: event.target.value }))}
+                                    className={inputClass}
+                                    maxLength={120}
+                                />
+                            </label>
+
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Descrição</span>
+                                <textarea
+                                    value={administrativeEventForm.description}
+                                    onChange={(event) => setAdministrativeEventForm((current) => ({ ...current, description: event.target.value }))}
+                                    className="min-h-[110px] w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    maxLength={1000}
+                                    placeholder="DETALHES DA PROVA OU TRABALHO"
+                                />
+                            </label>
+
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                                {[
+                                    { key: 'notifyStudents', label: 'Notificar alunos' },
+                                    { key: 'notifyGuardians', label: 'Notificar responsáveis' },
+                                    { key: 'notifyByEmail', label: 'Enviar e-mail' },
+                                    { key: 'notifyByTelegram', label: 'Enviar Telegram' },
+                                ].map((option) => (
+                                    <label key={option.key} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase text-slate-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(administrativeEventForm[option.key as keyof AdministrativeEventFormState])}
+                                            onChange={(event) => setAdministrativeEventForm((current) => ({ ...current, [option.key]: event.target.checked }))}
+                                            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                        />
+                                        {option.label}
+                                    </label>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => closeAdministrativeEventModal()}
+                                    disabled={isSavingAdministrativeEvent}
+                                    className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow hover:bg-rose-500 disabled:bg-rose-300"
+                                >
+                                    Fechar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingAdministrativeEvent || !administrativeEventForm.title.trim()}
+                                    className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isSavingAdministrativeEvent ? 'Salvando...' : 'Salvar lançamento'}
+                                </button>
+                            </div>
+                        </form>
+
+                        <div className="flex justify-end px-6 pb-4">
+                            <div className="w-full max-w-sm">
+                                <ScreenNameCopy screenId={ADMINISTRATIVE_EVENT_MODAL_LABEL} label="NOME DA TELA" className="mt-0 justify-end" />
+                            </div>
+                        </div>
                     </div>
                 </div>
             ) : null}

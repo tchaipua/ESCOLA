@@ -33,4 +33,8 @@ export class UpdateLessonEventDto {
   @IsOptional()
   @IsBoolean()
   notifyByEmail?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyByTelegram?: boolean;
 }

@@ -36,4 +36,8 @@ export class CreateLessonEventDto {
   @IsOptional()
   @IsBoolean()
   notifyByEmail?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyByTelegram?: boolean;
 }

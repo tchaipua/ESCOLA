@@ -249,3 +249,21 @@ Para cada decisao, registrar:
 - Impacto: elimina cadastro operacional de horario solto, preserva isolamento por turma/ano/escola, permite intervalo na mesma grade e centraliza validacao de sobreposicao no backend.
 - Alternativas consideradas: manter `schedules` como cadastro principal; criar tela separada de intervalos; duplicar horarios por periodo sem vinculo direto com turma.
 - Status: aceita
+
+## DEC-0027
+
+- Data: 2026-06-25
+- Contexto: a escola precisa avisar alunos e responsaveis sobre provas, trabalhos e comunicados tambem por Telegram, mantendo e-mail e notificacao interna.
+- Decisao: configurar Telegram por escola e opcionalmente por filial, com prioridade para filial, fallback para escola e fallback local por `TELEGRAM_BOT_TOKEN`; destinatarios recebem somente se tiverem `telegramChatId` e opt-in ativo.
+- Impacto: lancamentos da agenda escolar podem marcar `notifyByTelegram` sem travar o cadastro caso o bot esteja ausente ou o envio falhe; a tentativa fica registrada em `notifications`.
+- Alternativas consideradas: usar apenas e-mail; gravar token somente em variavel de ambiente; enviar para todos os contatos sem opt-in.
+- Status: aceita
+
+## DEC-0028
+
+- Data: 2026-06-25
+- Contexto: a comunicacao por e-mail precisa funcionar tanto por SMTP cadastrado na escola/filial quanto por configuracao local de ambiente.
+- Decisao: resolver SMTP com prioridade filial, depois escola, depois variaveis `SMTP_*`; envios de agenda escolar marcam `notifications.emailedAt` por destinatario entregue.
+- Impacto: permite configurar e-mail sem alterar codigo e acompanhar quais notificacoes internas tambem foram enviadas por e-mail.
+- Alternativas consideradas: exigir SMTP sempre no cadastro da escola; usar somente variaveis de ambiente; nao registrar entrega por destinatario.
+- Status: aceita

@@ -131,6 +131,9 @@ export function mapTenantBranchSummary(branch: {
   smtpAuthType?: string | null;
   smtpEmail?: string | null;
   smtpPassword?: string | null;
+  telegramEnabled?: boolean | null;
+  telegramBotToken?: string | null;
+  telegramBotUsername?: string | null;
   storageProviderAccessKeyId?: string | null;
   storageProviderSecretAccessKey?: string | null;
   storageBucketName?: string | null;
@@ -185,6 +188,9 @@ export function mapTenantBranchSummary(branch: {
     smtpAuthType: branch.smtpAuthType,
     smtpEmail: branch.smtpEmail,
     smtpPassword: branch.smtpPassword,
+    telegramEnabled: branch.telegramEnabled,
+    telegramBotToken: branch.telegramBotToken,
+    telegramBotUsername: branch.telegramBotUsername,
     storageProviderAccessKeyId: branch.storageProviderAccessKeyId,
     storageProviderSecretAccessKey: branch.storageProviderSecretAccessKey,
     storageBucketName: branch.storageBucketName,

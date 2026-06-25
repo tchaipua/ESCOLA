@@ -17,6 +17,7 @@ type LessonEventNotificationPayload = {
     notifyStudents: boolean;
     notifyGuardians: boolean;
     notifyByEmail: boolean;
+    notifyByTelegram: boolean;
   };
   lessonItem: {
     id?: string | null;
@@ -45,6 +46,7 @@ type NotificationRecipient = {
   recipientId: string;
   name: string;
   email?: string | null;
+  telegramChatId?: string | null;
   studentId?: string;
   studentName?: string;
   score?: number;
@@ -126,6 +128,19 @@ type SmtpConfiguration = {
   smtpPassword?: string | null;
 };
 
+type EmailSendResult = {
+  sent: boolean;
+  count: number;
+};
+
+type TelegramConfiguration = {
+  id: string;
+  name: string;
+  telegramEnabled?: boolean | null;
+  telegramBotToken?: string | null;
+  telegramBotUsername?: string | null;
+};
+
 @Injectable()
 export class NotificationsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -149,6 +164,68 @@ export class NotificationsService {
       config?.smtpTimeout ||
       config?.smtpEmail ||
       config?.smtpPassword
+    );
+  }
+
+  private parseEnvBoolean(value: string | undefined, defaultValue: boolean) {
+    if (value === undefined || value === null || value.trim() === "") {
+      return defaultValue;
+    }
+    const normalized = value.trim().toLowerCase();
+    return (
+      normalized === "true" ||
+      normalized === "1" ||
+      normalized === "yes" ||
+      normalized === "sim"
+    );
+  }
+
+  private parseEnvInteger(value: string | undefined) {
+    if (value === undefined || value === null || value.trim() === "") {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+
+  private buildEnvSmtpConfiguration(
+    tenant: { id: string; name: string } | null,
+  ): SmtpConfiguration | null {
+    const smtpHost = process.env.SMTP_HOST?.trim() || "";
+    const smtpPort = this.parseEnvInteger(process.env.SMTP_PORT);
+    const smtpEmail = process.env.SMTP_EMAIL?.trim() || "";
+
+    if (!tenant || !smtpHost || !smtpPort || !smtpEmail) {
+      return null;
+    }
+
+    const smtpPassword = process.env.SMTP_PASSWORD?.trim() || null;
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      smtpHost,
+      smtpPort,
+      smtpTimeout: this.parseEnvInteger(process.env.SMTP_TIMEOUT) || 60,
+      smtpAuthenticate: this.parseEnvBoolean(
+        process.env.SMTP_AUTHENTICATE,
+        !!smtpPassword,
+      ),
+      smtpSecure: this.parseEnvBoolean(
+        process.env.SMTP_SECURE,
+        smtpPort === 465,
+      ),
+      smtpEmail,
+      smtpPassword,
+    };
+  }
+
+  private hasTelegramInformation(
+    config?: Partial<TelegramConfiguration> | null,
+  ) {
+    return !!(
+      config?.telegramBotToken ||
+      config?.telegramBotUsername ||
+      config?.telegramEnabled !== undefined
     );
   }
 
@@ -264,7 +341,70 @@ export class NotificationsService {
     }
 
     const { branches: _branches, ...tenantSmtp } = tenant;
-    return tenantSmtp;
+    if (tenantSmtp.smtpHost && tenantSmtp.smtpPort && tenantSmtp.smtpEmail) {
+      return tenantSmtp;
+    }
+
+    return this.buildEnvSmtpConfiguration(tenant) || tenantSmtp;
+  }
+
+  private async getTenantTelegramConfiguration(): Promise<TelegramConfiguration | null> {
+    const branchCode = this.branchCode();
+    const tenant = await this.prisma.tenant.findFirst({
+      where: {
+        id: this.tenantId(),
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        telegramEnabled: true,
+        telegramBotToken: true,
+        telegramBotUsername: true,
+        branches:
+          branchCode && branchCode >= DEFAULT_BRANCH_CODE
+            ? {
+                where: { branchCode, canceledAt: null, isActive: true },
+                select: {
+                  telegramEnabled: true,
+                  telegramBotToken: true,
+                  telegramBotUsername: true,
+                },
+                take: 1,
+              }
+            : false,
+      },
+    });
+
+    if (!tenant) return null;
+
+    const branch = tenant.branches?.[0];
+    if (this.hasTelegramInformation(branch)) {
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        telegramEnabled: branch.telegramEnabled,
+        telegramBotToken: branch.telegramBotToken,
+        telegramBotUsername: branch.telegramBotUsername,
+      };
+    }
+
+    if (tenant.telegramEnabled && tenant.telegramBotToken) {
+      const { branches: _branches, ...tenantTelegram } = tenant;
+      return tenantTelegram;
+    }
+
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      return {
+        id: tenant.id,
+        name: tenant.name,
+        telegramEnabled: true,
+        telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+        telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || null,
+      };
+    }
+
+    return null;
   }
 
   private buildNotificationTitle(payload: LessonEventNotificationPayload) {
@@ -297,6 +437,16 @@ export class NotificationsService {
     return this.normalizeText(
       `${base}${detail} PROFESSOR RESPONSÁVEL: ${teacherName}.`,
     );
+  }
+
+  private getOptedInTelegramChatId(contact?: {
+    telegramChatId?: string | null;
+    telegramOptInAt?: Date | null;
+    telegramOptOutAt?: Date | null;
+  } | null) {
+    if (!contact?.telegramChatId) return null;
+    if (!contact.telegramOptInAt || contact.telegramOptOutAt) return null;
+    return contact.telegramChatId;
   }
 
   private async buildRecipients(
@@ -341,6 +491,7 @@ export class NotificationsService {
           recipientId: enrollment.student.id,
           name: enrollment.student.name,
           email: enrollment.student.email,
+          telegramChatId: this.getOptedInTelegramChatId(enrollment.student),
         });
       }
 
@@ -352,6 +503,7 @@ export class NotificationsService {
             recipientId: link.guardian.id,
             name: link.guardian.name,
             email: link.guardian.email,
+            telegramChatId: this.getOptedInTelegramChatId(link.guardian),
           });
         }
       }
@@ -443,18 +595,18 @@ export class NotificationsService {
   private async sendEmailNotifications(
     recipients: NotificationRecipient[],
     payload: LessonEventNotificationPayload,
-  ) {
+  ): Promise<EmailSendResult> {
     if (!payload.lessonEvent.notifyByEmail) {
-      return false;
+      return { sent: false, count: 0 };
     }
 
     const tenant = await this.getTenantSmtpConfiguration();
     if (!tenant?.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) {
-      return false;
+      return { sent: false, count: 0 };
     }
 
     if (tenant.smtpAuthenticate && !tenant.smtpPassword) {
-      return false;
+      return { sent: false, count: 0 };
     }
 
     const transporter = nodemailer.createTransport({
@@ -494,11 +646,18 @@ export class NotificationsService {
       .filter(Boolean)
       .join("\n");
 
-    await Promise.allSettled(
-      recipients
-        .filter((recipient) => recipient.email && recipient.email.trim())
-        .map((recipient) =>
-          transporter.sendMail({
+    const sendableRecipients = recipients.filter((recipient) =>
+      recipient.email?.trim(),
+    );
+
+    if (sendableRecipients.length === 0) {
+      return { sent: false, count: 0 };
+    }
+
+    const results = await Promise.all(
+      sendableRecipients.map(async (recipient) => {
+        try {
+          await transporter.sendMail({
             from: `"${tenant.name}" <${tenant.smtpEmail}>`,
             to: recipient.email!,
             replyTo: tenant.smtpEmail || undefined,
@@ -520,11 +679,133 @@ export class NotificationsService {
                 <p>Entre no sistema para acompanhar mais detalhes.</p>
               </div>
             `,
-          }),
-        ),
+          });
+
+          await this.prisma.notification.updateMany({
+            where: {
+              tenantId: this.tenantId(),
+              recipientType: recipient.recipientType,
+              recipientId: recipient.recipientId,
+              sourceType: "LESSON_EVENT",
+              sourceId: payload.lessonEvent.id,
+              canceledAt: null,
+            },
+            data: {
+              emailedAt: new Date(),
+              updatedBy: this.userId(),
+            },
+          });
+
+          return true;
+        } catch {
+          return false;
+        }
+      }),
     );
 
-    return true;
+    const count = results.filter(Boolean).length;
+    return { sent: count > 0, count };
+  }
+
+  private async sendTelegramNotifications(
+    recipients: NotificationRecipient[],
+    payload: LessonEventNotificationPayload,
+    title: string,
+    message: string,
+  ) {
+    if (!payload.lessonEvent.notifyByTelegram) {
+      return { sent: false, count: 0 };
+    }
+
+    const config = await this.getTenantTelegramConfiguration();
+    if (
+      !config?.telegramBotToken ||
+      config.telegramEnabled === false
+    ) {
+      return { sent: false, count: 0 };
+    }
+
+    const sendableRecipients = recipients.filter((recipient) =>
+      recipient.telegramChatId?.trim(),
+    );
+    if (sendableRecipients.length === 0) {
+      return { sent: false, count: 0 };
+    }
+
+    const text = [
+      title,
+      "",
+      message,
+      "",
+      "ACESSE O SISTEMA PARA ACOMPANHAR MAIS DETALHES.",
+    ].join("\n");
+
+    const results = await Promise.all(
+      sendableRecipients.map(async (recipient) => {
+        try {
+          const response = await fetch(
+            `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: recipient.telegramChatId,
+                text,
+              }),
+            },
+          );
+          const responseBody = await response.json().catch(() => null);
+          if (!response.ok || responseBody?.ok !== true) {
+            throw new Error(
+              responseBody?.description || "Falha no envio pelo Telegram.",
+            );
+          }
+
+          await this.prisma.notification.updateMany({
+            where: {
+              tenantId: this.tenantId(),
+              recipientType: recipient.recipientType,
+              recipientId: recipient.recipientId,
+              sourceType: "LESSON_EVENT",
+              sourceId: payload.lessonEvent.id,
+              canceledAt: null,
+            },
+            data: {
+              telegramSentAt: new Date(),
+              telegramStatus: "SENT",
+              telegramError: null,
+              updatedBy: this.userId(),
+            },
+          });
+
+          return true;
+        } catch (error) {
+          await this.prisma.notification.updateMany({
+            where: {
+              tenantId: this.tenantId(),
+              recipientType: recipient.recipientType,
+              recipientId: recipient.recipientId,
+              sourceType: "LESSON_EVENT",
+              sourceId: payload.lessonEvent.id,
+              canceledAt: null,
+            },
+            data: {
+              telegramStatus: "FAILED",
+              telegramError:
+                error instanceof Error
+                  ? error.message.slice(0, 500)
+                  : "Falha no envio pelo Telegram.",
+              updatedBy: this.userId(),
+            },
+          });
+
+          return false;
+        }
+      }),
+    );
+
+    const count = results.filter(Boolean).length;
+    return { sent: count > 0, count };
   }
 
   private buildAssessmentNotificationTitle(
@@ -692,8 +973,17 @@ export class NotificationsService {
   ) {
     const recipients = await this.buildRecipients(payload);
     if (recipients.length === 0) {
-      return { notificationsCreated: 0, emailSent: false };
+      return {
+        notificationsCreated: 0,
+        emailSent: false,
+        emailCount: 0,
+        telegramSent: false,
+        telegramCount: 0,
+      };
     }
+
+    const title = this.buildNotificationTitle(payload);
+    const message = this.buildNotificationMessage(payload);
 
     await this.prisma.notification.createMany({
       data: recipients.map((recipient) => ({
@@ -701,8 +991,8 @@ export class NotificationsService {
         recipientType: recipient.recipientType,
         recipientId: recipient.recipientId,
         category: "AGENDA_ESCOLAR",
-        title: this.buildNotificationTitle(payload),
-        message: this.buildNotificationMessage(payload),
+        title,
+        message,
         actionUrl: "/dashboard/notificacoes",
         sourceType: "LESSON_EVENT",
         sourceId: payload.lessonEvent.id,
@@ -718,11 +1008,20 @@ export class NotificationsService {
       })),
     });
 
-    const emailSent = await this.sendEmailNotifications(recipients, payload);
+    const emailResult = await this.sendEmailNotifications(recipients, payload);
+    const telegramResult = await this.sendTelegramNotifications(
+      recipients,
+      payload,
+      title,
+      message,
+    );
 
     return {
       notificationsCreated: recipients.length,
-      emailSent,
+      emailSent: emailResult.sent,
+      emailCount: emailResult.count,
+      telegramSent: telegramResult.sent,
+      telegramCount: telegramResult.count,
     };
   }
 

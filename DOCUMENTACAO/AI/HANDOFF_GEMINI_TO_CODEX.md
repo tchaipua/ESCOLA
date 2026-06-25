@@ -114,6 +114,7 @@ Preencha este arquivo quando for trazer um projeto iniciado no Gemini para conti
   - continuam surgindo novos refinamentos de UI a cada homologacao
 - Contexto adicional:
   - usar `UI_PATTERNS.md`, `UI_PATTERN_CHANGELOG.md` e este handoff como ponto de partida da proxima conversa
+  - lembrar que o sistema da Escola em `C:\Sistemas\IA\Escola` trabalha junto com o sistema financeiro separado em `C:\Sistemas\IA\financeiro`; demandas financeiras podem exigir leitura/alteracao tambem nesse outro repositorio
 
 ## 10) Handoff Codex (mar 18 2026)
 

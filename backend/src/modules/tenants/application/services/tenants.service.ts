@@ -92,6 +92,9 @@ type TenantBranchPayload = {
   smtpAuthType?: string | null;
   smtpEmail?: string | null;
   smtpPassword?: string | null;
+  telegramEnabled?: boolean | string | number | null;
+  telegramBotToken?: string | null;
+  telegramBotUsername?: string | null;
   storageProviderAccessKeyId?: string | null;
   storageProviderSecretAccessKey?: string | null;
   storageBucketName?: string | null;
@@ -252,6 +255,7 @@ export class TenantsService {
         payload.stockNegativeControlMode,
       ),
       ...this.buildTenantBranchSmtpData(payload),
+      ...this.buildTenantBranchTelegramData(payload),
       ...this.buildTenantBranchStorageData(payload),
     };
   }
@@ -405,6 +409,35 @@ export class TenantsService {
     };
   }
 
+  private buildTelegramConfigurationData(payload: {
+    telegramEnabled?: boolean | string | number | null;
+    telegramBotToken?: string | null;
+    telegramBotUsername?: string | null;
+  }) {
+    const hasTelegramConfiguration =
+      payload.telegramEnabled !== undefined ||
+      payload.telegramBotToken !== undefined ||
+      payload.telegramBotUsername !== undefined;
+
+    if (!hasTelegramConfiguration) {
+      return {};
+    }
+
+    const telegramBotToken =
+      String(payload.telegramBotToken || "").trim() || null;
+    const telegramBotUsername =
+      String(payload.telegramBotUsername || "").trim() || null;
+
+    return {
+      telegramEnabled: this.parseBoolean(
+        payload.telegramEnabled,
+        !!telegramBotToken,
+      ),
+      telegramBotToken,
+      telegramBotUsername,
+    };
+  }
+
   private buildTenantBranchSmtpData(payload: TenantBranchPayload) {
     const smtpHostInput = String(payload.smtpHost || "").trim();
     const smtpEmail = String(payload.smtpEmail || "").trim();
@@ -493,6 +526,23 @@ export class TenantsService {
 
   private buildTenantBranchStorageData(payload: TenantBranchPayload) {
     return this.buildStorageConfigurationData(payload);
+  }
+
+  private buildTenantBranchTelegramData(payload: TenantBranchPayload) {
+    const hasTelegramConfiguration =
+      payload.telegramEnabled !== undefined ||
+      payload.telegramBotToken !== undefined ||
+      payload.telegramBotUsername !== undefined;
+
+    if (!hasTelegramConfiguration) {
+      return {
+        telegramEnabled: null,
+        telegramBotToken: null,
+        telegramBotUsername: null,
+      };
+    }
+
+    return this.buildTelegramConfigurationData(payload);
   }
 
   private mapUserEmailUsage(record: {
@@ -644,6 +694,7 @@ export class TenantsService {
           smtpAuthType: createTenantDto.smtpAuthType,
           smtpEmail: createTenantDto.smtpEmail,
           smtpPassword: createTenantDto.smtpPassword,
+          ...this.buildTelegramConfigurationData(createTenantDto),
           ...this.buildStorageConfigurationData(createTenantDto),
           createdBy: this.masterAuditUser,
           updatedBy: this.masterAuditUser,
@@ -2423,6 +2474,7 @@ export class TenantsService {
           smtpAuthType: updateTenantDto.smtpAuthType,
           smtpEmail: updateTenantDto.smtpEmail,
           smtpPassword: updateTenantDto.smtpPassword,
+          ...this.buildTelegramConfigurationData(updateTenantDto),
           ...this.buildStorageConfigurationData(updateTenantDto),
           updatedBy: this.masterAuditUser,
         },

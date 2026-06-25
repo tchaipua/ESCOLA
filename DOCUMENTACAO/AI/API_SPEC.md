@@ -42,7 +42,8 @@
 - Autenticacao: cabecalho `x-msinfor-master-pass`
 - Uso: cria filial para uma escola a partir da tela MSINFOR ADMIN
 - Body aceita `branchCode`, `name`, `logoUrl`, documento/CNPJ, contatos, endereco completo, SMTP proprio da filial, storage proprio da filial e parametros operacionais de estoque da filial
-- SMTP da filial e opcional; quando informado, tem prioridade sobre o SMTP da empresa nos envios daquela filial. Quando vazio, o sistema usa o SMTP da empresa.
+- SMTP da filial e opcional; quando informado, tem prioridade sobre o SMTP da empresa nos envios daquela filial. Quando vazio, o sistema usa o SMTP da empresa ou variaveis de ambiente.
+- Telegram da filial e opcional; quando informado, tem prioridade sobre o Telegram da empresa nos envios daquela filial. Quando vazio, o sistema usa o Telegram da empresa ou variaveis de ambiente.
 - Storage da filial e opcional; quando informado, tem prioridade sobre o storage da empresa nas operacoes de arquivo daquela filial. Quando vazio, o sistema usa o storage da empresa.
 - Campos SMTP da filial:
   - `smtpHost`
@@ -53,6 +54,10 @@
   - `smtpAuthType`
   - `smtpEmail`
   - `smtpPassword`
+- Campos Telegram da filial:
+  - `telegramEnabled`
+  - `telegramBotToken`
+  - `telegramBotUsername`
 - Campos de storage da filial:
   - `storageProviderAccessKeyId`
   - `storageProviderSecretAccessKey`
@@ -605,6 +610,49 @@ Resposta resumida:
   "syncedAt": "2026-03-25T12:00:00.000Z"
 }
 ```
+
+### POST `/lesson-events/admin`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Permissao: `MANAGE_LESSON_CALENDARS`
+- Uso: permite lancar `PROVA` ou `TRABALHO` em nome do professor a partir da tela `PRINCIPAL_GRADE_ANUAL`.
+- Body:
+
+```json
+{
+  "lessonCalendarItemId": "uuid",
+  "eventType": "PROVA",
+  "title": "PROVA BIMESTRAL",
+  "description": "CONTEUDO DO CAPITULO 3",
+  "notifyStudents": true,
+  "notifyGuardians": true,
+  "notifyByEmail": true,
+  "notifyByTelegram": true
+}
+```
+
+- Regra: notificar por Telegram exige bot configurado na escola/filial ou em `TELEGRAM_BOT_TOKEN`, alem de `telegramChatId` com opt-in ativo no aluno/responsavel.
+- Regra: notificar por e-mail exige SMTP configurado na escola/filial ou nas variaveis `SMTP_HOST`, `SMTP_PORT` e `SMTP_EMAIL`; quando enviado, a notificacao registra `emailedAt`.
+
+### POST `/communications`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Uso: envia comunicado interno, por e-mail e/ou por Telegram conforme permissao do perfil.
+- Body resumido:
+
+```json
+{
+  "title": "REUNIAO DE PAIS",
+  "message": "REUNIAO AS 19H.",
+  "sendInternal": true,
+  "sendEmail": true,
+  "sendTelegram": true,
+  "recipientGroups": ["RESPONSAVEIS"]
+}
+```
+
+- Regra: `sendTelegram` entrega apenas para alunos/responsaveis com `telegramChatId` e opt-in ativo; funcionarios/professores continuam por notificacao interna/e-mail ate existir cadastro de Telegram nesses papeis.
 
 ### POST `/notifications/my/read-batch`
 

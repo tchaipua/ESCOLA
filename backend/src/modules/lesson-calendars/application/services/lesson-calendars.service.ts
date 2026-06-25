@@ -512,6 +512,10 @@ export class LessonCalendarsService {
         );
 
         matchingWeeklyItems.forEach((weeklyItem) => {
+          if (!weeklyItem.teacherSubjectId) {
+            return;
+          }
+
           itemPayloads.push({
             tenantId: this.tenantId(),
             lessonCalendarId,

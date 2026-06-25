@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
+import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { LessonEventsService } from "../../application/services/lesson-events.service";
 import { CreateLessonEventDto } from "../../application/dto/create-lesson-event.dto";
 import { CreateStandaloneLessonNoticeDto } from "../../application/dto/create-standalone-lesson-notice.dto";
@@ -53,6 +54,17 @@ export class LessonEventsController {
   })
   create(@Body() createDto: CreateLessonEventDto) {
     return this.lessonEventsService.create(createDto);
+  }
+
+  @Post("admin")
+  @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
+  @Permissions("MANAGE_LESSON_CALENDARS")
+  @ApiOperation({
+    summary:
+      "Lança prova ou trabalho sobre uma aula em nome da escola, mantendo o professor da aula como responsável",
+  })
+  createAdministrative(@Body() createDto: CreateLessonEventDto) {
+    return this.lessonEventsService.createAdministrative(createDto);
   }
 
   @Post("standalone-notices")

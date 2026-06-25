@@ -275,6 +275,9 @@ export class TenantsController {
       smtpAuthType?: string;
       smtpEmail?: string;
       smtpPassword?: string;
+      telegramEnabled?: boolean | string | number;
+      telegramBotToken?: string;
+      telegramBotUsername?: string;
       storageProviderAccessKeyId?: string;
       storageProviderSecretAccessKey?: string;
       storageBucketName?: string;
@@ -342,6 +345,9 @@ export class TenantsController {
       smtpAuthType?: string;
       smtpEmail?: string;
       smtpPassword?: string;
+      telegramEnabled?: boolean | string | number;
+      telegramBotToken?: string;
+      telegramBotUsername?: string;
       storageProviderAccessKeyId?: string;
       storageProviderSecretAccessKey?: string;
       storageBucketName?: string;
@@ -389,6 +395,9 @@ export class TenantsController {
       state?: string;
       neighborhood?: string;
       complement?: string;
+      telegramEnabled?: boolean | string | number;
+      telegramBotToken?: string;
+      telegramBotUsername?: string;
     },
   ) {
     this.assertMasterPass(req);

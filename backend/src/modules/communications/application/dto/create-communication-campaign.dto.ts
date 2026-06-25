@@ -37,6 +37,10 @@ export class CreateCommunicationCampaignDto {
   @IsBoolean()
   sendEmail!: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  sendTelegram?: boolean;
+
   @IsArray()
   @ArrayMinSize(1)
   @IsIn(COMMUNICATION_TARGET_GROUPS, { each: true })
