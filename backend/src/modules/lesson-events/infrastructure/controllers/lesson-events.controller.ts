@@ -74,12 +74,14 @@ export class LessonEventsController {
   }
 
   @Patch(":id")
+  @Roles("ADMIN", "SECRETARIA", "COORDENACAO", "PROFESSOR")
   @ApiOperation({ summary: "Atualiza um evento da agenda diária do professor" })
   update(@Param("id") id: string, @Body() updateDto: UpdateLessonEventDto) {
     return this.lessonEventsService.update(id, updateDto);
   }
 
   @Delete(":id")
+  @Roles("ADMIN", "SECRETARIA", "COORDENACAO", "PROFESSOR")
   @ApiOperation({ summary: "Desativa um evento da agenda diária do professor" })
   remove(@Param("id") id: string) {
     return this.lessonEventsService.remove(id);

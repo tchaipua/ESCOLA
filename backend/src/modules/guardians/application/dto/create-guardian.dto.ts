@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsArray,
+  IsBoolean,
   IsInt,
   IsString,
   MinLength,
@@ -45,6 +46,23 @@ export class CreateGuardianDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @ApiPropertyOptional({ description: "ID do chat do responsável no Telegram" })
+  @IsString()
+  @IsOptional()
+  telegramChatId?: string;
+
+  @ApiPropertyOptional({ description: "Usuário do responsável no Telegram" })
+  @IsString()
+  @IsOptional()
+  telegramUsername?: string;
+
+  @ApiPropertyOptional({
+    description: "Indica se o responsável autorizou receber Telegram",
+  })
+  @IsBoolean()
+  @IsOptional()
+  telegramOptInEnabled?: boolean;
 
   @ApiPropertyOptional({
     description: "Senha de Acesso ao PWA (Min: 4 caracteres)",

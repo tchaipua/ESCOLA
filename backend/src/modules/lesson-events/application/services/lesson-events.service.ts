@@ -28,6 +28,11 @@ export class LessonEventsService {
     return getTenantContext()!.userId;
   }
 
+  private isAdministrativeContext() {
+    const role = String(getTenantContext()?.role || "").toUpperCase();
+    return role === "ADMIN" || role === "SECRETARIA" || role === "COORDENACAO";
+  }
+
   private normalizeText(value: string) {
     return String(value || "")
       .trim()
@@ -472,7 +477,7 @@ export class LessonEventsService {
       where: {
         id,
         tenantId: this.tenantId(),
-        teacherId: this.userId(),
+        ...(this.isAdministrativeContext() ? {} : { teacherId: this.userId() }),
         canceledAt: null,
       },
       include: {
@@ -561,19 +566,6 @@ export class LessonEventsService {
   private async buildNotificationContextForEvent(event: any) {
     if (event.lessonCalendarItemId) {
       return this.buildNotificationLessonContext(event);
-    }
-
-    if (event.schoolYearId && event.seriesClassId && event.teacherSubjectId) {
-      const target = await this.findStandaloneTargetForTeacher(
-        event.schoolYearId,
-        event.seriesClassId,
-        event.teacherSubjectId,
-      );
-
-      return this.buildStandaloneLessonContextFromTarget(
-        target,
-        event.eventDate || new Date(),
-      );
     }
 
     return this.buildNotificationLessonContext(event);
@@ -967,7 +959,7 @@ export class LessonEventsService {
         where: {
           tenantId: this.tenantId(),
           lessonCalendarItemId: currentEvent.lessonCalendarItemId,
-          teacherId: this.userId(),
+          teacherId: currentEvent.teacherId,
           eventType: nextEventType,
           canceledAt: null,
           id: { not: id },
@@ -1055,15 +1047,37 @@ export class LessonEventsService {
   }
 
   async remove(id: string) {
-    await this.findLessonEventForTeacher(id);
+    const currentEvent = await this.findLessonEventForTeacher(id);
+    const notificationLessonItem =
+      await this.buildNotificationContextForEvent(currentEvent);
 
-    return this.prisma.lessonEvent.update({
+    const dispatchResult =
+      await this.notificationsService.dispatchLessonEventNotifications({
+        lessonEvent: currentEvent,
+        lessonItem: notificationLessonItem,
+        action: "DELETE",
+      });
+
+    const removedEvent = await this.prisma.lessonEvent.update({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: this.userId(),
+        lastNotifiedAt:
+          dispatchResult.notificationsCreated > 0
+            ? new Date()
+            : currentEvent.lastNotifiedAt,
         updatedBy: this.userId(),
       },
     });
+
+    return {
+      ...this.mapEvent(removedEvent),
+      notificationsCreated: dispatchResult.notificationsCreated,
+      emailSent: dispatchResult.emailSent,
+      emailCount: dispatchResult.emailCount,
+      telegramSent: dispatchResult.telegramSent,
+      telegramCount: dispatchResult.telegramCount,
+    };
   }
 }

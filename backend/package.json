@@ -4,9 +4,9 @@
   "description": "Multi-tenant SaaS backend for school system",
   "private": true,
   "scripts": {
-    "prestart": "prisma generate",
-    "prestart:dev": "prisma generate",
-    "prestart:prod": "prisma generate",
+    "prestart": "prisma migrate deploy",
+    "prestart:dev": "prisma migrate deploy",
+    "prestart:prod": "prisma migrate deploy",
     "build": "nest build",
     "backfill:people": "ts-node scripts/backfill-people.ts",
     "qa:tcha-smoke": "ts-node scripts/tcha-general-smoke.ts",

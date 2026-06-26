@@ -45,6 +45,7 @@ type PersonRecord = {
     guardianId: string;
     studentId: string;
     studentName: string;
+    currentClassLabel?: string | null;
     kinship: string;
     kinshipDescription?: string | null;
   }>;
@@ -428,6 +429,9 @@ export default function PessoasPage() {
                           {guardianAssignments.map((assignment) => (
                             <div key={`${assignment.guardianId}-${assignment.studentId}`} className="flex flex-col gap-1 rounded-xl border border-emerald-200 bg-white/80 p-3">
                               <div className="text-[13px] font-black text-emerald-700">{assignment.studentName}</div>
+                              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                                {assignment.currentClassLabel ? `TURMA: ${assignment.currentClassLabel}` : 'TURMA: SEM MATRÍCULA ATUAL'}
+                              </div>
                               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
                                 {assignment.kinship}
                                 {assignment.kinshipDescription ? ` (${assignment.kinshipDescription})` : ''}

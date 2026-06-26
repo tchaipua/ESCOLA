@@ -166,6 +166,10 @@ type StudentRecord = {
     cellphone1?: string | null;
     cellphone2?: string | null;
     email?: string | null;
+    telegramChatId?: string | null;
+    telegramUsername?: string | null;
+    telegramOptInAt?: string | null;
+    telegramOptOutAt?: string | null;
     monthlyFee?: number | null;
     billingPayerType?: BillingPayerType | null;
     billingGuardianId?: string | null;
@@ -200,6 +204,9 @@ type StudentFormState = {
     cellphone1: string;
     cellphone2: string;
     email: string;
+    telegramChatId: string;
+    telegramUsername: string;
+    telegramOptInEnabled: boolean;
     zipCode: string;
     street: string;
     number: string;
@@ -241,6 +248,9 @@ const EMPTY_FORM: StudentFormState = {
     cellphone1: '',
     cellphone2: '',
     email: '',
+    telegramChatId: '',
+    telegramUsername: '',
+    telegramOptInEnabled: false,
     zipCode: '',
     street: '',
     number: '',
@@ -1681,6 +1691,9 @@ export default function AlunosPage() {
                 cellphone1: detail.cellphone1 || '',
                 cellphone2: detail.cellphone2 || '',
                 email: detail.email || '',
+                telegramChatId: detail.telegramChatId || '',
+                telegramUsername: detail.telegramUsername || '',
+                telegramOptInEnabled: Boolean(detail.telegramOptInAt && !detail.telegramOptOutAt),
                 zipCode: detail.zipCode || '',
                 street: detail.street || '',
                 number: detail.number || '',
@@ -1981,7 +1994,7 @@ export default function AlunosPage() {
             const url = editingStudentId ? `${API_BASE_URL}/students/${editingStudentId}` : `${API_BASE_URL}/students`;
             const method = editingStudentId ? 'PATCH' : 'POST';
             const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
-            const payload: Record<string, string | number | string[] | number[] | null | undefined> = {
+            const payload: Record<string, string | number | boolean | string[] | number[] | null | undefined> = {
                 ...formData,
                 ...branchPayload,
                 cpf: formatCpf(formData.cpf),
@@ -2007,6 +2020,9 @@ export default function AlunosPage() {
             }
             if (!studentFieldAccess.access) {
                 delete payload.email;
+                delete payload.telegramChatId;
+                delete payload.telegramUsername;
+                delete payload.telegramOptInEnabled;
                 delete payload.accessProfile;
                 delete payload.permissions;
             }
@@ -2878,6 +2894,33 @@ export default function AlunosPage() {
                                                     className={`${inputClass} bg-white`}
                                                 />
                                             </div>
+                                            <div>
+                                                <label className={labelClass}>Telegram Chat ID</label>
+                                                <input
+                                                    value={formData.telegramChatId}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, telegramChatId: event.target.value.trim() }))}
+                                                    className={`${inputClass} bg-white`}
+                                                    placeholder="Ex.: 123456789"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Usuário Telegram</label>
+                                                <input
+                                                    value={formData.telegramUsername}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, telegramUsername: event.target.value.toUpperCase() }))}
+                                                    className={`${inputClass} bg-white`}
+                                                    placeholder="Ex.: @USUARIO"
+                                                />
+                                            </div>
+                                            <label className="flex min-h-[46px] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.telegramOptInEnabled}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, telegramOptInEnabled: event.target.checked }))}
+                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                                />
+                                                Telegram ativo para notificações
+                                            </label>
                                         </div>
                                     </div>
 

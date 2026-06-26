@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsArray,
+  IsBoolean,
   IsInt,
   IsString,
   Min,
@@ -61,6 +62,23 @@ export class CreateTeacherDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @ApiPropertyOptional({ description: "ID do chat do professor no Telegram" })
+  @IsString()
+  @IsOptional()
+  telegramChatId?: string;
+
+  @ApiPropertyOptional({ description: "Usuário do professor no Telegram" })
+  @IsString()
+  @IsOptional()
+  telegramUsername?: string;
+
+  @ApiPropertyOptional({
+    description: "Indica se o professor autorizou receber Telegram",
+  })
+  @IsBoolean()
+  @IsOptional()
+  telegramOptInEnabled?: boolean;
 
   @ApiPropertyOptional({ description: "Senha de Acesso ao PWA" })
   @IsString()

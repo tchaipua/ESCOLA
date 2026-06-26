@@ -80,6 +80,10 @@ type TeacherRecord = {
     name: string;
     canceledAt?: string | null;
     email?: string | null;
+    telegramChatId?: string | null;
+    telegramUsername?: string | null;
+    telegramOptInAt?: string | null;
+    telegramOptOutAt?: string | null;
     cpf?: string | null;
     phone?: string | null;
     whatsapp?: string | null;
@@ -122,6 +126,9 @@ type TeacherFormState = {
     cellphone1: string;
     cellphone2: string;
     email: string;
+    telegramChatId: string;
+    telegramUsername: string;
+    telegramOptInEnabled: boolean;
     zipCode: string;
     street: string;
     number: string;
@@ -941,6 +948,7 @@ export default function ProfessoresPage() {
         branchAccessCodes: [1],
         name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
         phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+        telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
         zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
         accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
     });
@@ -1161,6 +1169,7 @@ export default function ProfessoresPage() {
             branchAccessCodes: [currentBranchCode],
             name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
             phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+            telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
             zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
             accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
         });
@@ -1234,6 +1243,9 @@ export default function ProfessoresPage() {
             cellphone1: prof.cellphone1 ? limitNumericDigits(prof.cellphone1, 11) : '',
             cellphone2: prof.cellphone2 ? limitNumericDigits(prof.cellphone2, 11) : '',
             email: prof.email || '',
+            telegramChatId: prof.telegramChatId || '',
+            telegramUsername: prof.telegramUsername || '',
+            telegramOptInEnabled: Boolean(prof.telegramOptInAt && !prof.telegramOptOutAt),
             zipCode: prof.zipCode ? limitNumericDigits(prof.zipCode, 8) : '',
             street: prof.street || '',
             number: prof.number || '',
@@ -2058,12 +2070,15 @@ export default function ProfessoresPage() {
             const method = editingTeacherId ? 'PATCH' : 'POST';
 
             const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
-            const payload: Record<string, string | number | string[] | number[] | undefined> = { ...formData, ...branchPayload, permissions: formData.permissions };
+            const payload: Record<string, string | number | boolean | string[] | number[] | undefined> = { ...formData, ...branchPayload, permissions: formData.permissions };
             if (branchPayload.branchAccessCodes === undefined) {
                 delete payload.branchAccessCodes;
             }
             if (!teacherFieldAccess.access) {
                 delete payload.email;
+                delete payload.telegramChatId;
+                delete payload.telegramUsername;
+                delete payload.telegramOptInEnabled;
                 delete payload.accessProfile;
                 delete payload.permissions;
             }
@@ -3030,6 +3045,33 @@ export default function ProfessoresPage() {
                                                     placeholder="Apenas para acessar o portal"
                                                 />
                                             </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Telegram Chat ID</label>
+                                                <input
+                                                    value={formData.telegramChatId}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, telegramChatId: e.target.value.trim() }))}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Ex.: 123456789"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário Telegram</label>
+                                                <input
+                                                    value={formData.telegramUsername}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, telegramUsername: e.target.value.toUpperCase() }))}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Ex.: @USUARIO"
+                                                />
+                                            </div>
+                                            <label className="flex min-h-[46px] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.telegramOptInEnabled}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, telegramOptInEnabled: e.target.checked }))}
+                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                                />
+                                                Telegram ativo para notificações
+                                            </label>
                                             <div className="md:col-span-2">
                                                 <div className="mb-2 text-xs font-bold text-slate-600">Permissões específicas do docente</div>
                                                 <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

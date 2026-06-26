@@ -327,6 +327,9 @@ export class StudentsService {
       delete sanitizedDto.password;
       delete sanitizedDto.accessProfile;
       delete sanitizedDto.permissions;
+      delete sanitizedDto.telegramChatId;
+      delete sanitizedDto.telegramUsername;
+      delete sanitizedDto.telegramOptInEnabled;
     }
 
     return sanitizedDto;
@@ -508,6 +511,13 @@ export class StudentsService {
     delete rawData.billingPayerType;
     delete rawData.billingGuardianId;
     delete rawData.branchAccessCodes;
+    rawData.telegramOptInAt = sanitizedDto.telegramOptInEnabled
+      ? new Date()
+      : null;
+    rawData.telegramOptOutAt = sanitizedDto.telegramOptInEnabled
+      ? null
+      : new Date();
+    delete rawData.telegramOptInEnabled;
 
     const createdStudent = await this.prisma.$transaction(async (tx) => {
       const student = await tx.student.create({
@@ -1108,6 +1118,20 @@ export class StudentsService {
     delete rawData.billingPayerType;
     delete rawData.billingGuardianId;
     delete rawData.branchAccessCodes;
+    if (
+      Object.prototype.hasOwnProperty.call(
+        sanitizedDto,
+        "telegramOptInEnabled",
+      )
+    ) {
+      rawData.telegramOptInAt = sanitizedDto.telegramOptInEnabled
+        ? currentStudent.telegramOptInAt || new Date()
+        : null;
+      rawData.telegramOptOutAt = sanitizedDto.telegramOptInEnabled
+        ? null
+        : new Date();
+    }
+    delete rawData.telegramOptInEnabled;
 
     const updatedStudent = await this.prisma.$transaction(async (tx) => {
       const student = await tx.student.update({

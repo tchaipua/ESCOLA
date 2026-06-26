@@ -38,7 +38,7 @@ type LessonEventNotificationPayload = {
       class?: { name?: string | null } | null;
     };
   };
-  action: "CREATE" | "UPDATE";
+  action: "CREATE" | "UPDATE" | "DELETE";
 };
 
 type NotificationRecipient = {
@@ -132,6 +132,9 @@ type EmailSendResult = {
   sent: boolean;
   count: number;
 };
+
+const TEMPORARY_EMAIL_RECIPIENT_ALLOWLIST = ["TCHAIPUA@GMAIL.COM"];
+const EMAIL_SEND_INTERVAL_MS = 15000;
 
 type TelegramConfiguration = {
   id: string;
@@ -233,6 +236,21 @@ export class NotificationsService {
     return String(value || "")
       .trim()
       .toUpperCase();
+  }
+
+  private isTemporarilyAllowedEmail(email?: string | null) {
+    const normalizedEmail = String(email || "").trim().toUpperCase();
+    return TEMPORARY_EMAIL_RECIPIENT_ALLOWLIST.includes(normalizedEmail);
+  }
+
+  private waitForEmailSendInterval() {
+    return new Promise((resolve) => setTimeout(resolve, EMAIL_SEND_INTERVAL_MS));
+  }
+
+  private runEmailJobInBackground(job: () => Promise<unknown>) {
+    setTimeout(() => {
+      void job().catch(() => undefined);
+    }, 0);
   }
 
   private formatDate(value: Date) {
@@ -408,9 +426,43 @@ export class NotificationsService {
   }
 
   private buildNotificationTitle(payload: LessonEventNotificationPayload) {
+    const actionLabel =
+      payload.action === "DELETE"
+        ? "CANCELAMENTO"
+        : payload.action === "UPDATE"
+          ? "ATUALIZAÇÃO"
+          : "NOVO AVISO";
     return this.normalizeText(
-      `${payload.action === "UPDATE" ? "ATUALIZAÇÃO" : "NOVO AVISO"}: ${this.getEventTypeLabel(payload.lessonEvent.eventType)}`,
+      `${actionLabel}: ${this.getEventTypeLabel(payload.lessonEvent.eventType)}`,
     );
+  }
+
+  private getLessonEventActionText(action: LessonEventNotificationPayload["action"]) {
+    if (action === "DELETE") return "Foi cancelado um aviso";
+    if (action === "UPDATE") return "Houve uma atualização";
+    return "Foi lançado um novo aviso";
+  }
+
+  private getLessonEventEmailHeading(payload: LessonEventNotificationPayload) {
+    if (payload.action === "DELETE") {
+      return `Cancelamento de ${this.getEventTypeLabel(payload.lessonEvent.eventType).toLowerCase()}`;
+    }
+    if (payload.action === "UPDATE") return "Atualização de agenda";
+    const eventTypeLabel = this.getEventTypeLabel(
+      payload.lessonEvent.eventType,
+    ).toLowerCase();
+    if (payload.lessonEvent.eventType === "PROVA") {
+      return `Nova ${eventTypeLabel} agendada`;
+    }
+    if (payload.lessonEvent.eventType === "TRABALHO") {
+      return `Novo ${eventTypeLabel} agendado`;
+    }
+    return "Novo aviso na agenda escolar";
+  }
+
+  private getLessonEventEmailHeadingStyle(payload: LessonEventNotificationPayload) {
+    const color = payload.action === "DELETE" ? "#dc2626" : "#0f172a";
+    return `margin: 0 0 12px; color: ${color};`;
   }
 
   private buildNotificationMessage(payload: LessonEventNotificationPayload) {
@@ -632,7 +684,7 @@ export class NotificationsService {
         ? `${payload.lessonItem.startTime} às ${payload.lessonItem.endTime}`
         : "Sem horário vinculado";
     const textBody = [
-      `${payload.action === "UPDATE" ? "Houve uma atualização" : "Foi lançado um novo aviso"} na agenda escolar.`,
+      `${this.getLessonEventActionText(payload.action)} na agenda escolar.`,
       `Tipo: ${this.getEventTypeLabel(payload.lessonEvent.eventType)}`,
       `Data: ${this.formatDate(payload.lessonItem.lessonDate)}`,
       `Horário: ${timeLabel}`,
@@ -646,16 +698,22 @@ export class NotificationsService {
       .filter(Boolean)
       .join("\n");
 
-    const sendableRecipients = recipients.filter((recipient) =>
-      recipient.email?.trim(),
+    const sendableRecipients = recipients.filter(
+      (recipient) =>
+        recipient.email?.trim() && this.isTemporarilyAllowedEmail(recipient.email),
     );
 
     if (sendableRecipients.length === 0) {
       return { sent: false, count: 0 };
     }
 
-    const results = await Promise.all(
-      sendableRecipients.map(async (recipient) => {
+    const results: boolean[] = [];
+    for (const [index, recipient] of sendableRecipients.entries()) {
+      if (index > 0) {
+        await this.waitForEmailSendInterval();
+      }
+
+      const result = await (async () => {
         try {
           await transporter.sendMail({
             from: `"${tenant.name}" <${tenant.smtpEmail}>`,
@@ -665,7 +723,7 @@ export class NotificationsService {
             text: textBody,
             html: `
               <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #1e293b;">
-                <h2 style="margin: 0 0 12px;">${payload.action === "UPDATE" ? "Atualização de agenda" : "Novo aviso na agenda escolar"}</h2>
+                <h2 style="${this.getLessonEventEmailHeadingStyle(payload)}">${this.getLessonEventEmailHeading(payload)}</h2>
                 <p><strong>Tipo:</strong> ${this.getEventTypeLabel(payload.lessonEvent.eventType)}</p>
                 <p><strong>Data:</strong> ${this.formatDate(payload.lessonItem.lessonDate)}</p>
                 <p><strong>Horário:</strong> ${timeLabel}</p>
@@ -700,8 +758,9 @@ export class NotificationsService {
         } catch {
           return false;
         }
-      }),
-    );
+      })();
+      results.push(result);
+    }
 
     const count = results.filter(Boolean).length;
     return { sent: count > 0, count };
@@ -903,10 +962,19 @@ export class NotificationsService {
 
     const subject = `NOTA DISPONÍVEL - ${payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA"}`;
 
-    await Promise.allSettled(
-      recipients
-        .filter((recipient) => recipient.email && recipient.email.trim())
-        .map((recipient) => {
+    const sendableRecipients = recipients.filter(
+      (recipient) =>
+        recipient.email &&
+        recipient.email.trim() &&
+        this.isTemporarilyAllowedEmail(recipient.email),
+    );
+
+    for (const [index, recipient] of sendableRecipients.entries()) {
+      if (index > 0) {
+        await this.waitForEmailSendInterval();
+      }
+
+      try {
           let studentGrade:
             | { score: number; remarks?: string | null }
             | undefined;
@@ -933,7 +1001,7 @@ export class NotificationsService {
             .filter(Boolean)
             .join("\n");
 
-          return transporter.sendMail({
+          await transporter.sendMail({
             from: `"${tenant.name}" <${tenant.smtpEmail}>`,
             to: recipient.email!,
             replyTo: tenant.smtpEmail || undefined,
@@ -960,10 +1028,12 @@ export class NotificationsService {
                 }
                 <p>Acesse o sistema para mais detalhes.</p>
               </div>
-            `,
+              `,
           });
-        }),
-    );
+      } catch {
+        continue;
+      }
+    }
 
     return true;
   }
@@ -1008,7 +1078,16 @@ export class NotificationsService {
       })),
     });
 
-    const emailResult = await this.sendEmailNotifications(recipients, payload);
+    const hasEmailRecipients = recipients.some(
+      (recipient) =>
+        recipient.email?.trim() && this.isTemporarilyAllowedEmail(recipient.email),
+    );
+    if (payload.lessonEvent.notifyByEmail && hasEmailRecipients) {
+      this.runEmailJobInBackground(() =>
+        this.sendEmailNotifications(recipients, payload),
+      );
+    }
+
     const telegramResult = await this.sendTelegramNotifications(
       recipients,
       payload,
@@ -1018,8 +1097,9 @@ export class NotificationsService {
 
     return {
       notificationsCreated: recipients.length,
-      emailSent: emailResult.sent,
-      emailCount: emailResult.count,
+      emailSent: false,
+      emailCount: 0,
+      emailQueued: payload.lessonEvent.notifyByEmail && hasEmailRecipients,
       telegramSent: telegramResult.sent,
       telegramCount: telegramResult.count,
     };
@@ -1062,11 +1142,20 @@ export class NotificationsService {
       })),
     });
 
-    const emailSent = await this.sendAssessmentGradeEmails(recipients, payload);
+    const hasEmailRecipients = recipients.some(
+      (recipient) =>
+        recipient.email?.trim() && this.isTemporarilyAllowedEmail(recipient.email),
+    );
+    if (payload.assessment.notifyByEmail && hasEmailRecipients) {
+      this.runEmailJobInBackground(() =>
+        this.sendAssessmentGradeEmails(recipients, payload),
+      );
+    }
 
     return {
       notificationsCreated: recipients.length,
-      emailSent,
+      emailSent: false,
+      emailQueued: payload.assessment.notifyByEmail && hasEmailRecipients,
     };
   }
 

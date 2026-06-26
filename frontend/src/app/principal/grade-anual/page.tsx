@@ -122,6 +122,11 @@ type AnnualStandaloneEvent = {
     teacherName: string;
 };
 
+type ExtraEditableEvent = AnnualStandaloneEvent | (AnnualLessonEvent & {
+    seriesClassLabel?: string;
+    subjectName?: string;
+});
+
 type ExpandedDayModalState = {
     date: string;
     lessonItems: AnnualCalendarLessonItem[];
@@ -147,6 +152,10 @@ type AdministrativeEventFormState = {
     notifyGuardians: boolean;
     notifyByEmail: boolean;
     notifyByTelegram: boolean;
+};
+
+type ExtraEventEditModalState = {
+    event: ExtraEditableEvent;
 };
 
 type WeeklySourceItem = {
@@ -479,7 +488,16 @@ export default function GradeAnualPage() {
     const [administrativeEventModal, setAdministrativeEventModal] = useState<AdministrativeEventModalState | null>(null);
     const [administrativeEventForm, setAdministrativeEventForm] = useState<AdministrativeEventFormState>(DEFAULT_ADMINISTRATIVE_EVENT_FORM);
     const [administrativeEventError, setAdministrativeEventError] = useState<string | null>(null);
+    const [administrativeEventSuccess, setAdministrativeEventSuccess] = useState<string | null>(null);
+    const [shouldCloseAdministrativeEventAfterSuccess, setShouldCloseAdministrativeEventAfterSuccess] = useState(false);
     const [isSavingAdministrativeEvent, setIsSavingAdministrativeEvent] = useState(false);
+    const [extraEventEditModal, setExtraEventEditModal] = useState<ExtraEventEditModalState | null>(null);
+    const [extraEventEditForm, setExtraEventEditForm] = useState<AdministrativeEventFormState>(DEFAULT_ADMINISTRATIVE_EVENT_FORM);
+    const [extraEventEditError, setExtraEventEditError] = useState<string | null>(null);
+    const [extraEventEditSuccess, setExtraEventEditSuccess] = useState<string | null>(null);
+    const [shouldCloseExtraEventAfterSuccess, setShouldCloseExtraEventAfterSuccess] = useState(false);
+    const [isSavingExtraEventEdit, setIsSavingExtraEventEdit] = useState(false);
+    const [isDeletingExtraEvent, setIsDeletingExtraEvent] = useState(false);
     const [formData, setFormData] = useState<FormState>({ ...EMPTY_FORM, periods: buildDefaultPeriods() });
     const [editingId, setEditingId] = useState<string | null>(null);
     const [weeklySource, setWeeklySource] = useState<WeeklySourceResponse | null>(null);
@@ -1215,9 +1233,20 @@ export default function GradeAnualPage() {
         }
     };
 
+    const resolveExpandedModalSeriesClassId = (
+        lessonItems: AnnualCalendarLessonItem[],
+        standaloneEvents: AnnualStandaloneEvent[],
+    ) => {
+        if (!selectedCalendarSeriesClassId) return '';
+        const hasSelectedSeriesClass = [...lessonItems, ...standaloneEvents].some(
+            (item) => item.seriesClassId === selectedCalendarSeriesClassId,
+        );
+        return hasSelectedSeriesClass ? selectedCalendarSeriesClassId : '';
+    };
+
     const openExpandedDayModal = (date: string, lessonItems: AnnualCalendarLessonItem[], standaloneEvents: AnnualStandaloneEvent[]) => {
         setExpandedWeekdayModal(null);
-        setExpandedDaySeriesClassId('');
+        setExpandedDaySeriesClassId(resolveExpandedModalSeriesClassId(lessonItems, standaloneEvents));
         setExpandedDayModal({
             date,
             lessonItems,
@@ -1246,7 +1275,7 @@ export default function GradeAnualPage() {
             .filter((event) => dateSet.has(event.date))
             .sort((left, right) => `${left.date}-${left.startTime || ''}`.localeCompare(`${right.date}-${right.startTime || ''}`));
 
-        setExpandedDaySeriesClassId('');
+        setExpandedDaySeriesClassId(resolveExpandedModalSeriesClassId(lessonItems, standaloneEvents));
         setExpandedDayModal(null);
         setExpandedWeekdayModal({
             weekdayLabel,
@@ -1376,6 +1405,8 @@ export default function GradeAnualPage() {
 
     const openAdministrativeEventModal = (lesson: AnnualCalendarLessonItem, eventType: 'PROVA' | 'TRABALHO') => {
         setAdministrativeEventError(null);
+        setAdministrativeEventSuccess(null);
+        setShouldCloseAdministrativeEventAfterSuccess(false);
         setAdministrativeEventForm({
             ...DEFAULT_ADMINISTRATIVE_EVENT_FORM,
             title: eventType === 'PROVA' ? 'PROVA AGENDADA' : 'TRABALHO AGENDADO',
@@ -1387,7 +1418,105 @@ export default function GradeAnualPage() {
         if (!force && isSavingAdministrativeEvent) return;
         setAdministrativeEventModal(null);
         setAdministrativeEventError(null);
+        setAdministrativeEventSuccess(null);
+        setShouldCloseAdministrativeEventAfterSuccess(false);
         setAdministrativeEventForm(DEFAULT_ADMINISTRATIVE_EVENT_FORM);
+    };
+
+    const openExtraEventEditModal = (event: ExtraEditableEvent) => {
+        setExtraEventEditError(null);
+        setExtraEventEditSuccess(null);
+        setShouldCloseExtraEventAfterSuccess(false);
+        setExtraEventEditForm({
+            title: event.title || event.eventTypeLabel || '',
+            description: event.description || '',
+            notifyStudents: true,
+            notifyGuardians: true,
+            notifyByEmail: true,
+            notifyByTelegram: false,
+        });
+        setExtraEventEditModal({ event });
+    };
+
+    const closeExtraEventEditModal = (force = false) => {
+        if (!force && (isSavingExtraEventEdit || isDeletingExtraEvent)) return;
+        setExtraEventEditModal(null);
+        setExtraEventEditError(null);
+        setExtraEventEditSuccess(null);
+        setShouldCloseExtraEventAfterSuccess(false);
+        setExtraEventEditForm(DEFAULT_ADMINISTRATIVE_EVENT_FORM);
+    };
+
+    const handleSaveExtraEventEdit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!extraEventEditModal?.event.id) return;
+
+        try {
+            setIsSavingExtraEventEdit(true);
+            setExtraEventEditError(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado, faça login novamente.');
+
+            const eventUrl = `${API_BASE_URL}/lesson-events/${extraEventEditModal.event.id}`;
+            const response = await fetch(eventUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    title: extraEventEditForm.title,
+                    description: extraEventEditForm.description,
+                    notifyStudents: extraEventEditForm.notifyStudents,
+                    notifyGuardians: extraEventEditForm.notifyGuardians,
+                    notifyByEmail: extraEventEditForm.notifyByEmail,
+                    notifyByTelegram: extraEventEditForm.notifyByTelegram,
+                }),
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, eventUrl, 'Não foi possível alterar o evento extra.'));
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível alterar o evento extra.'));
+
+            setExtraEventEditSuccess('Evento extra alterado com sucesso.');
+            setShouldCloseExtraEventAfterSuccess(true);
+            await loadCalendarEvents();
+        } catch (error) {
+            setExtraEventEditError(error instanceof Error ? error.message : 'Não foi possível alterar o evento extra.');
+        } finally {
+            setIsSavingExtraEventEdit(false);
+        }
+    };
+
+    const handleDeleteExtraEvent = async () => {
+        if (!extraEventEditModal?.event.id) return;
+
+        try {
+            setIsDeletingExtraEvent(true);
+            setExtraEventEditError(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado, faça login novamente.');
+
+            const eventUrl = `${API_BASE_URL}/lesson-events/${extraEventEditModal.event.id}`;
+            const response = await fetch(eventUrl, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            }).catch((error) => {
+                throw new Error(getNetworkErrorMessage(error, eventUrl, 'Não foi possível excluir o evento extra.'));
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível excluir o evento extra.'));
+
+            setExtraEventEditSuccess('Evento extra excluído com sucesso.');
+            setShouldCloseExtraEventAfterSuccess(true);
+            await loadCalendarEvents();
+        } catch (error) {
+            setExtraEventEditError(error instanceof Error ? error.message : 'Não foi possível excluir o evento extra.');
+        } finally {
+            setIsDeletingExtraEvent(false);
+        }
     };
 
     const closeLessonEdit = () => {
@@ -1461,8 +1590,8 @@ export default function GradeAnualPage() {
             const data = await response.json().catch(() => null);
             if (!response.ok) throw new Error(getApiErrorMessage(data, 'Não foi possível lançar prova/trabalho nesta aula.'));
 
-            setSuccessStatus(`${administrativeEventModal.eventType} lançad${administrativeEventModal.eventType === 'PROVA' ? 'a' : 'o'} com sucesso.`);
-            closeAdministrativeEventModal(true);
+            setAdministrativeEventSuccess(`${administrativeEventModal.eventType} lançad${administrativeEventModal.eventType === 'PROVA' ? 'a' : 'o'} com sucesso.`);
+            setShouldCloseAdministrativeEventAfterSuccess(true);
             await loadCalendarEvents();
         } catch (error) {
             setAdministrativeEventError(error instanceof Error ? error.message : 'Não foi possível lançar prova/trabalho nesta aula.');
@@ -1515,6 +1644,31 @@ export default function GradeAnualPage() {
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    const renderModalSuccessPopup = (
+        message: string | null,
+        onClose: () => void,
+    ) => {
+        if (!message) return null;
+
+        return (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-md rounded-[28px] border border-emerald-200 bg-white p-6 text-center shadow-2xl">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl font-black text-emerald-700">
+                        ✓
+                    </div>
+                    <div className="mt-4 text-lg font-black text-slate-800">{message}</div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="mt-6 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-black uppercase tracking-[0.18em] text-white shadow hover:bg-emerald-500"
+                    >
+                        Fechar
                     </button>
                 </div>
             </div>
@@ -1813,25 +1967,24 @@ export default function GradeAnualPage() {
                                                     ) : null}
 
                                                     {featuredExtraEvent ? (
-                                                        <div className="mt-2 rounded-[18px] border border-red-300 bg-red-50 px-3 py-3 shadow-sm">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openExtraEventEditModal(featuredExtraEvent)}
+                                                            className="mt-2 w-full rounded-[18px] border border-red-300 bg-red-50 px-3 py-3 text-left shadow-sm transition hover:border-red-400 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+                                                        >
                                                             <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
                                                                 EVENTO EXTRA
                                                             </div>
                                                             <div className="mt-2 text-xs font-extrabold uppercase text-slate-800">
                                                                 {featuredExtraEvent.title || featuredExtraEvent.eventTypeLabel}
                                                             </div>
-                                                            <div className="mt-1 text-[11px] font-medium uppercase text-slate-500">
-                                                                {featuredExtraEvent.seriesClassLabel}
-                                                            </div>
-                                                            <div className="text-[11px] font-medium uppercase text-slate-500">
-                                                                {featuredExtraEvent.subjectName}
-                                                            </div>
-                                                        </div>
+                                                        </button>
                                                     ) : null}
 
                                                     <div className="mt-3 flex flex-1 flex-col gap-2">
                                                         {dayLessonItems.slice(0, 3).map((entry) => {
-                                                            const hasProva = entry.events.some((event) => event.eventType === 'PROVA');
+                                                            const provaEvent = entry.events.find((event) => event.eventType === 'PROVA');
+                                                            const hasProva = Boolean(provaEvent);
                                                             const extraEvent = entry.events.find((event) => event.eventType !== 'PROVA');
                                                             const isIntervalItem = !entry.teacherSubjectId || entry.subjectName.toUpperCase().includes('INTERVALO');
 
@@ -1850,9 +2003,22 @@ export default function GradeAnualPage() {
                                                                     className="rounded-2xl border border-blue-200 bg-[#eef5ff] text-blue-800 px-3 py-3 text-left shadow-sm transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-white"
                                                                 >
                                                                     {hasProva ? (
-                                                                        <span className="mb-2 inline-flex rounded-full bg-red-600 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(event) => {
+                                                                                event.stopPropagation();
+                                                                                if (provaEvent) {
+                                                                                    openExtraEventEditModal({
+                                                                                        ...provaEvent,
+                                                                                        seriesClassLabel: entry.seriesClassLabel,
+                                                                                        subjectName: entry.subjectName,
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            className="mb-2 inline-flex rounded-full bg-red-600 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white transition hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-300"
+                                                                        >
                                                                             * DIA DE PROVA
-                                                                        </span>
+                                                                        </button>
                                                                     ) : null}
                                                                     <div className="text-[11px] font-black uppercase tracking-[0.18em]">
                                                                         {entry.startTime} - {entry.endTime}
@@ -2026,14 +2192,17 @@ export default function GradeAnualPage() {
                             {expandedDayStandaloneEvents.length ? (
                                 <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
                                     {expandedDayStandaloneEvents.map((event) => (
-                                        <div key={event.id} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 shadow-sm">
+                                        <button
+                                            key={event.id}
+                                            type="button"
+                                            onClick={() => openExtraEventEditModal(event)}
+                                            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left shadow-sm transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+                                        >
                                             <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
                                                 EVENTO EXTRA
                                             </div>
                                             <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">{event.title || event.eventTypeLabel}</div>
-                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-500">{event.seriesClassLabel}</div>
-                                            <div className="text-xs font-semibold uppercase text-slate-500">{event.subjectName}</div>
-                                        </div>
+                                        </button>
                                     ))}
                                 </div>
                             ) : null}
@@ -2192,14 +2361,17 @@ export default function GradeAnualPage() {
                                             {dateStandaloneEvents.length ? (
                                                 <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
                                                     {dateStandaloneEvents.map((event) => (
-                                                        <div key={event.id} className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 shadow-sm">
+                                                        <button
+                                                            key={event.id}
+                                                            type="button"
+                                                            onClick={() => openExtraEventEditModal(event)}
+                                                            className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-left shadow-sm transition hover:border-red-300 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300"
+                                                        >
                                                             <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
                                                                 EVENTO EXTRA
                                                             </div>
                                                             <div className="mt-2 text-sm font-extrabold uppercase text-slate-800">{event.title || event.eventTypeLabel}</div>
-                                                            <div className="mt-1 text-xs font-semibold uppercase text-slate-500">{event.seriesClassLabel}</div>
-                                                            <div className="text-xs font-semibold uppercase text-slate-500">{event.subjectName}</div>
-                                                        </div>
+                                                        </button>
                                                     ))}
                                                 </div>
                                             ) : null}
@@ -2214,6 +2386,110 @@ export default function GradeAnualPage() {
                                 <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL_DIA_SEMANA_EXPANDIDO" className="mt-0 text-[11px]" />
                             </div>
                         </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {extraEventEditModal ? (
+                <div className="fixed inset-0 z-[58] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+                    <div className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-5">
+                            <div>
+                                <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
+                                    EVENTO EXTRA
+                                </div>
+                                <h2 className="mt-3 text-xl font-black text-slate-800">Alterar evento extra</h2>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => closeExtraEventEditModal()}
+                                disabled={isSavingExtraEventEdit || isDeletingExtraEvent}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-60"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleSaveExtraEventEdit} className="space-y-4 px-6 py-5">
+                            {extraEventEditError ? (
+                                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                                    {extraEventEditError}
+                                </div>
+                            ) : null}
+
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Título</span>
+                                <input
+                                    value={extraEventEditForm.title}
+                                    onChange={(event) => setExtraEventEditForm((current) => ({ ...current, title: event.target.value }))}
+                                    className={inputClass}
+                                    maxLength={120}
+                                />
+                            </label>
+
+                            <label className="block space-y-1">
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Descrição</span>
+                                <textarea
+                                    value={extraEventEditForm.description}
+                                    onChange={(event) => setExtraEventEditForm((current) => ({ ...current, description: event.target.value }))}
+                                    className="min-h-[110px] w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    maxLength={1000}
+                                    placeholder="DETALHES DA PROVA OU TRABALHO"
+                                />
+                            </label>
+
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                                {[
+                                    { key: 'notifyStudents', label: 'Notificar alunos' },
+                                    { key: 'notifyGuardians', label: 'Notificar responsáveis' },
+                                    { key: 'notifyByEmail', label: 'Enviar e-mail' },
+                                    { key: 'notifyByTelegram', label: 'Enviar Telegram' },
+                                ].map((option) => (
+                                    <label key={option.key} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase text-slate-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={Boolean(extraEventEditForm[option.key as keyof AdministrativeEventFormState])}
+                                            onChange={(event) => setExtraEventEditForm((current) => ({ ...current, [option.key]: event.target.checked }))}
+                                            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                        />
+                                        {option.label}
+                                    </label>
+                                ))}
+                            </div>
+
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-amber-800">
+                                Teste temporário: e-mail limitado somente para TCHAIPUA@GMAIL.COM.
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={handleDeleteExtraEvent}
+                                    disabled={isSavingExtraEventEdit || isDeletingExtraEvent}
+                                    className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow hover:bg-rose-500 disabled:bg-rose-300"
+                                >
+                                    {isDeletingExtraEvent ? 'Excluindo...' : 'Excluir'}
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSavingExtraEventEdit || isDeletingExtraEvent || !extraEventEditForm.title.trim()}
+                                    className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isSavingExtraEventEdit ? 'Salvando...' : 'Salvar alteração'}
+                                </button>
+                            </div>
+                        </form>
+
+                        <div className="flex justify-end px-6 pb-4">
+                            <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL_MODAL_EVENTO_EXTRA" label="NOME DA TELA" className="mt-0 justify-end" />
+                        </div>
+                        {renderModalSuccessPopup(extraEventEditSuccess, () => {
+                            if (shouldCloseExtraEventAfterSuccess) {
+                                closeExtraEventEditModal(true);
+                                return;
+                            }
+                            setExtraEventEditSuccess(null);
+                        })}
                     </div>
                 </div>
             ) : null}
@@ -2363,7 +2639,7 @@ export default function GradeAnualPage() {
 
             {administrativeEventModal ? (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-4">
-                    <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                    <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
                         <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
                             <div className="flex items-start gap-4">
                                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -2424,11 +2700,11 @@ export default function GradeAnualPage() {
                                 />
                             </label>
 
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-                                {[
-                                    { key: 'notifyStudents', label: 'Notificar alunos' },
-                                    { key: 'notifyGuardians', label: 'Notificar responsáveis' },
-                                    { key: 'notifyByEmail', label: 'Enviar e-mail' },
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                                  {[
+                                      { key: 'notifyStudents', label: 'Notificar alunos' },
+                                      { key: 'notifyGuardians', label: 'Notificar responsáveis' },
+                                      { key: 'notifyByEmail', label: 'Enviar e-mail' },
                                     { key: 'notifyByTelegram', label: 'Enviar Telegram' },
                                 ].map((option) => (
                                     <label key={option.key} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold uppercase text-slate-600">
@@ -2438,12 +2714,16 @@ export default function GradeAnualPage() {
                                             onChange={(event) => setAdministrativeEventForm((current) => ({ ...current, [option.key]: event.target.checked }))}
                                             className="h-4 w-4 rounded border-slate-300 text-blue-600"
                                         />
-                                        {option.label}
-                                    </label>
-                                ))}
-                            </div>
+                                          {option.label}
+                                      </label>
+                                  ))}
+                              </div>
 
-                            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+                              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-amber-800">
+                                  Teste temporário: e-mail limitado somente para TCHAIPUA@GMAIL.COM.
+                              </div>
+
+                              <div className="flex items-center justify-between border-t border-slate-100 pt-4">
                                 <button
                                     type="button"
                                     onClick={() => closeAdministrativeEventModal()}
@@ -2467,6 +2747,13 @@ export default function GradeAnualPage() {
                                 <ScreenNameCopy screenId={ADMINISTRATIVE_EVENT_MODAL_LABEL} label="NOME DA TELA" className="mt-0 justify-end" />
                             </div>
                         </div>
+                        {renderModalSuccessPopup(administrativeEventSuccess, () => {
+                            if (shouldCloseAdministrativeEventAfterSuccess) {
+                                closeAdministrativeEventModal(true);
+                                return;
+                            }
+                            setAdministrativeEventSuccess(null);
+                        })}
                     </div>
                 </div>
             ) : null}

@@ -1,4 +1,4 @@
-type TenantBranding = {
+export type TenantBranding = {
     tenantId: string;
     schoolName: string;
     logoUrl?: string | null;

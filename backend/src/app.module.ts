@@ -21,6 +21,7 @@ import { SharedProfilesModule } from "./modules/shared-profiles/shared-profiles.
 import { UserPreferencesModule } from "./modules/user-preferences/user-preferences.module";
 import { GlobalSettingsModule } from "./modules/global-settings/global-settings.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
+import { NotificationSettingsModule } from "./modules/notification-settings/notification-settings.module";
 import { LessonEventsModule } from "./modules/lesson-events/lesson-events.module";
 import { LessonAssessmentsModule } from "./modules/lesson-assessments/lesson-assessments.module";
 import { LessonAttendancesModule } from "./modules/lesson-attendances/lesson-attendances.module";
@@ -59,6 +60,7 @@ import { TenantMiddleware } from "./common/tenant/tenant.middleware";
     UserPreferencesModule,
     GlobalSettingsModule,
     NotificationsModule,
+    NotificationSettingsModule,
     LessonEventsModule,
     LessonAssessmentsModule,
     LessonAttendancesModule,

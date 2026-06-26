@@ -329,6 +329,10 @@ export default function MsinforAdminPage() {
         smtpHost: 'smtp.gmail.com', smtpPort: '465', smtpTimeout: '60',
         smtpAuthenticate: true, smtpSecure: true, smtpAuthType: 'SSL',
         smtpEmail: '', smtpPassword: '',
+        // TELEGRAM
+        telegramEnabled: false,
+        telegramBotToken: '',
+        telegramBotUsername: '',
         // STORAGE
         storageProviderAccessKeyId: '', storageProviderSecretAccessKey: '',
         storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
@@ -916,11 +920,17 @@ export default function MsinforAdminPage() {
                 penaltyValue: formData.penaltyValue ? parseFloat(formData.penaltyValue as string) : null,
                 interestGracePeriod: formData.interestGracePeriod ? parseInt(formData.interestGracePeriod as string, 10) : null,
                 penaltyGracePeriod: formData.penaltyGracePeriod ? parseInt(formData.penaltyGracePeriod as string, 10) : null,
+                smtpHost: formData.smtpHost || null,
                 smtpPort: formData.smtpPort ? parseInt(formData.smtpPort as string, 10) : null,
                 smtpTimeout: formData.smtpTimeout ? parseInt(formData.smtpTimeout as string, 10) : null,
                 smtpAuthenticate: !!formData.smtpAuthenticate,
                 smtpSecure: !!formData.smtpSecure,
                 smtpAuthType: formData.smtpAuthType || (formData.smtpSecure ? 'SSL' : 'STARTTLS'),
+                smtpEmail: formData.smtpEmail || null,
+                smtpPassword: formData.smtpPassword || null,
+                telegramEnabled: !!formData.telegramEnabled,
+                telegramBotToken: formData.telegramBotToken || null,
+                telegramBotUsername: formData.telegramBotUsername || null,
                 storageProviderAccessKeyId: formData.storageProviderAccessKeyId || null,
                 storageProviderSecretAccessKey: formData.storageProviderSecretAccessKey || null,
                 storageBucketName: formData.storageBucketName || null,
@@ -934,6 +944,17 @@ export default function MsinforAdminPage() {
 
             if (!String(formData.adminPassword || '').trim()) {
                 delete payload.adminPassword;
+            }
+
+            if (editingTenantId && !String(formData.smtpPassword || '').trim()) {
+                delete payload.smtpHost;
+                delete payload.smtpPort;
+                delete payload.smtpTimeout;
+                delete payload.smtpAuthenticate;
+                delete payload.smtpSecure;
+                delete payload.smtpAuthType;
+                delete payload.smtpEmail;
+                delete payload.smtpPassword;
             }
 
             const res = await fetch(url, {
@@ -1058,6 +1079,9 @@ export default function MsinforAdminPage() {
             smtpAuthType: escola.smtpAuthType ?? ((escola.smtpSecure ?? true) ? 'SSL' : 'STARTTLS'),
             smtpEmail: escola.smtpEmail ?? '',
             smtpPassword: '',
+            telegramEnabled: escola.telegramEnabled ?? false,
+            telegramBotToken: escola.telegramBotToken ?? '',
+            telegramBotUsername: escola.telegramBotUsername ?? '',
             storageProviderAccessKeyId: escola.storageProviderAccessKeyId ?? '',
             storageProviderSecretAccessKey: escola.storageProviderSecretAccessKey ?? '',
             storageBucketName: escola.storageBucketName ?? '',
@@ -1092,6 +1116,9 @@ export default function MsinforAdminPage() {
             smtpHost: 'smtp.gmail.com', smtpPort: '465', smtpTimeout: '60',
             smtpAuthenticate: true, smtpSecure: true, smtpAuthType: 'SSL',
             smtpEmail: '', smtpPassword: '',
+            telegramEnabled: false,
+            telegramBotToken: '',
+            telegramBotUsername: '',
             storageProviderAccessKeyId: '', storageProviderSecretAccessKey: '',
             storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
             storageDefaultExpiration: '1440', storageRegion: '', storageEndpoint: 'custom',
@@ -1394,12 +1421,12 @@ export default function MsinforAdminPage() {
 
             {/* Conteúdo */}
             <main className="flex-1 p-8 w-full max-w-none relative">
-                <div className="flex justify-between items-center mb-6">
+                <div className="grid grid-cols-1 items-center gap-4 mb-6 lg:grid-cols-[1fr_auto_1fr]">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800">Unidades de Ensino Ativas</h2>
                         <p className="text-slate-500 text-sm mt-1">Escolas que rodam sob o guarda-chuva do sistema.</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex justify-center">
                         <button
                             type="button"
                                 onClick={() => {
@@ -1409,10 +1436,12 @@ export default function MsinforAdminPage() {
                                     setIsGeneralSettingsOpen(true);
                                     void fetchGeneralSettings();
                                 }}
-                            className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50"
+                            className="rounded-xl border border-emerald-500 bg-emerald-600 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm shadow-emerald-600/25 transition-all hover:border-emerald-600 hover:bg-emerald-700"
                         >
-                            Configurações gerais
+                            CONFIGURAÇÕES GERAIS (VALE PRA TODAS AS FILIAIS)
                         </button>
+                    </div>
+                    <div className="flex items-center justify-end gap-3">
                         <button
                             onClick={() => { closeModal(); setIsModalOpen(true); }}
                             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2"
@@ -2057,6 +2086,13 @@ export default function MsinforAdminPage() {
                                 onClick={() => setActiveTab(3)}
                                 className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
                             >
+                                TELEGRAM
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab(4)}
+                                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-indigo-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+                            >
                                 ARQUIVOS / STORAGE
                             </button>
                         </div>
@@ -2254,6 +2290,51 @@ export default function MsinforAdminPage() {
                                 )}
 
                                 {activeTab === 3 && (
+                                    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Configuração do Bot Telegram</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">
+                                            <div className="md:col-span-2">
+                                                <h5 className="text-center text-sm font-semibold text-slate-600 mb-2">Configure o bot usado pela escola para envio de notificações via Telegram.</h5>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!formData.telegramEnabled}
+                                                        onChange={e => setFormData({ ...formData, telegramEnabled: e.target.checked })}
+                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                    Telegram ativo para esta escola
+                                                </label>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Bot Token</label>
+                                                <input
+                                                    type="password"
+                                                    value={formData.telegramBotToken}
+                                                    onChange={e => setFormData({ ...formData, telegramBotToken: e.target.value.trim() })}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                                    placeholder="Token gerado pelo @BotFather"
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário do bot</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.telegramBotUsername}
+                                                    onChange={e => setFormData({ ...formData, telegramBotUsername: e.target.value.trim() })}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm"
+                                                    placeholder="Ex.: @msinfor_escola_cec_bot"
+                                                />
+                                            </div>
+                                            <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-700">
+                                                O token é sensível e deve ser mantido apenas no cadastro da escola. Depois de salvar, os responsáveis, alunos e professores precisam ter Chat ID cadastrado na tela de notificações por usuário.
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 4 && (
                                     <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                                         <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-800 mb-4 pb-2 border-b border-indigo-50">Configuração de Arquivos / Storage Compatível com S3</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl mx-auto mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200 shadow-inner">

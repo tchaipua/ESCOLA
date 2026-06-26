@@ -675,6 +675,73 @@ Resposta resumida:
 }
 ```
 
+## Configurações de notificações por usuário
+
+### GET `/notification-settings/users`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Uso: lista as pessoas do tenant atual com status de e-mail validado e dados de Telegram para envio de notificacoes.
+- Escopo: sempre restrito ao `tenantId` da sessao.
+- Origem dos registros:
+  - `people` como fonte oficial de nome, e-mail e Telegram
+  - `teachers`, `students` e `guardians` apenas para montar as etiquetas de papeis vinculados
+  - `email_credentials` para status de validacao do e-mail
+
+Resposta resumida:
+
+```json
+[
+  {
+    "id": "uuid",
+    "sourceType": "GUARDIAN",
+    "sourceLabel": "RESPONSAVEL",
+    "name": "NOME",
+    "email": "EMAIL@ESCOLA.COM",
+    "emailVerified": true,
+    "emailVerifiedAt": "2026-06-26T10:00:00.000Z",
+    "telegramChatId": "123456789",
+    "telegramUsername": "@USUARIO",
+    "telegramEnabled": true,
+    "active": true
+  }
+]
+```
+
+### POST `/notification-settings/users/send-email-confirmation`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Uso: envia um link de confirmacao para validar se o e-mail informado esta correto.
+- Regra: a confirmacao reutiliza `email_credentials`; ao clicar no link recebido, o e-mail passa a ser marcado como validado globalmente.
+
+Body:
+
+```json
+{
+  "email": "USUARIO@ESCOLA.COM"
+}
+```
+
+### PATCH `/notification-settings/users/:personId`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Uso: atualiza e-mail e dados de Telegram da pessoa central sem precisar abrir o cadastro original.
+- Regra: a gravacao acontece em `people` e sincroniza os papeis vinculados por `personId` para manter os envios atuais consistentes.
+- Regra: se o e-mail for alterado, ele fica sujeito a validacao em `email_credentials`.
+
+Body:
+
+```json
+{
+  "email": "USUARIO@ESCOLA.COM",
+  "telegramChatId": "123456789",
+  "telegramUsername": "@USUARIO",
+  "telegramOptInEnabled": true
+}
+```
+
 ## Regras de payload importantes
 
 - Campos textuais devem ser normalizados para uppercase, exceto senha

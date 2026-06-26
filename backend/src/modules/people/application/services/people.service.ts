@@ -88,6 +88,7 @@ type PersonWithRoles = {
     guardianId: string;
     studentId: string;
     studentName: string;
+    currentClassLabel: string | null;
     kinship: string;
     kinshipDescription: string | null;
   }[];
@@ -320,36 +321,71 @@ export class PeopleService {
     if (!guardianIds.length) return [];
 
     const assignments = await this.prisma.$queryRaw<
-      Array<{
-        guardianId: string;
-        studentId: string;
-        studentName: string;
-        kinship: string;
-        kinshipDescription: string | null;
-      }>
+        Array<{
+          guardianId: string;
+          studentId: string;
+          studentName: string;
+          schoolYear: number | null;
+          seriesName: string | null;
+          className: string | null;
+          kinship: string;
+          kinshipDescription: string | null;
+        }>
     >`
       SELECT
-        gs.guardianId,
-        s.id AS studentId,
-        s.name AS studentName,
-        gs.kinship,
-        gs.kinshipDescription
-      FROM guardian_students gs
-      INNER JOIN students s ON s.id = gs.studentId
-      WHERE gs.tenantId = ${this.tenantId()}
-        AND gs.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-        AND gs.canceledBy IS NULL
-        AND s.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-        AND gs.guardianId IN (${Prisma.join(guardianIds)})
+          gs.guardianId,
+          s.id AS studentId,
+          s.name AS studentName,
+          sy.year AS schoolYear,
+          se.name AS seriesName,
+          c.name AS className,
+          gs.kinship,
+          gs.kinshipDescription
+        FROM guardian_students gs
+        INNER JOIN students s ON s.id = gs.studentId
+        LEFT JOIN enrollments e
+          ON e.id = (
+            SELECT e2.id
+            FROM enrollments e2
+            INNER JOIN school_years sy2 ON sy2.id = e2.schoolYearId
+            WHERE e2.studentId = s.id
+              AND e2.tenantId = gs.tenantId
+              AND e2.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+              AND e2.canceledAt IS NULL
+            ORDER BY
+              CASE WHEN e2.status = 'ATIVO' THEN 0 ELSE 1 END,
+              sy2.year DESC,
+              e2.createdAt DESC
+            LIMIT 1
+          )
+        LEFT JOIN school_years sy ON sy.id = e.schoolYearId
+        LEFT JOIN series_classes sc ON sc.id = e.seriesClassId
+        LEFT JOIN series se ON se.id = sc.seriesId
+        LEFT JOIN classes c ON c.id = COALESCE(sc.classId, e.classId)
+        WHERE gs.tenantId = ${this.tenantId()}
+          AND gs.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+          AND gs.canceledBy IS NULL
+          AND s.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+          AND gs.guardianId IN (${Prisma.join(guardianIds)})
     `;
 
     return assignments.map((assignment) => ({
-      guardianId: assignment.guardianId,
-      studentId: assignment.studentId,
-      studentName: assignment.studentName,
-      kinship: assignment.kinship,
-      kinshipDescription: assignment.kinshipDescription,
-    }));
+        guardianId: assignment.guardianId,
+        studentId: assignment.studentId,
+        studentName: assignment.studentName,
+        currentClassLabel:
+          assignment.seriesName || assignment.className || assignment.schoolYear
+            ? [
+                assignment.schoolYear ? String(assignment.schoolYear) : null,
+                assignment.seriesName,
+                assignment.className,
+              ]
+                .filter(Boolean)
+                .join(" - ")
+            : null,
+        kinship: assignment.kinship,
+        kinshipDescription: assignment.kinshipDescription,
+      }));
   }
 
   private async mapPersonResponse(

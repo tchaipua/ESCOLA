@@ -691,6 +691,10 @@ model Teacher {
   cellphone1           String?
   cellphone2           String?
   email                String?
+  telegramChatId       String?
+  telegramUsername     String?
+  telegramOptInAt      DateTime?
+  telegramOptOutAt     DateTime?
   accessProfile        String?
   permissions          String?
   // Segurança e Recuperação

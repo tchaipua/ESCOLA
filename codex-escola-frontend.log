@@ -273,3 +273,149 @@
  GET /principal/grade-anual 200 in 276ms (compile: 200ms, render: 76ms)
 ✓ Compiled in 60ms
  GET /principal/grade-anual 200 in 286ms (compile: 209ms, render: 77ms)
+ GET /login 404 in 82ms (compile: 47ms, render: 36ms)
+ GET / 200 in 31ms (compile: 2ms, render: 28ms)
+ GET / 200 in 23ms (compile: 1728µs, render: 21ms)
+ GET /login 404 in 23ms (compile: 3ms, render: 21ms)
+ GET /principal 200 in 18ms (compile: 3ms, render: 15ms)
+ GET /principal/grade-anual 200 in 135ms (compile: 124ms, render: 10ms)
+✓ Compiled in 58ms
+ GET /principal/grade-anual 200 in 295ms (compile: 217ms, render: 78ms)
+ GET / 200 in 9ms (compile: 1664µs, render: 8ms)
+ GET / 200 in 20ms (compile: 1960µs, render: 18ms)
+ GET / 200 in 24ms (compile: 1568µs, render: 22ms)
+ GET /principal 200 in 10ms (compile: 1783µs, render: 9ms)
+ GET /principal/pessoas 200 in 112ms (compile: 100ms, render: 12ms)
+✓ Compiled in 57ms
+✓ Compiled in 49ms
+ GET /principal/grade-anual 200 in 181ms (compile: 162ms, render: 19ms)
+✓ Compiled in 63ms
+✓ Compiled in 57ms
+✓ Compiled in 53ms
+✓ Compiled in 86ms
+✓ Compiled in 55ms
+✓ Compiled in 83ms
+✓ Compiled in 42ms
+✓ Compiled in 60ms
+✓ Compiled in 50ms
+✓ Compiled in 44ms
+✓ Compiled in 49ms
+✓ Compiled in 53ms
+✓ Compiled in 42ms
+✓ Compiled in 46ms
+✓ Compiled in 49ms
+✓ Compiled in 48ms
+✓ Compiled in 48ms
+✓ Compiled in 96ms
+ GET /principal/responsaveis 200 in 353ms (compile: 259ms, render: 94ms)
+✓ Compiled in 59ms
+✓ Compiled in 54ms
+✓ Compiled in 47ms
+ GET /principal/responsaveis 200 in 271ms (compile: 189ms, render: 82ms)
+✓ Compiled in 88ms
+ GET /principal/notificacoes 200 in 20ms (compile: 6ms, render: 14ms)
+✓ Compiled in 105ms
+ GET /principal/notificacoes 200 in 118ms (compile: 68ms, render: 50ms)
+ GET /principal/notificacoes 200 in 44ms (compile: 1962µs, render: 42ms)
+ GET /principal/notificacoes 200 in 44ms (compile: 1834µs, render: 42ms)
+ GET /principal/notificacoes 200 in 43ms (compile: 3ms, render: 40ms)
+ GET /principal/notificacoes 200 in 44ms (compile: 3ms, render: 41ms)
+ GET /principal/notificacoes 200 in 56ms (compile: 2ms, render: 54ms)
+ GET /principal/notificacoes 200 in 72ms (compile: 2ms, render: 70ms)
+ GET /principal/notificacoes 200 in 71ms (compile: 3ms, render: 69ms)
+ GET /principal/notificacoes 200 in 71ms (compile: 2ms, render: 69ms)
+ GET /principal/notificacoes 200 in 68ms (compile: 2ms, render: 66ms)
+ GET /principal/notificacoes 200 in 52ms (compile: 1959µs, render: 50ms)
+ GET /principal/notificacoes 200 in 51ms (compile: 1496µs, render: 49ms)
+ GET /principal/notificacoes 200 in 51ms (compile: 1497µs, render: 50ms)
+ GET /principal/notificacoes 200 in 51ms (compile: 1596µs, render: 50ms)
+ GET /principal/notificacoes 200 in 51ms (compile: 1883µs, render: 49ms)
+ GET /principal/notificacoes 200 in 50ms (compile: 4ms, render: 46ms)
+ GET /principal/notificacoes 200 in 52ms (compile: 1380µs, render: 51ms)
+ GET /principal/notificacoes 200 in 54ms (compile: 1460µs, render: 53ms)
+ GET /principal/notificacoes 200 in 44ms (compile: 1509µs, render: 42ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 1657µs, render: 39ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 1722µs, render: 39ms)
+ GET /principal/notificacoes 200 in 55ms (compile: 3ms, render: 52ms)
+ GET /principal/notificacoes 200 in 54ms (compile: 3ms, render: 51ms)
+ GET /principal/notificacoes 200 in 53ms (compile: 2ms, render: 51ms)
+ GET /principal/notificacoes 200 in 51ms (compile: 1667µs, render: 50ms)
+ GET /principal/notificacoes 200 in 43ms (compile: 1508µs, render: 41ms)
+ GET /principal/notificacoes 200 in 42ms (compile: 1759µs, render: 41ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 1687µs, render: 39ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 35ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 35ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 35ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 48ms (compile: 2ms, render: 46ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 35ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 2ms, render: 39ms)
+ GET /principal/notificacoes 200 in 44ms (compile: 1818µs, render: 42ms)
+ GET /principal/notificacoes 200 in 43ms (compile: 1971µs, render: 42ms)
+ GET /principal/notificacoes 200 in 50ms (compile: 2ms, render: 48ms)
+ GET /principal/notificacoes 200 in 51ms (compile: 2ms, render: 49ms)
+ GET /principal/notificacoes 200 in 50ms (compile: 2ms, render: 48ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 1514µs, render: 38ms)
+ GET /principal/notificacoes 200 in 38ms (compile: 1908µs, render: 37ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 1404µs, render: 39ms)
+ GET /principal/notificacoes 200 in 54ms (compile: 3ms, render: 52ms)
+ GET /principal/notificacoes 200 in 44ms (compile: 2ms, render: 41ms)
+ GET /principal/notificacoes 200 in 40ms (compile: 2ms, render: 38ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 1612µs, render: 35ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 2ms, render: 37ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 1945µs, render: 37ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 1979µs, render: 37ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 35ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 35ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 2ms, render: 39ms)
+ GET /principal/notificacoes 200 in 42ms (compile: 2ms, render: 40ms)
+ GET /principal/notificacoes 200 in 41ms (compile: 2ms, render: 39ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 34ms)
+ GET /principal/notificacoes 200 in 38ms (compile: 1916µs, render: 36ms)
+ GET /principal/notificacoes 200 in 38ms (compile: 1975µs, render: 36ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 2ms, render: 37ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 34ms)
+ GET /principal/notificacoes 200 in 36ms (compile: 1963µs, render: 34ms)
+ GET /principal/notificacoes 200 in 38ms (compile: 2ms, render: 36ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 2ms, render: 37ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 1853µs, render: 37ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 2ms, render: 34ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 2ms, render: 37ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 2ms, render: 37ms)
+ GET /principal/notificacoes 200 in 39ms (compile: 2ms, render: 37ms)
+ GET /principal/notificacoes 200 in 36ms (compile: 1990µs, render: 34ms)
+ GET /principal/notificacoes 200 in 45ms (compile: 1965µs, render: 43ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 1953µs, render: 35ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 1752µs, render: 35ms)
+ GET /principal/notificacoes 200 in 37ms (compile: 1318µs, render: 36ms)
+ GET /principal/notificacoes 200 in 34ms (compile: 1923µs, render: 32ms)
+ GET /principal/notificacoes 200 in 35ms (compile: 1478µs, render: 34ms)
+ GET /principal/notificacoes 200 in 25ms (compile: 1729µs, render: 24ms)
+ GET /principal/notificacoes 200 in 15ms (compile: 1832µs, render: 13ms)
+ GET /principal/notificacoes/configurar-usuarios 200 in 343ms (compile: 283ms, render: 60ms)
+✓ Compiled in 48ms
+✓ Compiled in 45ms
+✓ Compiled in 54ms
+ GET /principal/notificacoes/configurar-usuarios 200 in 149ms (compile: 78ms, render: 71ms)
+✓ Compiled in 50ms
+✓ Compiled in 43ms
+✓ Compiled in 49ms
+✓ Compiled in 41ms
+ GET /confirm-email?token=ff47d805aaa00dc580cad97e6fbb112205e5f330f73c185f1a2f2c892b119800 200 in 276ms (compile: 243ms, render: 33ms)
+ GET /manifest.webmanifest 200 in 64ms (compile: 55ms, render: 9ms)
+ GET / 200 in 20ms (compile: 10ms, render: 10ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1468µs, render: 3ms)
+ GET / 200 in 11ms (compile: 1723µs, render: 10ms)
+ GET /manifest.webmanifest 200 in 4ms (compile: 1369µs, render: 2ms)
+ GET /msinfor-admin 200 in 232ms (compile: 185ms, render: 47ms)
+✓ Compiled in 51ms
+✓ Compiled in 50ms
+✓ Compiled in 54ms
+✓ Compiled in 50ms
+✓ Compiled in 104ms
+✓ Compiled in 94ms

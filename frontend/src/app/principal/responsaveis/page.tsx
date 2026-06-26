@@ -85,6 +85,10 @@ type GuardianRecord = {
     cellphone1?: string | null;
     cellphone2?: string | null;
     email?: string | null;
+    telegramChatId?: string | null;
+    telegramUsername?: string | null;
+    telegramOptInAt?: string | null;
+    telegramOptOutAt?: string | null;
     zipCode?: string | null;
     street?: string | null;
     number?: string | null;
@@ -102,6 +106,7 @@ type GuardianRecord = {
 type GuardianFormState = {
     name: string; birthDate: string; cpf: string; rg: string; cnpj: string; nickname: string; corporateName: string;
     phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string;
+    telegramChatId: string; telegramUsername: string; telegramOptInEnabled: boolean;
     zipCode: string; street: string; number: string; city: string; state: string; neighborhood: string; complement: string;
     branchCode: number;
     branchAccessCodes: number[];
@@ -113,6 +118,7 @@ const DEFAULT_GUARDIAN_PROFILE = getDefaultAccessProfileForRole('RESPONSAVEL');
 const EMPTY_FORM: GuardianFormState = {
     name: '', birthDate: '', cpf: '', rg: '', cnpj: '', nickname: '', corporateName: '',
     phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+    telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
     zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
     branchCode: 1,
     branchAccessCodes: [1],
@@ -768,6 +774,9 @@ export default function ResponsaveisPage() {
             cellphone1: guardian.cellphone1 ? limitNumericDigits(guardian.cellphone1, 11) : '',
             cellphone2: guardian.cellphone2 ? limitNumericDigits(guardian.cellphone2, 11) : '',
             email: guardian.email || '',
+            telegramChatId: guardian.telegramChatId || '',
+            telegramUsername: guardian.telegramUsername || '',
+            telegramOptInEnabled: Boolean(guardian.telegramOptInAt && !guardian.telegramOptOutAt),
             zipCode: guardian.zipCode ? limitNumericDigits(guardian.zipCode, 8) : '',
             street: guardian.street || '',
             number: guardian.number || '',
@@ -1223,7 +1232,7 @@ export default function ResponsaveisPage() {
             const url = editingGuardianId ? `${API_BASE_URL}/guardians/${editingGuardianId}` : `${API_BASE_URL}/guardians`;
             const method = editingGuardianId ? 'PATCH' : 'POST';
             const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
-            const payload: Record<string, string | string[] | number[] | number | undefined> = {
+            const payload: Record<string, string | string[] | number[] | number | boolean | undefined> = {
                 ...formData,
                 ...branchPayload,
                 cpf: formatCpf(formData.cpf),
@@ -1772,6 +1781,33 @@ export default function ResponsaveisPage() {
                                                     className={`${inputClass} bg-white`}
                                                 />
                                             </div>
+                                            <div>
+                                                <label className={labelClass}>Telegram Chat ID</label>
+                                                <input
+                                                    value={formData.telegramChatId}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, telegramChatId: event.target.value.trim() }))}
+                                                    className={`${inputClass} bg-white`}
+                                                    placeholder="Ex.: 123456789"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Usuário Telegram</label>
+                                                <input
+                                                    value={formData.telegramUsername}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, telegramUsername: event.target.value.toUpperCase() }))}
+                                                    className={`${inputClass} bg-white`}
+                                                    placeholder="Ex.: @USUARIO"
+                                                />
+                                            </div>
+                                            <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.telegramOptInEnabled}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, telegramOptInEnabled: event.target.checked }))}
+                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                                />
+                                                <span className="text-sm font-bold text-slate-700">Telegram ativo para notificações</span>
+                                            </label>
                                         </div>
                                     </div>
 

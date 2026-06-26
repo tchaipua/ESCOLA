@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
-import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { readCachedTenantBranding, type TenantBranding } from '@/app/lib/tenant-branding-cache';
 import { dispatchScreenAuditContext, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -71,13 +72,14 @@ OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
 }
 
 export default function NotificationsPage() {
+    const router = useRouter();
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [filterStatus, setFilterStatus] = useState<FilterStatus>('UNREAD');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const { tenantId } = getDashboardAuthContext();
-    const tenantBranding = readCachedTenantBranding(tenantId);
+    const [tenantBranding, setTenantBranding] = useState<TenantBranding | null>(null);
 
     const loadNotifications = async (status: FilterStatus) => {
         try {
@@ -110,6 +112,10 @@ export default function NotificationsPage() {
     useEffect(() => {
         void loadNotifications(filterStatus);
     }, [filterStatus]);
+
+    useEffect(() => {
+        setTenantBranding(readCachedTenantBranding(tenantId));
+    }, [tenantId]);
 
     useEffect(() => {
         const auditParams: NotificacoesAuditParams = {
@@ -222,6 +228,14 @@ export default function NotificationsPage() {
                 <div className="flex-1 px-5 pb-8 pt-6 sm:px-6 lg:px-8">
                     <div className="rounded-[30px] bg-[#f8fafc] p-5">
                         <div className="flex flex-wrap gap-3">
+                            <button
+                                type="button"
+                                onClick={() => router.push('/principal/notificacoes/configurar-usuarios')}
+                                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
+                            >
+                                Configura notificações por usuário
+                            </button>
+
                             {(['UNREAD', 'ALL', 'READ'] as FilterStatus[]).map((status) => (
                                 <button
                                     key={status}
