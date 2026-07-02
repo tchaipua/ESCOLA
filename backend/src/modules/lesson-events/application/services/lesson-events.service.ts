@@ -212,7 +212,7 @@ export class LessonEventsService {
       startTime: item.startTime,
       endTime: item.endTime,
       subjectName: item.teacherSubject.subject?.name || "DISCIPLINA",
-      teacherName: item.teacherSubject.teacher?.name || "PROFESSOR",
+      teacherName: item.teacherSubject.teacher?.person?.name || "PROFESSOR",
       seriesName: item.seriesClass.series?.name || "SEM SÉRIE",
       className: item.seriesClass.class?.name || "SEM TURMA",
       shift: item.seriesClass.class?.shift || null,
@@ -283,7 +283,7 @@ export class LessonEventsService {
         teacherSubject: {
           include: {
             subject: true,
-            teacher: true,
+            teacher: { include: { person: true } },
           },
         },
         seriesClass: {
@@ -358,7 +358,7 @@ export class LessonEventsService {
         teacherSubject: {
           include: {
             subject: true,
-            teacher: true,
+            teacher: { include: { person: true } },
           },
         },
         seriesClass: {
@@ -405,7 +405,7 @@ export class LessonEventsService {
         teacherSubject: {
           include: {
             subject: true,
-            teacher: true,
+            teacher: { include: { person: true } },
           },
         },
         seriesClass: {
@@ -451,7 +451,7 @@ export class LessonEventsService {
         teacherSubject: {
           include: {
             subject: true,
-            teacher: true,
+            teacher: { include: { person: true } },
           },
         },
         seriesClass: {
@@ -486,7 +486,7 @@ export class LessonEventsService {
             teacherSubject: {
               include: {
                 subject: true,
-                teacher: true,
+                teacher: { include: { person: true } },
               },
             },
             seriesClass: {
@@ -516,7 +516,7 @@ export class LessonEventsService {
       schoolYearId: target.schoolYearId,
       seriesClassId: target.seriesClassId,
       subjectName: target.teacherSubject?.subject?.name || null,
-      teacherName: target.teacherSubject?.teacher?.name || null,
+      teacherName: target.teacherSubject?.teacher?.person?.name || null,
       shift: target.seriesClass?.class?.shift || null,
       teacherSubject: target.teacherSubject,
       seriesClass: target.seriesClass,
@@ -535,7 +535,8 @@ export class LessonEventsService {
         subjectName:
           event.lessonCalendarItem.teacherSubject?.subject?.name || null,
         teacherName:
-          event.lessonCalendarItem.teacherSubject?.teacher?.name || null,
+          event.lessonCalendarItem.teacherSubject?.teacher?.person?.name ||
+          null,
         shift: event.lessonCalendarItem.seriesClass?.class?.shift || null,
         teacherSubject: event.lessonCalendarItem.teacherSubject,
         seriesClass: event.lessonCalendarItem.seriesClass,
@@ -1001,7 +1002,7 @@ export class LessonEventsService {
             teacherSubject: {
               include: {
                 subject: true,
-                teacher: true,
+                teacher: { include: { person: true } },
               },
             },
             seriesClass: {

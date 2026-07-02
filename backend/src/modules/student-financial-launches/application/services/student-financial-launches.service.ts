@@ -805,16 +805,10 @@ export class StudentFinancialLaunchesService {
         },
       },
       include: {
+        person: true,
         billingGuardian: {
-          select: {
-            id: true,
-            name: true,
-            cpf: true,
-            cnpj: true,
-            canceledAt: true,
-            email: true,
-            phone: true,
-            whatsapp: true,
+          include: {
+            person: true,
           },
         },
         enrollments: {
@@ -847,7 +841,7 @@ export class StudentFinancialLaunchesService {
           take: 1,
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: { updatedAt: "desc" },
     });
 
     if (candidateStudents.length === 0) {
@@ -880,7 +874,15 @@ export class StudentFinancialLaunchesService {
     const skippedStudents: SkippedStudent[] = [];
     const financeItems: FinanceiroImportPayload["items"] = [];
 
-    candidateStudents.forEach((student) => {
+    candidateStudents
+      .sort((left, right) =>
+        String(left.person?.name || "").localeCompare(
+          String(right.person?.name || ""),
+          "pt-BR",
+        ),
+      )
+      .forEach((student) => {
+      const studentName = student.person?.name || "ALUNO";
       const enrollment = student.enrollments[0];
       const seriesClass = enrollment?.seriesClass || null;
       const classEntity = seriesClass?.class || null;
@@ -901,7 +903,7 @@ export class StudentFinancialLaunchesService {
       if (existingBusinessKeys.has(businessKey)) {
         skippedStudents.push({
           studentId: student.id,
-          studentName: student.name,
+          studentName,
           classLabel,
           reason:
             "Já existe lançamento de mensalidade para este aluno na competência informada.",
@@ -912,7 +914,7 @@ export class StudentFinancialLaunchesService {
       if (effectiveAmount === null || effectiveAmount <= 0) {
         skippedStudents.push({
           studentId: student.id,
-          studentName: student.name,
+          studentName,
           classLabel,
           reason:
             "Aluno sem valor de mensalidade configurado no cadastro ou na turma.",
@@ -928,6 +930,8 @@ export class StudentFinancialLaunchesService {
           : "ALUNO";
       const payerGuardian =
         payerType === "RESPONSAVEL" ? student.billingGuardian : null;
+      const studentPerson = student.person;
+      const payerGuardianPerson = payerGuardian?.person ?? null;
 
       if (
         payerType === "RESPONSAVEL" &&
@@ -935,7 +939,7 @@ export class StudentFinancialLaunchesService {
       ) {
         skippedStudents.push({
           studentId: student.id,
-          studentName: student.name,
+          studentName,
           classLabel,
           reason: "Aluno sem responsável pagador válido definido no cadastro.",
         });
@@ -944,25 +948,27 @@ export class StudentFinancialLaunchesService {
 
       const payerName =
         payerType === "RESPONSAVEL"
-          ? payerGuardian?.name || student.name
-          : student.name;
+          ? payerGuardianPerson?.name || studentName
+          : studentName;
       const payerDocument =
         payerType === "RESPONSAVEL"
-          ? payerGuardian?.cpf || payerGuardian?.cnpj || undefined
-          : student.cpf || student.cnpj || undefined;
+          ? payerGuardianPerson?.cpf || payerGuardianPerson?.cnpj || undefined
+          : studentPerson?.cpf || studentPerson?.cnpj || undefined;
       const payerEmail =
         payerType === "RESPONSAVEL"
-          ? payerGuardian?.email || undefined
-          : student.email || undefined;
+          ? payerGuardianPerson?.email || undefined
+          : studentPerson?.email || undefined;
       const payerPhone =
         payerType === "RESPONSAVEL"
-          ? payerGuardian?.whatsapp || payerGuardian?.phone || undefined
-          : student.whatsapp || student.phone || undefined;
+          ? payerGuardianPerson?.whatsapp ||
+            payerGuardianPerson?.phone ||
+            undefined
+          : studentPerson?.whatsapp || studentPerson?.phone || undefined;
 
       financeItems.push({
         sourceEntityType: "ALUNO",
         sourceEntityId: student.id,
-        sourceEntityName: student.name,
+        sourceEntityName: studentName,
         classLabel,
         businessKey,
         description: `${launchType} ${referenceMonth.label}`,

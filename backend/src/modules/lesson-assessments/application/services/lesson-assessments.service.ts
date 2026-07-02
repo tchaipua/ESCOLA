@@ -72,7 +72,7 @@ export class LessonAssessmentsService {
             teacherSubject: {
               include: {
                 subject: true,
-                teacher: true,
+                teacher: { include: { person: true } },
               },
             },
             seriesClass: {
@@ -140,7 +140,7 @@ export class LessonAssessmentsService {
             teacherSubject: {
               include: {
                 subject: true,
-                teacher: true,
+                teacher: { include: { person: true } },
               },
             },
             seriesClass: {
@@ -216,7 +216,8 @@ export class LessonAssessmentsService {
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
         subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
-        teacherName: lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
+        teacherName:
+          lessonItem.teacherSubject.teacher?.person?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         shift: lessonItem.seriesClass.class?.shift || null,
@@ -438,9 +439,9 @@ export class LessonAssessmentsService {
         },
       },
       include: {
-        student: true,
+        student: { include: { person: true } },
       },
-      orderBy: [{ student: { name: "asc" } }],
+      orderBy: [{ createdAt: "asc" }],
     });
 
     const assessments = assessmentEvents.map((event) => ({
@@ -480,7 +481,7 @@ export class LessonAssessmentsService {
 
       return {
         studentId: enrollment.studentId,
-        studentName: enrollment.student.name,
+        studentName: enrollment.student.person?.name || "ALUNO",
         scores,
         averageScore,
       };
@@ -540,18 +541,19 @@ export class LessonAssessmentsService {
       include: {
         student: {
           include: {
+            person: true,
             guardians: {
               where: {
                 canceledAt: null,
               },
               include: {
-                guardian: true,
+                guardian: { include: { person: true } },
               },
             },
           },
         },
       },
-      orderBy: [{ student: { name: "asc" } }],
+      orderBy: [{ createdAt: "asc" }],
     });
   }
 
@@ -586,7 +588,8 @@ export class LessonAssessmentsService {
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
         subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
-        teacherName: lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
+        teacherName:
+          lessonItem.teacherSubject.teacher?.person?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         schoolYearId: lessonItem.schoolYearId,
@@ -609,8 +612,8 @@ export class LessonAssessmentsService {
         return {
           studentId: enrollment.student.id,
           enrollmentId: enrollment.id,
-          studentName: enrollment.student.name,
-          studentEmail: enrollment.student.email,
+          studentName: enrollment.student.person?.name || "ALUNO",
+          studentEmail: enrollment.student.person?.email ?? null,
           guardiansCount: enrollment.student.guardians.length,
           score: currentGrade?.score ?? null,
           remarks: currentGrade?.remarks ?? null,

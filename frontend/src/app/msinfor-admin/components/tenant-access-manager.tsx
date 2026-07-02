@@ -59,6 +59,7 @@ type AccessUser = {
   accessProfile?: AccessProfileCode | null;
   permissions: string[];
   branchAccessCodes?: number[];
+  cashierOnly?: boolean;
   canceledAt?: string | null;
 };
 
@@ -96,6 +97,7 @@ type AccessFormState = {
   accessProfile: AccessProfileCode;
   permissions: string[];
   branchAccessCodes: number[];
+  cashierOnly: boolean;
 };
 
 type TenantAccessManagerProps = {
@@ -131,6 +133,7 @@ const EMPTY_FORM: AccessFormState = {
   accessProfile: getDefaultAccessProfileForRole('SECRETARIA'),
   permissions: mergeAccessPermissions(getDefaultAccessProfileForRole('SECRETARIA'), []),
   branchAccessCodes: [],
+  cashierOnly: false,
 };
 
 function summarizePermissions(permissions: string[]) {
@@ -531,6 +534,7 @@ export default function TenantAccessManager({
         : Array.isArray(user.branchAccessCodes) && user.branchAccessCodes.length > 0
           ? user.branchAccessCodes
           : getDefaultBranchAccessCodes(),
+      cashierOnly: user.role !== 'ADMIN' && user.cashierOnly === true,
     });
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -551,6 +555,7 @@ export default function TenantAccessManager({
       complementaryProfiles,
       permissions: mergeAccessPermissions(accessProfile, complementaryProfiles),
       branchAccessCodes: role === 'ADMIN' ? [] : (current.branchAccessCodes.length ? current.branchAccessCodes : getDefaultBranchAccessCodes()),
+      cashierOnly: false,
     }));
     setFormStep('BASICO');
   };
@@ -565,6 +570,27 @@ export default function TenantAccessManager({
 
       return {
         ...current,
+        complementaryProfiles,
+        cashierOnly: profile === 'CAIXA' && current.cashierOnly && !complementaryProfiles.includes('CAIXA')
+          ? false
+          : current.cashierOnly,
+        permissions: mergeAccessPermissions(current.accessProfile, complementaryProfiles),
+      };
+    });
+  };
+
+  const toggleCashierOnly = () => {
+    setFormData((current) => {
+      if (current.role === 'ADMIN') return current;
+
+      const cashierOnly = !current.cashierOnly;
+      const complementaryProfiles = cashierOnly && !current.complementaryProfiles.includes('CAIXA')
+        ? [...current.complementaryProfiles, 'CAIXA' as const]
+        : current.complementaryProfiles;
+
+      return {
+        ...current,
+        cashierOnly,
         complementaryProfiles,
         permissions: mergeAccessPermissions(current.accessProfile, complementaryProfiles),
       };
@@ -624,6 +650,7 @@ export default function TenantAccessManager({
       accessProfile: formData.accessProfile,
       permissions: formData.role === 'ADMIN' ? [] : formData.permissions,
       branchAccessCodes: formData.role === 'ADMIN' ? [] : formData.branchAccessCodes,
+      cashierOnly: formData.role !== 'ADMIN' && formData.cashierOnly,
     };
 
     if (!payload.name) {
@@ -1011,6 +1038,29 @@ export default function TenantAccessManager({
           <div className="mt-3 text-xs font-medium text-emerald-700">
             Complementares ativos: {formatComplementaryProfiles(formData.complementaryProfiles)}
           </div>
+          <button
+            type="button"
+            onClick={toggleCashierOnly}
+            className={`mt-4 flex w-full items-center justify-between gap-4 rounded-2xl border px-4 py-4 text-left transition-colors ${
+              formData.cashierOnly
+                ? 'border-blue-300 bg-blue-600 text-white shadow-sm'
+                : 'border-emerald-100 bg-white/70 text-slate-700 hover:border-emerald-200'
+            }`}
+          >
+            <span>
+              <span className={`block text-sm font-black uppercase tracking-[0.16em] ${formData.cashierOnly ? 'text-white' : 'text-slate-800'}`}>
+                Somente caixa
+              </span>
+              <span className={`mt-1 block text-sm ${formData.cashierOnly ? 'text-blue-50' : 'text-slate-500'}`}>
+                Ao entrar, este usuário abre direto a tela de vendas e não navega pelo restante do sistema.
+              </span>
+            </span>
+            <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black ${
+              formData.cashierOnly ? 'bg-white text-blue-700' : 'bg-rose-500 text-white'
+            }`}>
+              {formData.cashierOnly ? '✓' : 'X'}
+            </span>
+          </button>
         </div>
       ) : null}
 
@@ -1274,6 +1324,11 @@ export default function TenantAccessManager({
                         {formatComplementaryProfiles(formData.complementaryProfiles)}
                       </div>
                     ) : null}
+                    {formData.cashierOnly ? (
+                      <div className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-blue-600">
+                        SOMENTE CAIXA
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                   </>
@@ -1414,6 +1469,11 @@ export default function TenantAccessManager({
                   {formData.role !== 'ADMIN' ? (
                     <div className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-600">
                       {formatComplementaryProfiles(formData.complementaryProfiles)}
+                    </div>
+                  ) : null}
+                  {formData.cashierOnly ? (
+                    <div className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-blue-600">
+                      SOMENTE CAIXA
                     </div>
                   ) : null}
                 </div>
@@ -1692,6 +1752,11 @@ export default function TenantAccessManager({
                                 {getComplementaryProfileBadgeLabel(profile)}
                               </span>
                             ))}
+                            {user.cashierOnly ? (
+                              <span className="rounded-full border border-blue-200 bg-blue-600 px-2.5 py-1 text-[11px] font-bold text-white">
+                                SOMENTE CAIXA
+                              </span>
+                            ) : null}
                           </div>
                           <div className="mt-1 text-sm font-medium text-slate-600">{user.email}</div>
                           <div className="mt-2 text-sm text-slate-500">

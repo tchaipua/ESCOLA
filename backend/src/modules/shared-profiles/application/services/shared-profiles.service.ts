@@ -19,8 +19,9 @@ type SharedProfileRecord = {
   branchCode?: number | null;
   personId?: string | null;
   updatedAt: Date;
-  name: string;
-  birthDate?: Date | null;
+  name?: string | null;
+  person?: SharedPersonRecord | null;
+  birthDate?: string | Date | null;
   rg?: string | null;
   cpf?: string | null;
   cnpj?: string | null;
@@ -40,7 +41,7 @@ type SharedProfileRecord = {
   email?: string | null;
   password?: string | null;
   resetPasswordToken?: string | null;
-  resetPasswordExpires?: Date | null;
+  resetPasswordExpires?: string | Date | null;
 };
 
 type SharedProfileSource = {
@@ -146,25 +147,6 @@ type AdministrativeSharedProfilePayload = {
 type SharedProfileSyncUpdate = {
   personId: string;
   branchCode: number;
-  name: string;
-  birthDate: Date | null;
-  rg: string | null;
-  cpf: string | null;
-  cnpj: string | null;
-  nickname: string | null;
-  corporateName: string | null;
-  phone: string | null;
-  whatsapp: string | null;
-  cellphone1: string | null;
-  cellphone2: string | null;
-  email: string | null;
-  zipCode: string | null;
-  street: string | null;
-  number: string | null;
-  city: string | null;
-  state: string | null;
-  neighborhood: string | null;
-  complement: string | null;
   updatedBy?: string;
 };
 
@@ -173,6 +155,11 @@ type SharedNameSuggestion = {
   name: string;
   roles: string[];
   cpf: string | null;
+  cnpj: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  cellphone1: string | null;
+  cellphone2: string | null;
   email: string | null;
   active: boolean;
   updatedAt: Date;
@@ -485,26 +472,23 @@ export class SharedProfilesService {
       prismaClient.teacher.findMany({
         where: {
           ...tenantScope,
-          email: { not: null },
           ...(exclude?.kind === "TEACHER" ? { id: { not: exclude.id } } : {}),
         },
-        select: { id: true, email: true },
+        select: { id: true, person: { select: { email: true } } },
       }),
       prismaClient.student.findMany({
         where: {
           ...tenantScope,
-          email: { not: null },
           ...(exclude?.kind === "STUDENT" ? { id: { not: exclude.id } } : {}),
         },
-        select: { id: true, email: true },
+        select: { id: true, person: { select: { email: true } } },
       }),
       prismaClient.guardian.findMany({
         where: {
           ...tenantScope,
-          email: { not: null },
           ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
         },
-        select: { id: true, email: true },
+        select: { id: true, person: { select: { email: true } } },
       }),
     ]);
 
@@ -515,15 +499,24 @@ export class SharedProfilesService {
       users: this.filterByNormalizedEmail(users, normalizedEmail).map(
         ({ id }) => ({ id }),
       ),
-      teachers: this.filterByNormalizedEmail(teachers, normalizedEmail).map(
-        ({ id }) => ({ id }),
-      ),
-      students: this.filterByNormalizedEmail(students, normalizedEmail).map(
-        ({ id }) => ({ id }),
-      ),
-      guardians: this.filterByNormalizedEmail(guardians, normalizedEmail).map(
-        ({ id }) => ({ id }),
-      ),
+      teachers: teachers
+        .filter(
+          (record: { person?: { email?: string | null } | null }) =>
+            this.normalizeEmail(record.person?.email) === normalizedEmail,
+        )
+        .map(({ id }: { id: string }) => ({ id })),
+      students: students
+        .filter(
+          (record: { person?: { email?: string | null } | null }) =>
+            this.normalizeEmail(record.person?.email) === normalizedEmail,
+        )
+        .map(({ id }: { id: string }) => ({ id })),
+      guardians: guardians
+        .filter(
+          (record: { person?: { email?: string | null } | null }) =>
+            this.normalizeEmail(record.person?.email) === normalizedEmail,
+        )
+        .map(({ id }: { id: string }) => ({ id })),
     };
   }
 
@@ -649,25 +642,6 @@ export class SharedProfilesService {
     return {
       personId: person.id,
       branchCode: person.branchCode,
-      name: person.name,
-      birthDate: person.birthDate ?? null,
-      rg: person.rg ?? null,
-      cpf: person.cpf ?? null,
-      cnpj: person.cnpj ?? null,
-      nickname: person.nickname ?? null,
-      corporateName: person.corporateName ?? null,
-      phone: person.phone ?? null,
-      whatsapp: person.whatsapp ?? null,
-      cellphone1: person.cellphone1 ?? null,
-      cellphone2: person.cellphone2 ?? null,
-      email: person.email ?? null,
-      zipCode: person.zipCode ?? null,
-      street: person.street ?? null,
-      number: person.number ?? null,
-      city: person.city ?? null,
-      state: person.state ?? null,
-      neighborhood: person.neighborhood ?? null,
-      complement: person.complement ?? null,
       updatedBy: userId || undefined,
     };
   }
@@ -678,28 +652,6 @@ export class SharedProfilesService {
       branchCode: true,
       personId: true,
       updatedAt: true,
-      name: true,
-      birthDate: true,
-      rg: true,
-      cpf: true,
-      cnpj: true,
-      nickname: true,
-      corporateName: true,
-      phone: true,
-      whatsapp: true,
-      cellphone1: true,
-      cellphone2: true,
-      email: true,
-      password: true,
-      resetPasswordToken: true,
-      resetPasswordExpires: true,
-      zipCode: true,
-      street: true,
-      number: true,
-      city: true,
-      state: true,
-      neighborhood: true,
-      complement: true,
     } as const;
   }
 
@@ -810,40 +762,19 @@ export class SharedProfilesService {
     const normalizedCpf = this.normalizeDocument(cpf);
     if (!normalizedCpf) return [] as SharedProfileSource[];
 
-    const [teachers, students, guardians] = await Promise.all([
-      this.prisma.teacher.findMany({
-        where: {
-          tenantId,
-          cpf: { not: null },
-          ...(exclude?.kind === "TEACHER" ? { id: { not: exclude.id } } : {}),
-        },
-        select: this.selectSharedFields(),
-      }),
-      this.prisma.student.findMany({
-        where: {
-          tenantId,
-          cpf: { not: null },
-          ...(exclude?.kind === "STUDENT" ? { id: { not: exclude.id } } : {}),
-        },
-        select: this.selectSharedFields(),
-      }),
-      this.prisma.guardian.findMany({
-        where: {
-          tenantId,
-          cpf: { not: null },
-          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
-        },
-        select: this.selectSharedFields(),
-      }),
-    ]);
+    const people = await this.prisma.person.findMany({
+      where: {
+        tenantId,
+        cpfDigits: normalizedCpf,
+        canceledAt: null,
+      },
+      select: this.selectPersonFields(),
+    });
 
-    return [
-      ...teachers.map((record) => ({ kind: "TEACHER" as const, record })),
-      ...students.map((record) => ({ kind: "STUDENT" as const, record })),
-      ...guardians.map((record) => ({ kind: "GUARDIAN" as const, record })),
-    ].filter(
-      ({ record }) => this.normalizeDocument(record.cpf) === normalizedCpf,
-    );
+    return people.map((record) => ({
+      kind: (exclude?.kind || "STUDENT") as SharedProfileKind,
+      record,
+    }));
   }
 
   private async loadEmailMatches(
@@ -854,7 +785,7 @@ export class SharedProfilesService {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return [] as SharedEmailAccountSource[];
 
-    const [people, users, teachers, students, guardians] = await Promise.all([
+    const [people, users] = await Promise.all([
       this.prisma.person.findMany({
         where: {
           tenantId,
@@ -881,53 +812,11 @@ export class SharedProfilesService {
           updatedAt: true,
         },
       }),
-      this.prisma.teacher.findMany({
-        where: {
-          tenantId,
-          email: { not: null },
-          ...(exclude?.kind === "TEACHER" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
-      this.prisma.student.findMany({
-        where: {
-          tenantId,
-          email: { not: null },
-          ...(exclude?.kind === "STUDENT" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
-      this.prisma.guardian.findMany({
-        where: {
-          tenantId,
-          email: { not: null },
-          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
     ]);
 
     return [
       ...people.map((record) => ({ kind: "PERSON" as const, record })),
       ...users.map((record) => ({ kind: "USER" as const, record })),
-      ...teachers.map((record) => ({ kind: "TEACHER" as const, record })),
-      ...students.map((record) => ({ kind: "STUDENT" as const, record })),
-      ...guardians.map((record) => ({ kind: "GUARDIAN" as const, record })),
     ].filter(
       ({ record }) => this.normalizeEmail(record.email) === normalizedEmail,
     );
@@ -1154,46 +1043,34 @@ export class SharedProfilesService {
     person: SharedPersonRecord,
     source?: { kind: SharedProfileKind; id: string },
   ) {
-    const normalizedCpf = this.normalizeDocument(person.cpf);
-    if (!normalizedCpf) return [];
-
     const [teachers, students, guardians] = await Promise.all([
       this.prisma.teacher.findMany({
         where: {
           tenantId,
-          cpf: { not: null },
+          personId: person.id,
         },
         select: this.selectSharedFields(),
       }),
       this.prisma.student.findMany({
         where: {
           tenantId,
-          cpf: { not: null },
+          personId: person.id,
         },
         select: this.selectSharedFields(),
       }),
       this.prisma.guardian.findMany({
         where: {
           tenantId,
-          cpf: { not: null },
+          personId: person.id,
         },
         select: this.selectSharedFields(),
       }),
     ]);
 
-    const predicate = (record: SharedProfileRecord) =>
-      this.normalizeDocument(record.cpf) === normalizedCpf;
-
     return [
-      ...teachers
-        .filter(predicate)
-        .map((record) => ({ kind: "TEACHER" as const, record })),
-      ...students
-        .filter(predicate)
-        .map((record) => ({ kind: "STUDENT" as const, record })),
-      ...guardians
-        .filter(predicate)
-        .map((record) => ({ kind: "GUARDIAN" as const, record })),
+      ...teachers.map((record) => ({ kind: "TEACHER" as const, record })),
+      ...students.map((record) => ({ kind: "STUDENT" as const, record })),
+      ...guardians.map((record) => ({ kind: "GUARDIAN" as const, record })),
     ].filter(
       ({ kind, record }) => !(source?.kind === kind && source.id === record.id),
     );
@@ -1294,7 +1171,7 @@ export class SharedProfilesService {
       roles: latestRoles,
       ...this.getSharedPayload(latest.record),
       birthDate: latest.record.birthDate
-        ? latest.record.birthDate.toISOString().split("T")[0]
+        ? new Date(latest.record.birthDate).toISOString().split("T")[0]
         : null,
     };
   }
@@ -1369,6 +1246,11 @@ export class SharedProfilesService {
         name: string;
         roles: string[];
         cpf: string | null;
+        cnpj: string | null;
+        phone: string | null;
+        whatsapp: string | null;
+        cellphone1: string | null;
+        cellphone2: string | null;
         email: string | null;
         active: boolean;
       }>;
@@ -1384,6 +1266,11 @@ export class SharedProfilesService {
           id: true,
           name: true,
           cpf: true,
+          cnpj: true,
+          phone: true,
+          whatsapp: true,
+          cellphone1: true,
+          cellphone2: true,
           email: true,
           updatedAt: true,
         },
@@ -1394,9 +1281,7 @@ export class SharedProfilesService {
         where: { tenantId },
         select: {
           id: true,
-          name: true,
-          cpf: true,
-          email: true,
+          person: { select: { name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
           canceledAt: true,
           updatedAt: true,
         },
@@ -1407,9 +1292,7 @@ export class SharedProfilesService {
         where: { tenantId },
         select: {
           id: true,
-          name: true,
-          cpf: true,
-          email: true,
+          person: { select: { name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
           canceledAt: true,
           updatedAt: true,
         },
@@ -1420,9 +1303,7 @@ export class SharedProfilesService {
         where: { tenantId },
         select: {
           id: true,
-          name: true,
-          cpf: true,
-          email: true,
+          person: { select: { name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
           canceledAt: true,
           updatedAt: true,
         },
@@ -1448,10 +1329,43 @@ export class SharedProfilesService {
 
     const suggestionsMap = new Map<string, SharedNameSuggestion>();
     const upsertSuggestion = (payload: Omit<SharedNameSuggestion, "score">) => {
-      const score = this.computeNameSimilarityScore(
+      const nameScore = this.computeNameSimilarityScore(
         normalizedQuery,
         payload.name,
       );
+      const normalizedQueryDigits = this.normalizeDocument(normalizedQuery);
+      const normalizedQueryEmail = this.normalizeEmail(name);
+      const comparableDocuments = [payload.cpf, payload.cnpj]
+        .map((value) => this.normalizeDocument(value))
+        .filter(Boolean);
+      const comparablePhones = [
+        payload.phone,
+        payload.whatsapp,
+        payload.cellphone1,
+        payload.cellphone2,
+      ]
+        .map((value) => this.normalizeDocument(value))
+        .filter(Boolean);
+      const normalizedPayloadEmail = this.normalizeEmail(payload.email);
+      const documentScore =
+        normalizedQueryDigits && comparableDocuments.some((document) => document === normalizedQueryDigits)
+          ? 130
+          : normalizedQueryDigits && comparableDocuments.some((document) => document.includes(normalizedQueryDigits))
+            ? 125
+            : 0;
+      const phoneScore =
+        normalizedQueryDigits && comparablePhones.some((phone) => phone === normalizedQueryDigits)
+          ? 115
+          : normalizedQueryDigits && comparablePhones.some((phone) => phone.includes(normalizedQueryDigits))
+            ? 105
+            : 0;
+      const emailScore =
+        normalizedQueryEmail && normalizedPayloadEmail === normalizedQueryEmail
+          ? 120
+          : normalizedQueryEmail && normalizedPayloadEmail?.includes(normalizedQueryEmail)
+            ? 100
+            : 0;
+      const score = Math.max(nameScore, documentScore, phoneScore, emailScore);
       if (score <= 0) return;
 
       const normalizedEmail = this.normalizeEmail(payload.email);
@@ -1487,6 +1401,11 @@ export class SharedProfilesService {
               id: payload.id,
               name: payload.name,
               cpf: payload.cpf,
+              cnpj: payload.cnpj,
+              phone: payload.phone,
+              whatsapp: payload.whatsapp,
+              cellphone1: payload.cellphone1,
+              cellphone2: payload.cellphone2,
               email: payload.email,
               active: payload.active,
               updatedAt: payload.updatedAt,
@@ -1503,6 +1422,11 @@ export class SharedProfilesService {
         name: record.name,
         roles: [],
         cpf: record.cpf ?? null,
+        cnpj: record.cnpj ?? null,
+        phone: record.phone ?? null,
+        whatsapp: record.whatsapp ?? null,
+        cellphone1: record.cellphone1 ?? null,
+        cellphone2: record.cellphone2 ?? null,
         email: record.email ?? null,
         active: true,
         updatedAt: record.updatedAt,
@@ -1512,10 +1436,15 @@ export class SharedProfilesService {
     teachers.forEach((record) => {
       upsertSuggestion({
         id: `TEACHER:${record.id}`,
-        name: record.name,
+        name: record.person?.name || "PROFESSOR",
         roles: ["PROFESSOR"],
-        cpf: record.cpf ?? null,
-        email: record.email ?? null,
+        cpf: record.person?.cpf ?? null,
+        cnpj: record.person?.cnpj ?? null,
+        phone: record.person?.phone ?? null,
+        whatsapp: record.person?.whatsapp ?? null,
+        cellphone1: record.person?.cellphone1 ?? null,
+        cellphone2: record.person?.cellphone2 ?? null,
+        email: record.person?.email ?? null,
         active: !record.canceledAt,
         updatedAt: record.updatedAt,
       });
@@ -1524,10 +1453,15 @@ export class SharedProfilesService {
     students.forEach((record) => {
       upsertSuggestion({
         id: `STUDENT:${record.id}`,
-        name: record.name,
+        name: record.person?.name || "ALUNO",
         roles: ["ALUNO"],
-        cpf: record.cpf ?? null,
-        email: record.email ?? null,
+        cpf: record.person?.cpf ?? null,
+        cnpj: record.person?.cnpj ?? null,
+        phone: record.person?.phone ?? null,
+        whatsapp: record.person?.whatsapp ?? null,
+        cellphone1: record.person?.cellphone1 ?? null,
+        cellphone2: record.person?.cellphone2 ?? null,
+        email: record.person?.email ?? null,
         active: !record.canceledAt,
         updatedAt: record.updatedAt,
       });
@@ -1536,10 +1470,15 @@ export class SharedProfilesService {
     guardians.forEach((record) => {
       upsertSuggestion({
         id: `GUARDIAN:${record.id}`,
-        name: record.name,
+        name: record.person?.name || "RESPONSAVEL",
         roles: ["RESPONSAVEL"],
-        cpf: record.cpf ?? null,
-        email: record.email ?? null,
+        cpf: record.person?.cpf ?? null,
+        cnpj: record.person?.cnpj ?? null,
+        phone: record.person?.phone ?? null,
+        whatsapp: record.person?.whatsapp ?? null,
+        cellphone1: record.person?.cellphone1 ?? null,
+        cellphone2: record.person?.cellphone2 ?? null,
+        email: record.person?.email ?? null,
         active: !record.canceledAt,
         updatedAt: record.updatedAt,
       });
@@ -1552,6 +1491,11 @@ export class SharedProfilesService {
         name: record.name || record.email || "USUARIO",
         roles: administrativeRole ? [administrativeRole] : [],
         cpf: null,
+        cnpj: null,
+        phone: null,
+        whatsapp: null,
+        cellphone1: null,
+        cellphone2: null,
         email: record.email ?? null,
         active: true,
         updatedAt: record.updatedAt,
@@ -1568,6 +1512,11 @@ export class SharedProfilesService {
         name: item.name,
         roles: Array.from(new Set(item.roles)),
         cpf: item.cpf,
+        cnpj: item.cnpj,
+        phone: item.phone,
+        whatsapp: item.whatsapp,
+        cellphone1: item.cellphone1,
+        cellphone2: item.cellphone2,
         email: item.email,
         active: item.active,
       }));
@@ -1640,7 +1589,7 @@ export class SharedProfilesService {
     }
 
     const crossTenantPrisma = this.getCrossTenantPrisma();
-    const [people, users, teachers, students, guardians] = await Promise.all([
+    const [people, users] = await Promise.all([
       crossTenantPrisma.person.findMany({
         where: {
           canceledAt: null,
@@ -1666,45 +1615,6 @@ export class SharedProfilesService {
           updatedAt: true,
         },
       }),
-      crossTenantPrisma.teacher.findMany({
-        where: {
-          canceledAt: null,
-          email: { not: null },
-          ...(exclude?.kind === "TEACHER" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
-      crossTenantPrisma.student.findMany({
-        where: {
-          canceledAt: null,
-          email: { not: null },
-          ...(exclude?.kind === "STUDENT" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
-      crossTenantPrisma.guardian.findMany({
-        where: {
-          canceledAt: null,
-          email: { not: null },
-          ...(exclude?.kind === "GUARDIAN" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
     ]);
 
     const latest = [
@@ -1714,18 +1624,6 @@ export class SharedProfilesService {
       })),
       ...users.map((record: SharedEmailAccountRecord) => ({
         kind: "USER" as const,
-        record,
-      })),
-      ...teachers.map((record: SharedEmailAccountRecord) => ({
-        kind: "TEACHER" as const,
-        record,
-      })),
-      ...students.map((record: SharedEmailAccountRecord) => ({
-        kind: "STUDENT" as const,
-        record,
-      })),
-      ...guardians.map((record: SharedEmailAccountRecord) => ({
-        kind: "GUARDIAN" as const,
         record,
       })),
     ]
@@ -1916,10 +1814,9 @@ export class SharedProfilesService {
           where: { canceledAt: null },
           select: {
             id: true,
-            name: true,
-            email: true,
             updatedAt: true,
             updatedBy: true,
+            person: { select: { name: true, email: true } },
             tenant: { select: { id: true, name: true } },
           },
         }),
@@ -1927,10 +1824,9 @@ export class SharedProfilesService {
           where: { canceledAt: null },
           select: {
             id: true,
-            name: true,
-            email: true,
             updatedAt: true,
             updatedBy: true,
+            person: { select: { name: true, email: true } },
             tenant: { select: { id: true, name: true } },
           },
         }),
@@ -1938,10 +1834,9 @@ export class SharedProfilesService {
           where: { canceledAt: null },
           select: {
             id: true,
-            name: true,
-            email: true,
             updatedAt: true,
             updatedBy: true,
+            person: { select: { name: true, email: true } },
             tenant: { select: { id: true, name: true } },
           },
         }),
@@ -1963,21 +1858,23 @@ export class SharedProfilesService {
       entityLabel: string,
       record: {
         id: string;
-        name: string;
+        name?: string | null;
         email?: string | null;
         updatedAt: Date;
         updatedBy?: string | null;
         tenant?: { id: string; name: string; document?: string | null } | null;
+        person?: { name?: string | null; email?: string | null } | null;
       },
     ): EmailUsageRecord | null => {
-      if (!record.email) return null;
+      const email = record.email || record.person?.email || null;
+      if (!email) return null;
 
       return {
         entityType,
         entityLabel,
         recordId: record.id,
-        recordName: record.name,
-        email: record.email,
+        recordName: record.name || record.person?.name || entityLabel,
+        email,
         tenantId: record.tenant?.id || "",
         tenantName: record.tenant?.name || "",
         tenantDocument: null,

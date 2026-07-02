@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
-import { decodeDashboardToken, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
+import { decodeDashboardToken, getHomeRouteForRole, getHomeRouteForSession } from '@/app/lib/dashboard-crud-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
@@ -138,7 +138,7 @@ export default function LoginPage() {
       roleLabel?: string;
       name?: string;
     } | null;
-    branches: Array<{ id: string; branchCode: number; name: string }>;
+    branches: Array<{ id: string; branchCode: number; name: string; logoUrl?: string | null }>;
   } | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
 
@@ -156,7 +156,7 @@ export default function LoginPage() {
     setRememberMe(getRememberPreference());
     const storedToken = getStoredToken();
     if (storedToken) {
-      router.replace(getHomeRouteForRole(decodeDashboardToken(storedToken)?.role || null));
+      router.replace(getHomeRouteForSession(decodeDashboardToken(storedToken)));
     }
   }, [router]);
 
@@ -201,7 +201,12 @@ export default function LoginPage() {
     return false;
   };
 
-  const resolveHomeRoute = (role: string | null, mode: 'AUTO' | 'PRINCIPAL' | 'PWA') => {
+  const resolveHomeRoute = (role: string | null, mode: 'AUTO' | 'PRINCIPAL' | 'PWA', token?: string) => {
+    const payload = token ? decodeDashboardToken(token) : null;
+    if (payload?.cashierOnly === true) {
+      return getHomeRouteForSession(payload, role);
+    }
+
     if (role === 'PROFESSOR') {
       if (mode === 'PRINCIPAL') return '/principal';
       if (mode === 'PWA') return '/professor';
@@ -239,7 +244,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode));
+      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode, data.access_token));
 
     } catch (err: any) {
       const errorMsg = normalizeLoginErrorMessage(err.message || 'Erro de conexão com o servidor.');
@@ -280,7 +285,7 @@ export default function LoginPage() {
       }
 
       setStoredToken(data.access_token, rememberMe);
-      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode));
+      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode, data.access_token));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar escola') });
     } finally {
@@ -340,7 +345,7 @@ export default function LoginPage() {
 
       setStoredToken(resolvedToken, rememberMe);
       setMultipleAccessOptions(null);
-      router.push(resolveHomeRoute(resolvedRole, teacherAccessMode));
+      router.push(resolveHomeRoute(resolvedRole, teacherAccessMode, resolvedToken));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar o tipo de acesso.') });
     } finally {
@@ -381,7 +386,7 @@ export default function LoginPage() {
 
       setStoredToken(data.access_token, rememberMe);
       setMultipleBranchOptions(null);
-      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode));
+      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode, data.access_token));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar a filial.') });
     } finally {
@@ -859,14 +864,29 @@ export default function LoginPage() {
                   <button
                     key={branch.id}
                     onClick={() => handleSelectBranch(branch.branchCode)}
-                    className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all group active:scale-95"
+                    className="w-full flex items-center justify-between gap-3 p-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all group active:scale-95"
                   >
-                    <div className="text-left">
-                      <div className="text-base font-extrabold text-slate-800">
-                        {branch.branchCode} - {branch.name}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                        {branch.logoUrl ? (
+                          <img
+                            src={branch.logoUrl}
+                            alt={`Logotipo da filial ${branch.name}`}
+                            className="h-full w-full object-contain p-1"
+                          />
+                        ) : (
+                          <svg className="w-6 h-6 text-[#2272c7]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h.01M9 13h.01M9 17h.01M15 13h.01M15 17h.01" />
+                          </svg>
+                        )}
                       </div>
-                      <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-600">
-                        Filial liberada
+                      <div className="text-left min-w-0">
+                        <div className="text-base font-extrabold text-slate-800">
+                          {branch.branchCode} - {branch.name}
+                        </div>
+                        <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-blue-600">
+                          Filial liberada
+                        </div>
                       </div>
                     </div>
                     <svg className="w-5 h-5 text-slate-300 group-hover:text-[#2272c7] transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

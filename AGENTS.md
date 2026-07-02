@@ -66,10 +66,20 @@ Ao trocar de Gemini para Codex (ou vice-versa), preencher `DOCUMENTACAO/AI/HANDO
 - Tentar resolver tudo de forma autonoma, evitando pedir confirmacao quando houver caminho seguro e razoavel.
 - Ao finalizar uma solicitacao, encerrar a resposta com `# ===> TERMINEI <===`.
 
+## Padrao obrigatorio de identificacao visual
+
+- Toda tela criada ou alterada deve manter no rodape o botao de copiar o nome tecnico da tela.
+- Todo novo popup/modal criado deve nascer por padrao com logotipo da escola no cabecalho, nome tecnico exclusivo e bloco de auditoria visual no rodape.
+- O nome tecnico de popup/modal deve ser exclusivo, diferente do nome da tela principal, e deve aparecer junto do botao de copiar no rodape do proprio popup.
+- Quando o popup/modal tambem exibir foto, avatar ou icone do registro, esse elemento nao substitui o logotipo institucional; ambos devem ficar separados no cabecalho.
+
 ## Regra de protecao para telas aprovadas
 
 - Telas, componentes e fluxos visuais ja aprovados pelo usuario nao devem ser redesenhados, refatorados visualmente ou reorganizados sem solicitacao explicita.
 - Em manutencoes de tela, alterar somente o problema pedido, preservando layout, espacamento, estrutura, componentes, textos, cores e comportamento ja aprovados.
+- Nao alterar telas, fluxos, endpoints, utilitarios compartilhados ou componentes compartilhados que nao foram pedidos no prompt atual, salvo quando for tecnicamente indispensavel para corrigir exatamente o problema solicitado.
+- Se uma correcao parecer exigir mudanca em utilitario/componente compartilhado, primeiro procurar alternativa local e restrita a tela pedida; se ainda assim for inevitavel, aplicar a menor mudanca possivel e informar claramente o risco de impacto em outras telas.
+- Nunca fazer melhoria preventiva, refatoracao oportunista ou padronizacao em telas nao mencionadas pelo usuario.
 - Antes de propor qualquer mudanca estrutural ou visual ampla, considerar isso bloqueado por padrao.
 - Se a correcao exigir impacto visual inevitavel, aplicar a menor mudanca possivel e deixar claro o risco no retorno final.
 - Regra soberana de UI: nenhum modelo, incluindo Codex, GPT-5.4, GPT-5.1, mini ou qualquer troca futura de agente, pode alterar layout aprovado sem permissao explicita do usuario no prompt atual.

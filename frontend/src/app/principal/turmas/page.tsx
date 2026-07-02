@@ -59,6 +59,17 @@ type SeriesClassRecord = {
     branchCode?: number | null;
     seriesId: string;
     classId: string;
+    smtpEnabled?: boolean | null;
+    smtpHost?: string | null;
+    smtpPort?: number | null;
+    smtpTimeout?: number | null;
+    smtpAuthenticate?: boolean | null;
+    smtpSecure?: boolean | null;
+    smtpAuthType?: string | null;
+    smtpEmail?: string | null;
+    smtpPassword?: string | null;
+    smtpSenderName?: string | null;
+    smtpReplyTo?: string | null;
     canceledAt?: string | null;
     series?: SeriesRecord | null;
     class?: ClassRecord | null;
@@ -82,6 +93,17 @@ type FormData = {
     name: string;
     shifts: ShiftValue[];
     defaultMonthlyFee: string;
+    smtpEnabled: boolean;
+    smtpHost: string;
+    smtpPort: string;
+    smtpTimeout: string;
+    smtpAuthenticate: boolean;
+    smtpSecure: boolean;
+    smtpAuthType: string;
+    smtpEmail: string;
+    smtpPassword: string;
+    smtpSenderName: string;
+    smtpReplyTo: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -90,6 +112,17 @@ const EMPTY_FORM: FormData = {
     name: '',
     shifts: [],
     defaultMonthlyFee: '',
+    smtpEnabled: false,
+    smtpHost: '',
+    smtpPort: '465',
+    smtpTimeout: '60',
+    smtpAuthenticate: true,
+    smtpSecure: true,
+    smtpAuthType: 'SSL',
+    smtpEmail: '',
+    smtpPassword: '',
+    smtpSenderName: '',
+    smtpReplyTo: '',
 };
 
 const normalizeShifts = (shifts: ShiftValue[]) => SHIFT_OPTIONS.filter((item) => shifts.includes(item.value)).map((item) => item.value);
@@ -286,6 +319,10 @@ type TurmasAuditParams = {
     displayedRowsCount: number;
     sortColumn: SeriesClassColumnKey;
     sortDirection: 'asc' | 'desc';
+};
+const parseOptionalInteger = (value: string) => {
+    const parsedValue = Number(String(value || '').trim());
+    return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
 };
 
 function getTurmasAuditOrderBy(column: SeriesClassColumnKey) {
@@ -652,6 +689,35 @@ export default function TurmasPage() {
         );
     };
 
+    const buildSmtpPayload = () => {
+        const payload: Record<string, unknown> = {
+            smtpEnabled: formData.smtpEnabled,
+            smtpAuthenticate: formData.smtpAuthenticate,
+            smtpSecure: formData.smtpSecure,
+        };
+
+        const smtpHost = formData.smtpHost.trim();
+        const smtpPort = parseOptionalInteger(formData.smtpPort);
+        const smtpTimeout = parseOptionalInteger(formData.smtpTimeout);
+        const smtpAuthType = formData.smtpAuthType.trim().toUpperCase();
+        const smtpEmail = formData.smtpEmail.trim().toUpperCase();
+        const smtpSenderName = formData.smtpSenderName.trim();
+        const smtpReplyTo = formData.smtpReplyTo.trim().toUpperCase();
+
+        if (smtpHost) payload.smtpHost = smtpHost;
+        if (smtpPort) payload.smtpPort = smtpPort;
+        if (smtpTimeout) payload.smtpTimeout = smtpTimeout;
+        if (smtpAuthType) payload.smtpAuthType = smtpAuthType;
+        if (smtpEmail) payload.smtpEmail = smtpEmail;
+        if (smtpSenderName) payload.smtpSenderName = smtpSenderName;
+        if (smtpReplyTo) payload.smtpReplyTo = smtpReplyTo;
+        if (formData.smtpPassword.trim()) {
+            payload.smtpPassword = formData.smtpPassword.trim();
+        }
+
+        return payload;
+    };
+
     const createClassAndLink = async (token: string, payload: { branchCode: number; seriesId: string; name: string; shifts: ShiftValue[]; defaultMonthlyFee: string }) => {
         const classResponse = await fetch(`${API_BASE_URL}/classes`, {
             method: 'POST',
@@ -680,6 +746,7 @@ export default function TurmasPage() {
                 seriesId: payload.seriesId,
                 classId: classData.id,
                 branchCode: payload.branchCode,
+                ...buildSmtpPayload(),
             }),
         });
 
@@ -747,6 +814,7 @@ export default function TurmasPage() {
                         seriesId: formData.seriesId,
                         classId: current.class.id,
                         branchCode: targetBranchCode,
+                        ...buildSmtpPayload(),
                     }),
                 });
 
@@ -783,6 +851,17 @@ export default function TurmasPage() {
             name: item.class?.name || '',
             shifts: item.class?.shift ? splitShiftValue(item.class.shift) : [],
             defaultMonthlyFee: formatMoneyValue(item.class?.defaultMonthlyFee),
+            smtpEnabled: Boolean(item.smtpEnabled),
+            smtpHost: item.smtpHost || '',
+            smtpPort: item.smtpPort ? String(item.smtpPort) : '465',
+            smtpTimeout: item.smtpTimeout ? String(item.smtpTimeout) : '60',
+            smtpAuthenticate: item.smtpAuthenticate ?? true,
+            smtpSecure: item.smtpSecure ?? true,
+            smtpAuthType: item.smtpAuthType || 'SSL',
+            smtpEmail: item.smtpEmail || '',
+            smtpPassword: '',
+            smtpSenderName: item.smtpSenderName || '',
+            smtpReplyTo: item.smtpReplyTo || '',
         });
         setIsModalOpen(true);
     };
@@ -1588,6 +1667,92 @@ export default function TurmasPage() {
                                         </p>
                                     ) : null}
                                 </div>
+
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-600">E-mail da turma</p>
+                                        <p className="mt-1 text-xs font-semibold text-slate-500">Quando ativo, este SMTP será usado antes da filial e da empresa.</p>
+                                    </div>
+                                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.smtpEnabled}
+                                            onChange={(event) => setFormData((current) => ({ ...current, smtpEnabled: event.target.checked }))}
+                                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        Usar SMTP da turma
+                                    </label>
+                                </div>
+                                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                    <input
+                                        value={formData.smtpHost}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpHost: event.target.value }))}
+                                        placeholder="Servidor SMTP"
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={formData.smtpPort}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpPort: event.target.value }))}
+                                        placeholder="Porta"
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={formData.smtpTimeout}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpTimeout: event.target.value }))}
+                                        placeholder="Timeout"
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                    <select
+                                        value={formData.smtpAuthType}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpAuthType: event.target.value }))}
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                        <option value="SSL">SSL</option>
+                                        <option value="TLS">TLS</option>
+                                        <option value="STARTTLS">STARTTLS</option>
+                                    </select>
+                                    <input
+                                        value={formData.smtpEmail}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpEmail: event.target.value.toUpperCase() }))}
+                                        placeholder="E-mail remetente"
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 md:col-span-2"
+                                    />
+                                    <input
+                                        type="password"
+                                        value={formData.smtpPassword}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpPassword: event.target.value }))}
+                                        placeholder={editingId ? 'Nova senha SMTP, se quiser alterar' : 'Senha SMTP / App Password'}
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 md:col-span-2"
+                                    />
+                                    <input
+                                        value={formData.smtpSenderName}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpSenderName: event.target.value }))}
+                                        placeholder="Nome do remetente"
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 md:col-span-2"
+                                    />
+                                    <input
+                                        value={formData.smtpReplyTo}
+                                        onChange={(event) => setFormData((current) => ({ ...current, smtpReplyTo: event.target.value.toUpperCase() }))}
+                                        placeholder="Responder para"
+                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 md:col-span-2"
+                                    />
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-3">
+                                    <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-600">
+                                        <input type="checkbox" checked={formData.smtpAuthenticate} onChange={(event) => setFormData((current) => ({ ...current, smtpAuthenticate: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                                        Autenticação
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-600">
+                                        <input type="checkbox" checked={formData.smtpSecure} onChange={(event) => setFormData((current) => ({ ...current, smtpSecure: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                                        Conexão segura
+                                    </label>
+                                </div>
+                            </div>
 
                             <div className="flex flex-col gap-3 border-t border-slate-100 pt-5">
                                 <div className="flex items-center justify-between gap-3">

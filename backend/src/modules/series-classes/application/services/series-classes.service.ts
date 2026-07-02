@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -43,6 +44,7 @@ export class SeriesClassesService {
 
     return {
       ...link,
+      smtpPassword: null,
       studentCount: activeEnrollments.length,
       totalMonthlyFee: canViewFinancial
         ? activeEnrollments.reduce((total, enrollment) => {
@@ -60,9 +62,83 @@ export class SeriesClassesService {
       enrollments: activeEnrollments.map((enrollment) => ({
         ...enrollment,
         student: enrollment?.student
-          ? sanitizeStudentForViewer(enrollment.student, currentUser)
+          ? sanitizeStudentForViewer(
+              {
+                ...enrollment.student,
+                name:
+                  enrollment.student.person?.name ||
+                  enrollment.student.name ||
+                  "ALUNO",
+              },
+              currentUser,
+            )
           : enrollment?.student,
       })),
+    };
+  }
+
+  private normalizeOptionalText(value?: string | null) {
+    const trimmed = String(value || "").trim();
+    return trimmed || null;
+  }
+
+  private buildSmtpData(
+    dto: CreateSeriesClassDto | UpdateSeriesClassDto,
+    currentPassword?: string | null,
+  ) {
+    const hasAnySmtpField = [
+      "smtpEnabled",
+      "smtpHost",
+      "smtpPort",
+      "smtpTimeout",
+      "smtpAuthenticate",
+      "smtpSecure",
+      "smtpAuthType",
+      "smtpEmail",
+      "smtpPassword",
+      "smtpSenderName",
+      "smtpReplyTo",
+    ].some((key) => Object.prototype.hasOwnProperty.call(dto, key));
+
+    if (!hasAnySmtpField) {
+      return {};
+    }
+
+    const smtpEnabled = Boolean(dto.smtpEnabled);
+    const smtpAuthenticate = dto.smtpAuthenticate ?? true;
+    const smtpPassword =
+      this.normalizeOptionalText(dto.smtpPassword) ?? currentPassword ?? null;
+
+    if (smtpEnabled) {
+      if (
+        !this.normalizeOptionalText(dto.smtpHost) ||
+        !dto.smtpPort ||
+        !this.normalizeOptionalText(dto.smtpEmail)
+      ) {
+        throw new BadRequestException(
+          "SMTP da turma exige servidor, porta e e-mail remetente.",
+        );
+      }
+
+      if (smtpAuthenticate && !smtpPassword) {
+        throw new BadRequestException(
+          "SMTP da turma com autenticação exige senha.",
+        );
+      }
+    }
+
+    return {
+      smtpEnabled,
+      smtpHost: this.normalizeOptionalText(dto.smtpHost),
+      smtpPort: dto.smtpPort ?? null,
+      smtpTimeout: dto.smtpTimeout ?? 60,
+      smtpAuthenticate,
+      smtpSecure: dto.smtpSecure ?? false,
+      smtpAuthType: this.normalizeOptionalText(dto.smtpAuthType) ?? "SSL",
+      smtpEmail: this.normalizeOptionalText(dto.smtpEmail)?.toUpperCase() ?? null,
+      smtpPassword,
+      smtpSenderName: this.normalizeOptionalText(dto.smtpSenderName),
+      smtpReplyTo: this.normalizeOptionalText(dto.smtpReplyTo)?.toUpperCase() ?? null,
     };
   }
 
@@ -128,6 +204,7 @@ export class SeriesClassesService {
         seriesId: createDto.seriesId,
         classId: createDto.classId,
         branchCode: targetBranchCode,
+        ...this.buildSmtpData(createDto),
         createdBy: this.userId(),
       },
       include: {
@@ -154,9 +231,9 @@ export class SeriesClassesService {
             student: {
               select: {
                 id: true,
-                name: true,
                 monthlyFee: true,
                 canceledAt: true,
+                person: { select: { name: true } },
               },
             },
           },
@@ -197,9 +274,9 @@ export class SeriesClassesService {
             student: {
               select: {
                 id: true,
-                name: true,
                 monthlyFee: true,
                 canceledAt: true,
+                person: { select: { name: true } },
               },
             },
           },
@@ -237,22 +314,9 @@ export class SeriesClassesService {
             student: {
               select: {
                 id: true,
-                name: true,
-                cpf: true,
-                rg: true,
                 photoUrl: true,
-                phone: true,
-                whatsapp: true,
-                cellphone1: true,
-                cellphone2: true,
-                email: true,
-                street: true,
-                number: true,
-                city: true,
-                state: true,
-                neighborhood: true,
-                zipCode: true,
                 updatedAt: true,
+                person: true,
               },
             },
           },
@@ -287,23 +351,23 @@ export class SeriesClassesService {
 
         if (!studentsMap.has(student.id)) {
           const contactPhone =
-            student.whatsapp ||
-            student.phone ||
-            student.cellphone1 ||
-            student.cellphone2 ||
+            student.person?.whatsapp ||
+            student.person?.phone ||
+            student.person?.cellphone1 ||
+            student.person?.cellphone2 ||
             null;
           studentsMap.set(student.id, {
             id: student.id,
-            name: student.name,
-            cpf: student.cpf ?? null,
-            email: student.email ?? null,
+            name: student.person?.name || "ALUNO",
+            cpf: student.person?.cpf ?? null,
+            email: student.person?.email ?? null,
             phone: contactPhone,
-            street: student.street ?? null,
-            number: student.number ?? null,
-            city: student.city ?? null,
-            state: student.state ?? null,
-            neighborhood: student.neighborhood ?? null,
-            zipCode: student.zipCode ?? null,
+            street: student.person?.street ?? null,
+            number: student.person?.number ?? null,
+            city: student.person?.city ?? null,
+            state: student.person?.state ?? null,
+            neighborhood: student.person?.neighborhood ?? null,
+            zipCode: student.person?.zipCode ?? null,
             updatedAt: student.updatedAt ?? null,
             photoUrl: student.photoUrl ?? null,
           });
@@ -341,22 +405,9 @@ export class SeriesClassesService {
             student: {
               select: {
                 id: true,
-                name: true,
-                cpf: true,
-                rg: true,
                 photoUrl: true,
-                phone: true,
-                whatsapp: true,
-                cellphone1: true,
-                cellphone2: true,
-                email: true,
-                street: true,
-                number: true,
-                city: true,
-                state: true,
-                neighborhood: true,
-                zipCode: true,
                 updatedAt: true,
+                person: true,
               },
             },
           },
@@ -396,23 +447,23 @@ export class SeriesClassesService {
 
       if (!studentsMap.has(student.id)) {
         const contactPhone =
-          student.whatsapp ||
-          student.phone ||
-          student.cellphone1 ||
-          student.cellphone2 ||
+          student.person?.whatsapp ||
+          student.person?.phone ||
+          student.person?.cellphone1 ||
+          student.person?.cellphone2 ||
           null;
         studentsMap.set(student.id, {
           id: student.id,
-          name: student.name,
-          cpf: student.cpf ?? null,
-          email: student.email ?? null,
+          name: student.person?.name || "ALUNO",
+          cpf: student.person?.cpf ?? null,
+          email: student.person?.email ?? null,
           phone: contactPhone,
-          street: student.street ?? null,
-          number: student.number ?? null,
-          city: student.city ?? null,
-          state: student.state ?? null,
-          neighborhood: student.neighborhood ?? null,
-          zipCode: student.zipCode ?? null,
+          street: student.person?.street ?? null,
+          number: student.person?.number ?? null,
+          city: student.person?.city ?? null,
+          state: student.person?.state ?? null,
+          neighborhood: student.person?.neighborhood ?? null,
+          zipCode: student.person?.zipCode ?? null,
           updatedAt: student.updatedAt ?? null,
           photoUrl: student.photoUrl ?? null,
         });
@@ -434,6 +485,10 @@ export class SeriesClassesService {
 
   async update(id: string, updateDto: UpdateSeriesClassDto) {
     const currentLink = await this.findOne(id);
+    const currentRawLink = await this.prisma.seriesClass.findFirst({
+      where: { id, tenantId: this.tenantId() },
+      select: { smtpPassword: true },
+    });
     const targetBranchCode = await resolveWritableTenantBranchCode(
       this.prisma,
       this.tenantId(),
@@ -454,6 +509,7 @@ export class SeriesClassesService {
         seriesId: updateDto.seriesId,
         classId: updateDto.classId,
         branchCode: targetBranchCode,
+        ...this.buildSmtpData(updateDto, currentRawLink?.smtpPassword),
         updatedBy: this.userId(),
       },
     });

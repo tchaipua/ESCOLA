@@ -103,6 +103,18 @@ type GuardianRecord = {
     students?: GuardianStudentLink[];
 };
 
+function dedupeGuardianRecords(records: GuardianRecord[]) {
+    const seenIds = new Set<string>();
+
+    return records.filter((record) => {
+        const id = String(record.id || '').trim();
+        if (!id) return true;
+        if (seenIds.has(id)) return false;
+        seenIds.add(id);
+        return true;
+    });
+}
+
 type GuardianFormState = {
     name: string; birthDate: string; cpf: string; rg: string; cnpj: string; nickname: string; corporateName: string;
     phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string;
@@ -637,7 +649,7 @@ export default function ResponsaveisPage() {
                 throw new Error(err?.message || 'Falha ao buscar responsáveis.');
             }
             const data = await response.json();
-            setGuardians(Array.isArray(data) ? data : []);
+            setGuardians(Array.isArray(data) ? dedupeGuardianRecords(data) : []);
         } catch (error) {
             setErrorStatus(errorMessage(error, 'Não foi possível carregar os responsáveis.'));
         } finally {

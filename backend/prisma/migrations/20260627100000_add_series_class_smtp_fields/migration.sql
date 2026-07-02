@@ -1,0 +1,11 @@
+ALTER TABLE "series_classes" ADD COLUMN "smtpEnabled" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "series_classes" ADD COLUMN "smtpHost" TEXT;
+ALTER TABLE "series_classes" ADD COLUMN "smtpPort" INTEGER;
+ALTER TABLE "series_classes" ADD COLUMN "smtpTimeout" INTEGER;
+ALTER TABLE "series_classes" ADD COLUMN "smtpAuthenticate" BOOLEAN;
+ALTER TABLE "series_classes" ADD COLUMN "smtpSecure" BOOLEAN;
+ALTER TABLE "series_classes" ADD COLUMN "smtpAuthType" TEXT;
+ALTER TABLE "series_classes" ADD COLUMN "smtpEmail" TEXT;
+ALTER TABLE "series_classes" ADD COLUMN "smtpPassword" TEXT;
+ALTER TABLE "series_classes" ADD COLUMN "smtpSenderName" TEXT;
+ALTER TABLE "series_classes" ADD COLUMN "smtpReplyTo" TEXT;

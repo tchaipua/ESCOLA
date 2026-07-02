@@ -149,6 +149,7 @@ export class TenantsController {
       accessProfile?: string;
       permissions?: string[];
       branchAccessCodes?: number[];
+      cashierOnly?: boolean;
     },
   ) {
     this.assertMasterPass(req);
@@ -192,6 +193,7 @@ export class TenantsController {
       accessProfile?: string;
       permissions?: string[];
       branchAccessCodes?: number[];
+      cashierOnly?: boolean;
     },
   ) {
     this.assertMasterPass(req);

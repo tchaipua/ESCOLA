@@ -31,7 +31,10 @@ type LessonEventNotificationPayload = {
     shift?: string | null;
     teacherSubject: {
       subject?: { name?: string | null } | null;
-      teacher?: { name?: string | null } | null;
+      teacher?: {
+        name?: string | null;
+        person?: { name?: string | null } | null;
+      } | null;
     };
     seriesClass: {
       series?: { name?: string | null } | null;
@@ -73,7 +76,10 @@ type AssessmentGradeNotificationPayload = {
     seriesClassId: string;
     teacherSubject: {
       subject?: { name?: string | null } | null;
-      teacher?: { name?: string | null } | null;
+      teacher?: {
+        name?: string | null;
+        person?: { name?: string | null } | null;
+      } | null;
     };
     seriesClass: {
       series?: { name?: string | null } | null;
@@ -102,7 +108,10 @@ type AttendanceNotificationPayload = {
     seriesClassId: string;
     teacherSubject: {
       subject?: { name?: string | null } | null;
-      teacher?: { name?: string | null } | null;
+      teacher?: {
+        name?: string | null;
+        person?: { name?: string | null } | null;
+      } | null;
     };
     seriesClass: {
       series?: { name?: string | null } | null;
@@ -124,8 +133,11 @@ type SmtpConfiguration = {
   smtpTimeout?: number | null;
   smtpAuthenticate?: boolean | null;
   smtpSecure?: boolean | null;
+  smtpAuthType?: string | null;
   smtpEmail?: string | null;
   smtpPassword?: string | null;
+  smtpSenderName?: string | null;
+  smtpReplyTo?: string | null;
 };
 
 type EmailSendResult = {
@@ -305,8 +317,59 @@ export class NotificationsService {
     }
   }
 
-  private async getTenantSmtpConfiguration(): Promise<SmtpConfiguration | null> {
+  private async getTenantSmtpConfiguration(
+    seriesClassId?: string | null,
+  ): Promise<SmtpConfiguration | null> {
     const branchCode = this.branchCode();
+    if (seriesClassId) {
+      const seriesClass = await this.prisma.seriesClass.findFirst({
+        where: {
+          id: seriesClassId,
+          tenantId: this.tenantId(),
+          canceledAt: null,
+          smtpEnabled: true,
+        },
+        select: {
+          id: true,
+          smtpHost: true,
+          smtpPort: true,
+          smtpTimeout: true,
+          smtpAuthenticate: true,
+          smtpSecure: true,
+          smtpAuthType: true,
+          smtpEmail: true,
+          smtpPassword: true,
+          smtpSenderName: true,
+          smtpReplyTo: true,
+          series: { select: { name: true } },
+          class: { select: { name: true } },
+        },
+      });
+
+      if (
+        seriesClass?.smtpHost &&
+        seriesClass.smtpPort &&
+        seriesClass.smtpEmail
+      ) {
+        return {
+          id: seriesClass.id,
+          name:
+            seriesClass.smtpSenderName ||
+            `${seriesClass.series?.name || "TURMA"} - ${seriesClass.class?.name || "ESCOLA"}`,
+          smtpHost: seriesClass.smtpHost,
+          smtpPort: seriesClass.smtpPort,
+          smtpTimeout: seriesClass.smtpTimeout,
+          smtpAuthenticate: seriesClass.smtpAuthenticate,
+          smtpSecure: seriesClass.smtpSecure,
+          smtpAuthType: seriesClass.smtpAuthType,
+          smtpEmail: seriesClass.smtpEmail,
+          smtpPassword: seriesClass.smtpPassword,
+          smtpSenderName: seriesClass.smtpSenderName,
+          smtpReplyTo: seriesClass.smtpReplyTo,
+        };
+      }
+    }
+
     const tenant = await this.prisma.tenant.findFirst({
       where: {
         id: this.tenantId(),
@@ -475,6 +538,7 @@ export class NotificationsService {
       payload.lessonItem.subjectName ||
       "DISCIPLINA";
     const teacherName =
+      payload.lessonItem.teacherSubject?.teacher?.person?.name ||
       payload.lessonItem.teacherSubject?.teacher?.name ||
       payload.lessonItem.teacherName ||
       "PROFESSOR";
@@ -518,6 +582,7 @@ export class NotificationsService {
       include: {
         student: {
           include: {
+            person: true,
             guardians: {
               where: {
                 canceledAt: null,
@@ -526,7 +591,7 @@ export class NotificationsService {
                 },
               },
               include: {
-                guardian: true,
+                guardian: { include: { person: true } },
               },
             },
           },
@@ -541,9 +606,11 @@ export class NotificationsService {
         recipients.set(`STUDENT:${enrollment.student.id}`, {
           recipientType: "STUDENT",
           recipientId: enrollment.student.id,
-          name: enrollment.student.name,
-          email: enrollment.student.email,
-          telegramChatId: this.getOptedInTelegramChatId(enrollment.student),
+          name: enrollment.student.person?.name || "ALUNO",
+          email: enrollment.student.person?.email ?? null,
+          telegramChatId: this.getOptedInTelegramChatId(
+            enrollment.student.person,
+          ),
         });
       }
 
@@ -553,9 +620,11 @@ export class NotificationsService {
           recipients.set(`GUARDIAN:${link.guardian.id}`, {
             recipientType: "GUARDIAN",
             recipientId: link.guardian.id,
-            name: link.guardian.name,
-            email: link.guardian.email,
-            telegramChatId: this.getOptedInTelegramChatId(link.guardian),
+            name: link.guardian.person?.name || "RESPONSAVEL",
+            email: link.guardian.person?.email ?? null,
+            telegramChatId: this.getOptedInTelegramChatId(
+              link.guardian.person,
+            ),
           });
         }
       }
@@ -589,6 +658,7 @@ export class NotificationsService {
       include: {
         student: {
           include: {
+            person: true,
             guardians: {
               where: {
                 canceledAt: null,
@@ -597,7 +667,7 @@ export class NotificationsService {
                 },
               },
               include: {
-                guardian: true,
+                guardian: { include: { person: true } },
               },
             },
           },
@@ -615,10 +685,10 @@ export class NotificationsService {
         recipients.set(`STUDENT:${enrollment.student.id}`, {
           recipientType: "STUDENT",
           recipientId: enrollment.student.id,
-          name: enrollment.student.name,
-          email: enrollment.student.email,
+          name: enrollment.student.person?.name || "ALUNO",
+          email: enrollment.student.person?.email ?? null,
           studentId: enrollment.student.id,
-          studentName: enrollment.student.name,
+          studentName: enrollment.student.person?.name || "ALUNO",
           score: grade?.score,
           remarks: grade?.remarks,
         });
@@ -630,10 +700,10 @@ export class NotificationsService {
           recipients.set(`GUARDIAN:${link.guardian.id}`, {
             recipientType: "GUARDIAN",
             recipientId: link.guardian.id,
-            name: link.guardian.name,
-            email: link.guardian.email,
+            name: link.guardian.person?.name || "RESPONSAVEL",
+            email: link.guardian.person?.email ?? null,
             studentId: enrollment.student.id,
-            studentName: enrollment.student.name,
+            studentName: enrollment.student.person?.name || "ALUNO",
             score: grade?.score,
             remarks: grade?.remarks,
           });
@@ -652,7 +722,9 @@ export class NotificationsService {
       return { sent: false, count: 0 };
     }
 
-    const tenant = await this.getTenantSmtpConfiguration();
+    const tenant = await this.getTenantSmtpConfiguration(
+      payload.lessonItem.seriesClassId,
+    );
     if (!tenant?.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) {
       return { sent: false, count: 0 };
     }
@@ -678,6 +750,11 @@ export class NotificationsService {
       payload.lessonItem.teacherSubject?.subject?.name ||
       payload.lessonItem.subjectName ||
       "DISCIPLINA NÃO INFORMADA";
+    const teacherName =
+      payload.lessonItem.teacherSubject?.teacher?.person?.name ||
+      payload.lessonItem.teacherSubject?.teacher?.name ||
+      payload.lessonItem.teacherName ||
+      "PROFESSOR NÃO INFORMADO";
     const subject = `${this.getEventTypeLabel(payload.lessonEvent.eventType)} - ${subjectName}`;
     const timeLabel =
       payload.lessonItem.startTime && payload.lessonItem.endTime
@@ -690,6 +767,7 @@ export class NotificationsService {
       `Horário: ${timeLabel}`,
       `Turma: ${payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE"} - ${payload.lessonItem.seriesClass?.class?.name || "SEM TURMA"}`,
       `Disciplina: ${subjectName}`,
+      `Professor: ${teacherName}`,
       payload.lessonEvent.description
         ? `Detalhes: ${payload.lessonEvent.description}`
         : null,
@@ -716,9 +794,9 @@ export class NotificationsService {
       const result = await (async () => {
         try {
           await transporter.sendMail({
-            from: `"${tenant.name}" <${tenant.smtpEmail}>`,
+            from: `"${tenant.smtpSenderName || tenant.name}" <${tenant.smtpEmail}>`,
             to: recipient.email!,
-            replyTo: tenant.smtpEmail || undefined,
+            replyTo: tenant.smtpReplyTo || tenant.smtpEmail || undefined,
             subject,
             text: textBody,
             html: `
@@ -729,6 +807,7 @@ export class NotificationsService {
                 <p><strong>Horário:</strong> ${timeLabel}</p>
                 <p><strong>Turma:</strong> ${payload.lessonItem.seriesClass?.series?.name || "SEM SÉRIE"} - ${payload.lessonItem.seriesClass?.class?.name || "SEM TURMA"}</p>
                 <p><strong>Disciplina:</strong> ${subjectName}</p>
+                <p><strong>Professor:</strong> ${teacherName}</p>
                 ${
                   payload.lessonEvent.description
                     ? `<p><strong>Detalhes:</strong> ${payload.lessonEvent.description}</p>`
@@ -885,7 +964,9 @@ export class NotificationsService {
     const subjectName =
       payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
     const teacherName =
-      payload.lessonItem.teacherSubject?.teacher?.name || "PROFESSOR";
+      payload.lessonItem.teacherSubject?.teacher?.person?.name ||
+      payload.lessonItem.teacherSubject?.teacher?.name ||
+      "PROFESSOR";
     const base = `NOTAS DISPONIBILIZADAS EM ${subjectName} NO DIA ${this.formatDate(payload.lessonItem.lessonDate)} DAS ${payload.lessonItem.startTime} ÀS ${payload.lessonItem.endTime} PARA ${seriesName} - ${className}.`;
     const detail = payload.assessment.description
       ? ` ${payload.assessment.description}`
@@ -914,7 +995,9 @@ export class NotificationsService {
     const subjectName =
       payload.lessonItem.teacherSubject?.subject?.name || "DISCIPLINA";
     const teacherName =
-      payload.lessonItem.teacherSubject?.teacher?.name || "PROFESSOR";
+      payload.lessonItem.teacherSubject?.teacher?.person?.name ||
+      payload.lessonItem.teacherSubject?.teacher?.name ||
+      "PROFESSOR";
     const studentLabel =
       recipientType === "STUDENT"
         ? "SUA PRESENÇA FOI REGISTRADA"
@@ -934,7 +1017,9 @@ export class NotificationsService {
       return false;
     }
 
-    const tenant = await this.getTenantSmtpConfiguration();
+    const tenant = await this.getTenantSmtpConfiguration(
+      payload.lessonItem.seriesClassId,
+    );
     if (!tenant?.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) {
       return false;
     }
@@ -1002,9 +1087,9 @@ export class NotificationsService {
             .join("\n");
 
           await transporter.sendMail({
-            from: `"${tenant.name}" <${tenant.smtpEmail}>`,
+            from: `"${tenant.smtpSenderName || tenant.name}" <${tenant.smtpEmail}>`,
             to: recipient.email!,
-            replyTo: tenant.smtpEmail || undefined,
+            replyTo: tenant.smtpReplyTo || tenant.smtpEmail || undefined,
             subject,
             text: textBody,
             html: `
@@ -1130,7 +1215,10 @@ export class NotificationsService {
           lessonDate: payload.lessonItem.lessonDate,
           assessmentTitle: payload.assessment.title,
           subjectName: payload.lessonItem.teacherSubject?.subject?.name || null,
-          teacherName: payload.lessonItem.teacherSubject?.teacher?.name || null,
+          teacherName:
+            payload.lessonItem.teacherSubject?.teacher?.person?.name ||
+            payload.lessonItem.teacherSubject?.teacher?.name ||
+            null,
           studentId: recipient.studentId || null,
           studentName: recipient.studentName || null,
           score: recipient.score ?? null,
@@ -1184,6 +1272,7 @@ export class NotificationsService {
       include: {
         student: {
           include: {
+            person: true,
             guardians: {
               where: {
                 canceledAt: null,
@@ -1192,7 +1281,7 @@ export class NotificationsService {
                 },
               },
               include: {
-                guardian: true,
+                guardian: { include: { person: true } },
               },
             },
           },
@@ -1233,7 +1322,7 @@ export class NotificationsService {
           message: this.buildAttendanceNotificationMessage({
             payload,
             recipientType: "STUDENT",
-            studentName: enrollment.student.name,
+            studentName: enrollment.student.person?.name || "ALUNO",
             status: attendance.status,
             notes: attendance.notes,
           }),
@@ -1266,7 +1355,7 @@ export class NotificationsService {
             message: this.buildAttendanceNotificationMessage({
               payload,
               recipientType: "GUARDIAN",
-              studentName: enrollment.student.name,
+              studentName: enrollment.student.person?.name || "ALUNO",
               status: attendance.status,
               notes: attendance.notes,
             }),

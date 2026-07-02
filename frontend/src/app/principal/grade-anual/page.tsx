@@ -84,6 +84,7 @@ type AnnualLessonEvent = {
     description?: string | null;
     startTime?: string | null;
     endTime?: string | null;
+    notifyByTelegram?: boolean;
 };
 
 type AnnualCalendarLessonItem = {
@@ -120,6 +121,7 @@ type AnnualStandaloneEvent = {
     seriesClassLabel: string;
     subjectName: string;
     teacherName: string;
+    notifyByTelegram?: boolean;
 };
 
 type ExtraEditableEvent = AnnualStandaloneEvent | (AnnualLessonEvent & {
@@ -376,7 +378,7 @@ const DEFAULT_ADMINISTRATIVE_EVENT_FORM: AdministrativeEventFormState = {
     notifyStudents: true,
     notifyGuardians: true,
     notifyByEmail: true,
-    notifyByTelegram: false,
+    notifyByTelegram: true,
 };
 
 type GradeAnualAuditParams = {
@@ -1433,7 +1435,7 @@ export default function GradeAnualPage() {
             notifyStudents: true,
             notifyGuardians: true,
             notifyByEmail: true,
-            notifyByTelegram: false,
+            notifyByTelegram: 'notifyByTelegram' in event ? event.notifyByTelegram ?? true : true,
         });
         setExtraEventEditModal({ event });
     };

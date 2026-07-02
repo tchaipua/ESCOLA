@@ -267,3 +267,39 @@ Para cada decisao, registrar:
 - Impacto: permite configurar e-mail sem alterar codigo e acompanhar quais notificacoes internas tambem foram enviadas por e-mail.
 - Alternativas consideradas: exigir SMTP sempre no cadastro da escola; usar somente variaveis de ambiente; nao registrar entrega por destinatario.
 - Status: aceita
+
+## DEC-0029
+
+- Data: 2026-06-27
+- Contexto: algumas turmas podem precisar disparar comunicacoes por e-mail usando uma conta propria, sem depender sempre do SMTP da filial ou da escola.
+- Decisao: adicionar SMTP opcional em `series_classes` e resolver e-mails da agenda escolar na ordem turma, filial, escola e variaveis `SMTP_*`.
+- Impacto: provas, trabalhos e demais eventos da agenda vinculados a uma turma podem sair pelo remetente especifico da turma quando `smtpEnabled` estiver ativo e a configuracao estiver completa.
+- Alternativas consideradas: criar e-mail apenas no cadastro de `classes`; manter somente filial/escola; criar uma tabela generica de contas SMTP sem vinculo direto com turma.
+- Status: aceita
+
+## DEC-0030
+
+- Data: 2026-06-28
+- Contexto: responsaveis, alunos e professores precisam ativar Telegram sem a secretaria copiar manualmente o Chat ID de cada pessoa.
+- Decisao: criar webhook publico por escola em `/telegram/webhook/:tenantId/:secret`, validar a origem com segredo derivado do token do bot e vincular automaticamente a pessoa central por CPF/CNPJ informado no chat.
+- Impacto: ao enviar `oi` ou `/start`, o bot pede CPF/CNPJ; quando o documento existe em `people`, o sistema grava `telegramChatId`, `telegramUsername`, `telegramOptInAt` e sincroniza perfis vinculados. Comandos `sair/parar/cancelar/stop` fazem opt-out. Em ambiente local, o backend pode usar polling por `getUpdates`, pois o Telegram nao chama webhook em `localhost`.
+- Alternativas consideradas: manter cadastro manual de Chat ID; vincular por nome; criar um bot por perfil em vez de por escola.
+- Status: aceita
+
+## DEC-0031
+
+- Data: 2026-06-29
+- Contexto: dados comuns ainda existiam fisicamente em `teachers`, `students` e `guardians`, gerando duplicidade com `people`.
+- Decisao: remover fisicamente CPF/CNPJ, RG, nascimento, contato, e-mail, Telegram e endereco das tabelas de papeis operacionais, mantendo esses dados exclusivamente em `people`.
+- Impacto: perfis operacionais passam a guardar somente dados especificos do papel e `personId`; envios de e-mail/Telegram, financeiro e consultas passam a resolver dados comuns pela pessoa central.
+- Alternativas consideradas: manter campos duplicados nulos; continuar sincronizando dados entre tabelas; mover tudo para uma tabela unica.
+- Status: aceita
+
+## DEC-0032
+
+- Data: 2026-06-29
+- Contexto: apos remover dados comuns, ainda restavam campos legados de identidade e senha em `teachers`, `students` e `guardians`.
+- Decisao: remover fisicamente `name`, `password`, `resetPasswordToken` e `resetPasswordExpires` das tabelas de papeis operacionais, mantendo nome em `people` e credencial oficial em `email_credentials`, com legado de senha apenas em `people` enquanto necessario.
+- Impacto: os papeis operacionais passam a depender de `personId` para nome e identidade compartilhada; telas, notificacoes, login e integracoes devem resolver esses dados pela pessoa central.
+- Alternativas consideradas: deixar os campos nulos; manter nome operacional duplicado; remover somente senha e manter nome no papel.
+- Status: aceita

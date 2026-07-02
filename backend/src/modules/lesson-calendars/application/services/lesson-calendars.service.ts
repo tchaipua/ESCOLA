@@ -361,7 +361,7 @@ export class LessonCalendarsService {
         },
         teacherSubject: {
           include: {
-            teacher: true,
+            teacher: { include: { person: true } },
             subject: true,
           },
         },
@@ -391,7 +391,7 @@ export class LessonCalendarsService {
       seriesClassId: item.seriesClassId,
       seriesClassLabel: `${item.seriesClass?.series?.name || "SEM SÉRIE"} - ${item.seriesClass?.class?.name || "SEM TURMA"}`,
       subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
-      teacherName: item.teacherSubject?.teacher?.name || "PROFESSOR",
+      teacherName: item.teacherSubject?.teacher?.person?.name || "PROFESSOR",
       teacherSubjectId: item.teacherSubjectId,
       events: item.lessonEvents.map((event) => ({
         id: event.id,
@@ -439,7 +439,7 @@ export class LessonCalendarsService {
       include: {
         teacherSubject: {
           include: {
-            teacher: true,
+            teacher: { include: { person: true } },
             subject: true,
             rateHistories: {
               where: {
@@ -751,7 +751,7 @@ export class LessonCalendarsService {
           teacherSubject: {
             include: {
               subject: true,
-              teacher: true,
+              teacher: { include: { person: true } },
             },
           },
           lessonEvents: {
@@ -774,7 +774,7 @@ export class LessonCalendarsService {
           },
         },
         include: {
-          teacher: true,
+          teacher: { include: { person: true } },
         },
         orderBy: [{ eventDate: "asc" }, { createdAt: "asc" }],
       }),
@@ -793,7 +793,7 @@ export class LessonCalendarsService {
       seriesClassId: item.seriesClassId,
       seriesClassLabel: `${item.seriesClass?.series?.name || "SEM SÉRIE"} - ${item.seriesClass?.class?.name || "SEM TURMA"}`,
       subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
-      teacherName: item.teacherSubject?.teacher?.name || "PROFESSOR",
+      teacherName: item.teacherSubject?.teacher?.person?.name || "PROFESSOR",
       teacherSubjectId: item.teacherSubjectId || null,
       events: item.lessonEvents.map((event) => ({
         id: event.id,
@@ -828,7 +828,7 @@ export class LessonCalendarsService {
       seriesClassId: event.seriesClassId || null,
       seriesClassLabel: `${event.seriesNameSnapshot || "SEM SÉRIE"} - ${event.classNameSnapshot || "SEM TURMA"}`,
       subjectName: event.subjectNameSnapshot || "RECADO AVULSO",
-      teacherName: event.teacher?.name || "PROFESSOR",
+      teacherName: event.teacher?.person?.name || "PROFESSOR",
     }));
 
     return {

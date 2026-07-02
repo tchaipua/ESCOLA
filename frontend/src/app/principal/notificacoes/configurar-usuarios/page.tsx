@@ -101,6 +101,7 @@ export default function NotificationUserSettingsPage() {
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
     const [editForm, setEditForm] = useState<EditFormState | null>(null);
     const [savingEdit, setSavingEdit] = useState(false);
+    const [telegramActionLoading, setTelegramActionLoading] = useState<string | null>(null);
 
     const filteredRows = useMemo(() => {
         const normalizedSearch = normalizeGridText(searchTerm);
@@ -190,6 +191,79 @@ export default function NotificationUserSettingsPage() {
             setErrorMessage(error instanceof Error ? error.message : 'Não foi possível enviar a confirmação.');
         } finally {
             setSavingEmail(null);
+        }
+    };
+
+    const configureTelegramWebhook = async () => {
+        try {
+            setTelegramActionLoading('configure');
+            setErrorMessage(null);
+            setSuccessMessage(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Sessão não encontrada.');
+
+            const response = await fetch(`${API_BASE_URL}/telegram/configure-webhook`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(data?.message || 'Não foi possível configurar o webhook do Telegram.');
+            setSuccessMessage(data?.localOnly
+                ? 'Webhook configurado, mas a URL está local. Na VPS configure BACKEND_PUBLIC_URL com o endereço público da API.'
+                : data?.message || 'Webhook do Telegram configurado com sucesso.');
+        } catch (error) {
+            setErrorMessage(error instanceof Error ? error.message : 'Não foi possível configurar o webhook do Telegram.');
+        } finally {
+            setTelegramActionLoading(null);
+        }
+    };
+
+    const checkTelegramWebhook = async () => {
+        try {
+            setTelegramActionLoading('status');
+            setErrorMessage(null);
+            setSuccessMessage(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Sessão não encontrada.');
+
+            const response = await fetch(`${API_BASE_URL}/telegram/webhook-status`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(data?.message || 'Não foi possível consultar o webhook do Telegram.');
+            const url = data?.url ? ` URL: ${data.url}` : '';
+            const pending = data?.pending_update_count !== undefined ? ` Pendentes: ${data.pending_update_count}.` : '';
+            setSuccessMessage(`Webhook consultado com sucesso.${pending}${url}`);
+        } catch (error) {
+            setErrorMessage(error instanceof Error ? error.message : 'Não foi possível consultar o webhook do Telegram.');
+        } finally {
+            setTelegramActionLoading(null);
+        }
+    };
+
+    const pollTelegramUpdates = async () => {
+        try {
+            setTelegramActionLoading('poll');
+            setErrorMessage(null);
+            setSuccessMessage(null);
+            const { token } = getDashboardAuthContext();
+            if (!token) throw new Error('Sessão não encontrada.');
+
+            const response = await fetch(`${API_BASE_URL}/telegram/poll-updates`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok) throw new Error(data?.message || 'Não foi possível buscar mensagens do Telegram.');
+            const total = Array.isArray(data?.results)
+                ? data.results.reduce((sum: number, item: { processed?: number }) => sum + Number(item.processed || 0), 0)
+                : 0;
+            setSuccessMessage(`Busca do Telegram concluída. Mensagens processadas: ${total}.`);
+            await loadRows();
+        } catch (error) {
+            setErrorMessage(error instanceof Error ? error.message : 'Não foi possível buscar mensagens do Telegram.');
+        } finally {
+            setTelegramActionLoading(null);
         }
     };
 
@@ -292,6 +366,30 @@ export default function NotificationUserSettingsPage() {
                                 className="h-11 rounded-xl bg-blue-600 px-5 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-700 disabled:opacity-60"
                             >
                                 Atualizar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void configureTelegramWebhook()}
+                                disabled={telegramActionLoading !== null}
+                                className="h-11 rounded-xl bg-emerald-600 px-5 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                            >
+                                {telegramActionLoading === 'configure' ? 'Configurando...' : 'Configurar webhook'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void checkTelegramWebhook()}
+                                disabled={telegramActionLoading !== null}
+                                className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700 disabled:opacity-60"
+                            >
+                                {telegramActionLoading === 'status' ? 'Consultando...' : 'Consultar webhook'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void pollTelegramUpdates()}
+                                disabled={telegramActionLoading !== null}
+                                className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black uppercase tracking-[0.14em] text-slate-700 transition hover:border-sky-300 hover:text-sky-700 disabled:opacity-60"
+                            >
+                                {telegramActionLoading === 'poll' ? 'Buscando...' : 'Buscar mensagens'}
                             </button>
                         </div>
 

@@ -379,6 +379,12 @@ export default function DashboardPage() {
 
     const adminCards = [
         {
+            href: '/principal/financeiro/vendas',
+            title: 'Vendas',
+            description: 'Venda produtos com caixa, estoque e contas a receber.',
+            image: '/principal-financeiro/vendas.svg?v=1',
+        },
+        {
             href: '/principal/pessoas',
             title: 'Pessoas e Perfis',
             description: 'Consulta somente leitura do cadastro-base compartilhado entre professores, alunos e responsáveis.',

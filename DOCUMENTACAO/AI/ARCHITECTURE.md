@@ -96,16 +96,16 @@ Exemplos:
 
 ### Persistencia e sincronizacao de identidade
 
-O modelo atual nao e "single-table puro". Ele e hibrido:
+O modelo atual usa `people` como fonte unica dos dados comuns:
 
 - `people` e o cadastro mestre por tenant
-- `teachers`, `students` e `guardians` mantem dados operacionais e campos compartilhados sincronizados
+- `teachers`, `students` e `guardians` mantem somente dados operacionais do papel e `personId`
 
-A sincronizacao entre tabelas e controlada no backend pelo modulo `shared-profiles`:
+A vinculacao entre tabelas e controlada no backend pelo modulo `shared-profiles`:
 
 - upsert do cadastro mestre (`people`)
-- propagacao de campos compartilhados para papeis vinculados
-- sincronizacao de credencial (senha) por email compartilhado
+- manutencao do `personId` nos papeis vinculados
+- resolucao de nome, contato, endereco, Telegram e credencial pela pessoa central
 
 Resultado:
 
@@ -192,5 +192,5 @@ A estrategia atual e:
 
 1. manter o cadastro-base em `Person`
 2. deixar papeis operacionais separados
-3. sincronizar shared fields entre pessoa e papel
+3. manter CPF, contato, e-mail, Telegram e endereco somente em `people`
 4. preservar historico, tenant e auditoria em todas as mutacoes

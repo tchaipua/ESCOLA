@@ -9,10 +9,12 @@ import {
   hasAnyDashboardPermission,
   type TenantBranchSummary,
 } from '@/app/lib/dashboard-crud-utils';
+import { clearStoredSession } from '@/app/lib/auth-storage';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
 const FINANCEIRO_FRONTEND_URL =
   process.env.NEXT_PUBLIC_FINANCEIRO_FRONTEND_URL || 'http://localhost:3003';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
 
 const SECTION_CONFIG = {
@@ -72,6 +74,18 @@ const SECTION_CONFIG = {
     label: 'Caixa',
     path: '/caixa',
   },
+  vendas: {
+    label: 'Vendas',
+    path: '/vendas',
+  },
+  'vendas-periodo': {
+    label: 'Vendas do Período',
+    path: '/vendas/periodo',
+  },
+  'devolucao-mercadorias': {
+    label: 'Devolução de Mercadorias',
+    path: '/vendas/devolucao-mercadorias',
+  },
 } as const;
 
 type SectionKey = keyof typeof SECTION_CONFIG;
@@ -105,6 +119,20 @@ const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
 };
 
 const ACCOUNTS_RECEIVABLE_MENU_ITEMS = [
+  {
+    id: 'vendas-periodo',
+    label: 'Vendas do Período',
+    href: '/principal/financeiro/vendas-periodo',
+    description: 'Grid das vendas realizadas por período.',
+    image: '/principal-financeiro/vendas.svg?v=2',
+  },
+  {
+    id: 'devolucao-mercadorias',
+    label: 'Devolução de Mercadorias',
+    href: '/principal/financeiro/devolucao-mercadorias',
+    description: 'Fluxo de devolução de produtos em definição.',
+    image: '/principal-financeiro/vendas.svg?v=2',
+  },
   {
     id: 'parcelas',
     label: 'Parcelas a Receber',
@@ -196,6 +224,18 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     title: 'Histórico Baixas',
     description:
       'Consulte baixas realizadas, veja parcelas agrupadas e estorne lançamentos.',
+  },
+  PRINCIPAL_FINANCEIRO_VENDAS: {
+    eyebrow: 'Vendas',
+    title: 'Vendas de Produtos',
+    description:
+      'Venda produtos com baixa de estoque, pagamentos à vista e geração de contas a receber.',
+  },
+  PRINCIPAL_FINANCEIRO_DEVOLUCAO_MERCADORIAS: {
+    eyebrow: 'Contas a Receber',
+    title: 'Devolução de Mercadorias',
+    description:
+      'Registre devoluções parciais ou totais de vendas, retornando estoque e gerando crédito para o cliente.',
   },
 };
 
@@ -352,6 +392,189 @@ export default function PrincipalFinanceiroSectionPage({
   }, [authContext, branchStockParameters, financeBranding, section, sectionConfig]);
 
   useEffect(() => {
+    const financeiroOrigin = (() => {
+      try {
+        return new URL(FINANCEIRO_FRONTEND_URL).origin;
+      } catch {
+        return '*';
+      }
+    })();
+
+    async function handleFinanceiroPasswordValidation(event: MessageEvent) {
+      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_CONFIRM_CASH_CANCELLATION_PASSWORD') {
+        return;
+      }
+
+      const requestId = String(payload.requestId || '');
+      const password = String(payload.password || '');
+      const sourceWindow = event.source as Window | null;
+
+      const postResult = (result: Record<string, unknown>) => {
+        if (!sourceWindow || typeof sourceWindow.postMessage !== 'function') return;
+        sourceWindow.postMessage(
+          {
+            type: 'MSINFOR_CONFIRM_CASH_CANCELLATION_PASSWORD_RESULT',
+            requestId,
+            ...result,
+          },
+          financeiroOrigin === '*' ? '*' : event.origin,
+        );
+      };
+
+      if (!requestId || !authContext.token) {
+        postResult({ ok: false, message: 'Sessão da Escola inválida.' });
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/confirm-cash-cancellation-password`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${authContext.token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ password }),
+        });
+        const responsePayload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          postResult({
+            ok: false,
+            message: responsePayload?.message || 'Senha inválida.',
+          });
+          return;
+        }
+
+        postResult({
+          ok: true,
+          authorizedBy: responsePayload?.authorizedBy || 'OPERADOR',
+          authorizedUserId:
+            responsePayload?.supervisorUserId ||
+            responsePayload?.operatorUserId ||
+            authContext.userId ||
+            null,
+          authorizedUserName:
+            responsePayload?.supervisorName ||
+            responsePayload?.operatorName ||
+            authContext.name ||
+            null,
+          supervisorName: responsePayload?.supervisorName || null,
+        });
+      } catch {
+        postResult({
+          ok: false,
+          message: 'Não foi possível validar a senha agora.',
+        });
+      }
+    }
+
+    window.addEventListener('message', handleFinanceiroPasswordValidation);
+    return () => window.removeEventListener('message', handleFinanceiroPasswordValidation);
+  }, [authContext.token]);
+
+  useEffect(() => {
+    const financeiroOrigin = (() => {
+      try {
+        return new URL(FINANCEIRO_FRONTEND_URL).origin;
+      } catch {
+        return '*';
+      }
+    })();
+
+    function handleFinanceiroCashSessionClosedLogout(event: MessageEvent) {
+      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_CASH_SESSION_CLOSED_LOGOUT') {
+        return;
+      }
+
+      clearStoredSession();
+      window.location.assign('/');
+    }
+
+    window.addEventListener('message', handleFinanceiroCashSessionClosedLogout);
+    return () => window.removeEventListener('message', handleFinanceiroCashSessionClosedLogout);
+  }, []);
+
+  useEffect(() => {
+    const financeiroOrigin = (() => {
+      try {
+        return new URL(FINANCEIRO_FRONTEND_URL).origin;
+      } catch {
+        return '*';
+      }
+    })();
+
+    async function handleFinanceiroPeopleSearch(event: MessageEvent) {
+      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_PEOPLE_SEARCH') {
+        return;
+      }
+
+      const requestId = String(payload.requestId || '');
+      const search = String(payload.search || '').trim();
+      const sourceWindow = event.source as Window | null;
+
+      const postResult = (result: Record<string, unknown>) => {
+        if (!sourceWindow || typeof sourceWindow.postMessage !== 'function') return;
+        sourceWindow.postMessage(
+          {
+            type: 'MSINFOR_PEOPLE_SEARCH_RESULT',
+            requestId,
+            ...result,
+          },
+          financeiroOrigin === '*' ? '*' : event.origin,
+        );
+      };
+
+      if (!requestId || !authContext.token || search.length < 2) {
+        postResult({ ok: false, results: [] });
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/shared-profiles/name-suggestions?name=${encodeURIComponent(search)}&limit=12`,
+          {
+            headers: {
+              Authorization: `Bearer ${authContext.token}`,
+            },
+          },
+        );
+        const responsePayload = await response.json().catch(() => null);
+
+        if (!response.ok || !Array.isArray(responsePayload)) {
+          postResult({ ok: false, results: [] });
+          return;
+        }
+
+        postResult({
+          ok: true,
+          results: responsePayload.map((person: any, index: number) => ({
+            id: `${person.cpf || person.email || person.name || index}`,
+            name: person.name || '',
+            document: person.cpf || person.cnpj || null,
+            email: person.email || null,
+            phone: person.phone || person.whatsapp || person.cellphone1 || person.cellphone2 || null,
+            sourceType: Array.isArray(person.roles) ? person.roles.join(', ') : null,
+          })),
+        });
+      } catch {
+        postResult({ ok: false, results: [] });
+      }
+    }
+
+    window.addEventListener('message', handleFinanceiroPeopleSearch);
+    return () => window.removeEventListener('message', handleFinanceiroPeopleSearch);
+  }, [authContext.token]);
+
+  useEffect(() => {
     let isActive = true;
 
     async function loadBranchStockParameters() {
@@ -397,7 +620,33 @@ export default function PrincipalFinanceiroSectionPage({
 
   const isFrameLoading = Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
   const isCompactFinanceSection = section === 'parcelas';
+  const isTightFinanceSection = false;
   const isCompactFinanceHeader = true;
+  const financeHeaderPaddingClass = isTightFinanceSection
+    ? 'px-4 py-3'
+    : isCompactFinanceHeader
+      ? 'px-4 py-5'
+      : 'px-6 py-6';
+  const financeHeaderButtonClass = isTightFinanceSection
+    ? 'h-8 w-8 rounded-lg'
+    : isCompactFinanceHeader
+      ? 'h-9 w-9 rounded-xl'
+      : 'h-11 w-11 rounded-2xl';
+  const financeHeaderLogoClass = isTightFinanceSection
+    ? 'h-12 w-12 rounded-xl'
+    : isCompactFinanceHeader
+      ? 'h-14 w-14 rounded-2xl'
+      : 'h-20 w-20 rounded-3xl';
+  const financeHeaderTitleClass = isTightFinanceSection
+    ? 'mt-0.5 text-xl'
+    : isCompactFinanceHeader
+      ? 'mt-1 text-2xl'
+      : 'mt-2 text-3xl';
+  const financeHeaderDescriptionClass = isTightFinanceSection
+    ? 'mt-0.5 text-[11px]'
+    : isCompactFinanceHeader
+      ? 'mt-1 text-xs'
+      : 'mt-2 text-sm';
   const isAccountsReceivableSection = section === 'contas-a-receber';
 
   useEffect(() => {
@@ -483,9 +732,9 @@ export default function PrincipalFinanceiroSectionPage({
   }
 
   return (
-    <div className={isCompactFinanceSection ? 'flex h-full min-h-0 flex-col gap-3' : 'space-y-6'}>
+    <div className={isCompactFinanceSection ? 'flex h-full min-h-0 flex-col gap-3' : isTightFinanceSection ? 'space-y-1' : 'space-y-6'}>
       <section className={`${cardClass} shrink-0 overflow-hidden`}>
-        <div className={`bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] text-white ${isCompactFinanceHeader ? 'px-4 py-5' : 'px-6 py-6'}`}>
+        <div className={`bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] text-white ${financeHeaderPaddingClass}`}>
           <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between ${isCompactFinanceHeader ? 'gap-3' : 'gap-5'}`}>
             <div className={`flex items-start ${isCompactFinanceHeader ? 'gap-3' : 'gap-4'}`}>
               <div className={`flex flex-col pt-1 ${isCompactFinanceHeader ? 'gap-2' : 'gap-3'}`}>
@@ -494,7 +743,7 @@ export default function PrincipalFinanceiroSectionPage({
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
                   }}
-                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceHeader ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${financeHeaderButtonClass}`}
                   title="Recolher menu lateral"
                   aria-label="Recolher menu lateral"
                 >
@@ -507,7 +756,7 @@ export default function PrincipalFinanceiroSectionPage({
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
                   }}
-                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${isCompactFinanceHeader ? 'h-9 w-9 rounded-xl' : 'h-11 w-11 rounded-2xl'}`}
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${financeHeaderButtonClass}`}
                   title="Abrir notificações"
                   aria-label="Abrir notificações"
                 >
@@ -516,7 +765,7 @@ export default function PrincipalFinanceiroSectionPage({
                   </svg>
                 </button>
               </div>
-              <div className={`flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm ${isCompactFinanceHeader ? 'h-14 w-14 rounded-2xl' : 'h-20 w-20 rounded-3xl'}`}>
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm ${financeHeaderLogoClass}`}>
                 {financeBranding.logoUrl ? (
                   <img
                     src={financeBranding.logoUrl}
@@ -533,8 +782,8 @@ export default function PrincipalFinanceiroSectionPage({
                 <div className={`${isCompactFinanceHeader ? 'text-[10px]' : 'text-xs'} font-black uppercase tracking-[0.24em] text-cyan-200`}>
                   {headerContent.eyebrow}
                 </div>
-                <h1 className={`${isCompactFinanceHeader ? 'mt-1 text-2xl' : 'mt-2 text-3xl'} font-black tracking-tight`}>{headerContent.title}</h1>
-                <p className={`${isCompactFinanceHeader ? 'mt-1 text-xs' : 'mt-2 text-sm'} max-w-3xl font-medium text-blue-100/90`}>
+                <h1 className={`${financeHeaderTitleClass} font-black tracking-tight`}>{headerContent.title}</h1>
+                <p className={`${financeHeaderDescriptionClass} max-w-3xl font-medium text-blue-100/90`}>
                   {headerContent.description}
                 </p>
               </div>
@@ -557,18 +806,18 @@ export default function PrincipalFinanceiroSectionPage({
                       title={item.description}
                       className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
                     >
-                      <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
-                        <img
-                          src={item.image}
-                          alt={item.label}
-                          className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
-                        />
-                      </div>
-                      <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
-                        <div className="text-sm font-black text-slate-800">
-                          {item.label}
+                        <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
+                          <img
+                            src={item.image}
+                            alt={item.label}
+                            className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
+                          />
                         </div>
-                      </div>
+                        <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
+                          <div className="text-sm font-black text-slate-800">
+                            {item.label}
+                          </div>
+                        </div>
                     </Link>
                   ))}
                 </div>
@@ -589,7 +838,7 @@ export default function PrincipalFinanceiroSectionPage({
                 title={`Financeiro integrado - ${sectionConfig.label}`}
                 src={iframeSrc || undefined}
                 onLoad={() => setLoadedFrameSrc(iframeSrc)}
-                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
+                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'vendas' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
               />
             </>
           )}

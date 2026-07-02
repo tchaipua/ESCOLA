@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
-import { getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
+import { CASHIER_ONLY_HOME_ROUTE, getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS } from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
@@ -171,6 +171,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [isCashierOnlyAccess, setIsCashierOnlyAccess] = useState(false);
     const [currentUserName, setCurrentUserName] = useState<string | null>(null);
     const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
     const [currentTenant, setCurrentTenant] = useState<CurrentTenant | null>(null);
@@ -179,6 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [embeddedScreenContextLabel, setEmbeddedScreenContextLabel] = useState<string | null>(null);
     const [screenAuditOverride, setScreenAuditOverride] = useState<ScreenAuditOverride | null>(null);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+    const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -193,6 +195,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [changePasswordAlertType, setChangePasswordAlertType] = useState<'error' | 'success' | null>(null);
     const userMenuRef = useRef<HTMLDivElement>(null);
     const hasInvalidatedSessionRef = useRef(false);
+    const EXIT_CONFIRMATION_SCREEN_ID = 'PRINCIPAL_SOMENTE_CAIXA_SAIR_SISTEMA';
     const CHANGE_PASSWORD_SCREEN_ID = 'PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL';
 
     const isPersonalRole = currentRole === 'PROFESSOR' || currentRole === 'ALUNO' || currentRole === 'RESPONSAVEL';
@@ -245,11 +248,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         clearStoredSession();
         setCurrentRole(null);
         setCurrentPermissions([]);
+        setIsCashierOnlyAccess(false);
         setCurrentUserName(null);
         setCurrentUserEmail(null);
         setCurrentTenant(null);
         setCurrentBranchFooterLabel(null);
         setUnreadSummary(null);
+        setIsExitConfirmationOpen(false);
         router.replace('/');
     }, [router]);
 
@@ -262,11 +267,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         hasInvalidatedSessionRef.current = false;
 
-        const { role, permissions, name } = getDashboardAuthContext();
+        const { role, permissions, name, cashierOnly } = getDashboardAuthContext();
         setCurrentRole(role);
         setCurrentPermissions(permissions);
+        setIsCashierOnlyAccess(cashierOnly);
         setCurrentUserName(normalizeDisplayText(name));
     }, [router]);
+
+    useEffect(() => {
+        const { token, cashierOnly } = getDashboardAuthContext();
+        if (!token || !cashierOnly) return;
+        if (pathname !== CASHIER_ONLY_HOME_ROUTE) {
+            router.replace(CASHIER_ONLY_HOME_ROUTE);
+        }
+    }, [pathname, router]);
 
     useEffect(() => {
         setEmbeddedScreenContextLabel(null);
@@ -351,6 +365,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         };
 
         const handleFinanceiroOpenNotifications = () => {
+            if (getDashboardAuthContext().cashierOnly) return;
             router.push('/principal/notificacoes');
         };
 
@@ -540,6 +555,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     useEffect(() => {
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
+                setIsExitConfirmationOpen(false);
                 setIsChangePasswordOpen(false);
                 setChangePasswordAlertType(null);
                 setChangePasswordError(null);
@@ -554,7 +570,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (isChangePasswordOpen || changePasswordAlertType) return;
+        if (isExitConfirmationOpen || isChangePasswordOpen || changePasswordAlertType) return;
 
         const cleanupTimers: number[] = [];
         const scheduleCleanup = () => {
@@ -572,15 +588,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 window.clearTimeout(timerId);
             });
         };
-    }, [pathname, isChangePasswordOpen, changePasswordAlertType]);
+    }, [pathname, isExitConfirmationOpen, isChangePasswordOpen, changePasswordAlertType]);
 
     const handleLogout = () => {
+        setIsExitConfirmationOpen(false);
         clearStoredSession();
         router.push('/');
     };
 
+    const handleBackNavigation = () => {
+        if (isCashierOnlyAccess) {
+            setUserMenuOpen(false);
+            setIsExitConfirmationOpen(true);
+            return;
+        }
+
+        router.back();
+    };
+
     const handleUserMenuLogout = () => {
         setUserMenuOpen(false);
+        if (isCashierOnlyAccess) {
+            setIsExitConfirmationOpen(true);
+            return;
+        }
         handleLogout();
     };
 
@@ -996,6 +1027,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showSummaryNav = showDashboardProgram;
     const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
     const showFinanceiroParcelasScreen = pathname.startsWith('/principal/financeiro/parcelas');
+    const showFinanceiroVendasScreen = pathname === '/principal/financeiro/vendas';
     const showPrincipalHeroHeader = pathname === '/principal';
     const showNotificationsHeroHeader = pathname === '/principal/notificacoes';
     const showPeopleHeroHeader = pathname === '/principal/pessoas';
@@ -1096,12 +1128,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </svg>
             ),
         },
+        {
+            href: '/principal/financeiro/vendas',
+            label: 'Vendas',
+            allowWhen: true,
+            icon: (
+                <svg className="w-5 h-5 opacity-90 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h2l2 9h8l3-7H7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20a1 1 0 100-2 1 1 0 000 2zm7 0a1 1 0 100-2 1 1 0 000 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5v6m-3-3h6" />
+                </svg>
+            ),
+        },
     ];
-    const filteredNavItems = showFinanceiroModuleNav
-        ? financeModuleNavItems
-        : showSummaryNav
-            ? [...topLinks, ...summaryLinks]
-            : [...topLinks, ...generalLinks];
+    const filteredNavItems = isCashierOnlyAccess
+        ? []
+        : showFinanceiroModuleNav
+            ? financeModuleNavItems
+            : showSummaryNav
+                ? [...topLinks, ...summaryLinks]
+                : [...topLinks, ...generalLinks];
     const isCurrentNavItem = (item: NavItem) => {
         const isExactOrChild = pathname === item.href || pathname.startsWith(`${item.href}/`);
         if (item.href !== '/principal/financeiro') {
@@ -1179,7 +1225,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-[#153a6a] text-white flex flex-col transition-all duration-300 shadow-xl relative z-20`}>
                 <div className={`border-b border-white/10 px-4 py-4 ${isSidebarOpen ? 'min-h-[108px]' : 'h-16'} flex items-center justify-center`}>
                     <Link
-                        href="/principal"
+                        href={isCashierOnlyAccess ? CASHIER_ONLY_HOME_ROUTE : '/principal'}
                         className={`flex ${isSidebarOpen ? 'flex-col' : 'flex-row'} items-center justify-center gap-3 ${isSidebarOpen ? '' : 'gap-1'} cursor-pointer`}
                     >
                         <div className={`flex items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10 shadow-sm shrink-0 ${isSidebarOpen ? 'h-16 w-16' : 'h-10 w-10'}`}>
@@ -1302,7 +1348,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 <main
                     className={`relative flex-1 bg-slate-50 ${
-                        showFinanceiroParcelasScreen
+                        showFinanceiroVendasScreen
+                            ? 'overflow-y-auto px-6 pb-1 pt-2 md:px-8 md:pb-1 md:pt-2'
+                            : showFinanceiroParcelasScreen
                             ? 'overflow-hidden px-6 pb-6 pt-2 md:px-8 md:pb-8 md:pt-2'
                             : showCustomHeroHeader
                                 ? 'overflow-y-auto px-6 pb-6 pt-2 md:px-8 md:pb-8 md:pt-2'
@@ -1310,18 +1358,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     }`}
                 >
                     {showFinanceiroModuleNav ? (
-                        <div
-                            className={`pointer-events-none absolute left-6 right-6 z-20 flex justify-end md:left-8 md:right-12 ${
-                                'top-5 md:top-5'
-                            }`}
-                        >
+                        <div className="pointer-events-none absolute left-6 right-6 top-5 z-20 flex justify-end md:left-8 md:right-12 md:top-5">
                             <div className="pointer-events-auto flex flex-col items-end gap-3">
                                 <div className="translate-y-1">
                                     {userMenuTrigger}
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1338,7 +1382,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1355,7 +1399,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1372,7 +1416,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1389,7 +1433,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1406,7 +1450,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1423,7 +1467,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1440,7 +1484,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1457,7 +1501,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1474,7 +1518,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1491,7 +1535,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1508,7 +1552,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1525,7 +1569,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1542,7 +1586,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 {userMenuTrigger}
                                 <button
                                     type="button"
-                                    onClick={() => router.back()}
+                                    onClick={handleBackNavigation}
                                     className="inline-flex items-center gap-2 rounded-2xl border border-white/20 bg-white px-4 py-2 text-sm font-black uppercase tracking-[0.14em] text-[#153a6a] shadow-lg transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
                                 >
                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1555,8 +1599,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     ) : null}
                     {children}
                 </main>
-                <footer className="bg-white border-t border-slate-200 px-6 py-3 text-xs italic text-slate-500">
-                    <div className="flex flex-wrap items-center gap-2 justify-between">
+                <footer className={`bg-white border-t border-slate-200 px-6 text-xs italic text-slate-500 ${showFinanceiroVendasScreen ? 'py-1' : 'py-3'}`}>
+                    <div className={`flex flex-wrap items-center justify-between ${showFinanceiroVendasScreen ? 'gap-1' : 'gap-2'}`}>
                         <span className="flex-1 text-slate-500 min-w-[240px] text-left">
                             Desenvolvido por MSINFOR SISTEMAS
                             <span className="mx-2 text-slate-400">•</span>
@@ -1569,7 +1613,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 title="Clique aqui para abrir o Wattsup"
                                 className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-600 transition"
                             >
-                                <svg className="h-5 w-5 text-emerald-500" viewBox="0 0 24 24" fill="currentColor">
+                                <svg className={`${showFinanceiroVendasScreen ? 'h-4 w-4' : 'h-5 w-5'} text-emerald-500`} viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M12 3C7.03 3 3 7.03 3 12c0 1.91.56 3.69 1.53 5.19L5 22l4.88-1.39c1.59.81 3.32 1.13 5.02.62 4.97-1.36 8.02-7.13 6.08-12.04C18.66 4.56 15.6 3 12 3zm0 16c-1.37 0-2.71-.41-3.85-1.18l-.28-.18-3.41.97.83-3.19-.19-.32A8.99 8.99 0 014 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z" />
                                     <path d="M15.42 14.36c-.23-.12-1.36-.75-1.58-.84-.22-.1-.38-.12-.55.11s-.63.84-.77 1c-.14.15-.28.17-.51.06a5.1 5.1 0 01-1.5-.94 5.8 5.8 0 01-1.1-1.36c-.11-.19-.01-.29.08-.38.09-.08.21-.21.32-.32.1-.1.15-.18.23-.29.08-.11.04-.2-.02-.36-.06-.16-.57-1.36-.78-1.87-.21-.52-.43-.45-.58-.45-.15 0-.32-.01-.49-.01s-.36.05-.55.27c-.19.22-.74.72-.74 1.76s.78 2.54.89 2.72c.11.19 1.92 2.91 4.68 3.98.68.29 1.19.45 1.63.58.67.21 1.28.18 1.76.11.53-.09 1.2-.55 1.53-1.16.33-.61.33-1.12.25-1.22-.08-.1-.33-.16-.68-.28z" />
                                 </svg>
@@ -1584,14 +1628,95 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         {/* padrão: exibimos o identificador da tela e o botão de copiar no rodapé */}
                         <ScreenNameCopy
                             screenId={screenContextLabel}
-                            className="flex-1 justify-end text-right text-[11px]"
+                            className={`flex-1 justify-end text-right ${showFinanceiroVendasScreen ? 'text-[10px]' : 'text-[11px]'}`}
                             originText={currentScreenAuditOverride?.originText}
                             auditText={currentScreenAuditOverride?.auditText}
                             sqlText={currentScreenAuditOverride?.sqlText}
+                            disableMargin={showFinanceiroVendasScreen}
                         />
                     </div>
                 </footer>
             </div>
+
+            {isExitConfirmationOpen ? (
+                <div
+                    className="fixed inset-0 z-[97] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md"
+                    onClick={() => setIsExitConfirmationOpen(false)}
+                    role="presentation"
+                >
+                    <div
+                        className="w-full max-w-xl overflow-hidden rounded-[30px] border border-blue-100 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.45)]"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="cashier-exit-title"
+                    >
+                        <div className="bg-gradient-to-r from-[#153a6a] via-blue-700 to-blue-600 px-6 py-5 text-white">
+                            <div className="flex items-center gap-4">
+                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/30 bg-white shadow-lg">
+                                    {currentTenant?.logoUrl ? (
+                                        <img src={currentTenant.logoUrl} alt={currentTenant.name} className="h-full w-full object-contain p-2" />
+                                    ) : (
+                                        <span className="text-lg font-black uppercase text-[#153a6a]">
+                                            {String(currentTenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.32em] text-blue-100">SAIDA DO SISTEMA</div>
+                                    <h2 id="cashier-exit-title" className="mt-1 text-2xl font-black leading-tight">
+                                        CONFIRMAR ENCERRAMENTO
+                                    </h2>
+                                    <div className="mt-1 truncate text-sm font-semibold text-blue-50">
+                                        {currentTenant?.name || 'ESCOLA'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="px-6 py-6 text-center">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M17 16l4-4m0 0l-4-4m4 4H7" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M13 5V4a2 2 0 00-2-2H6a2 2 0 00-2 2v16a2 2 0 002 2h5a2 2 0 002-2v-1" />
+                                </svg>
+                            </div>
+                            <p className="mt-4 text-xl font-black uppercase text-slate-900">
+                                DESEJA REALMENTE SAIR DO SISTEMA?
+                            </p>
+                            <p className="mt-2 text-sm font-semibold uppercase tracking-[0.08em] text-slate-500">
+                                SUA SESSAO SERA ENCERRADA E A TELA DE LOGIN SERA ABERTA.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4 sm:grid-cols-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsExitConfirmationOpen(false)}
+                                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-700 shadow-sm transition hover:bg-slate-100"
+                            >
+                                CANCELAR
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-emerald-600/25 transition hover:bg-emerald-500"
+                            >
+                                SAIR
+                            </button>
+                        </div>
+
+                        <div className="border-t border-slate-100 bg-white px-6 py-3">
+                            <ScreenNameCopy
+                                screenId={EXIT_CONFIRMATION_SCREEN_ID}
+                                label="TELA"
+                                className="justify-end"
+                                disableMargin
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {isChangePasswordOpen ? (
                 <div

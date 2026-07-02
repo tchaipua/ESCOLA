@@ -126,6 +126,7 @@ model TenantBranch {
   telegramEnabled                Boolean?
   telegramBotToken               String?
   telegramBotUsername            String?
+  telegramHeaderImageUrl         String?
   storageProviderAccessKeyId     String?
   storageProviderSecretAccessKey String?
   storageBucketName              String?
@@ -220,6 +221,7 @@ model User {
   role                  String  @default("SECRETARIA") // ADMIN | SECRETARIA | PROFESSOR | ALUNO | RESPONSAVEL
   accessProfile         String?
   permissions           String?
+  cashierOnly           Boolean @default(false)
 
   // Recuperação de Senha
   resetPasswordToken   String?
@@ -459,6 +461,18 @@ model SeriesClass {
   seriesId   String
   classId    String
 
+  smtpEnabled      Boolean @default(false)
+  smtpHost         String?
+  smtpPort         Int?
+  smtpTimeout      Int?
+  smtpAuthenticate Boolean?
+  smtpSecure       Boolean?
+  smtpAuthType     String?
+  smtpEmail        String?
+  smtpPassword     String?
+  smtpSenderName   String?
+  smtpReplyTo      String?
+
   createdAt  DateTime  @default(now())
   createdBy  String?
   updatedAt  DateTime  @updatedAt
@@ -490,38 +504,8 @@ model Guardian {
   branchCode Int     @default(1)
   personId   String?
 
-  // (DB) DADOS BÁSICOS
-  name                 String
-  birthDate            DateTime?
-  rg                   String?
-  cpf                  String?
-  cnpj                 String?
-  nickname             String?
-  corporateName        String?
-  phone                String?
-  whatsapp             String?
-  cellphone1           String?
-  cellphone2           String?
-  email                String?
-  telegramChatId       String?
-  telegramUsername     String?
-  telegramOptInAt      DateTime?
-  telegramOptOutAt     DateTime?
-  accessProfile        String?
-  permissions          String?
-  // Segurança e Recuperação
-  password             String?
-  resetPasswordToken   String?
-  resetPasswordExpires DateTime?
-
-  // (EC) ENDEREÇO COMPLETO
-  zipCode      String?
-  street       String?
-  number       String?
-  city         String?
-  state        String?
-  neighborhood String?
-  complement   String?
+  accessProfile String?
+  permissions   String?
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -550,43 +534,13 @@ model Student {
   branchCode Int     @default(1)
   personId   String?
 
-  // (DB) DADOS BÁSICOS
-  name                 String
-  photoUrl             String?
-  birthDate            DateTime?
-  rg                   String?
-  cpf                  String?
-  cnpj                 String?
-  nickname             String?
-  corporateName        String?
-  phone                String?
-  whatsapp             String?
-  cellphone1           String?
-  cellphone2           String?
-  email                String?
-  telegramChatId       String?
-  telegramUsername     String?
-  telegramOptInAt      DateTime?
-  telegramOptOutAt     DateTime?
-  accessProfile        String?
-  permissions          String?
-  monthlyFee           Float?
-  billingPayerType     String    @default("ALUNO")
-  billingGuardianId    String?
-  notes                String?
-  // Segurança e Recuperação
-  password             String?
-  resetPasswordToken   String?
-  resetPasswordExpires DateTime?
-
-  // (EC) ENDEREÇO COMPLETO
-  zipCode      String?
-  street       String?
-  number       String?
-  city         String?
-  state        String?
-  neighborhood String?
-  complement   String?
+  photoUrl          String?
+  accessProfile     String?
+  permissions       String?
+  monthlyFee        Float?
+  billingPayerType  String  @default("ALUNO")
+  billingGuardianId String?
+  notes             String?
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -678,38 +632,8 @@ model Teacher {
   branchCode Int     @default(1)
   personId   String?
 
-  // (DB) DADOS BÁSICOS
-  name                 String
-  birthDate            DateTime?
-  rg                   String?
-  cpf                  String?
-  cnpj                 String?
-  nickname             String?
-  corporateName        String?
-  phone                String?
-  whatsapp             String?
-  cellphone1           String?
-  cellphone2           String?
-  email                String?
-  telegramChatId       String?
-  telegramUsername     String?
-  telegramOptInAt      DateTime?
-  telegramOptOutAt     DateTime?
-  accessProfile        String?
-  permissions          String?
-  // Segurança e Recuperação
-  password             String?
-  resetPasswordToken   String?
-  resetPasswordExpires DateTime?
-
-  // (EC) ENDEREÇO COMPLETO
-  zipCode      String?
-  street       String?
-  number       String?
-  city         String?
-  state        String?
-  neighborhood String?
-  complement   String?
+  accessProfile String?
+  permissions   String?
 
   createdAt  DateTime  @default(now())
   createdBy  String?

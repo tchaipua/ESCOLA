@@ -52,6 +52,13 @@ const MENU_ITEMS = [
     description: 'Abertura e fechamento do caixa do usuário logado.',
     image: '/principal-financeiro/caixa.svg?v=2',
   },
+  {
+    id: 'vendas',
+    label: 'Vendas',
+    href: '/principal/financeiro/vendas',
+    description: 'Venda produtos com caixa, estoque e contas a receber.',
+    image: '/principal-financeiro/vendas.svg?v=1',
+  },
 ] as const;
 
 export default function PrincipalFinanceiroPage() {
@@ -132,7 +139,7 @@ export default function PrincipalFinanceiroPage() {
       </section>
 
       <section className={`${cardClass} p-6`}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {MENU_ITEMS.map((item) => (
             <Link
               key={item.id}

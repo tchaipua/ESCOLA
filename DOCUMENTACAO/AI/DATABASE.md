@@ -70,6 +70,7 @@ Regras:
 - usuarios nao-admin devem possuir pelo menos uma filial liberada quando a escola tem mais de uma filial ativa
 - ao fazer login em escola com mais de uma filial liberada, o usuario escolhe a filial da sessao
 - o `branchCode` escolhido entra no token e passa a escopar consultas e mutacoes operacionais
+- usuarios administrativos possuem `cashierOnly`; quando verdadeiro, o login direciona direto para `PRINCIPAL_FINANCEIRO_VENDAS`, força perfil complementar `CAIXA` e bloqueia navegacao pelo restante do painel
 - cancelar um usuario administrativo tambem cancela logicamente seus vinculos de filial
 
 ### Filiais liberadas por papel operacional
@@ -181,7 +182,6 @@ Exemplos validos:
 - foto
 - mensalidade
 - observacoes academicas
-- dados de Telegram e aceite/saida de notificacao
 - definicao de pagador (`billingPayerType` e `billingGuardianId`) para integracao com o `Financeiro`
 
 ### `guardians`
@@ -189,11 +189,10 @@ Exemplos validos:
 - vinculos com alunos
 - parentesco
 - descricao de parentesco quando necessario
-- dados de Telegram e aceite/saida de notificacao
 
 ## Sincronizacao entre pessoa e papeis
 
-Campos compartilhados sao propagados entre `people` e os papeis vinculados:
+Campos compartilhados ficam somente em `people`:
 
 - identificacao civil
 - contato
@@ -205,6 +204,8 @@ Objetivo:
 - evitar divergencia entre cadastros repetidos
 - permitir login unico com selecao de papel
 - manter operacao especifica em cada modulo
+
+`teachers`, `students` e `guardians` possuem apenas `personId`, dados de acesso/permissao especificos do papel e campos operacionais do papel. Nome, contato, endereco, Telegram e credencial ficam fora dessas tabelas.
 
 ## Login e senha
 
@@ -248,15 +249,17 @@ Cancelamento logico continua obrigatorio.
 ## Notificacoes Telegram
 
 - `tenants` e `tenant_branches` guardam `telegramEnabled`, `telegramBotToken` e `telegramBotUsername`.
-- `people`, `students` e `guardians` guardam `telegramChatId`, `telegramUsername`, `telegramOptInAt` e `telegramOptOutAt`.
+- `people` guarda `telegramChatId`, `telegramUsername`, `telegramOptInAt` e `telegramOptOutAt`.
 - `lesson_events` e `lesson_assessments` possuem `notifyByTelegram`.
 - `notifications` registra `telegramSentAt`, `telegramStatus` e `telegramError`.
 - o envio so pode ocorrer para aluno/responsavel com `telegramChatId`, `telegramOptInAt` preenchido e `telegramOptOutAt` vazio.
+- o webhook do Telegram vincula automaticamente `people` por CPF/CNPJ; os envios para alunos/responsaveis/professores usam o `personId` para ler os dados de Telegram da pessoa central.
 
 ## Notificacoes por e-mail
 
 - `tenants` e `tenant_branches` guardam configuracao SMTP.
-- a resolucao usa filial primeiro, depois escola, depois variaveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_TIMEOUT`, `SMTP_AUTHENTICATE`, `SMTP_SECURE`, `SMTP_EMAIL` e `SMTP_PASSWORD`.
+- `series_classes` tambem pode guardar SMTP especifico da turma por `smtpEnabled`, `smtpHost`, `smtpPort`, `smtpTimeout`, `smtpAuthenticate`, `smtpSecure`, `smtpAuthType`, `smtpEmail`, `smtpPassword`, `smtpSenderName` e `smtpReplyTo`.
+- a resolucao usa turma primeiro, depois filial, depois escola, depois variaveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_TIMEOUT`, `SMTP_AUTHENTICATE`, `SMTP_SECURE`, `SMTP_EMAIL` e `SMTP_PASSWORD`.
 - `lesson_events` e `lesson_assessments` possuem `notifyByEmail`.
 - `notifications.emailedAt` registra quando a notificacao foi enviada por e-mail.
 
@@ -304,7 +307,17 @@ Regra atual:
 
 ## Observacao sobre legado
 
-O banco legado ja tinha `teachers`, `students` e `guardians` com campos repetidos. A transicao atual usa backfill para criar `people` e preencher `personId` sem apagar nada.
+O banco legado ja tinha `teachers`, `students` e `guardians` com campos repetidos.
+
+Regra atual:
+
+- `people` e a fonte oficial de CPF/CNPJ, RG, nascimento, contato, e-mail, Telegram e endereco.
+- `people` e tambem a fonte oficial de nome e senha legada da pessoa.
+- `teachers`, `students` e `guardians` devem guardar apenas dados especificos do papel, vinculos, permissao/acesso do papel e referencias operacionais.
+- Em 2026-06-29 os dados comuns duplicados dos perfis foram copiados para `people` quando faltavam e limpos dos perfis no banco de teste.
+- Em 2026-06-29 os campos comuns foram removidos fisicamente de `teachers`, `students` e `guardians` por migration. A fonte oficial passou a ser exclusivamente `people`.
+- Em 2026-06-29 os campos legados `name`, `password`, `resetPasswordToken` e `resetPasswordExpires` tambem foram removidos fisicamente de `teachers`, `students` e `guardians`.
+- O fluxo de Telegram valida CPF/CNPJ exclusivamente em `people`.
 
 ## Financeiro operacional
 

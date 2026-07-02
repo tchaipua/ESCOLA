@@ -208,8 +208,12 @@ export class CommunicationsService {
           },
           select: {
             id: true,
-            name: true,
-            email: true,
+            person: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
           },
         });
 
@@ -217,8 +221,8 @@ export class CommunicationsService {
           addRecipient({
             recipientType: "TEACHER",
             recipientId: teacher.id,
-            name: teacher.name,
-            email: teacher.email,
+            name: teacher.person?.name || "PROFESSOR",
+            email: teacher.person?.email ?? null,
           }),
         );
       }
@@ -234,11 +238,15 @@ export class CommunicationsService {
           },
           select: {
             id: true,
-            name: true,
-            email: true,
-            telegramChatId: true,
-            telegramOptInAt: true,
-            telegramOptOutAt: true,
+            person: {
+              select: {
+                name: true,
+                email: true,
+                telegramChatId: true,
+                telegramOptInAt: true,
+                telegramOptOutAt: true,
+              },
+            },
             guardians: {
               where: {
                 canceledAt: null,
@@ -250,11 +258,15 @@ export class CommunicationsService {
                 guardian: {
                   select: {
                     id: true,
-                    name: true,
-                    email: true,
-                    telegramChatId: true,
-                    telegramOptInAt: true,
-                    telegramOptOutAt: true,
+                    person: {
+                      select: {
+                        name: true,
+                        email: true,
+                        telegramChatId: true,
+                        telegramOptInAt: true,
+                        telegramOptOutAt: true,
+                      },
+                    },
                   },
                 },
               },
@@ -267,9 +279,9 @@ export class CommunicationsService {
             addRecipient({
               recipientType: "STUDENT",
               recipientId: student.id,
-              name: student.name,
-              email: student.email,
-              telegramChatId: this.getOptedInTelegramChatId(student),
+              name: student.person?.name || "ALUNO",
+              email: student.person?.email ?? null,
+              telegramChatId: this.getOptedInTelegramChatId(student.person),
             });
           }
 
@@ -279,9 +291,11 @@ export class CommunicationsService {
               addRecipient({
                 recipientType: "GUARDIAN",
                 recipientId: link.guardian.id,
-                name: link.guardian.name,
-                email: link.guardian.email,
-                telegramChatId: this.getOptedInTelegramChatId(link.guardian),
+                name: link.guardian.person?.name || "RESPONSAVEL",
+                email: link.guardian.person?.email ?? null,
+                telegramChatId: this.getOptedInTelegramChatId(
+                  link.guardian.person,
+                ),
               });
             });
           }
@@ -299,11 +313,15 @@ export class CommunicationsService {
         },
         select: {
           id: true,
-          name: true,
-          email: true,
-          telegramChatId: true,
-          telegramOptInAt: true,
-          telegramOptOutAt: true,
+          person: {
+            select: {
+              name: true,
+              email: true,
+              telegramChatId: true,
+              telegramOptInAt: true,
+              telegramOptOutAt: true,
+            },
+          },
         },
       });
 
@@ -311,9 +329,9 @@ export class CommunicationsService {
         addRecipient({
           recipientType: "GUARDIAN",
           recipientId: guardian.id,
-          name: guardian.name,
-          email: guardian.email,
-          telegramChatId: this.getOptedInTelegramChatId(guardian),
+          name: guardian.person?.name || "RESPONSAVEL",
+          email: guardian.person?.email ?? null,
+          telegramChatId: this.getOptedInTelegramChatId(guardian.person),
         }),
       );
 
@@ -342,11 +360,15 @@ export class CommunicationsService {
         student: {
           select: {
             id: true,
-            name: true,
-            email: true,
-            telegramChatId: true,
-            telegramOptInAt: true,
-            telegramOptOutAt: true,
+            person: {
+              select: {
+                name: true,
+                email: true,
+                telegramChatId: true,
+                telegramOptInAt: true,
+                telegramOptOutAt: true,
+              },
+            },
             guardians: {
               where: {
                 canceledAt: null,
@@ -358,11 +380,15 @@ export class CommunicationsService {
                 guardian: {
                   select: {
                     id: true,
-                    name: true,
-                    email: true,
-                    telegramChatId: true,
-                    telegramOptInAt: true,
-                    telegramOptOutAt: true,
+                    person: {
+                      select: {
+                        name: true,
+                        email: true,
+                        telegramChatId: true,
+                        telegramOptInAt: true,
+                        telegramOptOutAt: true,
+                      },
+                    },
                   },
                 },
               },
@@ -377,9 +403,11 @@ export class CommunicationsService {
         addRecipient({
           recipientType: "STUDENT",
           recipientId: enrollment.student.id,
-          name: enrollment.student.name,
-          email: enrollment.student.email,
-          telegramChatId: this.getOptedInTelegramChatId(enrollment.student),
+          name: enrollment.student.person?.name || "ALUNO",
+          email: enrollment.student.person?.email ?? null,
+          telegramChatId: this.getOptedInTelegramChatId(
+            enrollment.student.person,
+          ),
         });
       }
 
@@ -389,9 +417,9 @@ export class CommunicationsService {
           addRecipient({
             recipientType: "GUARDIAN",
             recipientId: link.guardian.id,
-            name: link.guardian.name,
-            email: link.guardian.email,
-            telegramChatId: this.getOptedInTelegramChatId(link.guardian),
+            name: link.guardian.person?.name || "RESPONSAVEL",
+            email: link.guardian.person?.email ?? null,
+            telegramChatId: this.getOptedInTelegramChatId(link.guardian.person),
           });
         });
       }
@@ -890,9 +918,9 @@ export class CommunicationsService {
                 tenantId: currentUser.tenantId,
                 canceledAt: null,
               },
-              select: { name: true },
+              select: { person: { select: { name: true } } },
             })
-          )?.name || "PROFESSOR"
+          )?.person?.name || "PROFESSOR"
         : (
             await this.prisma.user.findFirst({
               where: {

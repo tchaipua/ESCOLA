@@ -211,7 +211,7 @@ export class TeacherSubjectsService {
   }
 
   async findAll() {
-    return this.prisma.teacherSubject.findMany({
+    const assignments = await this.prisma.teacherSubject.findMany({
       where: {
         tenantId: this.tenantId(),
         canceledAt: null,
@@ -219,10 +219,21 @@ export class TeacherSubjectsService {
         subject: { canceledAt: null, tenantId: this.tenantId() },
       },
       include: {
-        teacher: true,
+        teacher: { include: { person: true } },
         subject: true,
       },
-      orderBy: [{ subject: { name: "asc" } }, { teacher: { name: "asc" } }],
+    });
+
+    return assignments.sort((left, right) => {
+      const subjectCompare = left.subject.name.localeCompare(
+        right.subject.name,
+        "pt-BR",
+      );
+      if (subjectCompare !== 0) return subjectCompare;
+      return String(left.teacher.person?.name || "").localeCompare(
+        String(right.teacher.person?.name || ""),
+        "pt-BR",
+      );
     });
   }
 

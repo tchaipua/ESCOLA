@@ -303,13 +303,14 @@ export class PeopleService {
       for (const link of student.guardians ?? []) {
         const guardian = link.guardian;
         if (!guardian || guardians.has(guardian.id)) continue;
+        const guardianPerson = (guardian as any).person || {};
         guardians.set(guardian.id, {
           id: guardian.id,
-          name: guardian.name,
-          phone: guardian.phone,
-          whatsapp: guardian.whatsapp,
-          cellphone1: guardian.cellphone1,
-          cellphone2: guardian.cellphone2,
+          name: guardianPerson.name || guardian.name || "RESPONSAVEL",
+          phone: guardianPerson.phone ?? guardian.phone ?? null,
+          whatsapp: guardianPerson.whatsapp ?? guardian.whatsapp ?? null,
+          cellphone1: guardianPerson.cellphone1 ?? guardian.cellphone1 ?? null,
+          cellphone2: guardianPerson.cellphone2 ?? guardian.cellphone2 ?? null,
         });
       }
     }
@@ -324,7 +325,7 @@ export class PeopleService {
         Array<{
           guardianId: string;
           studentId: string;
-          studentName: string;
+          studentName: string | null;
           schoolYear: number | null;
           seriesName: string | null;
           className: string | null;
@@ -335,7 +336,7 @@ export class PeopleService {
       SELECT
           gs.guardianId,
           s.id AS studentId,
-          s.name AS studentName,
+          sp.name AS studentName,
           sy.year AS schoolYear,
           se.name AS seriesName,
           c.name AS className,
@@ -343,6 +344,7 @@ export class PeopleService {
           gs.kinshipDescription
         FROM guardian_students gs
         INNER JOIN students s ON s.id = gs.studentId
+        LEFT JOIN people sp ON sp.id = s.personId AND sp.tenantId = s.tenantId
         LEFT JOIN enrollments e
           ON e.id = (
             SELECT e2.id
@@ -372,7 +374,7 @@ export class PeopleService {
     return assignments.map((assignment) => ({
         guardianId: assignment.guardianId,
         studentId: assignment.studentId,
-        studentName: assignment.studentName,
+        studentName: assignment.studentName || "ALUNO",
         currentClassLabel:
           assignment.seriesName || assignment.className || assignment.schoolYear
             ? [
@@ -512,11 +514,15 @@ export class PeopleService {
                 guardian: {
                   select: {
                     id: true,
-                    name: true,
-                    phone: true,
-                    whatsapp: true,
-                    cellphone1: true,
-                    cellphone2: true,
+                    person: {
+                      select: {
+                        name: true,
+                        phone: true,
+                        whatsapp: true,
+                        cellphone1: true,
+                        cellphone2: true,
+                      },
+                    },
                   },
                 },
               },
@@ -540,7 +546,7 @@ export class PeopleService {
       throw new NotFoundException("Pessoa não encontrada nesta escola.");
     }
 
-    return person as PersonWithRoles;
+    return person as unknown as PersonWithRoles;
   }
 
   private buildSharedRoleSnapshot(person: PersonWithRoles) {
@@ -572,27 +578,18 @@ export class PeopleService {
   }
 
   private async syncAllLinkedRoles(person: PersonWithRoles) {
-    if (!this.sharedProfilesService.normalizeDocument(person.cpf)) {
-      return;
-    }
-
-    const sharedData = {
-      ...this.buildSharedRoleSnapshot(person),
-      updatedBy: this.userId(),
-    };
-
     await this.prisma.$transaction([
       this.prisma.teacher.updateMany({
         where: { tenantId: this.tenantId(), personId: person.id },
-        data: sharedData,
+        data: { updatedBy: this.userId() },
       }),
       this.prisma.student.updateMany({
         where: { tenantId: this.tenantId(), personId: person.id },
-        data: sharedData,
+        data: { updatedBy: this.userId() },
       }),
       this.prisma.guardian.updateMany({
         where: { tenantId: this.tenantId(), personId: person.id },
-        data: sharedData,
+        data: { updatedBy: this.userId() },
       }),
     ]);
   }
@@ -604,14 +601,13 @@ export class PeopleService {
     const accessProfile =
       this.getRoleAccessProfile(roleDto.role, roleDto.accessProfile) || null;
     const permissions = this.serializeRolePermissions(roleDto);
-    const sharedData = this.buildSharedRoleSnapshot(person);
 
     if (roleDto.role === "PROFESSOR") {
       await this.prisma.teacher.create({
         data: {
-          ...sharedData,
           tenantId: this.tenantId(),
           branchCode: person.branchCode,
+          personId: person.id,
           accessProfile,
           permissions,
           createdBy: this.userId(),
@@ -623,9 +619,9 @@ export class PeopleService {
     if (roleDto.role === "ALUNO") {
       await this.prisma.student.create({
         data: {
-          ...sharedData,
           tenantId: this.tenantId(),
           branchCode: person.branchCode,
+          personId: person.id,
           accessProfile,
           permissions,
           createdBy: this.userId(),
@@ -636,9 +632,9 @@ export class PeopleService {
 
     await this.prisma.guardian.create({
       data: {
-        ...sharedData,
         tenantId: this.tenantId(),
         branchCode: person.branchCode,
+        personId: person.id,
         accessProfile,
         permissions,
         createdBy: this.userId(),
@@ -765,11 +761,21 @@ export class PeopleService {
             canceledBy: string | null;
           }>
         >`
-          SELECT id, name, email, cpf, personId, branchCode, accessProfile, permissions, canceledBy
-          FROM teachers
-          WHERE tenantId = ${tenantId}
-            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-          ORDER BY id ASC
+          SELECT
+            t.id,
+            p.name,
+            p.email,
+            p.cpf,
+            t.personId,
+            t.branchCode,
+            t.accessProfile,
+            t.permissions,
+            t.canceledBy
+          FROM teachers t
+          LEFT JOIN people p ON p.id = t.personId AND p.tenantId = t.tenantId
+          WHERE t.tenantId = ${tenantId}
+            AND t.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+          ORDER BY t.id ASC
         `,
         this.prisma.$queryRaw<
           Array<{
@@ -785,11 +791,22 @@ export class PeopleService {
             photoUrl: string | null;
           }>
         >`
-          SELECT id, name, email, cpf, personId, branchCode, accessProfile, permissions, canceledBy, photoUrl
-          FROM students
-          WHERE tenantId = ${tenantId}
-            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-          ORDER BY id ASC
+          SELECT
+            s.id,
+            p.name,
+            p.email,
+            p.cpf,
+            s.personId,
+            s.branchCode,
+            s.accessProfile,
+            s.permissions,
+            s.canceledBy,
+            s.photoUrl
+          FROM students s
+          LEFT JOIN people p ON p.id = s.personId AND p.tenantId = s.tenantId
+          WHERE s.tenantId = ${tenantId}
+            AND s.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+          ORDER BY s.id ASC
         `,
         this.prisma.$queryRaw<
           Array<{
@@ -804,11 +821,21 @@ export class PeopleService {
             canceledBy: string | null;
           }>
         >`
-          SELECT id, name, email, cpf, personId, branchCode, accessProfile, permissions, canceledBy
-          FROM guardians
-          WHERE tenantId = ${tenantId}
-            AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-          ORDER BY id ASC
+          SELECT
+            g.id,
+            p.name,
+            p.email,
+            p.cpf,
+            g.personId,
+            g.branchCode,
+            g.accessProfile,
+            g.permissions,
+            g.canceledBy
+          FROM guardians g
+          LEFT JOIN people p ON p.id = g.personId AND p.tenantId = g.tenantId
+          WHERE g.tenantId = ${tenantId}
+            AND g.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+          ORDER BY g.id ASC
         `,
           this.prisma.$queryRaw<
             Array<{
@@ -824,13 +851,14 @@ export class PeopleService {
           SELECT
             gs.studentId,
             g.id AS guardianId,
-            g.name AS guardianName,
-            g.phone AS guardianPhone,
-            g.whatsapp AS guardianWhatsapp,
-            g.cellphone1 AS guardianCellphone1,
-            g.cellphone2 AS guardianCellphone2
+            p.name AS guardianName,
+            p.phone AS guardianPhone,
+            p.whatsapp AS guardianWhatsapp,
+            p.cellphone1 AS guardianCellphone1,
+            p.cellphone2 AS guardianCellphone2
             FROM guardian_students gs
             INNER JOIN guardians g ON g.id = gs.guardianId
+            LEFT JOIN people p ON p.id = g.personId AND p.tenantId = g.tenantId
             WHERE gs.tenantId = ${tenantId}
               AND gs.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
               AND gs.canceledBy IS NULL

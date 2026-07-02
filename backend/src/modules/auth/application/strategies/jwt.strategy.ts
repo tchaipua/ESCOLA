@@ -93,6 +93,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           accessProfile: true,
           complementaryProfiles: true,
           permissions: true,
+          cashierOnly: true,
           email: true,
           branchAccesses: {
             where: { canceledAt: null },
@@ -113,7 +114,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           branchCode: true,
           accessProfile: true,
           permissions: true,
-          email: true,
+          person: { select: { email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -133,7 +134,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           branchCode: true,
           accessProfile: true,
           permissions: true,
-          email: true,
+          person: { select: { email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -153,7 +154,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           branchCode: true,
           accessProfile: true,
           permissions: true,
-          email: true,
+          person: { select: { email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -239,10 +240,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       branchCode: requestedBranchCode,
       role: payload.role,
       email:
-        typeof account.email === "string" && account.email.trim()
-          ? account.email
+        user && typeof user.email === "string" && user.email.trim()
+          ? user.email
+          : "person" in account &&
+              typeof account.person?.email === "string" &&
+              account.person.email.trim()
+            ? account.person.email
           : null,
       modelType,
+      cashierOnly: user ? Boolean(user.cashierOnly) : false,
       permissions: user
         ? resolveAccountPermissions({
             role: user.role,

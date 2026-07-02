@@ -93,17 +93,19 @@
 
 - Autenticacao: cabecalho `x-msinfor-master-pass`
 - Uso: cria usuario administrativo da escola
-- Body aceita `name`, `email`, `password`, `role`, perfis/permissoes e `branchAccessCodes`
+- Body aceita `name`, `email`, `password`, `role`, perfis/permissoes, `branchAccessCodes` e `cashierOnly`
 - Regra: `branchAccessCodes` e obrigatorio para usuario nao-admin quando a escola possui mais de uma filial ativa
 - Regra: para `role = ADMIN`, o backend ignora `branchAccessCodes` e libera todas as filiais
+- Regra: `cashierOnly = true` em usuario nao-admin força o perfil complementar `CAIXA`; no login, o usuario cai direto em `PRINCIPAL_FINANCEIRO_VENDAS` e fica impedido de navegar pelo restante do painel
 
 ### PUT `/tenants/:id/access-users/:userId`
 
 - Autenticacao: cabecalho `x-msinfor-master-pass`
 - Uso: atualiza usuario administrativo e suas filiais liberadas
-- Body aceita `branchAccessCodes`
+- Body aceita `branchAccessCodes` e `cashierOnly`
 - Regra: omitir `branchAccessCodes` preserva os acessos atuais; enviar a lista substitui os vinculos ativos
 - Regra: para `role = ADMIN`, os vinculos ativos sao cancelados logicamente e o acesso continua liberado para todas as filiais
+- Regra: `cashierOnly = true` em usuario nao-admin força o perfil complementar `CAIXA`; no login, o usuario cai direto em `PRINCIPAL_FINANCEIRO_VENDAS` e fica impedido de navegar pelo restante do painel
 
 ### `branchCode` em cadastros operacionais
 
@@ -325,6 +327,29 @@ Respostas possiveis:
 }
 ```
 
+### POST `/auth/confirm-cash-cancellation-password`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Body:
+
+```json
+{
+  "password": "SENHA_ATUAL"
+}
+```
+
+- Uso: valida a senha antes de cancelamentos sensiveis no detalhe do caixa financeiro embutido.
+- Regra principal: aceita a senha do operador logado ou a senha de um usuario administrativo ativo da mesma escola com perfil supervisor financeiro (`ADMIN`, `MANAGE_FINANCIAL` ou `CLOSE_CASHIER`).
+- Escopo: nunca valida supervisor de outra escola/tenant.
+- Resposta de sucesso:
+
+```json
+{
+  "status": "SUCCESS",
+  "authorizedBy": "OPERADOR"
+}
+```
+
 ### POST `/auth/change-shared-password`
 
 - Autenticacao: `Authorization: Bearer <access_token>`
@@ -473,9 +498,7 @@ Continuam existindo e agora atuam como area operacional especializada:
 - `/students`
 - `/guardians`
 
-Regras atuais:
-
-- sincronizam dados compartilhados com `people`
+- leem e gravam dados comuns em `people`
 - respeitam tenant e auditoria
 - mantem campos especificos do papel
 
@@ -728,7 +751,7 @@ Body:
 - Autenticacao: `Authorization: Bearer <access_token>`
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Uso: atualiza e-mail e dados de Telegram da pessoa central sem precisar abrir o cadastro original.
-- Regra: a gravacao acontece em `people` e sincroniza os papeis vinculados por `personId` para manter os envios atuais consistentes.
+- Regra: a gravacao acontece em `people`; os papeis vinculados por `personId` apenas consomem esses dados.
 - Regra: se o e-mail for alterado, ele fica sujeito a validacao em `email_credentials`.
 
 Body:
@@ -742,12 +765,72 @@ Body:
 }
 ```
 
+## Telegram
+
+### POST `/telegram/configure-webhook`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Uso: configura no Telegram o webhook da escola logada usando o token salvo no cadastro da escola.
+- Regra: a URL publica da API deve estar em `BACKEND_PUBLIC_URL`, `PUBLIC_API_URL` ou `API_PUBLIC_URL`; em ambiente local a URL gerada com `localhost` serve apenas para conferencia, pois o Telegram nao consegue chamar a maquina local.
+
+### GET `/telegram/webhook-status`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Uso: consulta no Telegram qual webhook esta configurado e quantas mensagens estao pendentes.
+
+### POST `/telegram/poll-updates`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Uso: busca manualmente mensagens pendentes do Telegram via `getUpdates`.
+- Regra: usado principalmente em ambiente local/testes, quando o Telegram nao consegue chamar um webhook em `localhost`.
+
+### POST `/telegram/webhook/:tenantId/:secret`
+
+- Rota publica chamada pelo Telegram.
+- `tenantId`: escola que recebera a mensagem.
+- `secret`: hash derivado do token do bot configurado para impedir postagens externas indevidas.
+- Fluxo:
+  - se a pessoa enviar `oi`, `ola` ou `/start`, o bot pede CPF/CNPJ;
+  - se enviar CPF/CNPJ valido e existente em `people`, grava `telegramChatId`, `telegramUsername`, `telegramOptInAt` e limpa `telegramOptOutAt`;
+  - a gravacao fica em `people` e os papeis vinculados consomem esses dados via `personId`;
+  - se enviar `sair`, `parar`, `cancelar` ou `stop`, o bot registra opt-out.
+
 ## Regras de payload importantes
 
 - Campos textuais devem ser normalizados para uppercase, exceto senha
 - CPF/CNPJ devem ser validados quando informados
 - Nao pode haver violacao de tenant
 - Nao existe delete fisico nos dados de negocio
+
+## Turmas
+
+### POST/PATCH `/series-classes`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Uso: cria/atualiza o vinculo serie x turma e pode cadastrar SMTP especifico da turma.
+- Regra: quando `smtpEnabled = true`, o envio de e-mail da agenda escolar tenta usar primeiro a configuracao desta turma; se nao houver configuracao completa, cai para filial, escola e ambiente.
+- Regra: em edicao, senha SMTP vazia nao apaga a senha ja gravada.
+
+Campos SMTP opcionais:
+
+```json
+{
+  "smtpEnabled": true,
+  "smtpHost": "SMTP.GMAIL.COM",
+  "smtpPort": 465,
+  "smtpTimeout": 60,
+  "smtpAuthenticate": true,
+  "smtpSecure": true,
+  "smtpAuthType": "SSL",
+  "smtpEmail": "TURMA@ESCOLA.COM",
+  "smtpPassword": "app-password",
+  "smtpSenderName": "5 ANO A",
+  "smtpReplyTo": "SECRETARIA@ESCOLA.COM"
+}
+```
 
 ## Caixa financeiro integrado
 

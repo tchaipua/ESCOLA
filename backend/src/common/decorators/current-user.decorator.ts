@@ -7,6 +7,7 @@ export interface ICurrentUser {
   role: string;
   permissions: string[];
   email?: string | null;
+  cashierOnly?: boolean;
   isMaster?: boolean;
   modelType?: "user" | "teacher" | "student" | "guardian" | "master";
   branchAccessCodes?: number[];

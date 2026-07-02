@@ -17,6 +17,7 @@ import {
 } from "../../../../common/auth/user-permissions";
 import {
   getDefaultAccessProfileForRole,
+  getComplementaryProfilePermissions,
   normalizeComplementaryAccessProfiles,
   normalizeAccessProfileCode,
   resolveAccountPermissions,
@@ -95,6 +96,7 @@ type TenantBranchPayload = {
   telegramEnabled?: boolean | string | number | null;
   telegramBotToken?: string | null;
   telegramBotUsername?: string | null;
+  telegramHeaderImageUrl?: string | null;
   storageProviderAccessKeyId?: string | null;
   storageProviderSecretAccessKey?: string | null;
   storageBucketName?: string | null;
@@ -133,6 +135,7 @@ type AccessUserPayload = {
   accessProfile?: string;
   permissions?: string[];
   branchAccessCodes?: number[];
+  cashierOnly?: boolean;
 };
 
 @Injectable()
@@ -413,11 +416,13 @@ export class TenantsService {
     telegramEnabled?: boolean | string | number | null;
     telegramBotToken?: string | null;
     telegramBotUsername?: string | null;
+    telegramHeaderImageUrl?: string | null;
   }) {
     const hasTelegramConfiguration =
       payload.telegramEnabled !== undefined ||
       payload.telegramBotToken !== undefined ||
-      payload.telegramBotUsername !== undefined;
+      payload.telegramBotUsername !== undefined ||
+      payload.telegramHeaderImageUrl !== undefined;
 
     if (!hasTelegramConfiguration) {
       return {};
@@ -435,6 +440,8 @@ export class TenantsService {
       ),
       telegramBotToken,
       telegramBotUsername,
+      telegramHeaderImageUrl:
+        String(payload.telegramHeaderImageUrl || "").trim() || null,
     };
   }
 
@@ -532,13 +539,15 @@ export class TenantsService {
     const hasTelegramConfiguration =
       payload.telegramEnabled !== undefined ||
       payload.telegramBotToken !== undefined ||
-      payload.telegramBotUsername !== undefined;
+      payload.telegramBotUsername !== undefined ||
+      payload.telegramHeaderImageUrl !== undefined;
 
     if (!hasTelegramConfiguration) {
       return {
         telegramEnabled: null,
         telegramBotToken: null,
         telegramBotUsername: null,
+        telegramHeaderImageUrl: null,
       };
     }
 
@@ -572,8 +581,8 @@ export class TenantsService {
 
   private mapTeacherEmailUsage(record: {
     id: string;
-    name: string;
     email: string | null;
+    person?: { name?: string | null } | null;
     updatedAt: Date;
     updatedBy?: string | null;
     tenant: { id: string; name: string };
@@ -584,7 +593,7 @@ export class TenantsService {
       recordId: record.id,
       tenantId: record.tenant.id,
       tenantName: record.tenant.name,
-      recordName: record.name,
+      recordName: record.person?.name || "PROFESSOR",
       currentEmail: record.email || "",
       document: null,
       updatedAt: record.updatedAt,
@@ -594,8 +603,8 @@ export class TenantsService {
 
   private mapStudentEmailUsage(record: {
     id: string;
-    name: string;
     email: string | null;
+    person?: { name?: string | null } | null;
     updatedAt: Date;
     updatedBy?: string | null;
     tenant: { id: string; name: string };
@@ -606,7 +615,7 @@ export class TenantsService {
       recordId: record.id,
       tenantId: record.tenant.id,
       tenantName: record.tenant.name,
-      recordName: record.name,
+      recordName: record.person?.name || "ALUNO",
       currentEmail: record.email || "",
       document: null,
       updatedAt: record.updatedAt,
@@ -616,8 +625,8 @@ export class TenantsService {
 
   private mapGuardianEmailUsage(record: {
     id: string;
-    name: string;
     email: string | null;
+    person?: { name?: string | null } | null;
     updatedAt: Date;
     updatedBy?: string | null;
     tenant: { id: string; name: string };
@@ -628,7 +637,7 @@ export class TenantsService {
       recordId: record.id,
       tenantId: record.tenant.id,
       tenantName: record.tenant.name,
-      recordName: record.name,
+      recordName: record.person?.name || "RESPONSAVEL",
       currentEmail: record.email || "",
       document: null,
       updatedAt: record.updatedAt,
@@ -1022,62 +1031,32 @@ export class TenantsService {
         where: { canceledAt: null },
         select: {
           id: true,
-          name: true,
-          email: true,
+          person: { select: { name: true, email: true } },
           updatedAt: true,
           updatedBy: true,
           tenant: { select: { id: true, name: true } },
         },
-      }) as Promise<
-        Array<{
-          id: string;
-          name: string;
-          email: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          tenant: { id: string; name: string };
-        }>
-      >,
+      }),
       prismaClient.student.findMany({
         where: { canceledAt: null },
         select: {
           id: true,
-          name: true,
-          email: true,
+          person: { select: { name: true, email: true } },
           updatedAt: true,
           updatedBy: true,
           tenant: { select: { id: true, name: true } },
         },
-      }) as Promise<
-        Array<{
-          id: string;
-          name: string;
-          email: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          tenant: { id: string; name: string };
-        }>
-      >,
+      }),
       prismaClient.guardian.findMany({
         where: { canceledAt: null },
         select: {
           id: true,
-          name: true,
-          email: true,
+          person: { select: { name: true, email: true } },
           updatedAt: true,
           updatedBy: true,
           tenant: { select: { id: true, name: true } },
         },
-      }) as Promise<
-        Array<{
-          id: string;
-          name: string;
-          email: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          tenant: { id: string; name: string };
-        }>
-      >,
+      }),
     ]);
 
     return [
@@ -1093,34 +1072,25 @@ export class TenantsService {
         }) => this.mapUserEmailUsage(record),
       ),
       ...teachers.map(
-        (record: {
-          id: string;
-          name: string;
-          email: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          tenant: { id: string; name: string };
-        }) => this.mapTeacherEmailUsage(record),
+        (record) =>
+          this.mapTeacherEmailUsage({
+            ...record,
+            email: record.person?.email ?? null,
+          }),
       ),
       ...students.map(
-        (record: {
-          id: string;
-          name: string;
-          email: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          tenant: { id: string; name: string };
-        }) => this.mapStudentEmailUsage(record),
+        (record) =>
+          this.mapStudentEmailUsage({
+            ...record,
+            email: record.person?.email ?? null,
+          }),
       ),
       ...guardians.map(
-        (record: {
-          id: string;
-          name: string;
-          email: string | null;
-          updatedAt: Date;
-          updatedBy?: string | null;
-          tenant: { id: string; name: string };
-        }) => this.mapGuardianEmailUsage(record),
+        (record) =>
+          this.mapGuardianEmailUsage({
+            ...record,
+            email: record.person?.email ?? null,
+          }),
       ),
     ]
       .filter(
@@ -1196,6 +1166,7 @@ export class TenantsService {
           select: {
             id: true,
             tenantId: true,
+            personId: true,
             tenant: { select: { name: true } },
           },
         });
@@ -1210,8 +1181,8 @@ export class TenantsService {
           userId: this.masterAuditUser,
         });
 
-        await this.prisma.teacher.update({
-          where: { id: recordId },
+        await this.prisma.person.update({
+          where: { id: teacher.personId! },
           data: {
             email: newEmail,
             password: null,
@@ -1227,7 +1198,7 @@ export class TenantsService {
       case "STUDENT": {
         const student = await this.prisma.student.findFirst({
           where: { id: recordId, canceledAt: null },
-          select: { id: true },
+          select: { id: true, personId: true },
         });
 
         if (!student) {
@@ -1240,8 +1211,8 @@ export class TenantsService {
           userId: this.masterAuditUser,
         });
 
-        await this.prisma.student.update({
-          where: { id: recordId },
+        await this.prisma.person.update({
+          where: { id: student.personId! },
           data: {
             email: newEmail,
             password: null,
@@ -1257,7 +1228,7 @@ export class TenantsService {
       case "GUARDIAN": {
         const guardian = await this.prisma.guardian.findFirst({
           where: { id: recordId, canceledAt: null },
-          select: { id: true },
+          select: { id: true, personId: true },
         });
 
         if (!guardian) {
@@ -1270,8 +1241,8 @@ export class TenantsService {
           userId: this.masterAuditUser,
         });
 
-        await this.prisma.guardian.update({
-          where: { id: recordId },
+        await this.prisma.person.update({
+          where: { id: guardian.personId! },
           data: {
             email: newEmail,
             password: null,
@@ -1443,6 +1414,7 @@ export class TenantsService {
       role: string;
       accessProfile?: string | null;
       permissions?: string | null;
+      cashierOnly?: boolean | null;
       branchAccesses?: Array<{ branchCode: number; isDefault?: boolean }>;
       createdAt: Date;
       updatedAt: Date;
@@ -1494,6 +1466,7 @@ export class TenantsService {
         complementaryProfiles: record.complementaryProfiles,
         permissions: record.permissions,
       }),
+      cashierOnly: Boolean(record.cashierOnly),
       branchAccessCodes: branchAccesses.map((access) => access.branchCode),
       branchAccesses,
       birthDate: sharedPerson?.birthDate
@@ -1551,6 +1524,7 @@ export class TenantsService {
               role: true,
               accessProfile: true,
               permissions: true,
+              cashierOnly: true,
               branchAccesses: {
                 where: { canceledAt: null },
                 orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -1665,16 +1639,22 @@ export class TenantsService {
     const state = this.normalizeOptionalUpperText(payload.state);
     const neighborhood = this.normalizeOptionalUpperText(payload.neighborhood);
     const complement = this.normalizeOptionalUpperText(payload.complement);
+    const cashierOnly = role !== "ADMIN" && Boolean(payload.cashierOnly);
     const complementaryProfiles =
       role === "ADMIN"
         ? []
-        : normalizeComplementaryAccessProfiles(payload.complementaryProfiles);
+        : Array.from(
+            new Set([
+              ...normalizeComplementaryAccessProfiles(payload.complementaryProfiles),
+              ...(cashierOnly ? (["CAIXA"] as const) : []),
+            ]),
+          );
     const accessProfile = normalizeAccessProfileCode(
       payload.accessProfile,
       role,
     );
     const permissions = normalizePermissions(payload.permissions);
-    const effectivePermissions =
+    let effectivePermissions =
       role === "ADMIN"
         ? []
         : permissions.length > 0
@@ -1689,6 +1669,14 @@ export class TenantsService {
                   permissions: null,
                 })
             : getDefaultPermissionsForRole(role);
+    if (cashierOnly) {
+      effectivePermissions = Array.from(
+        new Set([
+          ...effectivePermissions,
+          ...getComplementaryProfilePermissions(["CAIXA"]),
+        ]),
+      );
+    }
 
     if (!name) {
       throw new BadRequestException("Informe o nome do usuário de acesso.");
@@ -1728,6 +1716,7 @@ export class TenantsService {
             : accessProfile,
         permissions:
           role === "ADMIN" ? null : serializePermissions(effectivePermissions),
+        cashierOnly,
         createdBy: this.masterAuditUser,
         updatedBy: this.masterAuditUser,
       },
@@ -1742,6 +1731,7 @@ export class TenantsService {
         role: true,
         accessProfile: true,
         permissions: true,
+        cashierOnly: true,
         createdAt: true,
         updatedAt: true,
         canceledAt: true,
@@ -1818,6 +1808,7 @@ export class TenantsService {
           complementaryProfiles: true,
           role: true,
           accessProfile: true,
+          cashierOnly: true,
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -1849,13 +1840,24 @@ export class TenantsService {
       payload.role !== undefined
         ? this.normalizeAccessRole(payload.role)
         : user.role;
+    const cashierOnly =
+      role !== "ADMIN"
+        ? payload.cashierOnly !== undefined
+          ? Boolean(payload.cashierOnly)
+          : Boolean(user.cashierOnly)
+        : false;
     const complementaryProfiles =
       role === "ADMIN"
         ? []
-        : payload.complementaryProfiles !== undefined ||
-            payload.role !== undefined
-          ? normalizeComplementaryAccessProfiles(payload.complementaryProfiles)
-          : normalizeComplementaryAccessProfiles(user.complementaryProfiles);
+        : Array.from(
+            new Set([
+              ...(payload.complementaryProfiles !== undefined ||
+              payload.role !== undefined
+                ? normalizeComplementaryAccessProfiles(payload.complementaryProfiles)
+                : normalizeComplementaryAccessProfiles(user.complementaryProfiles)),
+              ...(cashierOnly ? (["CAIXA"] as const) : []),
+            ]),
+          );
     const accessProfile =
       payload.accessProfile !== undefined || payload.role !== undefined
         ? normalizeAccessProfileCode(payload.accessProfile, role)
@@ -1864,7 +1866,7 @@ export class TenantsService {
             role,
           );
     const permissions = normalizePermissions(payload.permissions);
-    const effectivePermissions =
+    let effectivePermissions =
       role === "ADMIN"
         ? []
         : permissions.length > 0
@@ -1877,6 +1879,14 @@ export class TenantsService {
                 permissions: null,
               })
             : getDefaultPermissionsForRole(role);
+    if (cashierOnly) {
+      effectivePermissions = Array.from(
+        new Set([
+          ...effectivePermissions,
+          ...getComplementaryProfilePermissions(["CAIXA"]),
+        ]),
+      );
+    }
     const birthDate =
       payload.birthDate !== undefined
         ? this.normalizeOptionalDate(payload.birthDate)
@@ -1989,6 +1999,7 @@ export class TenantsService {
         accessProfile: accessProfile,
         permissions:
           role === "ADMIN" ? null : serializePermissions(effectivePermissions),
+        cashierOnly,
         updatedBy: this.masterAuditUser,
       },
       select: {
@@ -2001,6 +2012,7 @@ export class TenantsService {
         role: true,
         accessProfile: true,
         permissions: true,
+        cashierOnly: true,
         createdAt: true,
         updatedAt: true,
         canceledAt: true,
@@ -2616,8 +2628,7 @@ export class TenantsService {
           where: { id: recordId, canceledAt: null },
           select: {
             id: true,
-            name: true,
-            email: true,
+            person: { select: { name: true, email: true } },
             updatedAt: true,
             updatedBy: true,
             tenant: { select: { id: true, name: true } },
@@ -2627,15 +2638,17 @@ export class TenantsService {
           throw new NotFoundException(
             "Registro de professor não encontrado após atualização.",
           );
-        return this.mapTeacherEmailUsage(record);
+        return this.mapTeacherEmailUsage({
+          ...record,
+          email: record.person?.email ?? null,
+        });
       }
       case "STUDENT": {
         const record = await this.prisma.student.findFirst({
           where: { id: recordId, canceledAt: null },
           select: {
             id: true,
-            name: true,
-            email: true,
+            person: { select: { name: true, email: true } },
             updatedAt: true,
             updatedBy: true,
             tenant: { select: { id: true, name: true } },
@@ -2645,15 +2658,17 @@ export class TenantsService {
           throw new NotFoundException(
             "Registro de aluno não encontrado após atualização.",
           );
-        return this.mapStudentEmailUsage(record);
+        return this.mapStudentEmailUsage({
+          ...record,
+          email: record.person?.email ?? null,
+        });
       }
       case "GUARDIAN": {
         const record = await this.prisma.guardian.findFirst({
           where: { id: recordId, canceledAt: null },
           select: {
             id: true,
-            name: true,
-            email: true,
+            person: { select: { name: true, email: true } },
             updatedAt: true,
             updatedBy: true,
             tenant: { select: { id: true, name: true } },
@@ -2663,7 +2678,10 @@ export class TenantsService {
           throw new NotFoundException(
             "Registro de responsável não encontrado após atualização.",
           );
-        return this.mapGuardianEmailUsage(record);
+        return this.mapGuardianEmailUsage({
+          ...record,
+          email: record.person?.email ?? null,
+        });
       }
     }
   }

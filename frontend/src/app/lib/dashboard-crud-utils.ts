@@ -1,6 +1,7 @@
 import { getStoredToken } from '@/app/lib/auth-storage';
 
 export const MASTER_ROLE = 'SOFTHOUSE_ADMIN';
+export const CASHIER_ONLY_HOME_ROUTE = '/principal/financeiro/vendas';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 
 export type DashboardTokenPayload = {
@@ -10,6 +11,7 @@ export type DashboardTokenPayload = {
     tenantId?: string;
     branchCode?: number;
     isMaster?: boolean;
+    cashierOnly?: boolean;
     name?: string;
     modelType?: string;
 };
@@ -23,6 +25,7 @@ export type DashboardAuthContext = {
     branchCode: number;
     name: string | null;
     modelType: string | null;
+    cashierOnly: boolean;
 };
 
 export type TenantBranchSummary = {
@@ -140,7 +143,7 @@ export function decodeDashboardToken(token: string): DashboardTokenPayload | nul
 export function getDashboardAuthContext(): DashboardAuthContext {
     const token = getStoredToken();
     if (!token) {
-        return { token: null, userId: null, role: null, permissions: [], tenantId: null, branchCode: 1, name: null, modelType: null };
+        return { token: null, userId: null, role: null, permissions: [], tenantId: null, branchCode: 1, name: null, modelType: null, cashierOnly: false };
     }
 
     const payload = decodeDashboardToken(token);
@@ -157,6 +160,7 @@ export function getDashboardAuthContext(): DashboardAuthContext {
                 : 1,
             name: typeof payload?.name === 'string' ? payload.name : null,
             modelType: typeof payload?.modelType === 'string' ? payload.modelType : null,
+            cashierOnly: payload?.cashierOnly === true,
         };
 }
 
@@ -193,6 +197,11 @@ export function getHomeRouteForRole(role: string | null) {
     if (role === 'PROFESSOR') return isPwaViewport() ? '/professor' : '/principal';
     if (role === 'RESPONSAVEL') return isPwaViewport() ? '/responsavel' : '/principal';
     return '/principal';
+}
+
+export function getHomeRouteForSession(payload: DashboardTokenPayload | null, roleFallback?: string | null) {
+    if (payload?.cashierOnly === true) return CASHIER_ONLY_HOME_ROUTE;
+    return getHomeRouteForRole(payload?.role || roleFallback || null);
 }
 
 export function getAllowedDashboardFields<T extends string>(

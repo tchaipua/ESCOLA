@@ -22,15 +22,24 @@ type PersonRole = keyof typeof ROLE_CONFIG;
 type PersonRecord = {
   id: string;
   name: string;
+  birthDate?: string | null;
+  rg?: string | null;
   cpf?: string | null;
+  cnpj?: string | null;
+  nickname?: string | null;
+  corporateName?: string | null;
   email?: string | null;
   whatsapp?: string | null;
   phone?: string | null;
+  cellphone1?: string | null;
+  cellphone2?: string | null;
+  zipCode?: string | null;
   street?: string | null;
   number?: string | null;
   neighborhood?: string | null;
   city?: string | null;
   state?: string | null;
+  complement?: string | null;
   updatedAt?: string | null;
   sharedLoginEnabled?: boolean;
   guardians?: Array<{
@@ -57,6 +66,28 @@ type PersonRecord = {
   }>;
 };
 
+type PersonBasicForm = {
+  name: string;
+  birthDate: string;
+  rg: string;
+  cpf: string;
+  cnpj: string;
+  nickname: string;
+  corporateName: string;
+  phone: string;
+  whatsapp: string;
+  cellphone1: string;
+  cellphone2: string;
+  email: string;
+  zipCode: string;
+  street: string;
+  number: string;
+  city: string;
+  state: string;
+  neighborhood: string;
+  complement: string;
+};
+
 type PessoasAuditParams = {
   tenantId: string | null;
   tenantName?: string | null;
@@ -65,13 +96,76 @@ type PessoasAuditParams = {
   displayedRowsCount: number;
 };
 
+function onlyDigits(value?: string | null) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+function normalizeSearchValue(value?: string | null) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function formatDateInput(value?: string | null) {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
+function buildPersonBasicForm(person: PersonRecord): PersonBasicForm {
+  return {
+    name: person.name || '',
+    birthDate: formatDateInput(person.birthDate),
+    rg: person.rg || '',
+    cpf: person.cpf || '',
+    cnpj: person.cnpj || '',
+    nickname: person.nickname || '',
+    corporateName: person.corporateName || '',
+    phone: person.phone || '',
+    whatsapp: person.whatsapp || '',
+    cellphone1: person.cellphone1 || '',
+    cellphone2: person.cellphone2 || '',
+    email: person.email || '',
+    zipCode: person.zipCode || '',
+    street: person.street || '',
+    number: person.number || '',
+    city: person.city || '',
+    state: person.state || '',
+    neighborhood: person.neighborhood || '',
+    complement: person.complement || '',
+  };
+}
+
+function normalizePersonBasicPayload(form: PersonBasicForm) {
+  return {
+    name: form.name.trim(),
+    birthDate: form.birthDate || undefined,
+    rg: form.rg.trim(),
+    cpf: form.cpf.trim(),
+    cnpj: form.cnpj.trim(),
+    nickname: form.nickname.trim(),
+    corporateName: form.corporateName.trim(),
+    phone: form.phone.trim(),
+    whatsapp: form.whatsapp.trim(),
+    cellphone1: form.cellphone1.trim(),
+    cellphone2: form.cellphone2.trim(),
+    email: form.email.trim() || undefined,
+    zipCode: form.zipCode.trim(),
+    street: form.street.trim(),
+    number: form.number.trim(),
+    city: form.city.trim(),
+    state: form.state.trim(),
+    neighborhood: form.neighborhood.trim(),
+    complement: form.complement.trim(),
+  };
+}
+
 function buildPessoasAuditSql(params: PessoasAuditParams) {
   const searchTerm = params.searchTerm.trim().toUpperCase();
+  const searchDigits = onlyDigits(searchTerm);
   const roleFilter = String(params.roleFilter || 'ALL').toUpperCase();
 
   return `-- PARAMETROS ATUAIS DO GRID
 -- :schoolId = ${toSqlLiteral(params.tenantId || '')}
 -- :searchTerm = ${toSqlLiteral(searchTerm)}
+-- :searchDigits = ${toSqlLiteral(searchDigits)}
 -- :roleFilter = ${toSqlLiteral(roleFilter)}
 
 SELECT DISTINCT P.*
@@ -89,6 +183,9 @@ WHERE P.tenantId = ${toSqlLiteral(params.tenantId || '')}
   AND (
     ${toSqlLiteral(searchTerm)} = ''
     OR UPPER(COALESCE(P.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(P.email, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR REPLACE(REPLACE(REPLACE(COALESCE(P.cpf, ''), '.', ''), '-', ''), '/', '') LIKE '%' || ${toSqlLiteral(searchDigits)} || '%'
+    OR REPLACE(REPLACE(REPLACE(COALESCE(P.cnpj, ''), '.', ''), '-', ''), '/', '') LIKE '%' || ${toSqlLiteral(searchDigits)} || '%'
   )
   AND (
     ${toSqlLiteral(roleFilter)} = 'ALL'
@@ -144,6 +241,11 @@ export default function PessoasPage() {
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<PersonRole | 'ALL'>('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
+  const [editingPerson, setEditingPerson] = useState<PersonRecord | null>(null);
+  const [editForm, setEditForm] = useState<PersonBasicForm | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const canView = ['SOFTHOUSE_ADMIN', 'ADMIN', 'SECRETARIA', 'COORDENACAO'].includes(currentRole || '');
 
@@ -199,11 +301,24 @@ export default function PessoasPage() {
   const filteredPeople = useMemo(() => {
     const term = searchTerm.trim().toUpperCase();
     return uniquePeople.filter((person) => {
-      const matchesName = !term || person.name.toUpperCase().includes(term);
+      const termDigits = onlyDigits(term);
+      const searchValues = [
+        person.name,
+        person.email,
+        person.cpf,
+        person.cnpj,
+      ].map(normalizeSearchValue);
+      const documentValues = [
+        person.cpf,
+        person.cnpj,
+      ].map(onlyDigits);
+      const matchesSearch = !term
+        || searchValues.some((value) => value.includes(term))
+        || Boolean(termDigits && documentValues.some((value) => value.includes(termDigits)));
       const matchesRole = selectedRoleFilter === 'ALL'
         ? true
         : person.roles.some((role) => role.role === selectedRoleFilter);
-      return matchesName && matchesRole;
+      return matchesSearch && matchesRole;
     });
   }, [uniquePeople, searchTerm, selectedRoleFilter]);
 
@@ -244,6 +359,60 @@ export default function PessoasPage() {
       sqlText: pessoasAuditContext.sqlText,
     });
   }, [pessoasAuditContext]);
+
+  const openEditPerson = (person: PersonRecord) => {
+    setEditingPerson(person);
+    setEditForm(buildPersonBasicForm(person));
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const closeEditPerson = () => {
+    if (isSavingEdit) return;
+    setEditingPerson(null);
+    setEditForm(null);
+    setEditError(null);
+    setEditSuccess(null);
+  };
+
+  const updateEditField = (field: keyof PersonBasicForm, value: string) => {
+    setEditForm((current) => current ? { ...current, [field]: field === 'email' ? value.toUpperCase() : value.toUpperCase() } : current);
+  };
+
+  const saveEditPerson = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!token || !editingPerson || !editForm) return;
+    if (!editForm.name.trim()) {
+      setEditError('Informe o nome da pessoa.');
+      return;
+    }
+
+    try {
+      setIsSavingEdit(true);
+      setEditError(null);
+      setEditSuccess(null);
+      const response = await fetch(`${API_BASE_URL}/people/${editingPerson.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(normalizePersonBasicPayload(editForm)),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.message || 'Não foi possível alterar os dados básicos da pessoa.');
+      }
+      await reloadPeople();
+      setEditSuccess('Dados básicos alterados com sucesso.');
+      setEditingPerson(data || editingPerson);
+      if (data) setEditForm(buildPersonBasicForm(data));
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'Falha ao salvar os dados básicos.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   if (!isLoading && !canView) {
     return (
@@ -346,12 +515,12 @@ export default function PessoasPage() {
             <p className="mt-1 text-sm font-medium text-slate-500">Busque por nome ou role para filtrar o conjunto exibido.</p>
           </div>
           <div className="w-full max-w-md">
-            <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Filtrar pelo nome</label>
+            <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-slate-500">Filtrar por nome, e-mail ou documento</label>
             <input
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value.toUpperCase())}
-              placeholder="Digite parte do nome"
+              placeholder="Digite nome, e-mail, CPF ou CNPJ"
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:bg-white"
             />
           </div>
@@ -393,6 +562,15 @@ export default function PessoasPage() {
                       <div className={`rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${person.sharedLoginEnabled ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
                         {person.sharedLoginEnabled ? 'Login ativo' : 'Sem login'}
                       </div>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => openEditPerson(person)}
+                        className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-50"
+                      >
+                        Editar dados
+                      </button>
                     </div>
                     <div className="mt-4 flex flex-col gap-2">
                       <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Origem</div>
@@ -489,6 +667,92 @@ export default function PessoasPage() {
       </section>
       </div>
       </div>
+      {editingPerson && editForm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-4 bg-[#153a6a] px-6 py-4 text-white">
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-100">PRINCIPAL_PESSOAS</div>
+                <h2 className="mt-1 text-xl font-black">Alterar dados básicos</h2>
+                <p className="mt-1 text-sm font-semibold text-blue-100">{editingPerson.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditPerson}
+                disabled={isSavingEdit}
+                className="rounded-xl border border-white/25 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-50"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <form onSubmit={saveEditPerson} className="max-h-[calc(92vh-96px)] overflow-y-auto px-6 py-5">
+              {editError ? (
+                <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
+                  {editError}
+                </div>
+              ) : null}
+              {editSuccess ? (
+                <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-700">
+                  {editSuccess}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {[
+                  ['name', 'Nome *'],
+                  ['birthDate', 'Data nascimento'],
+                  ['rg', 'RG'],
+                  ['cpf', 'CPF'],
+                  ['cnpj', 'CNPJ'],
+                  ['nickname', 'Apelido'],
+                  ['corporateName', 'Razão social'],
+                  ['email', 'E-mail'],
+                  ['phone', 'Telefone fixo'],
+                  ['whatsapp', 'WhatsApp'],
+                  ['cellphone1', 'Celular 01'],
+                  ['cellphone2', 'Celular 02'],
+                  ['zipCode', 'CEP'],
+                  ['street', 'Logradouro'],
+                  ['number', 'Número'],
+                  ['neighborhood', 'Bairro'],
+                  ['city', 'Cidade'],
+                  ['state', 'UF'],
+                  ['complement', 'Complemento'],
+                ].map(([field, label]) => (
+                  <label key={field} className={field === 'street' || field === 'complement' ? 'lg:col-span-2' : ''}>
+                    <span className="mb-2 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</span>
+                    <input
+                      type={field === 'birthDate' ? 'date' : 'text'}
+                      value={editForm[field as keyof PersonBasicForm]}
+                      onChange={(event) => updateEditField(field as keyof PersonBasicForm, event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeEditPerson}
+                  disabled={isSavingEdit}
+                  className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit || !editForm.name.trim()}
+                  className="rounded-xl bg-green-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingEdit ? 'Salvando...' : 'Salvar dados básicos'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

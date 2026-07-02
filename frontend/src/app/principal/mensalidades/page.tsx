@@ -138,6 +138,7 @@ const EMPTY_AUTH_CONTEXT: DashboardAuthContext = {
     branchCode: 1,
     name: null,
     modelType: null,
+    cashierOnly: false,
 };
 
 const inputClass = 'w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white';

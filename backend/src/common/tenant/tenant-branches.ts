@@ -134,6 +134,7 @@ export function mapTenantBranchSummary(branch: {
   telegramEnabled?: boolean | null;
   telegramBotToken?: string | null;
   telegramBotUsername?: string | null;
+  telegramHeaderImageUrl?: string | null;
   storageProviderAccessKeyId?: string | null;
   storageProviderSecretAccessKey?: string | null;
   storageBucketName?: string | null;
@@ -191,6 +192,7 @@ export function mapTenantBranchSummary(branch: {
     telegramEnabled: branch.telegramEnabled,
     telegramBotToken: branch.telegramBotToken,
     telegramBotUsername: branch.telegramBotUsername,
+    telegramHeaderImageUrl: branch.telegramHeaderImageUrl,
     storageProviderAccessKeyId: branch.storageProviderAccessKeyId,
     storageProviderSecretAccessKey: branch.storageProviderSecretAccessKey,
     storageBucketName: branch.storageBucketName,

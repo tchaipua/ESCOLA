@@ -96,12 +96,18 @@ export class ClassScheduleItemsService {
     startTime: string;
     endTime: string;
     teacherSubject?: {
-      teacher?: { name?: string | null } | null;
+      teacher?: {
+        name?: string | null;
+        person?: { name?: string | null } | null;
+      } | null;
       subject?: { name?: string | null } | null;
     } | null;
   }) {
     const subjectName = item.teacherSubject?.subject?.name || "INTERVALO";
-    const teacherName = item.teacherSubject?.teacher?.name || "SEM PROFESSOR";
+    const teacherName =
+      item.teacherSubject?.teacher?.person?.name ||
+      item.teacherSubject?.teacher?.name ||
+      "SEM PROFESSOR";
     return `${item.startTime} às ${item.endTime} - ${subjectName} / ${teacherName}`;
   }
 
@@ -279,7 +285,7 @@ export class ClassScheduleItemsService {
       },
       teacherSubject: {
         include: {
-          teacher: true,
+          teacher: { include: { person: true } },
           subject: true,
         },
       },
@@ -531,9 +537,9 @@ export class ClassScheduleItemsService {
           canceledAt: null,
         },
         include: {
-          student: true,
+          student: { include: { person: true } },
         },
-        orderBy: [{ student: { name: "asc" } }],
+        orderBy: [{ createdAt: "asc" }],
       });
 
       const students = await Promise.all(
@@ -543,7 +549,7 @@ export class ClassScheduleItemsService {
           if (!enrollment?.seriesClassId) {
             return {
               studentId: link.studentId,
-              studentName: link.student.name,
+              studentName: link.student.person?.name || "ALUNO",
               kinship: link.kinship,
               kinshipDescription: link.kinshipDescription,
               enrollment: enrollment ?? null,
@@ -563,7 +569,7 @@ export class ClassScheduleItemsService {
 
           return {
             studentId: link.studentId,
-            studentName: link.student.name,
+            studentName: link.student.person?.name || "ALUNO",
             kinship: link.kinship,
             kinshipDescription: link.kinshipDescription,
             enrollment,

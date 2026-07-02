@@ -69,7 +69,7 @@ export class LessonAttendancesService {
         teacherSubject: {
           include: {
             subject: true,
-            teacher: true,
+            teacher: { include: { person: true } },
           },
         },
         seriesClass: {
@@ -83,7 +83,7 @@ export class LessonAttendancesService {
             canceledAt: null,
           },
           include: {
-            student: true,
+            student: { include: { person: true } },
           },
         },
       },
@@ -113,9 +113,13 @@ export class LessonAttendancesService {
         },
       },
       include: {
-        student: true,
+        student: {
+          include: {
+            person: true,
+          },
+        },
       },
-      orderBy: [{ student: { name: "asc" } }],
+      orderBy: [{ createdAt: "asc" }],
     });
   }
 
@@ -197,7 +201,8 @@ export class LessonAttendancesService {
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
         subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
-        teacherName: lessonItem.teacherSubject.teacher?.name || "PROFESSOR",
+        teacherName:
+          lessonItem.teacherSubject.teacher?.person?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         shift: lessonItem.seriesClass.class?.shift || null,
@@ -216,8 +221,8 @@ export class LessonAttendancesService {
         return {
           studentId: enrollment.studentId,
           enrollmentId: enrollment.id,
-          studentName: enrollment.student.name,
-          studentEmail: enrollment.student.email,
+          studentName: enrollment.student.person?.name || "ALUNO",
+          studentEmail: enrollment.student.person?.email ?? null,
           status: currentAttendance?.status || null,
           notes: currentAttendance?.notes || null,
           recordedAt: currentAttendance?.recordedAt || null,

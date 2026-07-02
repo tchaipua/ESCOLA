@@ -38,6 +38,8 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 - Todo novo popup/modal criado deve nascer por padrao com logotipo da escola no cabecalho, nome tecnico exclusivo e bloco de auditoria visual no rodape.
 - Quando o popup/modal tambem exibir foto, avatar ou icone do registro, esse elemento nao substitui o logotipo institucional; ambos devem ficar separados no cabecalho.
 - O nome tecnico de popup/modal deve ser exclusivo, estavel e nao pode ser reaproveitado por outro fluxo visual.
+- Em popups operacionais, o nome tecnico exclusivo deve ficar visivel no rodape do proprio popup.
+- Mensagens de validacao, senha invalida, erro operacional e sucesso disparadas dentro de um popup devem aparecer dentro do proprio popup, em alerta visual moderno, sem depender de alert nativo do navegador ou mensagem solta fora da tela modal.
 - Ao clicar no botao de copiar, alem de copiar o nome da tela, deve abrir um popup central de "Logica Usada nessa Tela".
 - O popup deve seguir o padrao validado na tela `PRINCIPAL_PROFESSORES`:
   - overlay escuro com blur e modal central moderno;

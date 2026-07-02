@@ -82,6 +82,24 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
+  @Post("confirm-cash-cancellation-password")
+  @ApiOperation({
+    summary:
+      "Confirma senha do operador ou de supervisor para cancelamento no caixa",
+  })
+  async confirmCashCancellationPassword(
+    @CurrentUser() user: ICurrentUser,
+    @Body() payload: ConfirmPasswordDto,
+  ) {
+    return this.authService.confirmCashCancellationPassword(
+      user.userId,
+      user.tenantId,
+      user.modelType,
+      payload.password,
+    );
+  }
+
+  @ApiBearerAuth()
   @Post("change-shared-password")
   @ApiOperation({
     summary:

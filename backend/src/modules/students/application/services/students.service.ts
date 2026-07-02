@@ -48,20 +48,8 @@ export class StudentsService {
     tableName: "students" | "guardians" | "guardian_students" | "people",
   ) {
     const dateTimeColumnsByTable = {
-      students: [
-        "birthDate",
-        "resetPasswordExpires",
-        "createdAt",
-        "updatedAt",
-        "canceledAt",
-      ],
-      guardians: [
-        "birthDate",
-        "resetPasswordExpires",
-        "createdAt",
-        "updatedAt",
-        "canceledAt",
-      ],
+      students: ["createdAt", "updatedAt", "canceledAt"],
+      guardians: ["createdAt", "updatedAt", "canceledAt"],
       guardian_students: ["createdAt", "updatedAt", "canceledAt"],
       people: ["birthDate", "createdAt", "updatedAt", "canceledAt"],
     } as const;
@@ -138,29 +126,62 @@ export class StudentsService {
     const normalizedCpf = this.normalizeDocument(cpf);
     if (!normalizedCpf) return;
 
-    const students = await this.prisma.student.findMany({
+    const person = await this.prisma.person.findFirst({
       where: {
         tenantId,
+        cpfDigits: normalizedCpf,
         canceledAt: null,
-        cpf: { not: null },
-        ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
+        students: {
+          some: {
+            canceledAt: null,
+            ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
+          },
+        },
       },
       select: {
         id: true,
         name: true,
-        cpf: true,
       },
     });
 
-    const conflict = students.find(
-      (student) => this.normalizeDocument(student.cpf) === normalizedCpf,
-    );
-
-    if (conflict) {
+    if (person) {
       throw new ConflictException(
-        `Já existe um aluno com este CPF nesta escola: ${conflict.name}.`,
+        `Já existe um aluno com este CPF nesta escola: ${person.name}.`,
       );
     }
+  }
+
+  private stripSharedProfileFields<T extends Record<string, any>>(data: T): T {
+    const stripped = { ...data };
+    [
+      "birthDate",
+      "name",
+      "rg",
+      "cpf",
+      "cnpj",
+      "nickname",
+      "corporateName",
+      "phone",
+      "whatsapp",
+      "cellphone1",
+      "cellphone2",
+      "email",
+      "password",
+      "resetPasswordToken",
+      "resetPasswordExpires",
+      "telegramChatId",
+      "telegramUsername",
+      "telegramOptInAt",
+      "telegramOptOutAt",
+      "zipCode",
+      "street",
+      "number",
+      "city",
+      "state",
+      "neighborhood",
+      "complement",
+    ].forEach((field) => delete stripped[field]);
+    return stripped;
   }
 
   private tenantId() {
@@ -336,10 +357,18 @@ export class StudentsService {
   }
 
   private mapStudentAccess<
-    T extends { accessProfile?: string | null; permissions?: string | null },
+    T extends {
+      accessProfile?: string | null;
+      permissions?: string | null;
+      person?: Record<string, any> | null;
+      name?: string | null;
+    },
   >(student: T) {
+    const studentWithSharedFields = this.normalizeStudentDisplayName(student);
     return {
-      ...withRoleBranchAccessCodes(student as T & { branchCode: number }),
+      ...withRoleBranchAccessCodes(
+        studentWithSharedFields as T & { branchCode: number },
+      ),
       accessProfile:
         normalizeAccessProfileCode(student.accessProfile, "ALUNO") ||
         getDefaultAccessProfileForRole("ALUNO"),
@@ -505,34 +534,26 @@ export class StudentsService {
         : null;
 
     // 2. Transforma tudo em Maiúsculo para banco (exceto senha/email)
-    const rawData = this.transformToUpperCase(sanitizedDto);
+    const rawData = this.stripSharedProfileFields(
+      this.transformToUpperCase(sanitizedDto),
+    );
     delete rawData.permissions;
     delete rawData.accessProfile;
     delete rawData.billingPayerType;
     delete rawData.billingGuardianId;
     delete rawData.branchAccessCodes;
-    rawData.telegramOptInAt = sanitizedDto.telegramOptInEnabled
-      ? new Date()
-      : null;
-    rawData.telegramOptOutAt = sanitizedDto.telegramOptInEnabled
-      ? null
-      : new Date();
     delete rawData.telegramOptInEnabled;
 
     const createdStudent = await this.prisma.$transaction(async (tx) => {
       const student = await tx.student.create({
         data: {
           ...rawData,
-          password: null,
           accessProfile,
           permissions: explicitPermissions,
           photoUrl: sanitizedDto.photoUrl?.trim() || null,
           monthlyFee: this.normalizeMonthlyFee(sanitizedDto.monthlyFee),
           billingPayerType: billingSettings.billingPayerType,
           billingGuardianId: billingSettings.billingGuardianId,
-          birthDate: sanitizedDto.birthDate
-            ? new Date(sanitizedDto.birthDate)
-            : undefined,
           tenantId: this.tenantId(),
           branchCode: targetBranchCode,
           createdBy: this.userId(), // Auditoria OBRIGATÓRIA
@@ -566,6 +587,7 @@ export class StudentsService {
       createdStudent.id,
       {
         ...createdStudent,
+        ...sanitizedDto,
         password: null,
         resetPasswordToken: null,
         resetPasswordExpires: null,
@@ -593,8 +615,9 @@ export class StudentsService {
       }
     }
 
+    const refreshedStudent = await this.findStudentEntity(createdStudent.id);
     return sanitizeStudentForViewer(
-      this.mapStudentAccess(createdStudent),
+      this.mapStudentAccess(refreshedStudent),
       currentUser,
     );
     });
@@ -632,15 +655,19 @@ export class StudentsService {
           orderBy: [{ schoolYear: { year: "desc" } }, { createdAt: "desc" }],
         },
       },
-      orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
+      orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
     });
 
-    return filterRoleBranchRecordsForCurrentBranch(students).map((student) =>
-      sanitizeStudentForViewer(
-        this.mapStudentAccess(this.normalizeStudentDisplayName(student)),
-        currentUser,
-      ),
-    );
+    return filterRoleBranchRecordsForCurrentBranch(students)
+      .sort((left, right) =>
+        String(left.person?.name || "").localeCompare(
+          String(right.person?.name || ""),
+          "pt-BR",
+        ),
+      )
+      .map((student) =>
+        sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser),
+      );
   }
 
   async findOne(id: string, currentUser?: ICurrentUser) {
@@ -769,7 +796,7 @@ export class StudentsService {
               teacherSubject: {
                 include: {
                   subject: true,
-                  teacher: true,
+                  teacher: { include: { person: true } },
                 },
               },
             },
@@ -805,7 +832,7 @@ export class StudentsService {
                   teacherSubject: {
                     include: {
                       subject: true,
-                      teacher: true,
+                      teacher: { include: { person: true } },
                     },
                   },
                 },
@@ -862,7 +889,8 @@ export class StudentsService {
         recordedAt: attendance.recordedAt,
         lessonDate: lessonItem.lessonDate,
         subjectName,
-        teacherName: lessonItem.teacherSubject?.teacher?.name || "PROFESSOR",
+        teacherName:
+          lessonItem.teacherSubject?.teacher?.person?.name || "PROFESSOR",
         schoolYear:
           lessonItem.schoolYear?.year !== undefined &&
           lessonItem.schoolYear?.year !== null
@@ -912,7 +940,7 @@ export class StudentsService {
       const subjectName =
         lessonItem?.teacherSubject?.subject?.name || "DISCIPLINA";
       const teacherName =
-        lessonItem?.teacherSubject?.teacher?.name || "PROFESSOR";
+        lessonItem?.teacherSubject?.teacher?.person?.name || "PROFESSOR";
       const subjectKey = `${subjectId || subjectName}:${subjectName}`;
       const currentSubject = gradesBySubject.get(subjectKey) || {
         subjectId,
@@ -1055,8 +1083,8 @@ export class StudentsService {
 
     if (
       sanitizedDto.cpf &&
-      this.normalizeDocument(sanitizedDto.cpf) !==
-        this.normalizeDocument(currentStudent.cpf)
+        this.normalizeDocument(sanitizedDto.cpf) !==
+        this.normalizeDocument(currentStudent.person?.cpf)
     ) {
       await this.assertUniqueStudentCpf(this.tenantId(), sanitizedDto.cpf, id);
     }
@@ -1068,7 +1096,7 @@ export class StudentsService {
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
     const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
-      currentStudent.email,
+      currentStudent.person?.email,
     );
     const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
       sanitizedDto,
@@ -1099,10 +1127,10 @@ export class StudentsService {
           : currentStudent.permissions;
     const resolvedStudentName = this.sharedProfilesService.resolveWritableName(
       sanitizedDto.name,
-      currentStudent.name || currentStudent.person?.name,
+      currentStudent.person?.name,
     );
     const shouldDetachBlankCpfPersonLink =
-      !this.normalizeDocument(sanitizedDto.cpf || currentStudent.cpf) &&
+      !this.normalizeDocument(sanitizedDto.cpf || currentStudent.person?.cpf) &&
       Boolean(currentStudent.personId) &&
       !this.normalizeDocument(currentStudent.person?.cpf);
     const billingSettings = await this.resolveUpdateBillingSettings(
@@ -1111,7 +1139,9 @@ export class StudentsService {
       sanitizedDto,
     );
 
-    const rawData = this.transformToUpperCase(sanitizedDto);
+    const rawData = this.stripSharedProfileFields(
+      this.transformToUpperCase(sanitizedDto),
+    );
     delete rawData.password;
     delete rawData.permissions;
     delete rawData.accessProfile;
@@ -1124,12 +1154,6 @@ export class StudentsService {
         "telegramOptInEnabled",
       )
     ) {
-      rawData.telegramOptInAt = sanitizedDto.telegramOptInEnabled
-        ? currentStudent.telegramOptInAt || new Date()
-        : null;
-      rawData.telegramOptOutAt = sanitizedDto.telegramOptInEnabled
-        ? null
-        : new Date();
     }
     delete rawData.telegramOptInEnabled;
 
@@ -1138,11 +1162,6 @@ export class StudentsService {
         where: { id },
         data: {
           ...rawData,
-          name: resolvedStudentName,
-          password:
-            hashedPassword || shouldResolvePasswordForEmailChange
-              ? null
-              : undefined,
           accessProfile,
           permissions: explicitPermissions,
           photoUrl: Object.prototype.hasOwnProperty.call(sanitizedDto, "photoUrl")
@@ -1157,9 +1176,6 @@ export class StudentsService {
           billingPayerType: billingSettings.billingPayerType,
           billingGuardianId: billingSettings.billingGuardianId,
           personId: shouldDetachBlankCpfPersonLink ? null : undefined,
-          birthDate: sanitizedDto.birthDate
-            ? new Date(sanitizedDto.birthDate)
-            : undefined,
           branchCode: targetBranchCode,
           updatedBy: this.userId(),
         },
@@ -1192,16 +1208,17 @@ export class StudentsService {
       updatedStudent.id,
       {
         ...updatedStudent,
+        ...sanitizedDto,
         name: resolvedStudentName,
         password: null,
         resetPasswordToken: null,
         resetPasswordExpires: null,
       },
       this.userId(),
-      currentStudent.cpf,
+      currentStudent.person?.cpf,
     );
 
-    const emailForPasswordSync = sanitizedDto.email || currentStudent.email;
+    const emailForPasswordSync = sanitizedDto.email || currentStudent.person?.email;
     if (emailForPasswordSync) {
       if (hashedPassword) {
         await this.sharedProfilesService.updateEmailCredentialPassword(

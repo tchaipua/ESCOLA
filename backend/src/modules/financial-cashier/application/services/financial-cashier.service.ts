@@ -48,17 +48,17 @@ export class FinancialCashierService {
       currentUser.modelType === "teacher"
         ? await this.prisma.teacher.findFirst({
             where: baseWhere,
-            select: { name: true },
+            select: { person: { select: { name: true } } },
           })
         : currentUser.modelType === "student"
           ? await this.prisma.student.findFirst({
               where: baseWhere,
-              select: { name: true },
+              select: { person: { select: { name: true } } },
             })
           : currentUser.modelType === "guardian"
             ? await this.prisma.guardian.findFirst({
                 where: baseWhere,
-                select: { name: true },
+                select: { person: { select: { name: true } } },
               })
             : await this.prisma.user.findFirst({
                 where: baseWhere,
@@ -68,7 +68,14 @@ export class FinancialCashierService {
     return {
       userId: currentUser.userId,
       displayName:
-        String(record?.name || currentUser.email || currentUser.userId)
+        String(
+          (record as { name?: string | null; person?: { name?: string | null } | null } | null)
+            ?.name ||
+            (record as { person?: { name?: string | null } | null } | null)
+              ?.person?.name ||
+            currentUser.email ||
+            currentUser.userId,
+        )
           .trim()
           .toUpperCase() || currentUser.userId,
     };

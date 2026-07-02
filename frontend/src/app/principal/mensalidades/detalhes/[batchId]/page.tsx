@@ -82,6 +82,7 @@ const EMPTY_AUTH_CONTEXT: DashboardAuthContext = {
     branchCode: 1,
     name: null,
     modelType: null,
+    cashierOnly: false,
 };
 
 const generatedGridColumns: Array<GridColumnDefinition<StudentLaunchSummary, GeneratedColumnKey>> = [

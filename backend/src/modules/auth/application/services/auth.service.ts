@@ -17,7 +17,10 @@ import { ResetPasswordDto } from "../dto/reset-password.dto";
 import * as crypto from "crypto";
 import * as nodemailer from "nodemailer";
 import { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
-import { serializePermissions } from "../../../../common/auth/user-permissions";
+import {
+  deserializePermissions,
+  serializePermissions,
+} from "../../../../common/auth/user-permissions";
 import {
   getDefaultAccessProfileForRole,
   normalizeComplementaryAccessProfiles,
@@ -57,6 +60,7 @@ type AccountLookup = {
   password: string | null;
   role: string;
   complementaryProfiles?: string | null;
+  cashierOnly?: boolean | null;
   permissions: string[];
   branchAccessCodes?: number[];
   modelType: AccountModelType;
@@ -160,9 +164,6 @@ export class AuthService {
       id: true,
       tenantId: true,
       branchCode: true,
-      name: true,
-      email: true,
-      password: true,
       accessProfile: true,
       permissions: true,
       tenant: { select: tenantSelect },
@@ -173,8 +174,12 @@ export class AuthService {
         where: { email: { in: emailVariants }, canceledAt: null },
         select: {
           ...baseSelect,
+          name: true,
+          email: true,
+          password: true,
           role: true,
           complementaryProfiles: true,
+          cashierOnly: true,
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -183,9 +188,13 @@ export class AuthService {
         },
       }),
       prismaClient.teacher.findMany({
-        where: { email: { in: emailVariants }, canceledAt: null },
+        where: {
+          person: { email: { in: emailVariants } },
+          canceledAt: null,
+        },
         select: {
           ...baseSelect,
+          person: { select: { name: true, email: true, password: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -194,9 +203,13 @@ export class AuthService {
         },
       }),
       prismaClient.student.findMany({
-        where: { email: { in: emailVariants }, canceledAt: null },
+        where: {
+          person: { email: { in: emailVariants } },
+          canceledAt: null,
+        },
         select: {
           ...baseSelect,
+          person: { select: { name: true, email: true, password: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -205,9 +218,13 @@ export class AuthService {
         },
       }),
       prismaClient.guardian.findMany({
-        where: { email: { in: emailVariants }, canceledAt: null },
+        where: {
+          person: { email: { in: emailVariants } },
+          canceledAt: null,
+        },
         select: {
           ...baseSelect,
+          person: { select: { name: true, email: true, password: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -239,6 +256,9 @@ export class AuthService {
       })),
       ...teachers.map((t) => ({
         ...t,
+        name: t.person?.name ?? "PROFESSOR",
+        email: t.person?.email ?? null,
+        password: t.person?.password ?? null,
         modelType: "teacher" as const,
         role: "PROFESSOR",
         branchAccessCodes: Array.from(
@@ -258,6 +278,9 @@ export class AuthService {
       })),
       ...students.map((s) => ({
         ...s,
+        name: s.person?.name ?? "ALUNO",
+        email: s.person?.email ?? null,
+        password: s.person?.password ?? null,
         modelType: "student" as const,
         role: "ALUNO",
         branchAccessCodes: Array.from(
@@ -277,6 +300,9 @@ export class AuthService {
       })),
       ...guardians.map((g) => ({
         ...g,
+        name: g.person?.name ?? "RESPONSAVEL",
+        email: g.person?.email ?? null,
+        password: g.person?.password ?? null,
         modelType: "guardian" as const,
         role: "RESPONSAVEL",
         branchAccessCodes: Array.from(
@@ -313,6 +339,8 @@ export class AuthService {
         account.modelType === "user"
           ? normalizeComplementaryAccessProfiles(account.complementaryProfiles)
           : [],
+      cashierOnly:
+        account.modelType === "user" ? Boolean(account.cashierOnly) : false,
       name: account.name,
       email: account.email,
       modelType: account.modelType,
@@ -335,20 +363,26 @@ export class AuthService {
           select: { password: true },
         });
       case "teacher":
-        return this.prisma.teacher.findFirst({
-          where,
-          select: { password: true },
-        });
+        return this.prisma.teacher
+          .findFirst({
+            where,
+            select: { person: { select: { password: true } } },
+          })
+          .then((record) => ({ password: record?.person?.password ?? null }));
       case "student":
-        return this.prisma.student.findFirst({
-          where,
-          select: { password: true },
-        });
+        return this.prisma.student
+          .findFirst({
+            where,
+            select: { person: { select: { password: true } } },
+          })
+          .then((record) => ({ password: record?.person?.password ?? null }));
       case "guardian":
-        return this.prisma.guardian.findFirst({
-          where,
-          select: { password: true },
-        });
+        return this.prisma.guardian
+          .findFirst({
+            where,
+            select: { person: { select: { password: true } } },
+          })
+          .then((record) => ({ password: record?.person?.password ?? null }));
       default:
         return null;
     }
@@ -367,20 +401,26 @@ export class AuthService {
           select: { email: true },
         });
       case "teacher":
-        return this.prisma.teacher.findFirst({
-          where,
-          select: { email: true },
-        });
+        return this.prisma.teacher
+          .findFirst({
+            where,
+            select: { person: { select: { email: true } } },
+          })
+          .then((record) => ({ email: record?.person?.email ?? null }));
       case "student":
-        return this.prisma.student.findFirst({
-          where,
-          select: { email: true },
-        });
+        return this.prisma.student
+          .findFirst({
+            where,
+            select: { person: { select: { email: true } } },
+          })
+          .then((record) => ({ email: record?.person?.email ?? null }));
       case "guardian":
-        return this.prisma.guardian.findFirst({
-          where,
-          select: { email: true },
-        });
+        return this.prisma.guardian
+          .findFirst({
+            where,
+            select: { person: { select: { email: true } } },
+          })
+          .then((record) => ({ email: record?.person?.email ?? null }));
       default:
         return null;
     }
@@ -398,21 +438,21 @@ export class AuthService {
       }),
       crossTenantPrisma.teacher.findMany({
         where: {
-          email: { not: null },
+          person: { email: { not: null } },
         },
-        select: { email: true, password: true },
+        select: { person: { select: { email: true, password: true } } },
       }),
       crossTenantPrisma.student.findMany({
         where: {
-          email: { not: null },
+          person: { email: { not: null } },
         },
-        select: { email: true, password: true },
+        select: { person: { select: { email: true, password: true } } },
       }),
       crossTenantPrisma.guardian.findMany({
         where: {
-          email: { not: null },
+          person: { email: { not: null } },
         },
-        select: { email: true, password: true },
+        select: { person: { select: { email: true, password: true } } },
       }),
       crossTenantPrisma.person.findMany({
         where: {
@@ -422,7 +462,14 @@ export class AuthService {
       }),
     ]);
 
-    return [...people, ...users, ...teachers, ...students, ...guardians]
+    const roleCandidates = [...teachers, ...students, ...guardians].map(
+      (account) => ({
+        email: account.person?.email ?? null,
+        password: account.person?.password ?? null,
+      }),
+    );
+
+    return [...people, ...users, ...roleCandidates]
       .filter(
         (account) =>
           this.normalizeComparableEmail(account.email) === normalizedEmail,
@@ -1038,6 +1085,8 @@ export class AuthService {
       branchCode: branchResolution.branchCode,
       role: userToLogin.role,
       permissions: userToLogin.permissions,
+      cashierOnly:
+        userToLogin.modelType === "user" ? Boolean(userToLogin.cashierOnly) : false,
       branchAccessCodes: branchResolution.allowedBranches.map(
         (branch) => branch.branchCode,
       ),
@@ -1154,6 +1203,99 @@ export class AuthService {
     }
 
     return { status: "SUCCESS" };
+  }
+
+  async confirmCashCancellationPassword(
+    userId: string | null,
+    tenantId: string | null,
+    modelType: AccountModelType | "master" | undefined,
+    password: string,
+  ) {
+    if (!userId || !tenantId) {
+      throw new UnauthorizedException("Usuário inválido.");
+    }
+
+    const normalizedPassword = String(password || "").trim();
+    if (!normalizedPassword) {
+      throw new UnauthorizedException("Informe a senha para continuar.");
+    }
+
+    if (modelType === "master") {
+      if (!isValidMasterPass(normalizedPassword)) {
+        throw new UnauthorizedException("Senha inválida.");
+      }
+      return {
+        status: "SUCCESS",
+        authorizedBy: "SUPERVISOR",
+        supervisorUserId: userId,
+      };
+    }
+
+    try {
+      await this.confirmSharedPassword(
+        userId,
+        tenantId,
+        modelType,
+        normalizedPassword,
+      );
+      return {
+        status: "SUCCESS",
+        authorizedBy: "OPERADOR",
+        operatorUserId: userId,
+      };
+    } catch {
+      // Se não for a senha do operador logado, tenta validar como supervisor da mesma escola.
+    }
+
+    const supervisorUsers = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        permissions: true,
+      },
+    });
+
+    for (const supervisor of supervisorUsers) {
+      const permissions = deserializePermissions(
+        supervisor.permissions,
+        supervisor.role,
+      );
+      const isSupervisor =
+        String(supervisor.role || "").trim().toUpperCase() === "ADMIN" ||
+        permissions.includes("MANAGE_FINANCIAL") ||
+        permissions.includes("CLOSE_CASHIER");
+
+      if (!isSupervisor || !supervisor.email) {
+        continue;
+      }
+
+      const credential = await this.loadEmailCredential(supervisor.email);
+      if (!credential?.passwordHash) {
+        continue;
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        normalizedPassword,
+        credential.passwordHash,
+      );
+
+      if (isPasswordValid) {
+        return {
+          status: "SUCCESS",
+          authorizedBy: "SUPERVISOR",
+          supervisorUserId: supervisor.id,
+          supervisorName: supervisor.name,
+        };
+      }
+    }
+
+    throw new UnauthorizedException("Senha inválida.");
   }
 
   async changeSharedPassword(

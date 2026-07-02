@@ -53,28 +53,62 @@ export class GuardiansService {
     const normalizedCpf = this.normalizeDocument(cpf);
     if (!normalizedCpf) return;
 
-    const guardians = await this.prisma.guardian.findMany({
+    const person = await this.prisma.person.findFirst({
       where: {
         tenantId,
-        cpf: { not: null },
-        ...(excludeGuardianId ? { id: { not: excludeGuardianId } } : {}),
+        cpfDigits: normalizedCpf,
+        canceledAt: null,
+        guardians: {
+          some: {
+            canceledAt: null,
+            ...(excludeGuardianId ? { id: { not: excludeGuardianId } } : {}),
+          },
+        },
       },
       select: {
         id: true,
         name: true,
-        cpf: true,
       },
     });
 
-    const conflict = guardians.find(
-      (guardian) => this.normalizeDocument(guardian.cpf) === normalizedCpf,
-    );
-
-    if (conflict) {
+    if (person) {
       throw new ConflictException(
-        `Já existe um responsável com este CPF nesta escola: ${conflict.name}.`,
+        `Já existe um responsável com este CPF nesta escola: ${person.name}.`,
       );
     }
+  }
+
+  private stripSharedProfileFields<T extends Record<string, any>>(data: T): T {
+    const stripped = { ...data };
+    [
+      "birthDate",
+      "name",
+      "rg",
+      "cpf",
+      "cnpj",
+      "nickname",
+      "corporateName",
+      "phone",
+      "whatsapp",
+      "cellphone1",
+      "cellphone2",
+      "email",
+      "password",
+      "resetPasswordToken",
+      "resetPasswordExpires",
+      "telegramChatId",
+      "telegramUsername",
+      "telegramOptInAt",
+      "telegramOptOutAt",
+      "zipCode",
+      "street",
+      "number",
+      "city",
+      "state",
+      "neighborhood",
+      "complement",
+    ].forEach((field) => delete stripped[field]);
+    return stripped;
   }
 
   private transformToUpperCase(data: any): any {
@@ -130,10 +164,18 @@ export class GuardiansService {
   }
 
   private mapGuardianAccess<
-    T extends { accessProfile?: string | null; permissions?: string | null },
+    T extends {
+      accessProfile?: string | null;
+      permissions?: string | null;
+      person?: Record<string, any> | null;
+    },
   >(guardian: T) {
+    const { person, ...rest } = guardian as any;
+    const guardianWithSharedFields = { ...rest, ...(person || {}), person };
     return {
-      ...withRoleBranchAccessCodes(guardian as T & { branchCode: number }),
+      ...withRoleBranchAccessCodes(
+        guardianWithSharedFields as T & { branchCode: number },
+      ),
       accessProfile:
         normalizeAccessProfileCode(guardian.accessProfile, "RESPONSAVEL") ||
         getDefaultAccessProfileForRole("RESPONSAVEL"),
@@ -150,8 +192,9 @@ export class GuardiansService {
       where: { id, tenantId: getTenantContext()!.tenantId },
       include: {
         students: {
-          include: { student: true },
+          include: { student: { include: { person: true } } },
         },
+        person: true,
         branchAccesses: {
           where: { canceledAt: null },
           orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -178,7 +221,7 @@ export class GuardiansService {
       },
       select: {
         id: true,
-        name: true,
+        person: { select: { name: true } },
       },
     });
   }
@@ -192,7 +235,7 @@ export class GuardiansService {
 
     if (studentUsingGuardianAsPayer) {
       throw new ConflictException(
-        `O responsável informado está definido como pagador da mensalidade do aluno ${studentUsingGuardianAsPayer.name}. Altere o pagador antes de ${blockedAction}.`,
+        `O responsável informado está definido como pagador da mensalidade do aluno ${studentUsingGuardianAsPayer.person?.name || "ALUNO"}. Altere o pagador antes de ${blockedAction}.`,
       );
     }
   }
@@ -245,28 +288,20 @@ export class GuardiansService {
           ? serializePermissions(sanitizedDto.permissions)
           : null;
 
-      const rawData = this.transformToUpperCase(sanitizedDto);
+      const rawData = this.stripSharedProfileFields(
+        this.transformToUpperCase(sanitizedDto),
+      );
       delete rawData.permissions;
       delete rawData.accessProfile;
       delete rawData.branchAccessCodes;
-      rawData.telegramOptInAt = sanitizedDto.telegramOptInEnabled
-        ? new Date()
-        : null;
-      rawData.telegramOptOutAt = sanitizedDto.telegramOptInEnabled
-        ? null
-        : new Date();
       delete rawData.telegramOptInEnabled;
 
       const createdGuardian = await this.prisma.$transaction(async (tx) => {
         const guardian = await tx.guardian.create({
           data: {
             ...rawData,
-            password: null,
             accessProfile,
             permissions: explicitPermissions,
-            birthDate: sanitizedDto.birthDate
-              ? new Date(sanitizedDto.birthDate)
-              : undefined,
             tenantId,
             branchCode: targetBranchCode,
             createdBy: getTenantContext()!.userId,
@@ -300,6 +335,7 @@ export class GuardiansService {
         createdGuardian.id,
         {
           ...createdGuardian,
+          ...sanitizedDto,
           password: null,
           resetPasswordToken: null,
           resetPasswordExpires: null,
@@ -322,8 +358,11 @@ export class GuardiansService {
         }
       }
 
+      const refreshedGuardian = await this.findGuardianEntity(
+        createdGuardian.id,
+      );
       return sanitizeGuardianSummaryForViewer(
-        this.mapGuardianAccess(createdGuardian),
+        this.mapGuardianAccess(refreshedGuardian),
         currentUser,
       );
     });
@@ -332,11 +371,12 @@ export class GuardiansService {
   async findAll(currentUser?: ICurrentUser) {
     const guardians = await this.prisma.guardian.findMany({
       where: { tenantId: getTenantContext()!.tenantId },
-      orderBy: [{ canceledAt: "asc" }, { name: "asc" }],
+      orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
       include: {
         students: {
-          include: { student: true }, // Mostra todos os alunos atrelados a ele
+          include: { student: { include: { person: true } } }, // Mostra todos os alunos atrelados a ele
         },
+        person: true,
         branchAccesses: {
           where: { canceledAt: null },
           orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -344,12 +384,19 @@ export class GuardiansService {
       },
     });
 
-    return filterRoleBranchRecordsForCurrentBranch(guardians).map((guardian) =>
-      sanitizeGuardianSummaryForViewer(
-        this.mapGuardianAccess(guardian),
-        currentUser,
-      ),
-    );
+    return filterRoleBranchRecordsForCurrentBranch(guardians)
+      .sort((left, right) =>
+        String(left.person?.name || "").localeCompare(
+          String(right.person?.name || ""),
+          "pt-BR",
+        ),
+      )
+      .map((guardian) =>
+        sanitizeGuardianSummaryForViewer(
+          this.mapGuardianAccess(guardian),
+          currentUser,
+        ),
+      );
   }
 
   async findOne(id: string, currentUser?: ICurrentUser) {
@@ -373,6 +420,7 @@ export class GuardiansService {
           include: {
             student: {
               include: {
+                person: true,
                 enrollments: {
                   where: { canceledAt: null },
                   include: {
@@ -393,6 +441,7 @@ export class GuardiansService {
             },
           },
         },
+        person: true,
         branchAccesses: {
           where: { canceledAt: null },
           orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -428,12 +477,12 @@ export class GuardiansService {
           where: { canceledAt: null },
           orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
         },
+        person: true,
         students: {
           where: { canceledAt: null },
           include: {
-            student: true,
+            student: { include: { person: true } },
           },
-          orderBy: [{ student: { name: "asc" } }],
         },
       },
     });
@@ -499,7 +548,7 @@ export class GuardiansService {
 
       sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
         sanitizedDto.name,
-        currentGuardian.name,
+        currentGuardian.person?.name,
       );
 
       await this.fillAddressFromViaCep(sanitizedDto);
@@ -508,7 +557,7 @@ export class GuardiansService {
         sanitizedDto.email = sanitizedDto.email.toUpperCase();
 
       const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
-        currentGuardian.email,
+        currentGuardian.person?.email,
       );
       const normalizedIncomingEmail = Object.prototype.hasOwnProperty.call(
         sanitizedDto,
@@ -523,7 +572,7 @@ export class GuardiansService {
       if (
         sanitizedDto.cpf !== undefined &&
         this.normalizeDocument(sanitizedDto.cpf) !==
-          this.normalizeDocument(currentGuardian.cpf)
+          this.normalizeDocument(currentGuardian.person?.cpf)
       ) {
         await this.assertUniqueGuardianCpf(
           getTenantContext()!.tenantId,
@@ -550,7 +599,9 @@ export class GuardiansService {
             ? null
             : currentGuardian.permissions;
 
-      const rawData = this.transformToUpperCase(sanitizedDto);
+      const rawData = this.stripSharedProfileFields(
+        this.transformToUpperCase(sanitizedDto),
+      );
       delete rawData.permissions;
       delete rawData.accessProfile;
       delete rawData.branchAccessCodes;
@@ -560,12 +611,6 @@ export class GuardiansService {
           "telegramOptInEnabled",
         )
       ) {
-        rawData.telegramOptInAt = sanitizedDto.telegramOptInEnabled
-          ? currentGuardian.telegramOptInAt || new Date()
-          : null;
-        rawData.telegramOptOutAt = sanitizedDto.telegramOptInEnabled
-          ? null
-          : new Date();
       }
       delete rawData.telegramOptInEnabled;
 
@@ -574,15 +619,8 @@ export class GuardiansService {
           where: { id },
           data: {
             ...rawData,
-            password:
-              hashedPassword || shouldResolvePasswordForEmailChange
-                ? null
-                : undefined,
             accessProfile,
             permissions: explicitPermissions,
-            birthDate: sanitizedDto.birthDate
-              ? new Date(sanitizedDto.birthDate)
-              : undefined,
             branchCode: targetBranchCode,
             updatedBy: getTenantContext()!.userId,
           },
@@ -615,15 +653,17 @@ export class GuardiansService {
         updatedGuardian.id,
         {
           ...updatedGuardian,
+          ...sanitizedDto,
           password: null,
           resetPasswordToken: null,
           resetPasswordExpires: null,
         },
         getTenantContext()!.userId,
-        currentGuardian.cpf,
+        currentGuardian.person?.cpf,
       );
 
-      const emailForPasswordSync = sanitizedDto.email || currentGuardian.email;
+      const emailForPasswordSync =
+        sanitizedDto.email || currentGuardian.person?.email;
       if (emailForPasswordSync) {
         if (hashedPassword) {
           await this.sharedProfilesService.updateEmailCredentialPassword(
@@ -639,8 +679,9 @@ export class GuardiansService {
         }
       }
 
+      const refreshedGuardian = await this.findGuardianEntity(id);
       return sanitizeGuardianSummaryForViewer(
-        this.mapGuardianAccess(updatedGuardian),
+        this.mapGuardianAccess(refreshedGuardian),
         currentUser,
       );
     });

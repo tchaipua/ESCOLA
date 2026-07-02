@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "cashierOnly" BOOLEAN NOT NULL DEFAULT false;
