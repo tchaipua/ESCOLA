@@ -8,6 +8,7 @@ import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { CreateLessonCalendarDto } from "../dto/create-lesson-calendar.dto";
 import { UpdateLessonCalendarItemDto } from "../dto/update-lesson-calendar-item.dto";
 import { UpdateLessonCalendarDto } from "../dto/update-lesson-calendar.dto";
+import { getVisibleBranchCodes } from "../../../../common/tenant/branch.constants";
 
 type NormalizedPeriod = {
   periodType: "AULA" | "INTERVALO";
@@ -21,7 +22,7 @@ type WeeklySourceItem = {
   dayOfWeek: string;
   startTime: string;
   endTime: string;
-  teacherSubjectId: string;
+  teacherSubjectId: string | null;
   teacherSubject: {
     id: string;
     hourlyRate: number | null;
@@ -44,6 +45,38 @@ type TeacherSubjectRateSource = {
   }>;
 };
 
+function getSchoolYearPeriodClosureLabel(periodType: string) {
+  switch (periodType) {
+    case "RECESSO":
+      return "RECESSO";
+    case "PLANEJAMENTO":
+      return "PLANEJAMENTO";
+    case "PONTE_FERIADO":
+      return "PONTE FERIADO";
+    case "OUTRO":
+      return "PERIODO SEM AULA";
+    case "FERIAS":
+    default:
+      return "PERIODO DE FERIAS";
+  }
+}
+
+function getSchoolYearPeriodClosureTitle(periodType: string) {
+  switch (periodType) {
+    case "RECESSO":
+      return "RECESSO ESCOLAR";
+    case "PLANEJAMENTO":
+      return "PLANEJAMENTO ESCOLAR";
+    case "PONTE_FERIADO":
+      return "PONTE FERIADO";
+    case "OUTRO":
+      return "PERIODO SEM AULA";
+    case "FERIAS":
+    default:
+      return "PERIODO DE FERIAS";
+  }
+}
+
 @Injectable()
 export class LessonCalendarsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -60,6 +93,10 @@ export class LessonCalendarsService {
 
   private tenantId() {
     return getTenantContext()!.tenantId;
+  }
+
+  private branchCode() {
+    return getTenantContext()!.branchCode;
   }
 
   private userId() {
@@ -390,8 +427,8 @@ export class LessonCalendarsService {
       schoolYearLabel: String(item.schoolYear?.year || ""),
       seriesClassId: item.seriesClassId,
       seriesClassLabel: `${item.seriesClass?.series?.name || "SEM SÉRIE"} - ${item.seriesClass?.class?.name || "SEM TURMA"}`,
-      subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
-      teacherName: item.teacherSubject?.teacher?.person?.name || "PROFESSOR",
+      subjectName: item.teacherSubject?.subject?.name || "INTERVALO",
+      teacherName: item.teacherSubject?.teacher?.person?.name || "",
       teacherSubjectId: item.teacherSubjectId,
       events: item.lessonEvents.map((event) => ({
         id: event.id,
@@ -480,7 +517,7 @@ export class LessonCalendarsService {
       lessonCalendarId: string;
       schoolYearId: string;
       seriesClassId: string;
-      teacherSubjectId: string;
+      teacherSubjectId: string | null;
       classScheduleItemId: string;
       lessonDate: Date;
       dayOfWeek: string;
@@ -512,10 +549,6 @@ export class LessonCalendarsService {
         );
 
         matchingWeeklyItems.forEach((weeklyItem) => {
-          if (!weeklyItem.teacherSubjectId) {
-            return;
-          }
-
           itemPayloads.push({
             tenantId: this.tenantId(),
             lessonCalendarId,
@@ -527,7 +560,9 @@ export class LessonCalendarsService {
             dayOfWeek,
             startTime: weeklyItem.startTime,
             endTime: weeklyItem.endTime,
-            hourlyRate: this.resolveTeacherHourlyRate(weeklyItem, currentDate),
+            hourlyRate: weeklyItem.teacherSubjectId
+              ? this.resolveTeacherHourlyRate(weeklyItem, currentDate)
+              : null,
             createdBy: this.userId(),
           });
         });
@@ -730,7 +765,8 @@ export class LessonCalendarsService {
     const { selectedDate, start, end } =
       this.buildCalendarMonthRange(referenceDate);
 
-    const [lessonItems, standaloneEvents] = await Promise.all([
+    const [lessonItems, standaloneEvents, schoolHolidays, intervalPeriods, schoolYearPeriods] =
+      await Promise.all([
       this.prisma.lessonCalendarItem.findMany({
         where: {
           tenantId: this.tenantId(),
@@ -777,6 +813,62 @@ export class LessonCalendarsService {
           teacher: { include: { person: true } },
         },
         orderBy: [{ eventDate: "asc" }, { createdAt: "asc" }],
+      }),
+      this.prisma.schoolHoliday.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          branchCode: { in: getVisibleBranchCodes(this.branchCode()) },
+          canceledAt: null,
+          date: {
+            gte: start,
+            lte: end,
+          },
+        },
+        orderBy: [{ date: "asc" }, { name: "asc" }],
+      }),
+      this.prisma.lessonCalendarPeriod.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          canceledAt: null,
+          periodType: "INTERVALO",
+          startDate: { lte: end },
+          endDate: { gte: start },
+          lessonCalendar: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+          },
+        },
+        include: {
+          lessonCalendar: {
+            include: {
+              schoolYear: true,
+              seriesClass: {
+                include: {
+                  series: true,
+                  class: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ startDate: "asc" }, { endDate: "asc" }],
+      }),
+      this.prisma.schoolYearPeriod.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          branchCode: { in: getVisibleBranchCodes(this.branchCode()) },
+          canceledAt: null,
+          startDate: { lte: end },
+          endDate: { gte: start },
+          schoolYear: {
+            tenantId: this.tenantId(),
+            canceledAt: null,
+          },
+        },
+        include: {
+          schoolYear: true,
+        },
+        orderBy: [{ startDate: "asc" }, { endDate: "asc" }],
       }),
     ]);
 
@@ -831,6 +923,82 @@ export class LessonCalendarsService {
       teacherName: event.teacher?.person?.name || "PROFESSOR",
     }));
 
+    const closureItems = [
+      ...schoolHolidays.map((holiday) => ({
+        id: holiday.id,
+        date: this.formatDateOnly(holiday.date),
+        closureType: holiday.holidayType,
+        closureTypeLabel:
+          holiday.holidayType === "PONTE"
+            ? "PONTE DE FERIADO"
+            : holiday.holidayType === "RECESSO"
+              ? "RECESSO"
+              : "FERIADO",
+        title: holiday.name,
+        description: holiday.appliesTo,
+        schoolYearId: null,
+        schoolYearLabel: String(holiday.year || ""),
+        seriesClassId: null,
+        seriesClassLabel: holiday.appliesTo || "TODAS AS TURMAS",
+      })),
+      ...intervalPeriods.flatMap((period) => {
+        const dates = [];
+        const rangeStart =
+          period.startDate.getTime() > start.getTime()
+            ? period.startDate
+            : start;
+        const rangeEnd =
+          period.endDate.getTime() < end.getTime() ? period.endDate : end;
+        let cursor = this.startOfDay(rangeStart);
+        const limit = this.startOfDay(rangeEnd);
+        while (cursor.getTime() <= limit.getTime()) {
+          dates.push({
+            id: `${period.id}-${this.formatDateOnly(cursor)}`,
+            date: this.formatDateOnly(cursor),
+            closureType: "FERIAS",
+            closureTypeLabel: "PERIODO DE FERIAS",
+            title: "PERIODO DE FERIAS / INTERVALO",
+            description: `${this.formatDateOnly(period.startDate)} A ${this.formatDateOnly(period.endDate)}`,
+            schoolYearId: period.lessonCalendar.schoolYearId,
+            schoolYearLabel: String(period.lessonCalendar.schoolYear?.year || ""),
+            seriesClassId: period.lessonCalendar.seriesClassId,
+            seriesClassLabel: `${period.lessonCalendar.seriesClass?.series?.name || "SEM SÉRIE"} - ${period.lessonCalendar.seriesClass?.class?.name || "SEM TURMA"}`,
+          });
+          cursor = this.addDays(cursor, 1);
+        }
+        return dates;
+      }),
+      ...schoolYearPeriods.flatMap((period) => {
+        const dates = [];
+        const rangeStart =
+          period.startDate.getTime() > start.getTime()
+            ? period.startDate
+            : start;
+        const rangeEnd =
+          period.endDate.getTime() < end.getTime() ? period.endDate : end;
+        let cursor = this.startOfDay(rangeStart);
+        const limit = this.startOfDay(rangeEnd);
+        while (cursor.getTime() <= limit.getTime()) {
+          dates.push({
+            id: `${period.id}-${this.formatDateOnly(cursor)}`,
+            date: this.formatDateOnly(cursor),
+            closureType: period.periodType,
+            closureTypeLabel: getSchoolYearPeriodClosureLabel(
+              period.periodType,
+            ),
+            title: getSchoolYearPeriodClosureTitle(period.periodType),
+            description: period.appliesTo,
+            schoolYearId: period.schoolYearId,
+            schoolYearLabel: String(period.schoolYear?.year || ""),
+            seriesClassId: null,
+            seriesClassLabel: period.appliesTo || "TODAS AS TURMAS",
+          });
+          cursor = this.addDays(cursor, 1);
+        }
+        return dates;
+      }),
+    ];
+
     return {
       selectedDate: this.formatDateOnly(selectedDate),
       rangeStart: this.formatDateOnly(start),
@@ -848,6 +1016,11 @@ export class LessonCalendarsService {
         return `${left.startTime || ""}`.localeCompare(
           `${right.startTime || ""}`,
         );
+      }),
+      calendarClosures: closureItems.sort((left, right) => {
+        const dateCompare = left.date.localeCompare(right.date);
+        if (dateCompare !== 0) return dateCompare;
+        return left.closureTypeLabel.localeCompare(right.closureTypeLabel);
       }),
     };
   }
@@ -1083,6 +1256,102 @@ export class LessonCalendarsService {
     });
 
     return this.mapCalendarSummary(id);
+  }
+
+  async refreshActiveCalendarsFromWeeklySource(
+    schoolYearId: string,
+    seriesClassId: string,
+  ) {
+    let calendars = await this.prisma.lessonCalendar.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        schoolYearId,
+        seriesClassId,
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+      },
+      orderBy: [{ createdAt: "asc" }],
+    });
+
+    if (calendars.length === 0) {
+      const schoolYear = await this.prisma.schoolYear.findFirst({
+        where: {
+          id: schoolYearId,
+          tenantId: this.tenantId(),
+          canceledAt: null,
+        },
+        select: {
+          startDate: true,
+          endDate: true,
+        },
+      });
+
+      if (!schoolYear) {
+        throw new NotFoundException("Ano letivo inválido para esta escola.");
+      }
+
+      const weeklyItems = await this.loadWeeklySource(
+        schoolYearId,
+        seriesClassId,
+      );
+      const period = {
+        periodType: "AULA" as const,
+        startDate: this.normalizeDateOnly(schoolYear.startDate),
+        endDate: this.normalizeDateOnly(schoolYear.endDate),
+        sortOrder: 1,
+      };
+
+      const createdCalendar = await this.prisma.$transaction(async (tx) => {
+        const lessonCalendar = await tx.lessonCalendar.create({
+          data: {
+            tenantId: this.tenantId(),
+            schoolYearId,
+            seriesClassId,
+            lastWeeklySyncAt: new Date(),
+            createdBy: this.userId(),
+          },
+        });
+
+        await tx.lessonCalendarPeriod.create({
+          data: {
+            tenantId: this.tenantId(),
+            lessonCalendarId: lessonCalendar.id,
+            periodType: period.periodType,
+            startDate: period.startDate,
+            endDate: period.endDate,
+            sortOrder: period.sortOrder,
+            createdBy: this.userId(),
+          },
+        });
+
+        const generatedItems = this.buildLessonCalendarItems(
+          lessonCalendar.id,
+          schoolYearId,
+          seriesClassId,
+          [period],
+          weeklyItems,
+        );
+
+        if (generatedItems.length > 0) {
+          await tx.lessonCalendarItem.createMany({
+            data: generatedItems,
+          });
+        }
+
+        return lessonCalendar;
+      });
+
+      calendars = [{ id: createdCalendar.id }];
+    }
+
+    const refreshedCalendars = [];
+    for (const calendar of calendars) {
+      refreshedCalendars.push(await this.refreshWeeklySource(calendar.id));
+    }
+
+    return refreshedCalendars;
   }
 
   async remove(id: string) {

@@ -1,7 +1,9 @@
 import {
   Controller,
   Get,
+  Query,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -11,6 +13,9 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
 import { SchoolYearsService } from "../../application/services/school-years.service";
 import { CreateSchoolYearDto } from "../../application/dto/create-school-year.dto";
 import { UpdateSchoolYearDto } from "../../application/dto/update-school-year.dto";
+import { ImportHolidaysQueryDto } from "../../application/dto/import-holidays-query.dto";
+import { SchoolHolidayQueryDto } from "../../application/dto/school-holiday-query.dto";
+import { SyncSchoolHolidaysDto } from "../../application/dto/sync-school-holidays.dto";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 
@@ -35,6 +40,33 @@ export class SchoolYearsController {
   })
   findAll() {
     return this.schoolYearsService.findAll();
+  }
+
+  @Get("import-holidays")
+  @Permissions("VIEW_SCHOOL_YEARS")
+  @ApiOperation({
+    summary: "Importa feriados externos para conferencia na tela de ano letivo",
+  })
+  importHolidays(@Query() query: ImportHolidaysQueryDto) {
+    return this.schoolYearsService.importHolidays(query);
+  }
+
+  @Get("holidays")
+  @Permissions("VIEW_SCHOOL_YEARS")
+  @ApiOperation({
+    summary: "Lista os feriados cadastrados para o ano letivo",
+  })
+  findHolidays(@Query() query: SchoolHolidayQueryDto) {
+    return this.schoolYearsService.findHolidays(query);
+  }
+
+  @Put("holidays")
+  @Permissions("MANAGE_SCHOOL_YEARS")
+  @ApiOperation({
+    summary: "Salva os feriados cadastrados para o ano letivo",
+  })
+  syncHolidays(@Body() syncSchoolHolidaysDto: SyncSchoolHolidaysDto) {
+    return this.schoolYearsService.syncHolidays(syncSchoolHolidaysDto);
   }
 
   @Get(":id")

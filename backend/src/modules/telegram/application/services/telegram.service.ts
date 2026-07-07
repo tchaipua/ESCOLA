@@ -909,7 +909,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       } else {
         for (const grade of grades) {
           const subject =
-            grade.lessonAssessment.lessonCalendarItem.teacherSubject.subject
+            grade.lessonAssessment.lessonCalendarItem.teacherSubject?.subject
               ?.name || "DISCIPLINA";
           lines.push(
             `- ${subject}: ${this.formatScore(grade.score)} (${grade.lessonAssessment.title}) - ${this.formatDate(grade.releasedAt)}`,
@@ -988,7 +988,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const date = event.eventDate || event.lessonCalendarItem?.lessonDate || null;
       const subject =
         event.subjectNameSnapshot ||
-        event.lessonCalendarItem?.teacherSubject.subject?.name ||
+        event.lessonCalendarItem?.teacherSubject?.subject?.name ||
         "DISCIPLINA";
       lines.push(`${this.formatDate(date)} - ${event.eventType}`);
       lines.push(`${subject}${event.title ? ` - ${event.title}` : ""}`);
@@ -1039,10 +1039,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     const lines = [`Dia ${displayDate} - ${studentName}`, ""];
     for (const item of items) {
-      const subject = item.teacherSubject.subject?.name || "DISCIPLINA";
-      const teacher = item.teacherSubject.teacher?.person?.name || "PROFESSOR";
+      const subject = item.teacherSubject?.subject?.name || "INTERVALO";
+      const teacher = item.teacherSubject?.teacher?.person?.name || "";
       lines.push(`${item.startTime} às ${item.endTime} - ${subject}`);
-      lines.push(`Professor: ${teacher}`);
+      if (teacher) lines.push(`Professor: ${teacher}`);
       const events = item.lessonEvents.filter((event) =>
         ["PROVA", "TRABALHO"].includes(event.eventType),
       );

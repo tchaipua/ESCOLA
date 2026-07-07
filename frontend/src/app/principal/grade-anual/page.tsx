@@ -124,6 +124,19 @@ type AnnualStandaloneEvent = {
     notifyByTelegram?: boolean;
 };
 
+type AnnualCalendarClosure = {
+    id: string;
+    date: string;
+    closureType: string;
+    closureTypeLabel: string;
+    title: string;
+    description?: string | null;
+    schoolYearId?: string | null;
+    schoolYearLabel?: string | null;
+    seriesClassId?: string | null;
+    seriesClassLabel?: string | null;
+};
+
 type ExtraEditableEvent = AnnualStandaloneEvent | (AnnualLessonEvent & {
     seriesClassLabel?: string;
     subjectName?: string;
@@ -211,6 +224,7 @@ const EMPTY_FORM: FormState = {
     seriesClassId: '',
     periods: [],
 };
+const SCHOOL_YEAR_NOT_CONFIGURED_MESSAGE = 'CONFIGURE O ANO LETIVO ANTES DE LANÇAR A GRADE ANUAL.';
 
 const DEFAULT_SORT: GridSortState<AnnualColumnKey> = {
     column: 'schoolYear',
@@ -328,10 +342,11 @@ function formatDateOnly(value: Date) {
 }
 
 function getMonthBeforeDayLabel(value: string) {
-    return new Intl.DateTimeFormat('pt-BR', { month: 'short', day: '2-digit' })
-        .format(parseDateOnly(value))
-        .replace('.', '')
-        .toUpperCase();
+    const parsedDate = parseDateOnly(value);
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    const month = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(parsedDate);
+    const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1);
+    return `${day} - ${capitalizedMonth}`;
 }
 
 function getFullDateLabel(value: string) {
@@ -482,6 +497,7 @@ export default function GradeAnualPage() {
     const [tenant, setTenant] = useState<CurrentTenant | null>(null);
     const [calendarLessonItems, setCalendarLessonItems] = useState<AnnualCalendarLessonItem[]>([]);
     const [standaloneCalendarEvents, setStandaloneCalendarEvents] = useState<AnnualStandaloneEvent[]>([]);
+    const [calendarClosures, setCalendarClosures] = useState<AnnualCalendarClosure[]>([]);
     const [teacherSubjectOptions, setTeacherSubjectOptions] = useState<{ id: string; label: string }[]>([]);
     const [editingLesson, setEditingLesson] = useState<AnnualCalendarLessonItem | null>(null);
     const [lessonEditTeacherSubjectId, setLessonEditTeacherSubjectId] = useState('');
@@ -561,8 +577,16 @@ export default function GradeAnualPage() {
 
     const expandedDayLessonItems = useMemo(() => {
         if (!expandedDayModal) return [];
-        if (!expandedDaySeriesClassId) return expandedDayModal.lessonItems;
-        return expandedDayModal.lessonItems.filter((item) => item.seriesClassId === expandedDaySeriesClassId);
+        const items = expandedDaySeriesClassId
+            ? expandedDayModal.lessonItems.filter((item) => item.seriesClassId === expandedDaySeriesClassId)
+            : expandedDayModal.lessonItems;
+        return items
+            .slice()
+            .sort((left, right) => {
+                const startDiff = left.startTime.localeCompare(right.startTime);
+                if (startDiff !== 0) return startDiff;
+                return left.endTime.localeCompare(right.endTime);
+            });
     }, [expandedDayModal, expandedDaySeriesClassId]);
 
     const expandedDayStandaloneEvents = useMemo(() => {
@@ -645,6 +669,7 @@ export default function GradeAnualPage() {
 
     const hasWeeklySource = (weeklySource?.items.length || 0) > 0;
     const hasClassPeriod = formData.periods.some((period) => period.periodType === 'AULA');
+    const hasConfiguredSchoolYear = schoolYears.length > 0;
     const availableYears = useMemo(() => {
         const years = Array.from(new Set(schoolYears.map((item) => String(item.year)))).sort((left, right) => Number(right) - Number(left));
         if (years.length) return years;
@@ -716,6 +741,17 @@ export default function GradeAnualPage() {
             ),
         [selectedCalendarSeriesClassId, standaloneCalendarEvents, visibleDaySet],
     );
+    const closuresByDate = useMemo(() => {
+        const map = new Map<string, AnnualCalendarClosure[]>();
+        calendarClosures
+            .filter((closure) => !selectedCalendarSeriesClassId || !closure.seriesClassId || closure.seriesClassId === selectedCalendarSeriesClassId)
+            .forEach((closure) => {
+                const current = map.get(closure.date) || [];
+                current.push(closure);
+                map.set(closure.date, current);
+            });
+        return map;
+    }, [calendarClosures, selectedCalendarSeriesClassId]);
     const selectedDayLessonItems = useMemo(
         () => lessonItemsByDate.get(selectedDate) || [],
         [lessonItemsByDate, selectedDate],
@@ -894,10 +930,14 @@ export default function GradeAnualPage() {
             if (!seriesClassesResponse.ok) throw new Error(getApiErrorMessage(seriesClassesData, 'Não foi possível carregar as turmas.'));
             if (!tenantResponse.ok) throw new Error(getApiErrorMessage(tenantData, 'Não foi possível carregar a escola logada.'));
 
+            const normalizedSchoolYears = Array.isArray(schoolYearsData) ? schoolYearsData : [];
             setRecords(Array.isArray(recordsData) ? recordsData : []);
-            setSchoolYears(Array.isArray(schoolYearsData) ? schoolYearsData : []);
+            setSchoolYears(normalizedSchoolYears);
             setSeriesClasses(normalizeSeriesClassOptions(seriesClassesData));
             setTenant(tenantData as CurrentTenant);
+            if (normalizedSchoolYears.length === 0) {
+                setErrorStatus(SCHOOL_YEAR_NOT_CONFIGURED_MESSAGE);
+            }
         } catch (error) {
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar a grade anual.');
         } finally {
@@ -961,10 +1001,12 @@ export default function GradeAnualPage() {
             if (requestId !== calendarEventsRequestRef.current) return;
             setCalendarLessonItems(Array.isArray(data?.lessonItems) ? data.lessonItems : []);
             setStandaloneCalendarEvents(Array.isArray(data?.standaloneEvents) ? data.standaloneEvents : []);
+            setCalendarClosures(Array.isArray(data?.calendarClosures) ? data.calendarClosures : []);
         } catch (error) {
             if (requestId !== calendarEventsRequestRef.current) return;
             setCalendarLessonItems([]);
             setStandaloneCalendarEvents([]);
+            setCalendarClosures([]);
             setErrorStatus(error instanceof Error ? error.message : 'Não foi possível carregar aulas e eventos do calendário anual.');
         }
     };
@@ -1101,6 +1143,11 @@ export default function GradeAnualPage() {
     };
 
     const openCreateModal = () => {
+        if (!hasConfiguredSchoolYear) {
+            setSuccessStatus(null);
+            setErrorStatus(SCHOOL_YEAR_NOT_CONFIGURED_MESSAGE);
+            return;
+        }
         resetForm();
         setIsModalOpen(true);
     };
@@ -1337,6 +1384,9 @@ export default function GradeAnualPage() {
 
             const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, faça login novamente.');
+            if (!hasConfiguredSchoolYear) {
+                throw new Error(SCHOOL_YEAR_NOT_CONFIGURED_MESSAGE);
+            }
             if (!formData.schoolYearId || !formData.seriesClassId) {
                 throw new Error('Selecione o ano letivo e a turma antes de salvar.');
             }
@@ -1766,8 +1816,8 @@ export default function GradeAnualPage() {
                                 <button
                                     type="button"
                                     onClick={openCreateModal}
-                                    title="Cadastrar nova grade anual"
-                                    aria-label="Cadastrar nova grade anual"
+                                    title={hasConfiguredSchoolYear ? 'Cadastrar nova grade anual' : SCHOOL_YEAR_NOT_CONFIGURED_MESSAGE}
+                                    aria-label={hasConfiguredSchoolYear ? 'Cadastrar nova grade anual' : SCHOOL_YEAR_NOT_CONFIGURED_MESSAGE}
                                     className="inline-flex h-10 w-10 shrink-0 self-end items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                                 >
                                     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1914,12 +1964,15 @@ export default function GradeAnualPage() {
                                         {visibleCalendarDays.map((day) => {
                                             const dayLessonItems = lessonItemsByDate.get(day) || [];
                                             const dayStandaloneEvents = standaloneEventsByDate.get(day) || [];
+                                            const dayClosures = closuresByDate.get(day) || [];
+                                            const featuredClosure = dayClosures[0] || null;
+                                            const visibleDayLessonItems = featuredClosure ? [] : dayLessonItems;
                                             const isCurrentMonth = day.startsWith(`${selectedYear}-${selectedMonth}`);
                                             const isSelected = day === selectedDate;
-                                            const provaEvents = dayLessonItems.flatMap((item) => item.events).filter((event) => event.eventType === 'PROVA');
+                                            const provaEvents = visibleDayLessonItems.flatMap((item) => item.events).filter((event) => event.eventType === 'PROVA');
                                             const extraEvents = [
                                                 ...dayStandaloneEvents,
-                                                ...dayLessonItems.flatMap((item) => item.events
+                                                ...visibleDayLessonItems.flatMap((item) => item.events
                                                     .filter((event) => event.eventType !== 'PROVA')
                                                     .map((event) => ({
                                                         ...event,
@@ -1949,11 +2002,6 @@ export default function GradeAnualPage() {
                                                             {getMonthBeforeDayLabel(day)}
                                                         </span>
                                                         <div className="flex flex-wrap items-center justify-end gap-1">
-                                                            {dayLessonItems.length ? (
-                                                                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">
-                                                                    {dayLessonItems.length} aula(s)
-                                                                </span>
-                                                            ) : null}
                                                             {dayStandaloneEvents.length ? (
                                                                 <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-rose-700">
                                                                     {dayStandaloneEvents.length} evento(s)
@@ -1962,10 +2010,14 @@ export default function GradeAnualPage() {
                                                         </div>
                                                     </button>
 
-                                                    {dayLessonItems.length > 0 ? (
-                                                        <div className="mt-2 inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
-                                                            {dayLessonItems.length} horário(s) da escola
-                                                        </div>
+                                                    {visibleDayLessonItems.length > 0 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOpenDay(day, visibleDayLessonItems, dayStandaloneEvents)}
+                                                            className="mt-2 inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                                                        >
+                                                            {visibleDayLessonItems.length} aula(s)
+                                                        </button>
                                                     ) : null}
 
                                                     {featuredExtraEvent ? (
@@ -1983,8 +2035,27 @@ export default function GradeAnualPage() {
                                                         </button>
                                                     ) : null}
 
+                                                    {featuredClosure ? (
+                                                        <div className="mt-2 rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-3 text-left shadow-sm">
+                                                            <div className="inline-flex rounded-full bg-amber-500 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-sm">
+                                                                Sem aula
+                                                            </div>
+                                                            <div className="mt-2 text-xs font-extrabold uppercase text-amber-900">
+                                                                {featuredClosure.closureTypeLabel}
+                                                            </div>
+                                                            <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                                                                {featuredClosure.title}
+                                                            </div>
+                                                            {dayClosures.length > 1 ? (
+                                                                <div className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">
+                                                                    +{dayClosures.length - 1} ocorrência(s)
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : null}
+
                                                     <div className="mt-3 flex flex-1 flex-col gap-2">
-                                                        {dayLessonItems.slice(0, 3).map((entry) => {
+                                                        {visibleDayLessonItems.slice(0, 3).map((entry) => {
                                                             const provaEvent = entry.events.find((event) => event.eventType === 'PROVA');
                                                             const hasProva = Boolean(provaEvent);
                                                             const extraEvent = entry.events.find((event) => event.eventType !== 'PROVA');
@@ -1995,11 +2066,11 @@ export default function GradeAnualPage() {
                                                                     key={entry.id}
                                                                     role="button"
                                                                 tabIndex={0}
-                                                                onClick={() => handleOpenDay(day, dayLessonItems, dayStandaloneEvents)}
+                                                                onClick={() => handleOpenDay(day, visibleDayLessonItems, dayStandaloneEvents)}
                                                                 onKeyDown={(event) => {
                                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                                         event.preventDefault();
-                                                                        handleOpenDay(day, dayLessonItems, dayStandaloneEvents);
+                                                                        handleOpenDay(day, visibleDayLessonItems, dayStandaloneEvents);
                                                                     }
                                                                 }}
                                                                     className="rounded-2xl border border-blue-200 bg-[#eef5ff] text-blue-800 px-3 py-3 text-left shadow-sm transition cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-white"
@@ -2045,16 +2116,16 @@ export default function GradeAnualPage() {
                                                                 </div>
                                                             );
                                                         })}
-                                                        {dayLessonItems.length > 3 ? (
+                                                        {visibleDayLessonItems.length > 3 ? (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleOpenDay(day, dayLessonItems, dayStandaloneEvents)}
+                                                                onClick={() => handleOpenDay(day, visibleDayLessonItems, dayStandaloneEvents)}
                                                                 className="rounded-full border border-blue-600 bg-blue-600 px-3 py-2 text-center text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-sm transition hover:bg-blue-700"
                                                             >
-                                                                +{dayLessonItems.length - 3} horário(s)
+                                                                +{visibleDayLessonItems.length - 3} horário(s)
                                                             </button>
                                                         ) : null}
-                                                        {!dayLessonItems.length && !featuredExtraEvent && !provaEvents.length ? (
+                                                        {!visibleDayLessonItems.length && !featuredExtraEvent && !provaEvents.length && !featuredClosure ? (
                                                             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
                                                                 Sem turmas nesse dia
                                                             </div>
@@ -2122,69 +2193,78 @@ export default function GradeAnualPage() {
 
                             {expandedDayLessonItems.length ? (
                                 <div className="overflow-x-auto pb-2">
-                                    <div className="grid min-w-[1180px] grid-cols-7 gap-3">
-                                        {expandedDayLessonItems.map((item) => {
+                                    <div className="grid min-w-[980px] grid-cols-4 gap-3">
+                                        {expandedDayLessonItems.map((item, index) => {
                                             const isIntervalItem = !item.teacherSubjectId || item.subjectName.toUpperCase().includes('INTERVALO');
 
                                             return (
-                                                <article
-                                                    key={item.id}
-                                                    className={`flex min-h-[198px] flex-col rounded-2xl border p-2.5 shadow-sm ${
-                                                        isIntervalItem
-                                                            ? 'border-emerald-200 bg-emerald-50'
-                                                            : 'border-slate-200 bg-white'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">
-                                                            {item.startTime} ÀS {item.endTime}
-                                                        </p>
-                                                        <RecordStatusIndicator active />
-                                                    </div>
+                                                <div key={item.id} className="flex min-w-0 items-center gap-2">
+                                                    <article
+                                                        className={`flex min-h-[198px] min-w-0 flex-1 flex-col rounded-2xl border p-2.5 shadow-sm ${
+                                                            isIntervalItem
+                                                                ? 'border-emerald-200 bg-emerald-50'
+                                                                : 'border-slate-200 bg-white'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">
+                                                                {item.startTime} ÀS {item.endTime}
+                                                            </p>
+                                                            <RecordStatusIndicator active />
+                                                        </div>
 
-                                                    <div className="mt-2 min-h-[88px]">
-                                                        {isIntervalItem ? (
-                                                            <div className="rounded-xl bg-emerald-500 px-3 py-2 text-center text-sm font-extrabold uppercase tracking-[0.25em] text-white">
-                                                                INTERVALO
+                                                        <div className="mt-2 min-h-[88px]">
+                                                            {isIntervalItem ? (
+                                                                <div className="rounded-xl bg-emerald-500 px-3 py-2 text-center text-sm font-extrabold uppercase tracking-[0.25em] text-white">
+                                                                    INTERVALO
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <p className="text-sm font-bold uppercase leading-snug text-[#153a6a]">
+                                                                        {item.subjectName}
+                                                                    </p>
+                                                                    <p className="mt-2 text-[11px] font-semibold uppercase leading-snug text-slate-500">
+                                                                        {item.seriesClassLabel}
+                                                                    </p>
+                                                                    <p className="text-[11px] font-semibold uppercase leading-snug text-slate-500">
+                                                                        PROFESSOR {item.teacherName}
+                                                                    </p>
+                                                                </>
+                                                            )}
+                                                        </div>
+
+                                                        {item.events.length ? (
+                                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                                {item.events.map((event) => (
+                                                                    <span
+                                                                        key={event.id}
+                                                                        className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
+                                                                            event.eventType === 'PROVA'
+                                                                                ? 'bg-red-100 text-red-700'
+                                                                                : event.eventType === 'TRABALHO'
+                                                                                    ? 'bg-amber-100 text-amber-700'
+                                                                                    : 'bg-blue-100 text-blue-700'
+                                                                        }`}
+                                                                    >
+                                                                        {event.title || event.eventTypeLabel}
+                                                                    </span>
+                                                                ))}
                                                             </div>
-                                                        ) : (
-                                                            <>
-                                                                <p className="text-sm font-bold uppercase leading-snug text-[#153a6a]">
-                                                                    {item.subjectName}
-                                                                </p>
-                                                                <p className="mt-2 text-[11px] font-semibold uppercase leading-snug text-slate-500">
-                                                                    {item.seriesClassLabel}
-                                                                </p>
-                                                                <p className="text-[11px] font-semibold uppercase leading-snug text-slate-500">
-                                                                    PROFESSOR {item.teacherName}
-                                                                </p>
-                                                            </>
-                                                        )}
-                                                    </div>
+                                                        ) : null}
 
-                                                    {item.events.length ? (
-                                                        <div className="mt-2 flex flex-wrap gap-1">
-                                                            {item.events.map((event) => (
-                                                                <span
-                                                                    key={event.id}
-                                                                    className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${
-                                                                        event.eventType === 'PROVA'
-                                                                            ? 'bg-red-100 text-red-700'
-                                                                            : event.eventType === 'TRABALHO'
-                                                                                ? 'bg-amber-100 text-amber-700'
-                                                                                : 'bg-blue-100 text-blue-700'
-                                                                    }`}
-                                                                >
-                                                                    {event.title || event.eventTypeLabel}
-                                                                </span>
-                                                            ))}
+                                                        <div className="mt-auto pt-3">
+                                                            {renderWeekdayAdministrativeEventButtons(item, isIntervalItem)}
+                                                        </div>
+                                                    </article>
+                                                    {index < expandedDayLessonItems.length - 1 ? (
+                                                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+                                                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M5 12h14" />
+                                                                <path d="m13 6 6 6-6 6" />
+                                                            </svg>
                                                         </div>
                                                     ) : null}
-
-                                                    <div className="mt-auto pt-3">
-                                                        {renderWeekdayAdministrativeEventButtons(item, isIntervalItem)}
-                                                    </div>
-                                                </article>
+                                                </div>
                                             );
                                         })}
                                     </div>

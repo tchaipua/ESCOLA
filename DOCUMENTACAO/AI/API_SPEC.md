@@ -502,6 +502,113 @@ Continuam existindo e agora atuam como area operacional especializada:
 - respeitam tenant e auditoria
 - mantem campos especificos do papel
 
+## Anos letivos e feriados
+
+### POST/PATCH `/school-years`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Permissao: `MANAGE_SCHOOL_YEARS`
+- Uso: cria ou atualiza ano letivo na tela `PRINCIPAL_CONFIGURA_ANO_LETIVO`.
+- Regra: o cadastro respeita tenant/filial, auditoria e cancelamento logico.
+- Regra: os dias com aula indicam em quais dias da semana a escola normalmente possui aula naquele ano letivo.
+- Padrao para novos anos: segunda a sexta com aula; sabado e domingo sem aula.
+
+Body resumido:
+
+```json
+{
+  "branchCode": 1,
+  "year": 2026,
+  "startDate": "2026-02-02",
+  "endDate": "2026-12-18",
+  "isActive": true,
+  "monday": true,
+  "tuesday": true,
+  "wednesday": true,
+  "thursday": true,
+  "friday": true,
+  "saturday": false,
+  "sunday": false
+}
+```
+
+### GET `/school-years/import-holidays`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Permissao: `VIEW_SCHOOL_YEARS`
+- Uso: consulta feriados nacionais na BrasilAPI para preencher a aba de feriados da tela `PRINCIPAL_CONFIGURA_ANO_LETIVO`.
+- Regra: a consulta externa nao exige chave e retorna somente feriados nacionais; a persistencia da lista conferida pela tela ocorre em `PUT /school-years/holidays`.
+
+Query string:
+
+```text
+/school-years/import-holidays?year=2026
+```
+
+- A importacao usa BrasilAPI sem chave para feriados nacionais.
+- Nao ha importacao automatica estadual ou municipal; esses feriados devem ser cadastrados manualmente no sistema.
+
+Resposta resumida:
+
+```json
+{
+  "scope": "NACIONAL",
+  "year": 2026,
+  "source": "BRASIL_API",
+  "holidays": [
+    {
+      "date": "2026-01-01",
+      "name": "CONFRATERNIZACAO MUNDIAL",
+      "type": "NACIONAL",
+      "source": "BRASIL_API"
+    }
+  ]
+}
+```
+
+### GET `/school-years/holidays`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Permissao: `VIEW_SCHOOL_YEARS`
+- Uso: lista os feriados cadastrados para o ano letivo na escola/filial atual.
+- Regra: a consulta respeita `tenantId`, mostra feriados comuns (`branchCode = 0`) e da filial atual, e ignora registros cancelados logicamente.
+
+Query string:
+
+```text
+/school-years/holidays?year=2026
+```
+
+### PUT `/school-years/holidays`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
+- Permissao: `MANAGE_SCHOOL_YEARS`
+- Uso: salva a lista de feriados da aba `Feriados` para o ano letivo.
+- Regra: os feriados enviados sao gravados/reativados; feriados do mesmo ano/filial que nao vierem no payload sao cancelados logicamente com `canceledAt/canceledBy`.
+- Regra: textos sao normalizados em uppercase e cada feriado deve pertencer ao ano informado.
+- Regra: o cadastro de feriado nao trata turma; feriados valem para o calendario da escola/filial no ano informado.
+
+Body resumido:
+
+```json
+{
+  "branchCode": 1,
+  "year": 2026,
+  "holidays": [
+    {
+      "date": "2026-01-01",
+      "name": "CONFRATERNIZACAO MUNDIAL",
+      "type": "NACIONAL",
+      "source": "BRASIL_API"
+    }
+  ]
+}
+```
+
 ## Grade horaria por turma
 
 ### Endpoints principais

@@ -111,6 +111,7 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_RESPONSAVEIS', match: 'prefix', physicalPath: escolaAppPath('principal', 'responsaveis', 'page.tsx') },
   { screenId: 'PRINCIPAL_PROFESSORES', match: 'prefix', physicalPath: escolaAppPath('principal', 'professores', 'page.tsx') },
   { screenId: 'PRINCIPAL_DISCIPLINAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'disciplinas', 'page.tsx') },
+  { screenId: 'PRINCIPAL_CONFIGURA_ANO_LETIVO', match: 'prefix', physicalPath: escolaAppPath('principal', 'configura-ano-letivo', 'page.tsx') },
   { screenId: 'PRINCIPAL_DASHBOARD', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'page.tsx') },
   { screenId: 'PRINCIPAL_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
   { screenId: 'PRINCIPAL_PESSOAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'pessoas', 'page.tsx') },

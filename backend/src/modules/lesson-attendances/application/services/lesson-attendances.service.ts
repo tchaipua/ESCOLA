@@ -200,9 +200,9 @@ export class LessonAttendancesService {
         lessonDate: lessonItem.lessonDate,
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
-        subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
+        subjectName: lessonItem.teacherSubject?.subject?.name || "DISCIPLINA",
         teacherName:
-          lessonItem.teacherSubject.teacher?.person?.name || "PROFESSOR",
+          lessonItem.teacherSubject?.teacher?.person?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         shift: lessonItem.seriesClass.class?.shift || null,
@@ -384,7 +384,7 @@ export class LessonAttendancesService {
             endTime: lessonItem.endTime,
             schoolYearId: lessonItem.schoolYearId,
             seriesClassId: lessonItem.seriesClassId,
-            teacherSubject: lessonItem.teacherSubject,
+            teacherSubject: lessonItem.teacherSubject!,
             seriesClass: lessonItem.seriesClass,
           },
           attendanceStudents: dto.attendances.map((attendance) => ({

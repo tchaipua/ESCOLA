@@ -1,0 +1,7 @@
+ALTER TABLE "school_years" ADD COLUMN "monday" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "school_years" ADD COLUMN "tuesday" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "school_years" ADD COLUMN "wednesday" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "school_years" ADD COLUMN "thursday" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "school_years" ADD COLUMN "friday" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "school_years" ADD COLUMN "saturday" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "school_years" ADD COLUMN "sunday" BOOLEAN NOT NULL DEFAULT false;

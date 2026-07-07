@@ -10,12 +10,16 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import { LessonCalendarsService } from "../../../lesson-calendars/application/services/lesson-calendars.service";
 import { CreateClassScheduleItemDto } from "../dto/create-class-schedule-item.dto";
 import { UpdateClassScheduleItemDto } from "../dto/update-class-schedule-item.dto";
 
 @Injectable()
 export class ClassScheduleItemsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly lessonCalendarsService: LessonCalendarsService,
+  ) {}
 
   private static readonly DAY_ORDER: Record<string, number> = {
     SEGUNDA: 1,
@@ -441,6 +445,16 @@ export class ClassScheduleItemsService {
     };
   }
 
+  private async refreshAnnualGrade(
+    schoolYearId: string,
+    seriesClassId: string,
+  ) {
+    await this.lessonCalendarsService.refreshActiveCalendarsFromWeeklySource(
+      schoolYearId,
+      seriesClassId,
+    );
+  }
+
   private async findCurrentEnrollment(studentId: string) {
     return this.prisma.enrollment.findFirst({
       where: {
@@ -664,6 +678,8 @@ export class ClassScheduleItemsService {
         include: this.includeRelations(),
       });
 
+      await this.refreshAnnualGrade(createDto.schoolYearId, createDto.seriesClassId);
+
       return this.attachDeletionMetadata(item);
     } catch (error) {
       this.rethrowPersistenceError(error);
@@ -788,6 +804,17 @@ export class ClassScheduleItemsService {
       });
     } catch (error) {
       this.rethrowPersistenceError(error);
+    }
+
+    await this.refreshAnnualGrade(schoolYearId, seriesClassId);
+    if (
+      currentItem.schoolYearId !== schoolYearId ||
+      currentItem.seriesClassId !== seriesClassId
+    ) {
+      await this.refreshAnnualGrade(
+        currentItem.schoolYearId,
+        currentItem.seriesClassId,
+      );
     }
 
     return this.findOne(id);

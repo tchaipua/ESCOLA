@@ -73,7 +73,10 @@ type SeriesClassSummary = {
 
 type TeacherSummary = {
     id: string;
-    name: string;
+    name?: string | null;
+    person?: {
+        name?: string | null;
+    } | null;
 };
 
 type SubjectSummary = {
@@ -83,8 +86,8 @@ type SubjectSummary = {
 
 type TeacherSubjectRecord = {
     id: string;
-    teacherId: string;
-    subjectId: string;
+    teacherId?: string;
+    subjectId?: string;
     teacher?: TeacherSummary | null;
     subject?: SubjectSummary | null;
 };
@@ -171,6 +174,57 @@ const dayOrder = DAY_OPTIONS.reduce<Record<string, number>>((accumulator, option
     accumulator[option.value] = index;
     return accumulator;
 }, {});
+const DAY_CARD_STYLES: Record<DayValue, { wrapper: string; header: string; title: string; action: string; empty: string }> = {
+    SEGUNDA: {
+        wrapper: 'border-blue-200 bg-blue-50',
+        header: 'border-blue-200 bg-blue-600',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-blue-700 hover:bg-blue-50',
+        empty: 'border-blue-200 bg-white/80 text-blue-400',
+    },
+    TERCA: {
+        wrapper: 'border-emerald-200 bg-emerald-50',
+        header: 'border-emerald-200 bg-emerald-600',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-emerald-700 hover:bg-emerald-50',
+        empty: 'border-emerald-200 bg-white/80 text-emerald-500',
+    },
+    QUARTA: {
+        wrapper: 'border-amber-200 bg-amber-50',
+        header: 'border-amber-200 bg-amber-500',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-amber-700 hover:bg-amber-50',
+        empty: 'border-amber-200 bg-white/80 text-amber-500',
+    },
+    QUINTA: {
+        wrapper: 'border-cyan-200 bg-cyan-50',
+        header: 'border-cyan-200 bg-cyan-600',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-cyan-700 hover:bg-cyan-50',
+        empty: 'border-cyan-200 bg-white/80 text-cyan-500',
+    },
+    SEXTA: {
+        wrapper: 'border-rose-200 bg-rose-50',
+        header: 'border-rose-200 bg-rose-600',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-rose-700 hover:bg-rose-50',
+        empty: 'border-rose-200 bg-white/80 text-rose-500',
+    },
+    SABADO: {
+        wrapper: 'border-violet-200 bg-violet-50',
+        header: 'border-violet-200 bg-violet-600',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-violet-700 hover:bg-violet-50',
+        empty: 'border-violet-200 bg-white/80 text-violet-500',
+    },
+    DOMINGO: {
+        wrapper: 'border-slate-300 bg-slate-100',
+        header: 'border-slate-300 bg-slate-700',
+        title: 'text-white',
+        action: 'border-white/60 bg-white/95 text-slate-700 hover:bg-slate-50',
+        empty: 'border-slate-300 bg-white/80 text-slate-500',
+    },
+};
 const GRID_COLUMNS: ConfigurableGridColumn<ClassScheduleItemRecord, GridColumnKey>[] = [
     {
         key: 'schoolYear',
@@ -213,8 +267,8 @@ const GRID_COLUMNS: ConfigurableGridColumn<ClassScheduleItemRecord, GridColumnKe
     {
         key: 'teacher',
         label: 'Professor',
-        getValue: (row) => row.teacherSubject?.teacher?.name || '---',
-        getSortValue: (row) => row.teacherSubject?.teacher?.name || '',
+        getValue: (row) => getTeacherName(row.teacherSubject?.teacher) || '---',
+        getSortValue: (row) => getTeacherName(row.teacherSubject?.teacher),
     },
     {
         key: 'startTime',
@@ -276,6 +330,18 @@ function getGridSeriesClassValue(seriesClass?: SeriesClassSummary | ClassSchedul
     return `${className} - ${seriesName}`;
 }
 
+function getTeacherName(teacher?: TeacherSummary | null) {
+    return teacher?.name || teacher?.person?.name || '';
+}
+
+function getTeacherSubjectTeacherId(item?: TeacherSubjectRecord | null) {
+    return item?.teacherId || item?.teacher?.id || '';
+}
+
+function getTeacherSubjectSubjectId(item?: TeacherSubjectRecord | null) {
+    return item?.subjectId || item?.subject?.id || '';
+}
+
 function parseShiftPeriods(shift?: string | null) {
     return String(shift || '')
         .split(',')
@@ -301,7 +367,7 @@ function timeRangesOverlap(leftStartTime: string, leftEndTime: string, rightStar
 
 function getScheduleConflictLabel(item: ClassScheduleItemRecord) {
     const subjectName = item.teacherSubject?.subject?.name || 'INTERVALO';
-    const teacherName = item.teacherSubject?.teacher?.name || 'SEM PROFESSOR';
+    const teacherName = getTeacherName(item.teacherSubject?.teacher) || 'SEM PROFESSOR';
     return `${item.startTime} às ${item.endTime} - ${subjectName} / ${teacherName}`;
 }
 
@@ -513,11 +579,11 @@ export default function GradeHorariaPlanejadaPage() {
     const allTeachers = useMemo(() => {
         const teacherMap = new Map<string, TeacherSummary>();
         teacherSubjects.forEach((item) => {
-            if (item.teacher?.id && item.teacher?.name) {
+            if (item.teacher?.id && getTeacherName(item.teacher)) {
                 teacherMap.set(item.teacher.id, item.teacher);
             }
         });
-        return Array.from(teacherMap.values()).sort((left, right) => left.name.localeCompare(right.name));
+        return Array.from(teacherMap.values()).sort((left, right) => getTeacherName(left).localeCompare(getTeacherName(right)));
     }, [teacherSubjects]);
 
     const filteredTeachers = useMemo(() => {
@@ -525,18 +591,18 @@ export default function GradeHorariaPlanejadaPage() {
 
         const teacherMap = new Map<string, TeacherSummary>();
         teacherSubjects.forEach((item) => {
-            if (item.subjectId !== formData.subjectId) return;
-            if (item.teacher?.id && item.teacher?.name) {
+            if (getTeacherSubjectSubjectId(item) !== formData.subjectId) return;
+            if (item.teacher?.id && getTeacherName(item.teacher)) {
                 teacherMap.set(item.teacher.id, item.teacher);
             }
         });
 
-        return Array.from(teacherMap.values()).sort((left, right) => left.name.localeCompare(right.name));
+        return Array.from(teacherMap.values()).sort((left, right) => getTeacherName(left).localeCompare(getTeacherName(right)));
     }, [allTeachers, formData.subjectId, teacherSubjects]);
 
     const selectedTeacherSubject = useMemo(
         () =>
-            teacherSubjects.find((item) => item.subjectId === formData.subjectId && item.teacherId === formData.teacherId) || null,
+            teacherSubjects.find((item) => getTeacherSubjectSubjectId(item) === formData.subjectId && getTeacherSubjectTeacherId(item) === formData.teacherId) || null,
         [formData.subjectId, formData.teacherId, teacherSubjects],
     );
 
@@ -550,33 +616,20 @@ export default function GradeHorariaPlanejadaPage() {
         );
     }, [editingId, formData.dayOfWeek, formData.schoolYearId, formData.seriesClassId, items]);
 
+    const sameDaySeriesTimeCards = useMemo(
+        () =>
+            sameDaySeriesTimeItems
+                .slice()
+                .sort((left, right) => {
+                    const startDiff = left.startTime.localeCompare(right.startTime);
+                    if (startDiff !== 0) return startDiff;
+                    return left.endTime.localeCompare(right.endTime);
+                }),
+        [sameDaySeriesTimeItems],
+    );
+
     const isIntervalSchedule = formData.scheduleOption === 'INTERVALO';
-
-    const matchingTeacherSubjectItems = useMemo(() => {
-        if (!formData.schoolYearId || !formData.seriesClassId || !formData.dayOfWeek || !selectedTeacherSubject) {
-            return [];
-        }
-
-        return items
-            .filter(
-                (item) =>
-                    item.id !== editingId
-                    && !item.canceledAt
-                    && item.schoolYear?.id === formData.schoolYearId
-                    && item.seriesClass?.id === formData.seriesClassId
-                    && item.dayOfWeek === formData.dayOfWeek
-                    && item.teacherSubject?.id === selectedTeacherSubject.id,
-            )
-            .slice()
-            .sort((left, right) => left.startTime.localeCompare(right.startTime));
-    }, [
-        editingId,
-        formData.dayOfWeek,
-        formData.schoolYearId,
-        formData.seriesClassId,
-        items,
-        selectedTeacherSubject,
-    ]);
+    const hasLessonBindingSelection = Boolean(formData.subjectId || formData.teacherId);
 
     const filteredItems = useMemo(() => {
         const matchingItems = items
@@ -586,7 +639,7 @@ export default function GradeHorariaPlanejadaPage() {
                 && (!columnFilters.seriesClassId || item.seriesClass?.id === columnFilters.seriesClassId)
                 && (!columnFilters.dayOfWeek || item.dayOfWeek === columnFilters.dayOfWeek)
                 && (!columnFilters.subjectId || item.teacherSubject?.subject?.id === columnFilters.subjectId)
-                && (!columnFilters.teacherId || item.teacherSubject?.teacher?.id === columnFilters.teacherId)
+                && (!columnFilters.teacherId || getTeacherSubjectTeacherId(item.teacherSubject) === columnFilters.teacherId)
                 && (!columnFilters.startTime || item.startTime === columnFilters.startTime)
                 && (!columnFilters.endTime || item.endTime === columnFilters.endTime),
             )
@@ -669,7 +722,7 @@ export default function GradeHorariaPlanejadaPage() {
                 if (startDiff !== 0) return startDiff;
                 const subjectDiff = (left.teacherSubject?.subject?.name || '').localeCompare(right.teacherSubject?.subject?.name || '');
                 if (subjectDiff !== 0) return subjectDiff;
-                return (left.teacherSubject?.teacher?.name || '').localeCompare(right.teacherSubject?.teacher?.name || '');
+                return getTeacherName(left.teacherSubject?.teacher).localeCompare(getTeacherName(right.teacherSubject?.teacher));
             });
     }, [formData.endTime, formData.startTime, sameDaySeriesTimeItems]);
 
@@ -684,7 +737,7 @@ export default function GradeHorariaPlanejadaPage() {
             && item.schoolYear?.id === formData.schoolYearId
             && item.dayOfWeek === formData.dayOfWeek
             && item.seriesClass?.id !== formData.seriesClassId
-            && item.teacherSubject?.teacher?.id === formData.teacherId,
+            && getTeacherSubjectTeacherId(item.teacherSubject) === formData.teacherId,
         );
     }, [editingId, formData.dayOfWeek, formData.schoolYearId, formData.seriesClassId, formData.teacherId, items]);
 
@@ -734,10 +787,10 @@ export default function GradeHorariaPlanejadaPage() {
         const validStoredYear = years.some((item) => item.id === stored.schoolYearId) ? stored.schoolYearId || '' : '';
         const validStoredSeriesClass = links.some((item) => item.id === stored.seriesClassId) ? stored.seriesClassId || '' : '';
         const validStoredDay = DAY_OPTIONS.some((item) => item.value === stored.dayOfWeek) ? stored.dayOfWeek || 'SEGUNDA' : 'SEGUNDA';
-        const validStoredSubject = assignments.some((item) => item.subjectId === stored.subjectId) ? stored.subjectId || '' : '';
-        const validStoredTeacher = assignments.some((item) => item.teacherId === stored.teacherId) ? stored.teacherId || '' : '';
+        const validStoredSubject = assignments.some((item) => getTeacherSubjectSubjectId(item) === stored.subjectId) ? stored.subjectId || '' : '';
+        const validStoredTeacher = assignments.some((item) => getTeacherSubjectTeacherId(item) === stored.teacherId) ? stored.teacherId || '' : '';
         const isValidStoredPair = validStoredSubject && validStoredTeacher
-            ? assignments.some((item) => item.subjectId === validStoredSubject && item.teacherId === validStoredTeacher)
+            ? assignments.some((item) => getTeacherSubjectSubjectId(item) === validStoredSubject && getTeacherSubjectTeacherId(item) === validStoredTeacher)
             : false;
 
         return {
@@ -1018,7 +1071,7 @@ export default function GradeHorariaPlanejadaPage() {
                     title: 'Docência',
                     items: [
                         { label: 'Matéria', value: item.teacherSubject?.subject?.name || 'Não informada' },
-                        { label: 'Professor', value: item.teacherSubject?.teacher?.name || 'Não informado' },
+                        { label: 'Professor', value: getTeacherName(item.teacherSubject?.teacher) || 'Não informado' },
                         { label: 'Vínculo professor x matéria', value: item.teacherSubject?.id || 'Não informado' },
                         { label: 'Status', value: item.canceledAt ? 'INATIVO' : 'ATIVO' },
                     ],
@@ -1101,16 +1154,18 @@ export default function GradeHorariaPlanejadaPage() {
                     ...current,
                     subjectId,
                     teacherId: '',
+                    scheduleOption: subjectId ? 'AULA' : current.scheduleOption,
                 };
             }
             const canKeepTeacher = teacherSubjects.some(
-                (item) => item.subjectId === subjectId && item.teacherId === current.teacherId,
+                (item) => getTeacherSubjectSubjectId(item) === subjectId && getTeacherSubjectTeacherId(item) === current.teacherId,
             );
 
             return {
                 ...current,
                 subjectId,
                 teacherId: canKeepTeacher ? current.teacherId : '',
+                scheduleOption: subjectId ? 'AULA' : current.scheduleOption,
             };
         });
     };
@@ -1120,6 +1175,7 @@ export default function GradeHorariaPlanejadaPage() {
         setFormData((current) => ({
             ...current,
             teacherId,
+            scheduleOption: teacherId ? 'AULA' : current.scheduleOption,
         }));
     };
 
@@ -1166,7 +1222,7 @@ export default function GradeHorariaPlanejadaPage() {
             seriesClassId: item.seriesClass?.id || '',
             dayOfWeek: item.dayOfWeek,
             subjectId: item.teacherSubject?.subject?.id || '',
-            teacherId: item.teacherSubject?.teacher?.id || '',
+            teacherId: getTeacherSubjectTeacherId(item.teacherSubject),
             scheduleOption: item.teacherSubject ? 'AULA' : 'INTERVALO',
             startTime: item.startTime,
             endTime: item.endTime,
@@ -1419,27 +1475,28 @@ export default function GradeHorariaPlanejadaPage() {
                         <div className="grid grid-cols-1 gap-4">
                             {DAY_OPTIONS.map((day) => {
                                 const dayItems = scheduleItemsByDay[day.value];
+                                const dayStyle = DAY_CARD_STYLES[day.value];
                                 return (
-                                    <div key={day.value} className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50 shadow-sm">
-                                        <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3">
+                                    <div key={day.value} className={`flex flex-col gap-3 rounded-3xl border shadow-sm ${dayStyle.wrapper}`}>
+                                        <div className={`flex flex-col gap-2 rounded-t-3xl border-b px-4 py-3 ${dayStyle.header}`}>
                                             <div className="flex items-center gap-2">
-                                                <span className="text-sm font-semibold uppercase tracking-wide text-slate-800">{day.label}</span>
+                                                <span className={`text-sm font-semibold uppercase tracking-wide ${dayStyle.title}`}>{day.label}</span>
                                             </div>
                                             <div className="flex items-center">
                                                 {canManage ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => openCreateForDay(day.value)}
-                                                        className="rounded-2xl border border-blue-500/70 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700 shadow-sm shadow-blue-200/60 transition hover:bg-blue-100"
+                                                        className={`rounded-2xl border px-3 py-1 text-[11px] font-bold uppercase tracking-wider shadow-sm transition ${dayStyle.action}`}
                                                     >
                                                         Novo lançamento
                                                     </button>
                                                 ) : null}
                                             </div>
                                         </div>
-                                        <div className="flex flex-wrap gap-2 px-3 pb-3">
+                                        <div className="grid grid-flow-col grid-rows-2 gap-2 overflow-x-auto px-3 pb-3">
                                             {dayItems.length === 0 ? (
-                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-3 py-4 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                                <div className={`row-span-2 flex min-h-[116px] min-w-[180px] items-center justify-center rounded-2xl border border-dashed px-3 py-4 text-center text-[11px] font-semibold uppercase tracking-wider ${dayStyle.empty}`}>
                                                     Sem lançamentos
                                                 </div>
                                             ) : (
@@ -1447,7 +1504,7 @@ export default function GradeHorariaPlanejadaPage() {
                                                     const isIntervalItem = !item.teacherSubject;
 
                                                     return (
-                                                    <article key={`${day.value}-${item.id}`} className={`flex min-w-[120px] flex-1 flex-col space-y-2 rounded-2xl border p-2 shadow-sm ${isIntervalItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} ${item.canceledAt ? 'opacity-80' : ''}`}>
+                                                    <article key={`${day.value}-${item.id}`} className={`flex min-h-[116px] w-[210px] flex-col space-y-2 rounded-2xl border p-2 shadow-sm ${isIntervalItem ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} ${item.canceledAt ? 'opacity-80' : ''}`}>
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div>
                                                                 <p className="text-sm font-semibold uppercase tracking-wide text-slate-900">{item.startTime} às {item.endTime}</p>
@@ -1462,7 +1519,7 @@ export default function GradeHorariaPlanejadaPage() {
                                                             ) : (
                                                                 <>
                                                                     <p className="text-sm font-bold text-[#153a6a]">{item.teacherSubject?.subject?.name || '---'}</p>
-                                                                    <p className="text-xs uppercase tracking-wide text-slate-500">{item.teacherSubject?.teacher?.name || '---'}</p>
+                                                                    <p className="text-xs uppercase tracking-wide text-slate-500">{getTeacherName(item.teacherSubject?.teacher) || '---'}</p>
                                                                 </>
                                                             )}
                                                         </div>
@@ -1582,7 +1639,7 @@ export default function GradeHorariaPlanejadaPage() {
                                         <select value={formData.teacherId} onChange={(event) => handleTeacherChange(event.target.value)} className={inputClass}>
                                             <option value="">Selecione o professor</option>
                                             {filteredTeachers.map((item) => (
-                                                <option key={item.id} value={item.id}>{item.name}</option>
+                                                <option key={item.id} value={item.id}>{getTeacherName(item)}</option>
                                             ))}
                                         </select>
                                     </label>
@@ -1598,7 +1655,7 @@ export default function GradeHorariaPlanejadaPage() {
                                         disabled={!formData.seriesClassId}
                                     >
                                         <option value="AULA">AULA</option>
-                                        <option value="INTERVALO">INTERVALO</option>
+                                        {!hasLessonBindingSelection ? <option value="INTERVALO">INTERVALO</option> : null}
                                     </select>
                                 </label>
 
@@ -1629,13 +1686,45 @@ export default function GradeHorariaPlanejadaPage() {
                                 Para lançar intervalo, selecione o tipo INTERVALO. O intervalo fica vinculado à turma, ao dia da semana e ao horário informado, mas não exige matéria nem professor.
                             </div>
 
-                            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm font-medium text-slate-600">
-                                Os últimos valores usados de <span className="font-bold text-slate-800">ano letivo</span>, <span className="font-bold text-slate-800">turma</span>, <span className="font-bold text-slate-800">dia da semana</span>, <span className="font-bold text-slate-800">matéria</span> e <span className="font-bold text-slate-800">professor</span> ficam memorizados para agilizar os próximos lançamentos.
-                            </div>
-
-                            {selectedSeriesClass ? (
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
-                                    Turma selecionada: <span className="font-bold text-slate-800">{getSeriesClassLabel(selectedSeriesClass)}</span>. Turno cadastrado: <span className="font-bold text-slate-800">{getShiftSummary(selectedSeriesClass.class?.shift)}</span>.
+                            {formData.schoolYearId && formData.seriesClassId && formData.dayOfWeek ? (
+                                <div className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">
+                                            Lançamentos da turma neste dia
+                                        </p>
+                                        <span className="rounded-full bg-blue-600 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                                            {getDayLabel(formData.dayOfWeek)}
+                                        </span>
+                                    </div>
+                                    {sameDaySeriesTimeCards.length > 0 ? (
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                            {sameDaySeriesTimeCards.map((item) => {
+                                                const isIntervalItem = !item.teacherSubject;
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        className={`min-h-[128px] rounded-2xl border px-4 py-3 shadow-sm ${isIntervalItem ? 'border-emerald-300 bg-emerald-500 text-white' : 'border-blue-200 bg-white text-slate-800'}`}
+                                                    >
+                                                        <p className={`text-[11px] font-black uppercase tracking-[0.18em] ${isIntervalItem ? 'text-white' : 'text-blue-600'}`}>
+                                                            {item.startTime} às {item.endTime}
+                                                        </p>
+                                                        <p className={`mt-2 text-sm font-black uppercase ${isIntervalItem ? 'text-white' : 'text-slate-800'}`}>
+                                                            {isIntervalItem ? 'INTERVALO' : item.teacherSubject?.subject?.name || '---'}
+                                                        </p>
+                                                        {!isIntervalItem ? (
+                                                            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                                                                {getTeacherName(item.teacherSubject?.teacher) || '---'}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-blue-200 bg-white/70 px-4 py-5 text-center text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                                            Sem lançamentos nesse dia
+                                        </div>
+                                    )}
                                 </div>
                             ) : null}
 
@@ -1657,22 +1746,6 @@ export default function GradeHorariaPlanejadaPage() {
                                 </div>
                             ) : null}
 
-                            {formData.schoolYearId && formData.seriesClassId && formData.dayOfWeek && formData.subjectId && formData.teacherId && !isIntervalSchedule ? (
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
-                                    {matchingTeacherSubjectItems.length > 0
-                                        ? `Já existem ${matchingTeacherSubjectItems.length} lançamento(s) para esta combinação de ano, turma, dia, matéria e professor. Horários já cadastrados: ${matchingTeacherSubjectItems.map((item) => `${item.startTime} às ${item.endTime}`).join(' | ')}.`
-                                        : 'Ainda não existe lançamento para esta combinação de ano, turma, dia, matéria e professor.'}
-                                </div>
-                            ) : null}
-
-                            {formData.seriesClassId && formData.schoolYearId ? (
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium text-slate-600">
-                                    {sameDaySeriesTimeItems.length > 0
-                                        ? `Esta turma já tem ${sameDaySeriesTimeItems.length} lançamento(s) ativo(s) neste dia. O sistema bloqueia horários sobrepostos.`
-                                        : 'Esta turma ainda não tem lançamento ativo neste dia.'}
-                                </div>
-                            ) : null}
-
                             {!hasSeriesClassOptions || !hasTeacherSubjectOptions ? (
                                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-800">
                                     {!hasSeriesClassOptions ? 'Nenhuma turma disponível nesta escola. Cadastre séries e turmas antes de montar a grade.' : null}
@@ -1682,13 +1755,13 @@ export default function GradeHorariaPlanejadaPage() {
 
                             <div className="space-y-3 border-t border-slate-100 pt-5">
                                   <div className="flex items-center justify-between gap-3">
-                                      <button type="button" onClick={closeModal} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50">Fechar</button>
+                                      <button type="button" onClick={closeModal} className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-500">Fechar</button>
                                       <button type="submit" disabled={!canSubmitForm} className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300">
                                           {isSaving ? 'Salvando...' : 'Salvar'}
                                       </button>
-                                  </div>
+                                </div>
                                 <div className="flex justify-end">
-                                    <div className="w-full max-w-sm">
+                                    <div className="w-full max-w-2xl">
                                         <ScreenNameCopy
                                             screenId={editingId ? GRADE_HORARIA_EDIT_MODAL_SCREEN_ID : GRADE_HORARIA_NEW_MODAL_SCREEN_ID}
                                             label="NOME DA TELA"

@@ -53,6 +53,8 @@ model Tenant {
   users                       User[]
   people                      Person[]
   schoolYears                 SchoolYear[]
+  schoolYearPeriods           SchoolYearPeriod[]
+  schoolHolidays              SchoolHoliday[]
   classes                     Class[]
   series                      Series[]
   seriesClasses               SeriesClass[]
@@ -390,6 +392,13 @@ model SchoolYear {
   startDate  DateTime
   endDate    DateTime
   isActive   Boolean  @default(false)
+  monday     Boolean  @default(true)
+  tuesday    Boolean  @default(true)
+  wednesday  Boolean  @default(true)
+  thursday   Boolean  @default(true)
+  friday     Boolean  @default(true)
+  saturday   Boolean  @default(false)
+  sunday     Boolean  @default(false)
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -403,9 +412,63 @@ model SchoolYear {
   classScheduleItems  ClassScheduleItem[]
   lessonCalendars     LessonCalendar[]
   lessonCalendarItems LessonCalendarItem[]
+  periods             SchoolYearPeriod[]
 
   @@unique([tenantId, branchCode, year])
   @@map("school_years")
+}
+
+model SchoolYearPeriod {
+  id           String   @id @default(uuid())
+  tenantId     String
+  schoolYearId String
+  branchCode   Int      @default(1)
+  periodType   String
+  startDate    DateTime
+  endDate      DateTime
+  appliesTo    String   @default("TODAS AS TURMAS")
+  sortOrder    Int      @default(0)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, branchCode, schoolYearId])
+  @@index([startDate, endDate])
+  @@map("school_year_periods")
+}
+
+model SchoolHoliday {
+  id          String   @id @default(uuid())
+  tenantId    String
+  branchCode  Int      @default(1)
+  year        Int
+  date        DateTime
+  name        String
+  holidayType String
+  appliesTo   String   @default("TODAS AS TURMAS")
+  source      String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, branchCode, year])
+  @@index([date])
+  @@map("school_holidays")
 }
 
 model Class {
@@ -850,7 +913,7 @@ model LessonCalendarItem {
   lessonCalendarId    String
   schoolYearId        String
   seriesClassId       String
-  teacherSubjectId    String
+  teacherSubjectId    String?
   classScheduleItemId String?
   lessonDate          DateTime
   dayOfWeek           String
@@ -869,7 +932,7 @@ model LessonCalendarItem {
   lessonCalendar    LessonCalendar     @relation(fields: [lessonCalendarId], references: [id], onDelete: Restrict)
   schoolYear        SchoolYear         @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   seriesClass       SeriesClass        @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
-  teacherSubject    TeacherSubject     @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+  teacherSubject    TeacherSubject?    @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
   classScheduleItem ClassScheduleItem? @relation(fields: [classScheduleItemId], references: [id], onDelete: Restrict)
   lessonEvents      LessonEvent[]
   lessonAssessments LessonAssessment[]

@@ -5,5 +5,6 @@ import { LessonCalendarsController } from "./infrastructure/controllers/lesson-c
 @Module({
   controllers: [LessonCalendarsController],
   providers: [LessonCalendarsService],
+  exports: [LessonCalendarsService],
 })
 export class LessonCalendarsModule {}

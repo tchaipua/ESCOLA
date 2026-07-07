@@ -1281,7 +1281,7 @@ export class SharedProfilesService {
         where: { tenantId },
         select: {
           id: true,
-          person: { select: { name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
+          person: { select: { id: true, name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
           canceledAt: true,
           updatedAt: true,
         },
@@ -1292,7 +1292,7 @@ export class SharedProfilesService {
         where: { tenantId },
         select: {
           id: true,
-          person: { select: { name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
+          person: { select: { id: true, name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
           canceledAt: true,
           updatedAt: true,
         },
@@ -1303,7 +1303,7 @@ export class SharedProfilesService {
         where: { tenantId },
         select: {
           id: true,
-          person: { select: { name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
+          person: { select: { id: true, name: true, cpf: true, cnpj: true, phone: true, whatsapp: true, cellphone1: true, cellphone2: true, email: true } },
           canceledAt: true,
           updatedAt: true,
         },
@@ -1435,7 +1435,7 @@ export class SharedProfilesService {
 
     teachers.forEach((record) => {
       upsertSuggestion({
-        id: `TEACHER:${record.id}`,
+        id: record.person?.id ? `PERSON:${record.person.id}` : `TEACHER:${record.id}`,
         name: record.person?.name || "PROFESSOR",
         roles: ["PROFESSOR"],
         cpf: record.person?.cpf ?? null,
@@ -1452,7 +1452,7 @@ export class SharedProfilesService {
 
     students.forEach((record) => {
       upsertSuggestion({
-        id: `STUDENT:${record.id}`,
+        id: record.person?.id ? `PERSON:${record.person.id}` : `STUDENT:${record.id}`,
         name: record.person?.name || "ALUNO",
         roles: ["ALUNO"],
         cpf: record.person?.cpf ?? null,
@@ -1469,7 +1469,7 @@ export class SharedProfilesService {
 
     guardians.forEach((record) => {
       upsertSuggestion({
-        id: `GUARDIAN:${record.id}`,
+        id: record.person?.id ? `PERSON:${record.person.id}` : `GUARDIAN:${record.id}`,
         name: record.person?.name || "RESPONSAVEL",
         roles: ["RESPONSAVEL"],
         cpf: record.person?.cpf ?? null,
@@ -1509,6 +1509,7 @@ export class SharedProfilesService {
       })
       .slice(0, safeLimit)
       .map((item) => ({
+        id: item.id,
         name: item.name,
         roles: Array.from(new Set(item.roles)),
         cpf: item.cpf,

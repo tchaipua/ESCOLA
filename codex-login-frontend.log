@@ -1,0 +1,259 @@
+
+> frontend@0.1.0 dev
+> next dev
+
+▲ Next.js 16.1.6 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.100.134:3000
+
+✓ Starting...
+✓ Ready in 1215ms
+ GET / 200 in 953ms (compile: 814ms, render: 139ms)
+ GET /principal 200 in 60ms (compile: 46ms, render: 14ms)
+ GET /principal/grade-anual 200 in 269ms (compile: 257ms, render: 12ms)
+ GET /principal/configura-ano-letivo 200 in 35ms (compile: 25ms, render: 10ms)
+ GET /principal/turmas 200 in 178ms (compile: 165ms, render: 13ms)
+ GET /principal/configura-ano-letivo 200 in 11ms (compile: 2ms, render: 9ms)
+✓ Compiled in 81ms
+✓ Compiled in 60ms
+✓ Compiled in 70ms
+ GET /principal/configura-ano-letivo 200 in 221ms (compile: 75ms, render: 146ms)
+✓ Compiled in 63ms
+✓ Compiled in 57ms
+✓ Compiled in 65ms
+✓ Compiled in 60ms
+✓ Compiled in 62ms
+✓ Compiled in 110ms
+ GET /principal/configura-ano-letivo 200 in 85ms (compile: 60ms, render: 25ms)
+ GET /principal/grade 200 in 222ms (compile: 207ms, render: 15ms)
+ GET /principal/configura-ano-letivo 200 in 12ms (compile: 2ms, render: 10ms)
+✓ Compiled in 91ms
+✓ Compiled in 59ms
+ GET /principal/configura-ano-letivo 200 in 85ms (compile: 61ms, render: 25ms)
+ GET /login 404 in 126ms (compile: 76ms, render: 49ms)
+ GET / 200 in 42ms (compile: 6ms, render: 36ms)
+ GET /principal 200 in 14ms (compile: 3ms, render: 11ms)
+ GET /principal/configura-ano-letivo 200 in 11ms (compile: 1853µs, render: 9ms)
+✓ Compiled in 52ms
+✓ Compiled in 47ms
+✓ Compiled in 52ms
+✓ Compiled in 79ms
+✓ Compiled in 48ms
+ GET /principal/configura-ano-letivo 200 in 141ms (compile: 51ms, render: 90ms)
+✓ Compiled in 360ms
+✓ Compiled in 53ms
+✓ Compiled in 47ms
+✓ Compiled in 45ms
+✓ Compiled in 76ms
+✓ Compiled in 56ms
+✓ Compiled in 45ms
+ GET /principal/configura-ano-letivo 200 in 287ms (compile: 264ms, render: 23ms)
+✓ Compiled in 51ms
+✓ Compiled in 101ms
+✓ Compiled in 52ms
+✓ Compiled in 48ms
+✓ Compiled in 51ms
+✓ Compiled in 49ms
+✓ Compiled in 78ms
+✓ Compiled in 59ms
+✓ Compiled in 53ms
+✓ Compiled in 51ms
+✓ Compiled in 47ms
+✓ Compiled in 45ms
+✓ Compiled in 49ms
+ GET /principal/professores 200 in 217ms (compile: 202ms, render: 15ms)
+✓ Compiled in 55ms
+ GET /principal/configura-ano-letivo 200 in 210ms (compile: 193ms, render: 17ms)
+ GET /principal/professores 200 in 131ms (compile: 122ms, render: 10ms)
+ GET /principal/grade 200 in 143ms (compile: 130ms, render: 13ms)
+ GET /principal/configura-ano-letivo 200 in 148ms (compile: 138ms, render: 10ms)
+✓ Compiled in 96ms
+ GET /principal/professores 200 in 184ms (compile: 174ms, render: 11ms)
+ GET /principal/configura-ano-letivo 200 in 201ms (compile: 184ms, render: 16ms)
+✓ Compiled in 53ms
+✓ Compiled in 92ms
+✓ Compiled in 45ms
+✓ Compiled in 49ms
+✓ Compiled in 49ms
+ GET /principal/grade 200 in 152ms (compile: 138ms, render: 14ms)
+ GET /principal/grade 200 in 272ms (compile: 175ms, render: 97ms)
+ GET / 200 in 12ms (compile: 1954µs, render: 10ms)
+ GET / 200 in 28ms (compile: 2ms, render: 26ms)
+ GET / 200 in 23ms (compile: 1774µs, render: 21ms)
+ GET /principal 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /principal/configura-ano-letivo 200 in 212ms (compile: 194ms, render: 18ms)
+ GET /principal/grade 200 in 123ms (compile: 114ms, render: 9ms)
+✓ Compiled in 54ms
+ GET /principal/grade 200 in 329ms (compile: 231ms, render: 98ms)
+ GET / 200 in 9ms (compile: 1526µs, render: 7ms)
+ GET /principal/grade 200 in 177ms (compile: 148ms, render: 29ms)
+✓ Compiled in 45ms
+ GET /principal/grade 200 in 324ms (compile: 233ms, render: 91ms)
+ GET / 200 in 12ms (compile: 1913µs, render: 10ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 301ms (compile: 202ms, render: 99ms)
+ GET / 200 in 10ms (compile: 2ms, render: 8ms)
+✓ Compiled in 45ms
+ GET /principal/grade 200 in 289ms (compile: 197ms, render: 92ms)
+ GET / 200 in 13ms (compile: 3ms, render: 10ms)
+✓ Compiled in 46ms
+ GET /principal/grade 200 in 306ms (compile: 210ms, render: 96ms)
+ GET / 200 in 10ms (compile: 1697µs, render: 8ms)
+ GET /principal/grade 200 in 184ms (compile: 152ms, render: 32ms)
+✓ Compiled in 49ms
+ GET /principal/grade 200 in 332ms (compile: 215ms, render: 117ms)
+ GET / 200 in 11ms (compile: 1940µs, render: 9ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 298ms (compile: 203ms, render: 95ms)
+ GET / 200 in 10ms (compile: 2ms, render: 8ms)
+ GET /principal/grade 200 in 406ms (compile: 270ms, render: 136ms)
+✓ Compiled in 57ms
+ GET /principal/grade 200 in 468ms (compile: 327ms, render: 141ms)
+ GET / 200 in 14ms (compile: 3ms, render: 11ms)
+✓ Compiled in 86ms
+ GET /principal/grade 200 in 457ms (compile: 332ms, render: 125ms)
+ GET / 200 in 15ms (compile: 2ms, render: 13ms)
+ GET /principal/grade 200 in 180ms (compile: 152ms, render: 28ms)
+✓ Compiled in 55ms
+ GET /principal/grade 200 in 334ms (compile: 238ms, render: 95ms)
+ GET / 200 in 9ms (compile: 1754µs, render: 7ms)
+✓ Compiled in 51ms
+ GET /principal/grade 200 in 301ms (compile: 204ms, render: 97ms)
+ GET / 200 in 13ms (compile: 1661µs, render: 11ms)
+ GET /principal/grade 200 in 164ms (compile: 135ms, render: 29ms)
+ GET /principal/grade-anual 200 in 146ms (compile: 136ms, render: 11ms)
+ GET /principal/configura-ano-letivo 200 in 142ms (compile: 129ms, render: 14ms)
+ GET /principal/grade 200 in 135ms (compile: 126ms, render: 10ms)
+✓ Compiled in 58ms
+ GET /principal/grade 200 in 318ms (compile: 218ms, render: 100ms)
+ GET / 200 in 9ms (compile: 1593µs, render: 8ms)
+✓ Compiled in 92ms
+ GET /principal/grade 200 in 292ms (compile: 195ms, render: 97ms)
+ GET / 200 in 13ms (compile: 1919µs, render: 11ms)
+✓ Compiled in 49ms
+ GET /principal/grade 200 in 307ms (compile: 204ms, render: 103ms)
+ GET / 200 in 9ms (compile: 1684µs, render: 7ms)
+✓ Compiled in 46ms
+ GET /principal/grade 200 in 300ms (compile: 210ms, render: 90ms)
+ GET / 200 in 11ms (compile: 1532µs, render: 9ms)
+ GET /principal/grade 200 in 168ms (compile: 140ms, render: 28ms)
+ GET /principal/professores 200 in 154ms (compile: 138ms, render: 16ms)
+ GET /principal/configura-ano-letivo 200 in 134ms (compile: 121ms, render: 13ms)
+ GET /principal/grade 200 in 127ms (compile: 118ms, render: 9ms)
+ GET /principal/configura-ano-letivo 200 in 136ms (compile: 126ms, render: 10ms)
+ GET /principal/grade 200 in 125ms (compile: 117ms, render: 9ms)
+ GET /principal/professores 200 in 122ms (compile: 112ms, render: 10ms)
+ GET /principal/configura-ano-letivo 200 in 136ms (compile: 126ms, render: 10ms)
+ GET /principal/grade 200 in 126ms (compile: 117ms, render: 9ms)
+✓ Compiled in 90ms
+ GET /principal/grade 200 in 308ms (compile: 218ms, render: 90ms)
+ GET / 200 in 10ms (compile: 1953µs, render: 8ms)
+✓ Compiled in 40ms
+ GET /principal/grade 200 in 278ms (compile: 187ms, render: 91ms)
+ GET / 200 in 9ms (compile: 1800µs, render: 7ms)
+ GET /principal/grade 200 in 163ms (compile: 136ms, render: 26ms)
+✓ Compiled in 44ms
+ GET /principal/grade 200 in 312ms (compile: 220ms, render: 93ms)
+ GET / 200 in 8ms (compile: 1671µs, render: 7ms)
+✓ Compiled in 94ms
+ GET /principal/grade 200 in 303ms (compile: 198ms, render: 105ms)
+ GET / 200 in 10ms (compile: 1847µs, render: 8ms)
+✓ Compiled in 93ms
+ GET /principal/grade 200 in 281ms (compile: 190ms, render: 91ms)
+ GET / 200 in 9ms (compile: 1916µs, render: 7ms)
+ GET /principal/grade-anual 200 in 137ms (compile: 126ms, render: 12ms)
+ GET /principal/grade 200 in 126ms (compile: 115ms, render: 10ms)
+ GET /principal/grade-anual 200 in 132ms (compile: 123ms, render: 9ms)
+ GET /principal/grade 200 in 131ms (compile: 122ms, render: 10ms)
+ GET /principal/grade-anual 200 in 129ms (compile: 119ms, render: 10ms)
+ GET /principal/configura-ano-letivo 200 in 134ms (compile: 121ms, render: 13ms)
+ GET /principal/grade 200 in 127ms (compile: 118ms, render: 9ms)
+ GET /principal/grade-anual 200 in 122ms (compile: 113ms, render: 9ms)
+ GET /principal/grade-anual 200 in 128ms (compile: 120ms, render: 9ms)
+ GET /principal/grade-anual 200 in 211ms (compile: 141ms, render: 70ms)
+✓ Compiled in 52ms
+ GET /principal/grade 200 in 168ms (compile: 131ms, render: 37ms)
+ GET / 200 in 10ms (compile: 1582µs, render: 8ms)
+ GET /principal/grade-anual 200 in 271ms (compile: 183ms, render: 88ms)
+✓ Compiled in 49ms
+ GET /principal/grade 200 in 162ms (compile: 131ms, render: 31ms)
+ GET / 200 in 9ms (compile: 1585µs, render: 7ms)
+✓ Compiled in 80ms
+ GET /principal/grade 200 in 165ms (compile: 133ms, render: 32ms)
+ GET / 200 in 12ms (compile: 2ms, render: 10ms)
+✓ Compiled in 98ms
+ GET /principal/grade 200 in 209ms (compile: 180ms, render: 29ms)
+ GET / 200 in 8ms (compile: 1688µs, render: 7ms)
+ GET /principal/grade 200 in 124ms (compile: 114ms, render: 11ms)
+ GET /principal/grade-anual 200 in 190ms (compile: 173ms, render: 17ms)
+✓ Compiled in 82ms
+ GET /principal/grade 200 in 151ms (compile: 122ms, render: 29ms)
+ GET / 200 in 9ms (compile: 1761µs, render: 7ms)
+✓ Compiled in 59ms
+ GET /principal/grade 200 in 168ms (compile: 138ms, render: 30ms)
+ GET / 200 in 9ms (compile: 1573µs, render: 7ms)
+ GET /principal/configura-ano-letivo 200 in 142ms (compile: 129ms, render: 13ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 186ms (compile: 150ms, render: 36ms)
+ GET / 200 in 11ms (compile: 1632µs, render: 9ms)
+ GET /principal/grade 200 in 120ms (compile: 111ms, render: 9ms)
+ GET /principal/grade-anual 200 in 196ms (compile: 180ms, render: 16ms)
+ GET /principal/configura-ano-letivo 200 in 177ms (compile: 162ms, render: 15ms)
+ GET /principal/configura-ano-letivo 200 in 123ms (compile: 114ms, render: 10ms)
+ GET /principal/configura-ano-letivo 200 in 129ms (compile: 120ms, render: 9ms)
+ GET /principal/turmas 200 in 132ms (compile: 124ms, render: 9ms)
+ GET /principal/configura-ano-letivo 200 in 123ms (compile: 115ms, render: 8ms)
+✓ Compiled in 42ms
+ GET /principal/grade 200 in 192ms (compile: 159ms, render: 33ms)
+ GET / 200 in 8ms (compile: 1569µs, render: 7ms)
+ GET /principal/grade 200 in 123ms (compile: 113ms, render: 10ms)
+ GET /principal/grade-anual 200 in 122ms (compile: 110ms, render: 12ms)
+✓ Compiled in 45ms
+ GET /principal/grade 200 in 164ms (compile: 124ms, render: 40ms)
+ GET / 200 in 10ms (compile: 2ms, render: 8ms)
+✓ Compiled in 48ms
+ GET /principal/grade 200 in 161ms (compile: 133ms, render: 28ms)
+ GET / 200 in 12ms (compile: 1739µs, render: 11ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 167ms (compile: 134ms, render: 33ms)
+ GET / 200 in 9ms (compile: 1563µs, render: 7ms)
+✓ Compiled in 45ms
+ GET /principal/grade 200 in 175ms (compile: 133ms, render: 42ms)
+ GET / 200 in 12ms (compile: 1719µs, render: 10ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 161ms (compile: 129ms, render: 32ms)
+ GET / 200 in 10ms (compile: 1960µs, render: 8ms)
+✓ Compiled in 40ms
+ GET /principal/grade 200 in 157ms (compile: 128ms, render: 29ms)
+ GET / 200 in 15ms (compile: 1538µs, render: 14ms)
+ GET /principal/grade 200 in 118ms (compile: 108ms, render: 10ms)
+ GET /principal/configura-ano-letivo 200 in 189ms (compile: 173ms, render: 16ms)
+ GET /principal/grade 200 in 136ms (compile: 127ms, render: 9ms)
+ GET /principal/grade-anual 200 in 180ms (compile: 164ms, render: 16ms)
+ GET /principal/grade-anual 200 in 156ms (compile: 144ms, render: 11ms)
+ GET /principal/grade-anual 200 in 130ms (compile: 121ms, render: 9ms)
+ GET /principal/turmas 200 in 299ms (compile: 283ms, render: 16ms)
+ GET /principal/grade-anual 200 in 146ms (compile: 137ms, render: 9ms)
+✓ Compiled in 48ms
+ GET /principal/grade 200 in 172ms (compile: 138ms, render: 35ms)
+ GET / 200 in 10ms (compile: 1949µs, render: 8ms)
+ GET /principal/configura-ano-letivo 200 in 191ms (compile: 174ms, render: 17ms)
+✓ Compiled in 49ms
+ GET /principal/grade 200 in 163ms (compile: 129ms, render: 33ms)
+ GET / 200 in 9ms (compile: 1773µs, render: 8ms)
+ GET /principal/turmas 200 in 134ms (compile: 124ms, render: 10ms)
+ GET /principal/configura-ano-letivo 200 in 198ms (compile: 182ms, render: 16ms)
+✓ Compiled in 52ms
+ GET /principal/grade 200 in 174ms (compile: 141ms, render: 33ms)
+ GET / 200 in 9ms (compile: 1622µs, render: 8ms)
+✓ Compiled in 47ms
+ GET /principal/grade 200 in 177ms (compile: 146ms, render: 31ms)
+ GET / 200 in 14ms (compile: 1457µs, render: 13ms)
+✓ Compiled in 42ms
+ GET /principal/grade 200 in 164ms (compile: 134ms, render: 30ms)
+ GET / 200 in 12ms (compile: 1603µs, render: 10ms)
+ GET /principal/turmas 200 in 132ms (compile: 122ms, render: 10ms)
+ GET /principal/configura-ano-letivo 200 in 260ms (compile: 240ms, render: 20ms)
+✓ Compiled in 156ms
+ GET /principal/grade 200 in 440ms (compile: 358ms, render: 82ms)
+ GET / 200 in 24ms (compile: 6ms, render: 17ms)

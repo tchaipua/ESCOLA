@@ -211,8 +211,8 @@ export class LessonEventsService {
       dayOfWeek: item.dayOfWeek,
       startTime: item.startTime,
       endTime: item.endTime,
-      subjectName: item.teacherSubject.subject?.name || "DISCIPLINA",
-      teacherName: item.teacherSubject.teacher?.person?.name || "PROFESSOR",
+      subjectName: item.teacherSubject?.subject?.name || "DISCIPLINA",
+      teacherName: item.teacherSubject?.teacher?.person?.name || "PROFESSOR",
       seriesName: item.seriesClass.series?.name || "SEM SÉRIE",
       className: item.seriesClass.class?.name || "SEM TURMA",
       shift: item.seriesClass.class?.shift || null,
@@ -841,7 +841,10 @@ export class LessonEventsService {
     const dispatchResult =
       await this.notificationsService.dispatchLessonEventNotifications({
         lessonEvent,
-        lessonItem,
+        lessonItem: {
+          ...lessonItem,
+          teacherSubject: lessonItem.teacherSubject!,
+        },
         action: "CREATE",
       });
 

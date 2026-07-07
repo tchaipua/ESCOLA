@@ -340,13 +340,14 @@ function buildFinanceFrameUrl(
   return `${normalizedBaseUrl}${path}?${params.toString()}`;
 }
 
-export default function PrincipalFinanceiroSectionPage({
+export function PrincipalFinanceiroSectionPageContent({
   params,
 }: {
-  params: Promise<{ section: string }>;
+  params: Promise<{ section: string; subpath?: string[] }>;
 }) {
   const [isMounted, setIsMounted] = useState(false);
   const [section, setSection] = useState<string | null>(null);
+  const [subpath, setSubpath] = useState<string[]>([]);
   const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
   const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
   const [branchStockParameters, setBranchStockParameters] =
@@ -369,7 +370,10 @@ export default function PrincipalFinanceiroSectionPage({
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIsMounted(true), 0);
-    void params.then((value) => setSection(String(value.section || '').toLowerCase()));
+    void params.then((value) => {
+      setSection(String(value.section || '').toLowerCase());
+      setSubpath(Array.isArray(value.subpath) ? value.subpath.map((item) => String(item || '').toLowerCase()) : []);
+    });
     return () => window.clearTimeout(timer);
   }, [params]);
 
@@ -381,15 +385,16 @@ export default function PrincipalFinanceiroSectionPage({
   const iframeSrc = useMemo(() => {
     if (!sectionConfig) return null;
     if (section === 'contas-a-receber') return null;
+    const nestedPath = subpath.length ? `/${subpath.join('/')}` : '';
 
     return buildFinanceFrameUrl(
       FINANCEIRO_FRONTEND_URL,
-      sectionConfig.path,
+      `${sectionConfig.path}${nestedPath}`,
       authContext,
       financeBranding,
       branchStockParameters,
     );
-  }, [authContext, branchStockParameters, financeBranding, section, sectionConfig]);
+  }, [authContext, branchStockParameters, financeBranding, section, sectionConfig, subpath]);
 
   useEffect(() => {
     const financeiroOrigin = (() => {
@@ -557,7 +562,8 @@ export default function PrincipalFinanceiroSectionPage({
         postResult({
           ok: true,
           results: responsePayload.map((person: any, index: number) => ({
-            id: `${person.cpf || person.email || person.name || index}`,
+            id: `${person.id || person.cpf || person.email || person.name || index}`,
+            registeredPersonId: person.id || null,
             name: person.name || '',
             document: person.cpf || person.cnpj || null,
             email: person.email || null,
@@ -847,3 +853,5 @@ export default function PrincipalFinanceiroSectionPage({
     </div>
   );
 }
+
+export default PrincipalFinanceiroSectionPageContent;

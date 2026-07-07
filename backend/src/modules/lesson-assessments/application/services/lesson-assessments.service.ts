@@ -215,9 +215,9 @@ export class LessonAssessmentsService {
         lessonDate: lessonItem.lessonDate,
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
-        subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
+        subjectName: lessonItem.teacherSubject?.subject?.name || "DISCIPLINA",
         teacherName:
-          lessonItem.teacherSubject.teacher?.person?.name || "PROFESSOR",
+          lessonItem.teacherSubject?.teacher?.person?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         shift: lessonItem.seriesClass.class?.shift || null,
@@ -321,12 +321,12 @@ export class LessonAssessmentsService {
 
     const teacherSubjects = Array.from(
       new Map(
-        lessonItemsByYear.map((item) => [
+        lessonItemsByYear.filter((item) => item.teacherSubject).map((item) => [
           item.teacherSubjectId,
           {
             id: item.teacherSubjectId,
-            subjectName: item.teacherSubject.subject.name,
-            label: item.teacherSubject.subject.name,
+            subjectName: item.teacherSubject!.subject.name,
+            label: item.teacherSubject!.subject.name,
           },
         ]),
       ).values(),
@@ -587,9 +587,9 @@ export class LessonAssessmentsService {
         lessonDate: lessonItem.lessonDate,
         startTime: lessonItem.startTime,
         endTime: lessonItem.endTime,
-        subjectName: lessonItem.teacherSubject.subject?.name || "DISCIPLINA",
+        subjectName: lessonItem.teacherSubject?.subject?.name || "DISCIPLINA",
         teacherName:
-          lessonItem.teacherSubject.teacher?.person?.name || "PROFESSOR",
+          lessonItem.teacherSubject?.teacher?.person?.name || "PROFESSOR",
         seriesName: lessonItem.seriesClass.series?.name || "SEM SÉRIE",
         className: lessonItem.seriesClass.class?.name || "SEM TURMA",
         schoolYearId: lessonItem.schoolYearId,
@@ -777,7 +777,10 @@ export class LessonAssessmentsService {
             notifyGuardians: result.notifyGuardians,
             notifyByEmail: result.notifyByEmail,
           },
-          lessonItem,
+          lessonItem: {
+            ...lessonItem,
+            teacherSubject: lessonItem.teacherSubject!,
+          },
           gradedStudents: assessedStudents,
         });
 

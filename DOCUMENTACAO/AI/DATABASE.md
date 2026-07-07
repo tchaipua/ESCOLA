@@ -263,6 +263,33 @@ Cancelamento logico continua obrigatorio.
 - `lesson_events` e `lesson_assessments` possuem `notifyByEmail`.
 - `notifications.emailedAt` registra quando a notificacao foi enviada por e-mail.
 
+## Feriados escolares
+
+### `school_holidays`
+
+Tabela oficial para os feriados cadastrados na tela `PRINCIPAL_CONFIGURA_ANO_LETIVO`.
+
+Campos principais:
+
+- `tenantId`
+- `branchCode`
+- `year`
+- `date`
+- `name`
+- `holidayType`
+- `appliesTo`
+- `source`
+- colunas de auditoria e cancelamento logico
+
+Regras:
+
+- feriados nacionais podem ser consultados na BrasilAPI sem chave e salvos pela tela.
+- feriados estaduais, municipais, facultativos e escolares sao cadastrados manualmente.
+- a tela nao trata turma no cadastro de feriados; o feriado vale para o calendario da escola/filial no ano.
+- consultas respeitam `tenantId` e mostram registros da filial atual e registros comuns (`branchCode = 0`).
+- remover feriado na tela cancela logicamente o registro; nao existe delete fisico operacional.
+- textos sao normalizados em uppercase.
+
 ## Grade horaria semanal
 
 ### `class_schedule_items`
