@@ -180,6 +180,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [embeddedScreenContextLabel, setEmbeddedScreenContextLabel] = useState<string | null>(null);
     const [screenAuditOverride, setScreenAuditOverride] = useState<ScreenAuditOverride | null>(null);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+    const [isPeopleControlMenuOpen, setPeopleControlMenuOpen] = useState(false);
     const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -855,20 +856,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
-            href: '/principal/pessoas',
-            label: 'Pessoas',
-            allowWhen:
-                currentRole === 'SOFTHOUSE_ADMIN' ||
-                currentRole === 'ADMIN' ||
-                currentRole === 'SECRETARIA' ||
-                currentRole === 'COORDENACAO',
-            icon: (
-                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V19a4 4 0 00-5.356-3.761M17 20H7m10 0v-1c0-1.657-1.343-3-3-3H10a3 3 0 00-3 3v1m0 0H2v-1a4 4 0 015.356-3.761M7 20v-1m10-9a4 4 0 11-8 0 4 4 0 018 0zm-10 0a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-            ),
-        },
-        {
             href: '/principal/comunicacoes',
             label: 'Comunicações',
             allowWhen:
@@ -881,6 +868,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             icon: (
                 <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.223-3.668C3.455 15.022 3 13.557 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+            ),
+        },
+        {
+            href: '/principal/pessoas',
+            label: 'Pessoas',
+            allowWhen:
+                currentRole === 'SOFTHOUSE_ADMIN' ||
+                currentRole === 'ADMIN' ||
+                currentRole === 'SECRETARIA' ||
+                currentRole === 'COORDENACAO',
+            icon: (
+                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V19a4 4 0 00-5.356-3.761M17 20H7m10 0v-1c0-1.657-1.343-3-3-3H10a3 3 0 00-3 3v1m0 0H2v-1a4 4 0 015.356-3.761M7 20v-1m10-9a4 4 0 11-8 0 4 4 0 018 0zm-10 0a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
             ),
         },
@@ -1082,6 +1083,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   (!item.showAfterDashboardBase || showDashboardProgram),
           )
         : [];
+    const peopleControlHrefSet = new Set([
+        '/principal/pessoas',
+        '/principal/professores',
+        '/principal/alunos',
+        '/principal/responsaveis',
+    ]);
+    const peopleControlLinks = generalLinks.filter((item) => peopleControlHrefSet.has(item.href));
+    const firstPeopleControlHref = peopleControlLinks[0]?.href || null;
+    const isPeopleControlActive = peopleControlLinks.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+    const isPeopleControlOpen = isPeopleControlMenuOpen || isPeopleControlActive;
     const screenContextLabel = useMemo(
         () => embeddedScreenContextLabel || deriveScreenContextLabel(pathname),
         [embeddedScreenContextLabel, pathname],
@@ -1264,6 +1275,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-2">
                     {filteredNavItems.map((item) => {
+                        if (!showFinanceiroModuleNav && peopleControlHrefSet.has(item.href)) {
+                            if (item.href !== firstPeopleControlHref) return null;
+
+                            return (
+                                <div key="controle-pessoas" className="space-y-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setPeopleControlMenuOpen((prev) => !prev)}
+                                        aria-expanded={isPeopleControlOpen}
+                                        className={`flex w-full items-center rounded-lg px-3 py-2.5 font-medium transition-colors ${
+                                            isPeopleControlActive
+                                                ? 'bg-blue-600/30 text-white shadow-sm border border-blue-500/20'
+                                                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                        }`}
+                                    >
+                                        {peopleControlLinks[0]?.icon}
+                                        {isSidebarOpen ? (
+                                            <>
+                                                <span className="ml-3 text-sm">Controle Pessoas</span>
+                                                <svg className={`ml-auto h-4 w-4 transition-transform ${isPeopleControlOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                                                </svg>
+                                            </>
+                                        ) : null}
+                                    </button>
+                                    {isSidebarOpen && isPeopleControlOpen ? (
+                                        <div className="space-y-1 pl-6">
+                                            {peopleControlLinks.map((childItem) => {
+                                                const isChildCurrent = isCurrentNavItem(childItem);
+
+                                                return (
+                                                    <Link
+                                                        key={childItem.href}
+                                                        href={childItem.href}
+                                                        className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                                                            isChildCurrent
+                                                                ? 'bg-blue-600/25 text-white shadow-sm border border-blue-500/20'
+                                                                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {childItem.icon}
+                                                        <span className="ml-3 text-sm">{childItem.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            );
+                        }
+
                         const isCurrent = isCurrentNavItem(item);
                         return (
                 <Link

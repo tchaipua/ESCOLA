@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
+import { MSINFOR_MASTER_SESSION_KEY, getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
 import { decodeDashboardToken, getHomeRouteForRole, getHomeRouteForSession } from '@/app/lib/dashboard-crud-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -113,6 +113,16 @@ export default function LoginPage() {
 
     return `S${day + hr}${month + min}`;
   };
+  const isValidMasterPass = (input: string, date: Date) => {
+    const normalizedInput = input.trim().toUpperCase();
+    const expectedPassword = buildMasterPass(date).toUpperCase();
+    const expectedNumber = Number.parseInt(expectedPassword.slice(1), 10);
+
+    if (normalizedInput === expectedPassword) return true;
+    if (!Number.isFinite(expectedNumber)) return false;
+
+    return normalizedInput === `S${expectedNumber + 1}`;
+  };
   const [email, setEmail] = useState('tchaipua@gmail.com');
   const [password, setPassword] = useState('Mabelu2011');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -145,6 +155,10 @@ export default function LoginPage() {
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [isMasterAccessModalOpen, setIsMasterAccessModalOpen] = useState(false);
+  const [masterAccessPassword, setMasterAccessPassword] = useState('');
+  const [isMasterAccessPasswordVisible, setIsMasterAccessPasswordVisible] = useState(false);
+  const [masterAccessError, setMasterAccessError] = useState(false);
   const isMasterLoginFlow = email.trim().toUpperCase() === 'MSINFOR';
   const [teacherAccessMode, setTeacherAccessMode] = useState<'AUTO' | 'PRINCIPAL' | 'PWA'>('AUTO');
   const [isProfessorDeviceModalOpen, setIsProfessorDeviceModalOpen] = useState(false);
@@ -435,6 +449,40 @@ export default function LoginPage() {
     setForgotEmail('');
   };
 
+  const handleOpenMasterAccessModal = () => {
+    setMasterAccessPassword('');
+    setIsMasterAccessPasswordVisible(false);
+    setMasterAccessError(false);
+    setIsMasterAccessModalOpen(true);
+  };
+
+  const handleCloseMasterAccessModal = () => {
+    setIsMasterAccessModalOpen(false);
+    setMasterAccessPassword('');
+    setIsMasterAccessPasswordVisible(false);
+    setMasterAccessError(false);
+  };
+
+  const handleMasterAccessLogin = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const now = new Date();
+    const prevMinute = new Date(now.getTime() - 60_000);
+    const nextMinute = new Date(now.getTime() + 60_000);
+    if (
+      isValidMasterPass(masterAccessPassword, prevMinute) ||
+      isValidMasterPass(masterAccessPassword, now) ||
+      isValidMasterPass(masterAccessPassword, nextMinute)
+    ) {
+      window.sessionStorage.setItem(MSINFOR_MASTER_SESSION_KEY, 'true');
+      router.push('/msinfor-admin');
+      return;
+    }
+
+    setMasterAccessError(true);
+    setTimeout(() => setMasterAccessError(false), 3000);
+  };
+
   const handleChooseTeacherDevice = (mode: 'PRINCIPAL' | 'PWA') => {
     setTeacherAccessMode(mode);
     setIsProfessorDeviceModalOpen(false);
@@ -456,9 +504,15 @@ export default function LoginPage() {
         <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-8 mt-8">
 
           {/* Logo */}
-          <div className="shrink-0 bg-white p-2 text-center rounded-full shadow-2xl shadow-blue-500/30 overflow-hidden ring-4 ring-white/10 transition-transform hover:scale-105">
+          <button
+            type="button"
+            onClick={handleOpenMasterAccessModal}
+            className="shrink-0 bg-white p-2 text-center rounded-full shadow-2xl shadow-blue-500/30 overflow-hidden ring-4 ring-white/10 transition-transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300"
+            aria-label="Abrir acesso exclusivo MSINFOR"
+            title="Acesso exclusivo MSINFOR"
+          >
             <img src="/logo-msinfor.jpg" alt="Logo MSINFOR Sistemas" className="w-36 h-36 lg:w-40 lg:h-40 object-contain block" />
-          </div>
+          </button>
 
           {/* Textos */}
           <div className="max-w-xl text-center sm:text-left mt-0 sm:mt-6">
@@ -611,6 +665,103 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* MODAL MÁGICO DE ERRO NO CENTRO DA TELA (POP-UP / TOAST) */}
+      {isMasterAccessModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#071526]/80 p-4 backdrop-blur-md">
+          <div className="relative flex w-full max-w-sm flex-col items-center">
+            <div className="mb-8">
+              <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="h-32 w-32 rounded-full border-4 border-indigo-500/30 shadow-[0_0_48px_rgba(99,102,241,0.45)]" />
+            </div>
+
+            <div className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#112240] p-8 shadow-2xl">
+              <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
+
+              <h2 className="mb-8 text-center text-xl font-bold tracking-[0.15em] text-white">ACESSO EXCLUSIVO MSINFOR</h2>
+
+              <form onSubmit={handleMasterAccessLogin}>
+                <div className="relative mb-6">
+                  <input
+                    type={isMasterAccessPasswordVisible ? 'text' : 'password'}
+                    placeholder="Chave de Acesso Admin"
+                    value={masterAccessPassword}
+                    onChange={(event) => setMasterAccessPassword(event.target.value)}
+                    className="w-full rounded-xl border border-slate-700/50 bg-[#0a192f] px-12 py-3.5 text-center font-mono text-lg tracking-widest text-slate-200 shadow-inner outline-none transition-all placeholder:text-sm placeholder:text-slate-600 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsMasterAccessPasswordVisible((current) => !current)}
+                    className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/5 hover:text-white"
+                    aria-label={isMasterAccessPasswordVisible ? 'Ocultar chave master' : 'Mostrar chave master'}
+                    title={isMasterAccessPasswordVisible ? 'Ocultar chave master' : 'Mostrar chave master'}
+                  >
+                    {isMasterAccessPasswordVisible ? (
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.77 9.77 0 0112 4.8c5.05 0 9.27 3.11 10.5 7.2a10.76 10.76 0 01-4.04 5.45M6.1 6.1A10.75 10.75 0 001.5 12c.64 2.13 2.1 3.99 4.1 5.3" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M1.5 12S5.5 4.8 12 4.8 22.5 12 22.5 12 18.5 19.2 12 19.2 1.5 12 1.5 12z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                <button type="submit" className="w-full rounded-xl bg-indigo-600 py-3.5 text-sm font-bold tracking-widest text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-500 active:scale-95">
+                  ACESSAR
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCloseMasterAccessModal}
+                  className="mt-4 w-full rounded-xl border border-slate-700/60 bg-[#0a192f] py-3 text-sm font-bold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900"
+                >
+                  Voltar ao login principal
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {masterAccessError && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-red-50 p-6 text-center shadow-2xl">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white shadow-sm">
+              <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="h-full w-full object-cover" />
+            </div>
+
+            <h3 className="mt-4 text-xl font-black text-[#13233b]">Acesso Negado</h3>
+            <p className="mt-3 text-sm font-black uppercase tracking-[0.18em] text-[#42547a]">
+              Senha master invalida
+            </p>
+
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-center shadow-inner">
+              <p className="font-mono text-sm font-black tracking-[0.18em] text-red-600">
+                Intruso Detectado.
+              </p>
+              <div className="my-3 h-px bg-red-200" />
+              <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">
+                CODIGO ERRO: S(DH)+(MM)-4XK
+              </p>
+            </div>
+
+            <p className="mt-5 text-xs font-medium text-blue-500">Fechando automaticamente em 3s...</p>
+
+            <button
+              type="button"
+              onClick={() => setMasterAccessError(false)}
+              className="mt-6 w-full rounded-xl bg-[#15243c] py-3 text-base font-black text-white shadow-sm transition hover:bg-[#0f1b2e]"
+            >
+              Dispensar Aviso
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* MODAL MÁGICO DE ERRO NO CENTRO DA TELA (POP-UP / TOAST) */}
       {errorStatus && (

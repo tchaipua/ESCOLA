@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
@@ -230,13 +231,13 @@ OBSERVACAO SOBRE O ESCOPO MASTER:
 }
 
 export default function MsinforAdminPage() {
+    const router = useRouter();
     const [escolas, setEscolas] = useState<TenantRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isMasterSessionChecked, setIsMasterSessionChecked] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [isMasterLogged, setIsMasterLogged] = useState(false);
-    const [masterPassword, setMasterPassword] = useState('');
-    const [loginError, setLoginError] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState(0);
     const [editingTenantId, setEditingTenantId] = useState<string | null>(null);
@@ -297,20 +298,6 @@ export default function MsinforAdminPage() {
     const [isAdminPasswordVisible, setIsAdminPasswordVisible] = useState(false);
     const [isSmtpPasswordVisible, setIsSmtpPasswordVisible] = useState(false);
 
-    const getLoginErrorTitle = (message?: string) => {
-        const rawMessage = String(message || '').trim();
-
-        if (rawMessage === 'SENHA MASTER INVÁLIDA') {
-            return 'Acesso Negado';
-        }
-
-        if (rawMessage.includes('conectar ao servidor') || rawMessage.includes('servidor')) {
-            return 'Servidor Indisponível';
-        }
-
-        return 'Acesso Negado';
-    };
-
     const [formData, setFormData] = useState({
         name: '',
         document: '',
@@ -350,8 +337,8 @@ export default function MsinforAdminPage() {
     };
 
     const getMasterPassForRequest = useCallback(() => {
-        return isMasterLogged ? buildMasterPass(new Date()) : masterPassword.trim();
-    }, [isMasterLogged, masterPassword]);
+        return isMasterLogged ? buildMasterPass(new Date()) : '';
+    }, [isMasterLogged]);
 
     // Buscar Escolas da API
     const fetchEscolas = useCallback(async () => {
@@ -379,9 +366,13 @@ export default function MsinforAdminPage() {
         const hasMasterSession = window.sessionStorage.getItem(MSINFOR_MASTER_SESSION_KEY) === 'true';
         if (hasMasterSession) {
             setIsMasterLogged(true);
-            setLoginError(false);
+            setIsMasterSessionChecked(true);
+            return;
         }
-    }, []);
+
+        setIsMasterSessionChecked(true);
+        router.replace('/');
+    }, [router]);
 
     const fetchGeneralSettings = useCallback(async () => {
         try {
@@ -831,8 +822,7 @@ export default function MsinforAdminPage() {
             window.sessionStorage.removeItem(MSINFOR_MASTER_SESSION_KEY);
         }
         setIsMasterLogged(false);
-        setMasterPassword('');
-        setLoginError(false);
+        router.push('/');
     };
 
     const handleEmailUsageUpdate = async (e: React.FormEvent) => {
@@ -877,31 +867,6 @@ export default function MsinforAdminPage() {
             setEmailUpdateLoading(false);
         }
     };
-    const handleMasterLogin = (e: React.FormEvent) => {
-        e.preventDefault();
-
-        const now = new Date();
-        const prevMinute = new Date(now.getTime() - 60_000);
-        const nextMinute = new Date(now.getTime() + 60_000);
-
-        const validPasswords = new Set([
-            buildMasterPass(prevMinute),
-            buildMasterPass(now),
-            buildMasterPass(nextMinute),
-        ]);
-
-        if (validPasswords.has(masterPassword.trim())) {
-            if (typeof window !== 'undefined') {
-                window.sessionStorage.setItem(MSINFOR_MASTER_SESSION_KEY, 'true');
-            }
-            setIsMasterLogged(true);
-            setLoginError(false);
-        } else {
-            setLoginError(true);
-            setTimeout(() => setLoginError(false), 5000);
-        }
-    };
-
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
@@ -1320,76 +1285,13 @@ export default function MsinforAdminPage() {
         return <td key={`${escola.id}-${columnKey}`} className="px-6 py-4 text-slate-500 text-sm font-medium">{new Date(escola.createdAt).toLocaleDateString()}</td>;
     };
 
+    if (!isMasterSessionChecked) {
+        return <div className="min-h-screen bg-[#0a192f]" />;
+    }
+
     // TELA DE BLOQUEIO (COFRE DO MOTOR CENTRAL)
     if (!isMasterLogged) {
-        return (
-            <div className="min-h-screen bg-[#0a192f] flex flex-col items-center justify-center font-sans">
-                <div className="mb-8">
-                    <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="w-24 h-24 rounded-full border-4 border-indigo-500/30 shadow-[0_0_40px_rgba(99,102,241,0.4)]" />
-                </div>
-
-                <div className="bg-[#112240] p-8 rounded-2xl shadow-2xl border border-white/5 max-w-sm w-full relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500"></div>
-
-                    <h2 className="text-xl font-bold text-center text-white tracking-[0.15em] mb-8">ACESSO EXCLUSIVO MSINFOR</h2>
-
-                    <form onSubmit={handleMasterLogin}>
-                        <div className="relative mb-6">
-                            <input
-                                type="password"
-                                placeholder="Chave de Acesso Admin"
-                                value={masterPassword}
-                                onChange={e => setMasterPassword(e.target.value)}
-                                className="w-full bg-[#0a192f] border border-slate-700/50 text-slate-200 px-4 py-3.5 rounded-xl outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 text-center tracking-widest font-mono text-lg shadow-inner transition-all placeholder:text-slate-600 placeholder:text-sm"
-                            />
-                        </div>
-                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white tracking-widest text-sm font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95">
-                            ACESSAR
-                        </button>
-                    </form>
-                </div>
-
-                {/* MODAL MÁGICO DE ERRO NO CENTRO DA TELA (POP-UP / TOAST) IGUAL O DO LOGIN */}
-                {loginError && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-                            <div className="bg-red-500/10 p-6 flex flex-col items-center text-center">
-                                <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4 ring-4 ring-white shadow-sm">
-                                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </div>
-                                <h3 className="text-lg font-bold text-slate-800 mb-1">{getLoginErrorTitle('SENHA MASTER INVÁLIDA')}</h3>
-
-                                <div className="flex flex-col items-center w-full mt-1 mb-2">
-                                    <p className="text-slate-600 font-bold text-[15px] max-w-[200px] leading-tight text-center">
-                                        SENHA MASTER INVÁLIDA
-                                    </p>
-
-                                    <div className="mt-3 bg-red-50 border border-red-200/50 px-3 py-2.5 rounded-xl w-full text-center shadow-inner flex flex-col gap-2">
-                                        <span className="text-red-600 font-mono font-bold text-[16px] tracking-wide break-all block">
-                                            Intruso Detectado.
-                                        </span>
-                                        <span className="text-red-500/80 text-xs font-mono tracking-widest block font-bold border-t border-red-200/50 pt-2 mt-1">
-                                            CÓDIGO ERRO: S(DH)+(MM)
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <p className="text-xs text-slate-400 mt-2">Fechando automaticamente em 5s...</p>
-
-                                <button
-                                    onClick={() => setLoginError(false)}
-                                    className="mt-6 bg-slate-800 hover:bg-slate-700 text-white w-full py-2.5 rounded-xl font-semibold tracking-wide transition-colors"
-                                >
-                                    Dispensar Aviso
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-        );
+        return null;
     }
 
     // TELA LIBERADA DO PAINEL DE CONTROLE DAS ESCOLAS
@@ -1402,7 +1304,7 @@ export default function MsinforAdminPage() {
                     <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="w-[50px] h-[50px] rounded-full ring-2 ring-white/20" />
                     <div>
                         <h1 className="text-xl font-black tracking-wide leading-tight">MSINFOR <span className="font-light">| MOTOR CENTRAL</span></h1>
-                        <p className="text-indigo-200 text-xs mt-0.5 tracking-wider">GESTÃO DE INQUILINOS (TENANTS)</p>
+                        <p className="text-indigo-200 text-xs mt-0.5 tracking-wider">Gestão Cadastros de Escolas</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 px-4">
@@ -1414,7 +1316,7 @@ export default function MsinforAdminPage() {
                         onClick={handleLogout}
                         className="rounded-lg border border-red-300/30 bg-red-500/10 px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-100 transition-colors hover:bg-red-500/20 hover:text-white"
                     >
-                        Logout
+                        Voltar para login
                     </button>
                 </div>
             </header>
@@ -1717,8 +1619,28 @@ export default function MsinforAdminPage() {
                         </tbody>
                     </table>
                 </div>
-                <div className="mt-4 flex justify-end">
-                    <div className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-xl backdrop-blur-md">
+            </main>
+
+            <footer className="border-t border-slate-200 bg-white px-6 py-3 shadow-[0_-1px_6px_rgba(15,23,42,0.04)]">
+                <div className="grid items-center gap-3 text-[11px] text-slate-500 md:grid-cols-[1fr_auto_1fr]">
+                    <div className="flex flex-wrap items-center gap-2 italic">
+                        <span>Desenvolvido por MSINFOR SISTEMAS</span>
+                        <span>•</span>
+                        <span>(16) 3025-6025</span>
+                        <span>/</span>
+                        <span className="inline-flex items-center gap-1 not-italic text-slate-600">
+                            <svg className="h-3.5 w-3.5 text-emerald-500" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12.031 0C5.385 0 .001 5.384.001 12.031c0 2.126.554 4.2 1.606 6.02L.054 23.992l6.095-1.599c1.764.954 3.754 1.458 5.882 1.458 6.645 0 12.03-5.384 12.03-12.031C24.062 5.384 18.677 0 12.031 0zm0 21.854c-1.801 0-3.565-.484-5.112-1.401l-.367-.217-3.799.996.997-3.702-.238-.378C2.502 15.5 2 13.8 2 12.031 2 6.488 6.489 2 12.031 2 17.574 2 22.062 6.488 22.062 12.031s-4.488 10.031-10.031 10.031v-.208zm5.518-7.518c-.302-.151-1.789-.884-2.064-.984-.276-.1-.476-.151-.676.151-.2.301-.776.984-.951 1.184-.176.201-.351.226-.653.076-.301-.151-1.275-.47-2.428-1.5-1.042-.931-1.745-2.083-1.946-2.384-.2-.301-.021-.464.13-.614.135-.135.301-.351.451-.526.151-.176.201-.301.301-.501.1-.2.051-.376-.025-.526-.076-.151-.676-1.63-.926-2.23-.245-.586-.494-.508-.676-.516h-.576c-.2 0-.526.076-.801.376-.276.301-1.052 1.028-1.052 2.508 0 1.48 1.077 2.91 1.228 3.111.151.2 2.123 3.243 5.143 4.546 2.37.893 3.012.753 3.563.652.551-.1 1.789-.731 2.04-1.434.251-.702.251-1.304.175-1.434-.076-.13-.276-.2-.576-.351z" />
+                            </svg>
+                            (16) 99999-1978
+                        </span>
+                    </div>
+
+                    <div className="text-center text-[10px] font-black uppercase tracking-[0.34em] text-slate-700">
+                        MSINFOR ADMIN
+                    </div>
+
+                    <div className="flex justify-end">
                         <ScreenNameCopy
                             screenId={LIST_SCREEN_ID}
                             label="Tela"
@@ -1729,7 +1651,7 @@ export default function MsinforAdminPage() {
                         />
                     </div>
                 </div>
-            </main>
+            </footer>
 
             {tenantToDelete && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

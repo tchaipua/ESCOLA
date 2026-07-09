@@ -298,6 +298,35 @@ function getApiErrorMessage(payload: unknown, fallback: string) {
     return fallback;
 }
 
+function getClosureBadgeClass(closure: AnnualCalendarClosure) {
+    const type = `${closure.closureType || ''}`.toUpperCase();
+    const label = `${closure.closureTypeLabel || ''} ${closure.title || ''}`.toUpperCase();
+
+    if (type === 'FERIAS' || label.includes('FERIAS')) {
+        return 'bg-sky-600';
+    }
+    if (type === 'PONTE' || type === 'PONTE_FERIADO' || label.includes('PONTE')) {
+        return 'bg-violet-600';
+    }
+    if (type === 'RECESSO' || label.includes('RECESSO')) {
+        return 'bg-emerald-600';
+    }
+    if (type === 'PLANEJAMENTO' || label.includes('PLANEJAMENTO')) {
+        return 'bg-indigo-600';
+    }
+    if (type === 'FACULTATIVO' || label.includes('FACULTATIVO')) {
+        return 'bg-fuchsia-600';
+    }
+    if (type === 'ESCOLAR' || label.includes('ESCOLAR')) {
+        return 'bg-cyan-700';
+    }
+    if (type === 'NACIONAL' || type === 'ESTADUAL' || type === 'MUNICIPAL' || label.includes('FERIADO')) {
+        return 'bg-amber-600';
+    }
+
+    return 'bg-red-600';
+}
+
 function getNetworkErrorMessage(error: unknown, endpointLabel: string, fallback: string) {
     if (error instanceof TypeError) {
         return `${fallback} Endpoint: ${endpointLabel}. Verifique se a API está acessível em ${API_BASE_URL}.`;
@@ -2036,18 +2065,18 @@ export default function GradeAnualPage() {
                                                     ) : null}
 
                                                     {featuredClosure ? (
-                                                        <div className="mt-2 rounded-[18px] border border-amber-200 bg-amber-50 px-3 py-3 text-left shadow-sm">
-                                                            <div className="inline-flex rounded-full bg-amber-500 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-sm">
+                                                        <div className="mt-2 rounded-[18px] border border-red-200 bg-red-50 px-3 py-3 text-left shadow-sm">
+                                                            <div className={`inline-flex rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-white shadow-sm ${getClosureBadgeClass(featuredClosure)}`}>
                                                                 Sem aula
                                                             </div>
-                                                            <div className="mt-2 text-xs font-extrabold uppercase text-amber-900">
+                                                            <div className="mt-2 text-xs font-extrabold uppercase text-red-900">
                                                                 {featuredClosure.closureTypeLabel}
                                                             </div>
-                                                            <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-amber-800">
+                                                            <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.08em] text-red-800">
                                                                 {featuredClosure.title}
                                                             </div>
                                                             {dayClosures.length > 1 ? (
-                                                                <div className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-amber-700">
+                                                                <div className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-red-700">
                                                                     +{dayClosures.length - 1} ocorrência(s)
                                                                 </div>
                                                             ) : null}
