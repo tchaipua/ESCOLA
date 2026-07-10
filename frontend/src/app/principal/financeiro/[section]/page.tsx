@@ -30,6 +30,10 @@ const SECTION_CONFIG = {
     label: 'Bancos',
     path: '/bancos',
   },
+  'bancos-e-boletos': {
+    label: 'Bancos e Boletos',
+    path: '/bancos-e-boletos',
+  },
   'contas-a-pagar': {
     label: 'Contas a Pagar',
     path: '/contas-a-pagar',

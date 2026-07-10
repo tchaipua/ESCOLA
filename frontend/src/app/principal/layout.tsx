@@ -181,6 +181,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [screenAuditOverride, setScreenAuditOverride] = useState<ScreenAuditOverride | null>(null);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
     const [isPeopleControlMenuOpen, setPeopleControlMenuOpen] = useState(false);
+    const [isSchoolConfigMenuOpen, setSchoolConfigMenuOpen] = useState(false);
+    const [isSchoolYearMenuOpen, setSchoolYearMenuOpen] = useState(false);
+    const [manuallyClosedSubmenu, setManuallyClosedSubmenu] = useState<'people' | 'school-config' | 'school-year' | null>(null);
     const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -1092,7 +1095,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const peopleControlLinks = generalLinks.filter((item) => peopleControlHrefSet.has(item.href));
     const firstPeopleControlHref = peopleControlLinks[0]?.href || null;
     const isPeopleControlActive = peopleControlLinks.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
-    const isPeopleControlOpen = isPeopleControlMenuOpen || isPeopleControlActive;
+    const schoolConfigHrefSet = new Set([
+        '/principal/disciplinas',
+        '/principal/series',
+        '/principal/turmas',
+    ]);
+    const schoolConfigLinks = generalLinks.filter((item) => schoolConfigHrefSet.has(item.href));
+    const firstSchoolConfigHref = schoolConfigLinks[0]?.href || null;
+    const isSchoolConfigActive = schoolConfigLinks.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+    const schoolYearHrefSet = new Set([
+        '/principal/configura-ano-letivo',
+        '/principal/grade',
+        '/principal/grade-anual',
+    ]);
+    const schoolYearLinks = generalLinks.filter((item) => schoolYearHrefSet.has(item.href));
+    const firstSchoolYearHref = schoolYearLinks[0]?.href || null;
+    const isSchoolYearActive = schoolYearLinks.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+    const hasManuallyOpenedSubmenu = isPeopleControlMenuOpen || isSchoolConfigMenuOpen || isSchoolYearMenuOpen;
+    const isPeopleControlOpen = isPeopleControlMenuOpen || (!hasManuallyOpenedSubmenu && manuallyClosedSubmenu !== 'people' && isPeopleControlActive);
+    const isSchoolConfigOpen = isSchoolConfigMenuOpen || (!hasManuallyOpenedSubmenu && manuallyClosedSubmenu !== 'school-config' && isSchoolConfigActive);
+    const isSchoolYearOpen = isSchoolYearMenuOpen || (!hasManuallyOpenedSubmenu && manuallyClosedSubmenu !== 'school-year' && isSchoolYearActive);
+    const togglePeopleControlMenu = () => {
+        const nextOpen = !isPeopleControlOpen;
+        setPeopleControlMenuOpen(nextOpen);
+        setSchoolConfigMenuOpen(false);
+        setSchoolYearMenuOpen(false);
+        setManuallyClosedSubmenu(nextOpen ? null : 'people');
+    };
+    const toggleSchoolConfigMenu = () => {
+        const nextOpen = !isSchoolConfigOpen;
+        setSchoolConfigMenuOpen(nextOpen);
+        setPeopleControlMenuOpen(false);
+        setSchoolYearMenuOpen(false);
+        setManuallyClosedSubmenu(nextOpen ? null : 'school-config');
+    };
+    const toggleSchoolYearMenu = () => {
+        const nextOpen = !isSchoolYearOpen;
+        setSchoolYearMenuOpen(nextOpen);
+        setPeopleControlMenuOpen(false);
+        setSchoolConfigMenuOpen(false);
+        setManuallyClosedSubmenu(nextOpen ? null : 'school-year');
+    };
     const screenContextLabel = useMemo(
         () => embeddedScreenContextLabel || deriveScreenContextLabel(pathname),
         [embeddedScreenContextLabel, pathname],
@@ -1247,17 +1290,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
         <div className="min-h-screen bg-[#f3f4f6] flex font-sans text-slate-800">
             <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-[#153a6a] text-white flex flex-col transition-all duration-300 shadow-xl relative z-20`}>
-                <div className={`border-b border-white/10 px-4 py-4 ${isSidebarOpen ? 'min-h-[108px]' : 'h-16'} flex items-center justify-center`}>
+                <div className={`border-b border-white/10 px-4 py-6 ${isSidebarOpen ? 'min-h-[256px]' : 'h-16'} flex items-center justify-center`}>
                     <Link
                         href={isCashierOnlyAccess ? CASHIER_ONLY_HOME_ROUTE : '/principal'}
                         className={`flex ${isSidebarOpen ? 'flex-col' : 'flex-row'} items-center justify-center gap-3 ${isSidebarOpen ? '' : 'gap-1'} cursor-pointer`}
                     >
-                        <div className={`flex items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10 shadow-sm shrink-0 ${isSidebarOpen ? 'h-16 w-16' : 'h-10 w-10'}`}>
+                        <div className={`flex items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10 shadow-sm shrink-0 ${isSidebarOpen ? 'h-40 w-40' : 'h-10 w-10'}`}>
                             {currentTenant?.logoUrl ? (
                                 <img
                                     src={currentTenant.logoUrl}
                                     alt={`Logo de ${currentTenant.name}`}
-                                    className={`h-full w-full object-contain ${isSidebarOpen ? 'p-1.5' : 'p-1'}`}
+                                    className={`h-full w-full object-contain ${isSidebarOpen ? 'p-1' : 'p-1'}`}
                                 />
                             ) : (
                                 <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1266,7 +1309,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             )}
                         </div>
                         {isSidebarOpen && currentTenant ? (
-                            <span className="mt-3 max-w-[180px] text-center text-xs font-bold leading-4 text-white">
+                            <span className="mt-4 max-w-[210px] text-center text-xs font-bold leading-4 text-white">
                                 {currentTenant.name}
                             </span>
                         ) : null}
@@ -1282,7 +1325,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 <div key="controle-pessoas" className="space-y-1">
                                     <button
                                         type="button"
-                                        onClick={() => setPeopleControlMenuOpen((prev) => !prev)}
+                                        onClick={togglePeopleControlMenu}
                                         aria-expanded={isPeopleControlOpen}
                                         className={`flex w-full items-center rounded-lg px-3 py-2.5 font-medium transition-colors ${
                                             isPeopleControlActive
@@ -1303,6 +1346,108 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     {isSidebarOpen && isPeopleControlOpen ? (
                                         <div className="space-y-1 pl-6">
                                             {peopleControlLinks.map((childItem) => {
+                                                const isChildCurrent = isCurrentNavItem(childItem);
+
+                                                return (
+                                                    <Link
+                                                        key={childItem.href}
+                                                        href={childItem.href}
+                                                        className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                                                            isChildCurrent
+                                                                ? 'bg-blue-600/25 text-white shadow-sm border border-blue-500/20'
+                                                                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {childItem.icon}
+                                                        <span className="ml-3 text-sm">{childItem.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            );
+                        }
+
+                        if (!showFinanceiroModuleNav && schoolConfigHrefSet.has(item.href)) {
+                            if (item.href !== firstSchoolConfigHref) return null;
+
+                            return (
+                                <div key="configura-escola" className="space-y-1">
+                                    <button
+                                        type="button"
+                                        onClick={toggleSchoolConfigMenu}
+                                        aria-expanded={isSchoolConfigOpen}
+                                        className={`flex w-full items-center rounded-lg px-3 py-2.5 font-medium transition-colors ${
+                                            isSchoolConfigActive
+                                                ? 'bg-blue-600/30 text-white shadow-sm border border-blue-500/20'
+                                                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                        }`}
+                                    >
+                                        {schoolConfigLinks[0]?.icon}
+                                        {isSidebarOpen ? (
+                                            <>
+                                                <span className="ml-3 text-sm">Configura Escola</span>
+                                                <svg className={`ml-auto h-4 w-4 transition-transform ${isSchoolConfigOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                                                </svg>
+                                            </>
+                                        ) : null}
+                                    </button>
+                                    {isSidebarOpen && isSchoolConfigOpen ? (
+                                        <div className="space-y-1 pl-6">
+                                            {schoolConfigLinks.map((childItem) => {
+                                                const isChildCurrent = isCurrentNavItem(childItem);
+
+                                                return (
+                                                    <Link
+                                                        key={childItem.href}
+                                                        href={childItem.href}
+                                                        className={`flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                                                            isChildCurrent
+                                                                ? 'bg-blue-600/25 text-white shadow-sm border border-blue-500/20'
+                                                                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        {childItem.icon}
+                                                        <span className="ml-3 text-sm">{childItem.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            );
+                        }
+
+                        if (!showFinanceiroModuleNav && schoolYearHrefSet.has(item.href)) {
+                            if (item.href !== firstSchoolYearHref) return null;
+
+                            return (
+                                <div key="ano-letivo" className="space-y-1">
+                                    <button
+                                        type="button"
+                                        onClick={toggleSchoolYearMenu}
+                                        aria-expanded={isSchoolYearOpen}
+                                        className={`flex w-full items-center rounded-lg px-3 py-2.5 font-medium transition-colors ${
+                                            isSchoolYearActive
+                                                ? 'bg-blue-600/30 text-white shadow-sm border border-blue-500/20'
+                                                : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                                        }`}
+                                    >
+                                        {schoolYearLinks[0]?.icon}
+                                        {isSidebarOpen ? (
+                                            <>
+                                                <span className="ml-3 text-sm">Ano Letivo</span>
+                                                <svg className={`ml-auto h-4 w-4 transition-transform ${isSchoolYearOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                                                </svg>
+                                            </>
+                                        ) : null}
+                                    </button>
+                                    {isSidebarOpen && isSchoolYearOpen ? (
+                                        <div className="space-y-1 pl-6">
+                                            {schoolYearLinks.map((childItem) => {
                                                 const isChildCurrent = isCurrentNavItem(childItem);
 
                                                 return (
@@ -1359,14 +1504,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <button
                         type="button"
                         onClick={handleLogout}
-                        title="Abrir login"
-                        aria-label="Abrir login"
+                        title="Sair do Sistema"
+                        aria-label="Sair do Sistema"
                         className="flex w-full items-center rounded-lg px-3 py-2.5 font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
                     >
                         <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                         </svg>
-                        {isSidebarOpen ? <span className="ml-3 text-sm">Login</span> : null}
+                        {isSidebarOpen ? <span className="ml-3 text-sm">Sair do Sistema</span> : null}
                     </button>
                 </div>
 

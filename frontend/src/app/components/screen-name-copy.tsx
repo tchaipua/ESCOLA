@@ -87,7 +87,8 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_FINANCEIRO_RETORNOS_CONFERENCIA', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'retornos', '[importId]', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_RETORNOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'retornos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
-  { screenId: 'PRINCIPAL_FINANCEIRO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('MAPEAMENTO_ESPECIFICO_PENDENTE.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_BANCOS_E_BOLETOS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('bancos-e-boletos', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('page.tsx') },
 
   { screenId: 'POPUP_PRINCIPAL_MENSALIDADES', match: 'prefix', physicalPath: escolaAppPath('principal', 'mensalidades', 'page.tsx') },
   { screenId: 'POPUP_PRINCIPAL_PARCELAS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'parcelas', 'page.tsx') },
