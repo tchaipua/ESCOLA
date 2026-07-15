@@ -33,6 +33,7 @@ import {
     isValidCnpj,
     isValidCpf,
     mergeSharedPersonIntoForm,
+    normalizeCnpj,
     normalizeDocumentDigits,
     type EmailUsageRecord,
     type SharedNameSuggestion,
@@ -778,7 +779,7 @@ export default function ResponsaveisPage() {
             birthDate: guardian.birthDate ? new Date(guardian.birthDate).toISOString().split('T')[0] : '',
             cpf: guardian.cpf ? limitNumericDigits(guardian.cpf, 11) : '',
             rg: guardian.rg || '',
-            cnpj: guardian.cnpj ? limitNumericDigits(guardian.cnpj, 14) : '',
+            cnpj: guardian.cnpj ? normalizeCnpj(guardian.cnpj) : '',
             nickname: guardian.nickname || '',
             corporateName: guardian.corporateName || '',
             phone: guardian.phone ? limitNumericDigits(guardian.phone, 11) : '',
@@ -1663,7 +1664,7 @@ export default function ResponsaveisPage() {
                                                     onChange={(event) =>
                                                         setFormData((current) => ({
                                                             ...current,
-                                                            cnpj: limitNumericDigits(event.target.value, 14),
+                                                            cnpj: normalizeCnpj(event.target.value),
                                                         }))
                                                     }
                                                     className={inputClass}

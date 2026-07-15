@@ -4,6 +4,10 @@ import {
   DEFAULT_BRANCH_CODE,
   normalizeBranchCode,
 } from "../../../../common/tenant/branch.constants";
+import {
+  isValidCnpj,
+  normalizeCnpj,
+} from "../../../../common/validation/cnpj";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 
 type SharedProfileKind = "TEACHER" | "STUDENT" | "GUARDIAN";
@@ -886,6 +890,13 @@ export class SharedProfilesService {
     const normalizedCpf = this.normalizeDocument(
       typeof payload.cpf === "string" ? payload.cpf : null,
     );
+    const normalizedCnpj = this.isBlank(payload.cnpj)
+      ? null
+      : normalizeCnpj(String(payload.cnpj));
+
+    if (normalizedCnpj && !isValidCnpj(normalizedCnpj)) {
+      throw new BadRequestException("CNPJ inválido.");
+    }
 
     return {
       tenantId,
@@ -897,7 +908,7 @@ export class SharedProfilesService {
       rg: this.isBlank(payload.rg) ? null : String(payload.rg),
       cpf: this.isBlank(payload.cpf) ? null : String(payload.cpf),
       cpfDigits: normalizedCpf || null,
-      cnpj: this.isBlank(payload.cnpj) ? null : String(payload.cnpj),
+      cnpj: normalizedCnpj,
       nickname: this.isBlank(payload.nickname)
         ? null
         : String(payload.nickname),

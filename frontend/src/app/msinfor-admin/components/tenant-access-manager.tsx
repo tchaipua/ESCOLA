@@ -19,6 +19,7 @@ import ScreenAuditModal from '@/app/components/screen-audit-modal';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
+const EDIT_SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA_EDICAO';
 const CPF_CONFLICT_SCREEN_ID = `${SCREEN_NAME}_POPUP_CPF_CONFLICT`;
 
 const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
@@ -805,8 +806,9 @@ export default function TenantAccessManager({
   };
 
   const handleCopyScreenName = async () => {
+    const currentScreenName = editingUserId !== null || isCreatingNew ? EDIT_SCREEN_NAME : SCREEN_NAME;
     try {
-      const copied = await copyTextToClipboard(SCREEN_NAME);
+      const copied = await copyTextToClipboard(currentScreenName);
       setCopyFeedback(copied ? 'Nome copiado para a área de transferência.' : 'Não foi possível copiar o nome.');
     } catch {
       setCopyFeedback('Não foi possível copiar o nome.');
@@ -1207,7 +1209,7 @@ export default function TenantAccessManager({
       role="presentation"
     >
       <div
-        className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        className={`flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden bg-white shadow-2xl ${showFocusedEditor || showFocusedCreate ? 'max-w-7xl rounded-none' : 'max-w-6xl rounded-3xl'}`}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -1222,10 +1224,16 @@ export default function TenantAccessManager({
               )}
             </div>
             <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-indigo-500">Acessos especiais</div>
-            <h2 className="mt-1 text-xl font-bold text-slate-800">{tenant.name}</h2>
+            <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-indigo-500">
+              {showFocusedEditor || showFocusedCreate ? 'Edição de acesso' : 'Acessos especiais'}
+            </div>
+            <h2 className="mt-1 text-xl font-bold text-slate-800">
+              {showFocusedEditor || showFocusedCreate ? 'Editar acesso da escola' : tenant.name}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Crie logins e marque o que cada usuario pode cadastrar na escola.
+              {showFocusedEditor || showFocusedCreate
+                ? `Altere os dados do acesso de ${formData.name || 'USUÁRIO'}. Ao voltar, você retornará para ${SCREEN_NAME}.`
+                : 'Crie logins e marque o que cada usuario pode cadastrar na escola.'}
             </p>
             </div>
           </div>
@@ -1644,7 +1652,7 @@ export default function TenantAccessManager({
                   onClick={() => resetForm({ announce: true })}
                   className="rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white hover:bg-red-700"
                 >
-                  Sair sem salvar
+                  Voltar para acessos
                 </button>
               </div>
               <div className="flex flex-1 justify-center">
@@ -1794,7 +1802,7 @@ export default function TenantAccessManager({
         )}
         <div className="mt-2 border-t border-slate-200 bg-white px-6 py-3">
           <div className="flex w-full items-center justify-end gap-3 text-[11px] font-semibold uppercase tracking-[0.4em] text-slate-500">
-            <span className="text-slate-800">{SCREEN_NAME}</span>
+            <span className="text-slate-800">{showFocusedEditor || showFocusedCreate ? EDIT_SCREEN_NAME : SCREEN_NAME}</span>
             <button
               type="button"
               onClick={handleCopyScreenName}
@@ -1884,7 +1892,7 @@ export default function TenantAccessManager({
       ) : null}
       {isScreenAuditOpen ? (
         <ScreenAuditModal
-          screenId={SCREEN_NAME}
+          screenId={showFocusedEditor || showFocusedCreate ? EDIT_SCREEN_NAME : SCREEN_NAME}
           systemName="Sistema Escola"
           originText="Origem: Sistema Escola - caminho fisico: C:/Sistemas/IA/Escola/frontend/src/app/msinfor-admin/components/tenant-access-manager.tsx"
           auditText={accessAuditContext.auditText}

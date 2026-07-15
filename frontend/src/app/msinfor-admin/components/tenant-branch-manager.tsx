@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
-import { readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
+import { formatCnpjInput, isValidCnpj, normalizeCnpj, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const BRANCH_MANAGER_SCREEN_ID = 'MSINFOR_ADMIN_FILIAIS_ESCOLA';
@@ -23,13 +23,13 @@ const BRANCH_EDITOR_TABS: Array<{ key: BranchEditorTab; label: string }> = [
   { key: 'logo', label: 'Logotipo' },
   { key: 'phones', label: 'Telefones' },
   { key: 'address', label: 'Endereço' },
-  { key: 'parameters', label: 'Parâmetros' },
+  { key: 'parameters', label: 'Estoque' },
   { key: 'smtp', label: 'Sistema de e-mails' },
   { key: 'storage', label: 'Arquivos / Storage' },
 ];
 
 const STOCK_PARAMETER_OPTIONS: Array<{ value: BranchStockParameterMode; label: string }> = [
-  { value: 'BY_PRODUCT', label: 'Controlar por produto' },
+  { value: 'BY_PRODUCT', label: 'Escolher na Hora Cadastrar Produto' },
   { value: 'YES', label: 'Sim' },
   { value: 'NO', label: 'Não' },
 ];
@@ -50,6 +50,8 @@ type TenantBranchRecord = {
   cellphone1?: string | null;
   cellphone2?: string | null;
   email?: string | null;
+  emailVerified?: boolean | null;
+  emailVerifiedAt?: string | null;
   zipCode?: string | null;
   street?: string | null;
   number?: string | null;
@@ -333,7 +335,7 @@ FILTROS APLICADOS AGORA:
 - filiais ativas exibidas: ${params.activeRowsCount}
 - filiais inativas exibidas: ${params.inactiveRowsCount}
 - ordenacao atual: branchCode ASC, name ASC
-- colunas visiveis agora: Codigo, Filial, Documento / CNPJ, Contato, Endereco, Status, Acao
+- colunas visiveis agora: Codigo, Filial, Documento / CNPJ, E-mail, Contato, Endereco, Status, Acao
 
 SQL EQUIVALENTE DOS FILTROS DA TELA:
 ${sqlText}
@@ -353,6 +355,7 @@ export default function TenantBranchManager({
   const [branches, setBranches] = useState<TenantBranchRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [sendingEmailVerificationBranchId, setSendingEmailVerificationBranchId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editingBranch, setEditingBranch] = useState<TenantBranchRecord | null>(null);
@@ -429,6 +432,31 @@ export default function TenantBranchManager({
     setSuccess(null);
   };
 
+  const handleSendBranchEmailVerification = async (branch: TenantBranchRecord) => {
+    if (!branch.email) {
+      setError('Informe o e-mail da filial antes de enviar a validação.');
+      return;
+    }
+
+    try {
+      setSendingEmailVerificationBranchId(branch.id);
+      setError(null);
+      setSuccess(null);
+      const response = await fetch(`${API_BASE_URL}/tenants/${tenant.id}/branches/${branch.id}/send-email-confirmation`, {
+        method: 'POST',
+        headers: { 'x-msinfor-master-pass': getMasterPass() },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.message || 'Não foi possível enviar o e-mail de validação.');
+      setSuccess(payload?.message || 'E-mail de validação enviado para a filial.');
+      await loadBranches();
+    } catch (err: any) {
+      setError(err?.message || 'Não foi possível enviar o e-mail de validação.');
+    } finally {
+      setSendingEmailVerificationBranchId(null);
+    }
+  };
+
   const closeEditor = () => {
     setEditingBranch(null);
     setFormData(EMPTY_FORM);
@@ -484,6 +512,11 @@ export default function TenantBranchManager({
 
     if (!formData.name.trim()) {
       setError('Informe o nome da filial.');
+      return;
+    }
+
+    if (formData.cnpj.trim() && !isValidCnpj(formData.cnpj)) {
+      setError('Informe um CNPJ válido.');
       return;
     }
 
@@ -613,6 +646,7 @@ export default function TenantBranchManager({
                       <th className="px-5 py-4">Código</th>
                       <th className="px-5 py-4">Filial</th>
                       <th className="px-5 py-4">Documento / CNPJ</th>
+                      <th className="px-5 py-4">E-mail</th>
                       <th className="px-5 py-4">Contato</th>
                       <th className="px-5 py-4">Endereço</th>
                       <th className="px-5 py-4">Status</th>
@@ -621,8 +655,9 @@ export default function TenantBranchManager({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {sortedBranches.map((branch) => {
-                      const contact = branch.email || branch.whatsapp || branch.phone || '---';
+                      const contact = branch.whatsapp || branch.phone || '---';
                       const document = branch.document || branch.cnpj || branch.cpf || 'NÃO INFORMADO';
+                      const isEmailPending = !!branch.email && !branch.emailVerified;
                       const address = [branch.street, branch.number, branch.neighborhood, branch.city, branch.state]
                         .filter(Boolean)
                         .join(', ') || 'NÃO INFORMADO';
@@ -632,7 +667,9 @@ export default function TenantBranchManager({
                           <td className="whitespace-nowrap px-5 py-4 text-sm font-black text-slate-700">{branch.branchCode}</td>
                           <td className="px-5 py-4">
                             <div className="flex min-w-[220px] items-center gap-3">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-500">
+                              <div className={`flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border text-xs font-black ${
+                                isEmailPending ? 'border-red-200 bg-red-100 text-red-600' : 'border-slate-200 bg-slate-50 text-slate-500'
+                              }`}>
                                 {branch.logoUrl ? (
                                   <img src={branch.logoUrl} alt={branch.name} className="h-full w-full object-contain" />
                                 ) : (
@@ -648,6 +685,29 @@ export default function TenantBranchManager({
                             </div>
                           </td>
                           <td className="px-5 py-4 text-sm font-semibold text-slate-600">{document}</td>
+                          <td className="px-5 py-4">
+                            <div className={`flex min-w-[220px] items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${
+                              isEmailPending ? 'bg-red-100 text-red-700' : 'text-slate-600'
+                            }`}>
+                              <span className="truncate">{branch.email || 'NÃO INFORMADO'}</span>
+                              {isEmailPending ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSendBranchEmailVerification(branch)}
+                                  disabled={sendingEmailVerificationBranchId === branch.id}
+                                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-600 text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title="Enviar e-mail de validação"
+                                  aria-label="Enviar e-mail de validação"
+                                >
+                                  {sendingEmailVerificationBranchId === branch.id ? '...' : (
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                                    </svg>
+                                  )}
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
                           <td className="px-5 py-4 text-sm font-semibold text-slate-600">{contact}</td>
                           <td className="max-w-[320px] px-5 py-4 text-sm font-medium text-slate-500">
                             <div className="truncate" title={address}>{address}</div>
@@ -736,7 +796,7 @@ export default function TenantBranchManager({
                 </div>
                 <div>
                   <label className={labelClassName()}>CNPJ</label>
-                  <input type="text" value={formData.cnpj} onChange={(event) => updateField('cnpj', event.target.value)} className={inputClassName()} />
+                  <input type="text" value={formatCnpjInput(formData.cnpj)} onChange={(event) => updateField('cnpj', normalizeCnpj(event.target.value))} className={inputClassName()} />
                 </div>
                 <div>
                   <label className={labelClassName()}>CPF</label>

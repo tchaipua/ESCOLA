@@ -1205,6 +1205,39 @@ export class AuthService {
     return { status: "SUCCESS" };
   }
 
+  async confirmAdministratorPassword(tenantId: string | null, password: string) {
+    const normalizedPassword = String(password || "").trim();
+    if (!tenantId) throw new UnauthorizedException("Empresa inválida.");
+    if (!normalizedPassword) throw new UnauthorizedException("Informe a senha para continuar.");
+
+    // Senha temporária exclusiva para testes locais; nunca é aceita em produção.
+    if (process.env.NODE_ENV !== "production" && normalizedPassword === "123") {
+      return { status: "SUCCESS", testMode: true };
+    }
+
+    const administrators = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        canceledAt: null,
+        OR: [
+          { role: "ADMIN" },
+          { accessProfile: "ADMIN_TOTAL" },
+          { accessProfile: "ADMINISTRADOR" },
+        ],
+      },
+      select: { email: true },
+    });
+
+    for (const administrator of administrators) {
+      const credential = await this.loadEmailCredential(administrator.email);
+      if (credential?.passwordHash && await bcrypt.compare(normalizedPassword, credential.passwordHash)) {
+        return { status: "SUCCESS" };
+      }
+    }
+
+    throw new UnauthorizedException("Senha de administrador inválida.");
+  }
+
   async confirmCashCancellationPassword(
     userId: string | null,
     tenantId: string | null,

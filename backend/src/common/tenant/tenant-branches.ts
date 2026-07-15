@@ -110,6 +110,8 @@ export function mapTenantBranchSummary(branch: {
   cellphone1?: string | null;
   cellphone2?: string | null;
   email?: string | null;
+  emailVerified?: boolean | null;
+  emailVerifiedAt?: Date | null;
   zipCode?: string | null;
   street?: string | null;
   number?: string | null;
@@ -165,6 +167,8 @@ export function mapTenantBranchSummary(branch: {
     cellphone1: branch.cellphone1,
     cellphone2: branch.cellphone2,
     email: branch.email,
+    emailVerified: branch.emailVerified || false,
+    emailVerifiedAt: branch.emailVerifiedAt,
     zipCode: branch.zipCode,
     street: branch.street,
     number: branch.number,

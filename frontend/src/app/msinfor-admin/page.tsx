@@ -352,6 +352,12 @@ export default function MsinforAdminPage() {
 
             const data = await response.json();
             setEscolas(data);
+            setAccessTenant((current: any) => {
+                if (!current) return current;
+                return Array.isArray(data)
+                    ? data.find((tenant: { id?: string }) => tenant.id === current.id) || current
+                    : current;
+            });
         } catch (err: any) {
             console.error(err);
             setErrorStatus('Não foi possível carregar as escolas. Verifique se o backend está rodando na porta 3001.');

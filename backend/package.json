@@ -16,6 +16,7 @@
     "test:student-billing": "npm run build && node test/student-billing.test.cjs",
     "test:financial-cashier": "npm run build && node test/financial-cashier.test.cjs",
     "test:change-shared-password": "npm run build && node test/change-shared-password.test.cjs",
+    "test:cnpj-validation": "npm run build && node test/cnpj-validation.test.cjs",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",

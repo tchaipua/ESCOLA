@@ -104,6 +104,10 @@ model TenantBranch {
   cellphone1                     String?
   cellphone2                     String?
   email                          String?
+  emailVerified                  Boolean   @default(false)
+  emailVerifiedAt                DateTime?
+  emailVerificationToken         String?
+  emailVerificationExpires       DateTime?
   zipCode                        String?
   street                         String?
   number                         String?
@@ -150,6 +154,7 @@ model TenantBranch {
 
   @@unique([tenantId, branchCode])
   @@index([tenantId, isActive, name])
+  @@index([emailVerificationToken])
   @@map("tenant_branches")
 }
 

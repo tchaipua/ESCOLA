@@ -27,6 +27,10 @@ import {
 import { serializePermissions } from "../../../../common/auth/user-permissions";
 import { getVisibleBranchCodes } from "../../../../common/tenant/branch.constants";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import {
+  isValidCnpj,
+  normalizeCnpj,
+} from "../../../../common/validation/cnpj";
 
 type GuardianContact = {
   id: string;
@@ -1033,6 +1037,12 @@ export class PeopleService {
       mutableData.name = this.sharedProfilesService.resolveWritableName(
         mutableData.name,
       );
+      if (mutableData.cnpj) {
+        mutableData.cnpj = normalizeCnpj(mutableData.cnpj);
+        if (!isValidCnpj(mutableData.cnpj)) {
+          throw new BadRequestException("CNPJ inválido.");
+        }
+      }
 
       const normalizedEmail = this.sharedProfilesService.normalizeEmail(
         createDto.email,
@@ -1129,6 +1139,14 @@ export class PeopleService {
         mutableData.name,
         currentPerson.name,
       );
+      if (Object.prototype.hasOwnProperty.call(updateDto, "cnpj")) {
+        mutableData.cnpj = mutableData.cnpj
+          ? normalizeCnpj(mutableData.cnpj)
+          : "";
+        if (mutableData.cnpj && !isValidCnpj(mutableData.cnpj)) {
+          throw new BadRequestException("CNPJ inválido.");
+        }
+      }
 
       const normalizedEmail = Object.prototype.hasOwnProperty.call(
         updateDto,

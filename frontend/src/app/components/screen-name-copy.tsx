@@ -75,11 +75,13 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'POPUP_FINANCEIRO_RECEBIVEIS_HISTORICO_CLIENTE', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'historico-cliente', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_CONTAS_A_RECEBER', match: 'prefix', physicalPath: escolaAppPath('principal', 'financeiro', '[section]', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_CREDITOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'creditos', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_BANCOS_DDAS_ABERTOS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('bancos', 'ddas-abertos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('bancos', 'extrato', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_BANCOS_MOVIMENTOS_ABERTOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('bancos', 'movimentos-abertos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_BANCOS', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('bancos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_EMPRESA', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('empresas', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_RESUMO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('resumo', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_IMAGENS_PRODUTOS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'imagens-produtos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'historico-movimentacao', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_LOTES_PARCELAS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'lotes', '[batchId]', 'page.tsx') },
@@ -503,7 +505,7 @@ OBSERVACAO:
   },
 };
 
-function resolveScreenAuditMetadata(screenId: string): ScreenAuditMetadata {
+export function resolveScreenAuditMetadata(screenId: string): ScreenAuditMetadata {
   const normalizedScreenId = String(screenId || '').trim().toUpperCase();
   const inferredMetadata = inferScreenAuditMetadata(screenId);
   const registeredMetadata = SCREEN_AUDIT_METADATA[screenId] || SCREEN_AUDIT_METADATA[normalizedScreenId];

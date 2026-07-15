@@ -82,6 +82,10 @@ const SECTION_CONFIG = {
     label: 'Vendas',
     path: '/vendas',
   },
+  'vendas-2': {
+    label: 'Vendas 2',
+    path: '/vendas-2',
+  },
   'vendas-periodo': {
     label: 'Vendas do Período',
     path: '/vendas/periodo',
@@ -193,6 +197,12 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     description:
       'Consulte os boletos DDA em aberto da conta bancária selecionada.',
   },
+  PRINCIPAL_FINANCEIRO_ESTOQUE_IMAGENS_PRODUTOS: {
+    eyebrow: 'Estoque',
+    title: 'Imagens Produtos',
+    description:
+      'Confira as imagens locais dos produtos e pesquise pelo código EAN quando necessário.',
+  },
   PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS: {
     eyebrow: 'Contas a Pagar',
     title: 'IMPORTAÇÃO DE NOTAS',
@@ -234,6 +244,12 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     title: 'Vendas de Produtos',
     description:
       'Venda produtos com baixa de estoque, pagamentos à vista e geração de contas a receber.',
+  },
+  PRINCIPAL_FINANCEIRO_VENDAS_2: {
+    eyebrow: 'Vendas',
+    title: 'Vendas 2',
+    description:
+      'Nova experiência de venda com as mesmas regras de estoque, pagamento e emissão fiscal.',
   },
   PRINCIPAL_FINANCEIRO_DEVOLUCAO_MERCADORIAS: {
     eyebrow: 'Contas a Receber',
@@ -363,6 +379,7 @@ export function PrincipalFinanceiroSectionPageContent({
     authContext.permissions,
     ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES', 'VIEW_CASHIER', 'SETTLE_RECEIVABLES'],
   );
+  const isAdminOnlySalesVariant = section === 'vendas-2';
   const tenantBranding = readCachedTenantBranding(authContext.tenantId);
   const financeBranding = useMemo(
     () => ({
@@ -572,6 +589,11 @@ export function PrincipalFinanceiroSectionPageContent({
             document: person.cpf || person.cnpj || null,
             email: person.email || null,
             phone: person.phone || person.whatsapp || person.cellphone1 || person.cellphone2 || null,
+            addressLine1: [person.street, person.number, person.complement].filter(Boolean).join(', ') || null,
+            neighborhood: person.neighborhood || null,
+            city: person.city || null,
+            state: person.state || null,
+            postalCode: person.zipCode || null,
             sourceType: Array.isArray(person.roles) ? person.roles.join(', ') : null,
           })),
         });
@@ -721,11 +743,15 @@ export function PrincipalFinanceiroSectionPageContent({
     );
   }
 
-  if (!canViewFinancial) {
+  if (!canViewFinancial || (isAdminOnlySalesVariant && authContext.role !== 'ADMIN')) {
     return (
       <DashboardAccessDenied
-        title="Financeiro indisponível"
-        message="Seu perfil não possui permissão para visualizar o portal financeiro integrado."
+        title={isAdminOnlySalesVariant ? 'Vendas 2 indisponível' : 'Financeiro indisponível'}
+        message={
+          isAdminOnlySalesVariant
+            ? 'Esta tela está disponível somente para usuários ADMIN.'
+            : 'Seu perfil não possui permissão para visualizar o portal financeiro integrado.'
+        }
       />
     );
   }
@@ -848,7 +874,7 @@ export function PrincipalFinanceiroSectionPageContent({
                 title={`Financeiro integrado - ${sectionConfig.label}`}
                 src={iframeSrc || undefined}
                 onLoad={() => setLoadedFrameSrc(iframeSrc)}
-                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'vendas' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
+                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'vendas' || section === 'vendas-2' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
               />
             </>
           )}

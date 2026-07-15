@@ -71,6 +71,109 @@ OBSERVACAO SOBRE O FILTRO DA EMPRESA:
 
 const FINANCEIRO_AUDIT_TEMPLATES: FinanceiroScreenAuditTemplate[] = [
   {
+    screenId: 'PRINCIPAL_FINANCEIRO_VENDAS',
+    match: 'exact',
+    originPath: 'vendas/page.tsx',
+    description:
+      'Tela operacional de vendas do Financeiro, usada para montar o carrinho, ajustar preco unitario, desconto e quantidade, selecionar pagamentos e confirmar a venda.',
+    tables: [
+      'sales (S) - cabecalho das vendas confirmadas',
+      'sale_items (SI) - itens, quantidade, preco, desconto e total por produto',
+      'sale_payments (SP) - formas de pagamento e valores recebidos',
+      'products (PR) - catalogo e parametros de estoque dos produtos',
+      'stock_movements (SM) - movimentacoes historicas de estoque geradas pela venda',
+      'receivable_titles (RT) e receivable_installments (RI) - contas a receber quando houver venda a prazo',
+      'cash_sessions (CS) e cash_movements (CM) - caixa usado nos pagamentos a vista',
+    ],
+    relationships: [
+      'sales.companyId = companies.id',
+      'sale_items.saleId = sales.id',
+      'sale_items.productId = products.id',
+      'sale_payments.saleId = sales.id',
+      'sales.receivableTitleId = receivable_titles.id',
+      'stock_movements.sourceType = \'SALE\' e stock_movements.sourceId = sales.id',
+    ],
+    metrics: [
+      'produto, codigo, estoque disponivel e unidade de venda',
+      'valor unitario, desconto, quantidade e valor total por item',
+      'subtotal, descontos, total final e formas de pagamento',
+      'cliente/pagador, venda a vista, prazo, boleto ou parcelamento',
+    ],
+    filters: [
+      'empresa por sourceSystem/sourceTenantId',
+      'filial por sourceBranchCode',
+      'canal de venda selecionado na tela',
+      'busca de produto por nome, SKU, codigo interno ou codigo de barras',
+      'regras de estoque, quantidade, lote, validade, cor/tamanho e estoque negativo resolvidas pela filial e pelo produto',
+    ],
+    order: 'sales.confirmedAt DESC; itens por sale_items.lineNumber ASC',
+    endpoints: [
+      'GET /products',
+      'GET /sales',
+      'GET /sales/{saleId}',
+      'POST /sales',
+      'POST /sales/{saleId}/cancel',
+      'POST /sales/{saleId}/returns',
+    ],
+    sqlText: `-- PARAMETROS ATUAIS
+-- :sourceSystem = sistema de origem da empresa
+-- :sourceTenantId = tenant da empresa de origem
+-- :sourceBranchCode = filial operacional
+-- :saleChannel = canal de venda ou ALL
+-- :productSearch = busca digitada para localizar produtos
+
+SELECT
+  S.id,
+  S.branchCode,
+  S.saleNumber,
+  S.saleChannel,
+  S.status,
+  S.customerPartyId,
+  S.customerNameSnapshot,
+  S.customerDocumentSnapshot,
+  S.subtotalAmount,
+  S.discountAmount,
+  S.totalAmount,
+  S.paidAmount,
+  S.receivableAmount,
+  S.paymentSummary,
+  S.confirmedAt,
+  SI.lineNumber,
+  SI.productId,
+  SI.productNameSnapshot,
+  SI.productCodeSnapshot,
+  SI.quantity,
+  SI.unitPrice,
+  SI.discountAmount AS itemDiscountAmount,
+  SI.totalAmount AS itemTotalAmount,
+  PR.name AS currentProductName,
+  SP.paymentMethod,
+  SP.amount AS paymentAmount
+FROM sales S
+INNER JOIN companies CO
+  ON CO.id = S.companyId
+ AND CO.canceledAt IS NULL
+LEFT JOIN sale_items SI
+  ON SI.saleId = S.id
+ AND SI.companyId = S.companyId
+ AND SI.canceledAt IS NULL
+LEFT JOIN products PR
+  ON PR.id = SI.productId
+ AND PR.companyId = SI.companyId
+ AND PR.canceledAt IS NULL
+LEFT JOIN sale_payments SP
+  ON SP.saleId = S.id
+ AND SP.companyId = S.companyId
+ AND SP.canceledAt IS NULL
+WHERE S.canceledAt IS NULL
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+  AND (:sourceBranchCode IS NULL OR S.branchCode = :sourceBranchCode)
+  AND (:saleChannel = 'ALL' OR S.saleChannel = :saleChannel)
+  AND (:productSearch IS NULL OR :productSearch = '' OR UPPER(SI.productNameSnapshot) LIKE '%' || UPPER(:productSearch) || '%')
+ORDER BY S.confirmedAt DESC, SI.lineNumber ASC;`,
+  },
+  {
     screenId: 'PRINCIPAL_FINANCEIRO_BANCOS',
     match: 'prefix',
     originPath: 'bancos/page.tsx',
@@ -866,6 +969,48 @@ WHERE CS.canceledAt IS NULL
   AND (:status = 'ALL' OR CS.status = :status)
 GROUP BY CS.id
 ORDER BY CS.openedAt DESC;`,
+  },
+  {
+    screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_IMAGENS_PRODUTOS',
+    match: 'exact',
+    originPath: 'estoque/imagens-produtos/page.tsx',
+    description:
+      'Grid de conferência das imagens locais dos produtos, usando o código de barras EAN-8 ou EAN-13 como nome do arquivo e permitindo a pesquisa de imagens na web.',
+    tables: [
+      'companies (CO) - empresa financeira vinculada ao sistema de origem',
+      'products (PR) - produtos, código interno e código de barras',
+    ],
+    relationships: ['products.companyId = companies.id'],
+    metrics: [
+      'produto, código interno, código de barras e tipo EAN',
+      'presença da imagem no agente local do computador',
+      'atalho para pesquisa de imagens pelo código de barras',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'filial atual por sourceBranchCode',
+      'busca local por produto, código interno, SKU ou código de barras',
+      'somente produtos ativos',
+    ],
+    order: 'products.name ASC',
+    endpoints: ['GET /products', 'GET http://127.0.0.1:47821/imagens/{EAN}.{EXTENSAO}'],
+    sqlText: `SELECT
+  PR.id,
+  PR.name,
+  PR.internalCode,
+  PR.sku,
+  PR.barcode,
+  PR.status
+FROM products PR
+INNER JOIN companies CO
+  ON CO.id = PR.companyId
+ AND CO.canceledAt IS NULL
+WHERE PR.canceledAt IS NULL
+  AND PR.status = 'ACTIVE'
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+  AND (:search = '' OR UPPER(PR.name) LIKE '%' || UPPER(:search) || '%' OR PR.internalCode LIKE '%' || :search || '%' OR PR.barcode LIKE '%' || :search || '%')
+ORDER BY PR.name ASC;`,
   },
   {
     screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO',

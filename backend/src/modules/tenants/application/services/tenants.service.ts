@@ -10,6 +10,8 @@ import { PurgeTenantDto } from "../dto/purge-tenant.dto";
 import { PurgeTenantDeletionSummary } from "../dto/purge-tenant-response.dto";
 import { UpdateTenantDto } from "../dto/update-tenant.dto";
 import * as bcrypt from "bcrypt";
+import * as crypto from "crypto";
+import * as nodemailer from "nodemailer";
 import {
   getDefaultPermissionsForRole,
   normalizePermissions,
@@ -35,6 +37,10 @@ import {
   listTenantBranches,
   mapTenantBranchSummary,
 } from "../../../../common/tenant/tenant-branches";
+import {
+  isValidCnpj,
+  normalizeCnpj,
+} from "../../../../common/validation/cnpj";
 
 type EmailUsageEntityType =
   | "ADMIN_USER"
@@ -106,6 +112,17 @@ type TenantBranchPayload = {
   storageRegion?: string | null;
   storageEndpoint?: string | null;
   storageCustomEndpoint?: string | null;
+};
+
+type SmtpConfiguration = {
+  name: string;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpTimeout?: number | null;
+  smtpAuthenticate?: boolean | null;
+  smtpSecure?: boolean | null;
+  smtpEmail?: string | null;
+  smtpPassword?: string | null;
 };
 
 type AccessUserPayload = {
@@ -202,6 +219,126 @@ export class TenantsService {
     return normalized || null;
   }
 
+  private hasSmtpInformation(config?: Partial<SmtpConfiguration> | null) {
+    return !!(
+      config?.smtpHost ||
+      config?.smtpPort ||
+      config?.smtpTimeout ||
+      config?.smtpEmail ||
+      config?.smtpPassword
+    );
+  }
+
+  private buildEnvSmtpConfiguration(tenantName: string): SmtpConfiguration | null {
+    const smtpHost = String(process.env.SMTP_HOST || "").trim();
+    const smtpPort = Number(process.env.SMTP_PORT || 0);
+    const smtpEmail = String(process.env.SMTP_EMAIL || "").trim();
+
+    if (!smtpHost || !Number.isInteger(smtpPort) || smtpPort <= 0 || !smtpEmail) {
+      return null;
+    }
+
+    return {
+      name: tenantName,
+      smtpHost,
+      smtpPort,
+      smtpTimeout: Number(process.env.SMTP_TIMEOUT || 0) || 60,
+      smtpAuthenticate: this.parseBoolean(
+        process.env.SMTP_AUTHENTICATE,
+        !!String(process.env.SMTP_PASSWORD || "").trim(),
+      ),
+      smtpSecure: this.parseBoolean(process.env.SMTP_SECURE, smtpPort === 465),
+      smtpEmail,
+      smtpPassword: String(process.env.SMTP_PASSWORD || "").trim() || null,
+    };
+  }
+
+  private async sendBranchVerificationEmail(params: {
+    tenantId: string;
+    branchId: string;
+    email: string;
+    token: string;
+  }) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: params.tenantId, canceledAt: null },
+      select: {
+        name: true,
+        smtpHost: true,
+        smtpPort: true,
+        smtpTimeout: true,
+        smtpAuthenticate: true,
+        smtpSecure: true,
+        smtpEmail: true,
+        smtpPassword: true,
+        branches: {
+          where: { id: params.branchId, canceledAt: null },
+          select: {
+            name: true,
+            smtpHost: true,
+            smtpPort: true,
+            smtpTimeout: true,
+            smtpAuthenticate: true,
+            smtpSecure: true,
+            smtpEmail: true,
+            smtpPassword: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    const branchSmtp = tenant?.branches[0];
+    const tenantSmtp = tenant
+      ? {
+          name: tenant.name,
+          smtpHost: tenant.smtpHost,
+          smtpPort: tenant.smtpPort,
+          smtpTimeout: tenant.smtpTimeout,
+          smtpAuthenticate: tenant.smtpAuthenticate,
+          smtpSecure: tenant.smtpSecure,
+          smtpEmail: tenant.smtpEmail,
+          smtpPassword: tenant.smtpPassword,
+        }
+      : null;
+    const smtp = this.hasSmtpInformation(branchSmtp)
+      ? branchSmtp
+      : tenantSmtp?.smtpHost && tenantSmtp.smtpPort && tenantSmtp.smtpEmail
+        ? tenantSmtp
+        : this.buildEnvSmtpConfiguration(tenant?.name || "ESCOLA");
+
+    if (!smtp?.smtpHost || !smtp.smtpPort || !smtp.smtpEmail) {
+      throw new BadRequestException(
+        "Esta escola ainda não possui o SMTP configurado para envio de e-mail.",
+      );
+    }
+
+    if (smtp.smtpAuthenticate && !smtp.smtpPassword) {
+      throw new BadRequestException(
+        "Esta escola possui SMTP incompleto. Revise usuário e senha de envio.",
+      );
+    }
+
+    const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+    const confirmationLink = `${frontendBaseUrl}/confirm-email?target=branch&token=${params.token}`;
+    const transporter = nodemailer.createTransport({
+      host: smtp.smtpHost,
+      port: smtp.smtpPort,
+      secure: smtp.smtpSecure || false,
+      connectionTimeout: (smtp.smtpTimeout || 60) * 1000,
+      auth: smtp.smtpAuthenticate
+        ? { user: smtp.smtpEmail, pass: smtp.smtpPassword || "" }
+        : undefined,
+    });
+
+    await transporter.sendMail({
+      from: `"${smtp.name}" <${smtp.smtpEmail}>`,
+      to: params.email,
+      subject: "CONFIRMAÇÃO DE E-MAIL DA FILIAL",
+      text: `Confirme o e-mail da filial acessando: ${confirmationLink}`,
+      html: `<p>Confirme o e-mail da filial acessando o link abaixo:</p><p><a href="${confirmationLink}">CONFIRMAR E-MAIL DA FILIAL</a></p>`,
+    });
+  }
+
   private normalizeBranchStockParameterMode(value?: string | null) {
     const normalized = String(value || "")
       .trim()
@@ -219,12 +356,20 @@ export class TenantsService {
   }
 
   private buildTenantBranchData(payload: TenantBranchPayload) {
+    const normalizedCnpj = this.normalizeOptionalText(payload.cnpj)
+      ? normalizeCnpj(String(payload.cnpj))
+      : null;
+
+    if (normalizedCnpj && !isValidCnpj(normalizedCnpj)) {
+      throw new BadRequestException("CNPJ inválido.");
+    }
+
     return {
       logoUrl: String(payload.logoUrl || "").trim() || null,
       document: this.normalizeOptionalText(payload.document),
       rg: this.normalizeOptionalText(payload.rg),
       cpf: this.normalizeOptionalText(payload.cpf),
-      cnpj: this.normalizeOptionalText(payload.cnpj),
+      cnpj: normalizedCnpj,
       nickname: this.normalizeOptionalText(payload.nickname),
       corporateName: this.normalizeOptionalText(payload.corporateName),
       phone: this.normalizeOptionalText(payload.phone),
@@ -988,11 +1133,86 @@ export class TenantsService {
           .trim()
           .toUpperCase(),
         ...this.buildTenantBranchData(payload),
+        ...(this.normalizeEmail(payload.email) !== this.normalizeEmail(branch.email)
+          ? {
+              emailVerified: false,
+              emailVerifiedAt: null,
+              emailVerificationToken: null,
+              emailVerificationExpires: null,
+            }
+          : {}),
         updatedBy: this.masterAuditUser,
       },
     });
 
     return mapTenantBranchSummary(updatedBranch);
+  }
+
+  async sendBranchEmailConfirmationByTenant(tenantId: string, branchId: string) {
+    await this.assertActiveTenant(tenantId);
+    const branch = await this.prisma.tenantBranch.findFirst({
+      where: { id: branchId, tenantId, canceledAt: null },
+      select: { id: true, email: true, emailVerified: true },
+    });
+
+    if (!branch) throw new NotFoundException("Filial não encontrada.");
+    if (!branch.email) {
+      throw new BadRequestException("Informe o e-mail da filial antes de enviar a validação.");
+    }
+    if (branch.emailVerified) {
+      return { message: "O e-mail desta filial já está validado." };
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.prisma.tenantBranch.update({
+      where: { id: branch.id },
+      data: {
+        emailVerificationToken: tokenHash,
+        emailVerificationExpires: expiresAt,
+        emailVerified: false,
+        emailVerifiedAt: null,
+        updatedBy: this.masterAuditUser,
+      },
+    });
+
+    await this.sendBranchVerificationEmail({ tenantId, branchId, email: branch.email, token });
+
+    return { message: "E-mail de validação enviado para a filial.", expiresAt };
+  }
+
+  async verifyBranchEmail(token: string) {
+    const normalizedToken = String(token || "").trim();
+    if (!normalizedToken) throw new BadRequestException("Token de confirmação não informado.");
+
+    const tokenHash = crypto.createHash("sha256").update(normalizedToken).digest("hex");
+    const branch = await this.prisma.tenantBranch.findFirst({
+      where: {
+        emailVerificationToken: tokenHash,
+        emailVerificationExpires: { gt: new Date() },
+        canceledAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!branch) {
+      throw new BadRequestException("Link de confirmação inválido ou expirado.");
+    }
+
+    await this.prisma.tenantBranch.update({
+      where: { id: branch.id },
+      data: {
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+        updatedBy: "EMAIL_VERIFICATION",
+      },
+    });
+
+    return { message: "E-mail da filial confirmado com sucesso." };
   }
 
   async findEmailUsage(email: string) {

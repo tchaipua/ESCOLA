@@ -87,6 +87,7 @@
 
 ## Notas recentes
 
+- 2026-07-14: Adicionado o card `Vendas 2` e a rota integrada `/principal/financeiro/vendas-2`, mantendo a regra operacional no sistema Financeiro separado.
 - 2026-03-17: Resumo por turma agora ordena pelas séries conforme o `sortOrder` registrado no cadastro de séries para refletir a sequência natural de aprendizado.
 - 2026-03-31: Regra oficializada de e-mail compartilhado entre escolas apenas para autenticacao (`login`, `forgot-password`, validacao de senha compartilhada e troca global de senha), mantendo isolamento normal por `tenantId` fora desses fluxos.
 - 2026-05-17: Alerta residual de `npm audit` sobre Next/PostCSS pertence ao projeto `Financeiro`; a Escola apenas acompanha por consumir telas embutidas do Financeiro e nao requer alteracao tecnica local.

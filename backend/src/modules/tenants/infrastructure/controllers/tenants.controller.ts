@@ -299,6 +299,13 @@ export class TenantsController {
   }
 
   @Public()
+  @Get("branches/verify-email")
+  @ApiOperation({ summary: "Confirma o e-mail de uma filial" })
+  async verifyBranchEmail(@Query("token") token: string) {
+    return this.tenantsService.verifyBranchEmail(token);
+  }
+
+  @Public()
   @Get(":id/branches")
   @ApiOperation({
     summary: "Lista as filiais de uma escola pelo painel MSINFOR ADMIN",
@@ -404,6 +411,18 @@ export class TenantsController {
   ) {
     this.assertMasterPass(req);
     return this.tenantsService.updateBranchByTenant(id, branchId, payload);
+  }
+
+  @Public()
+  @Post(":id/branches/:branchId/send-email-confirmation")
+  @ApiOperation({ summary: "Envia a confirmação de e-mail para uma filial" })
+  async sendBranchEmailConfirmationByTenant(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Param("branchId") branchId: string,
+  ) {
+    this.assertMasterPass(req);
+    return this.tenantsService.sendBranchEmailConfirmationByTenant(id, branchId);
   }
 
   @Public()

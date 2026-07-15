@@ -15,6 +15,10 @@ import {
   tenantContext,
 } from "../../../../common/tenant/tenant.context";
 import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
+import {
+  isValidCnpj,
+  normalizeCnpj,
+} from "../../../../common/validation/cnpj";
 
 type TelegramUpdate = {
   message?: {
@@ -238,26 +242,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return calcDigit(9) === Number(cpf[9]) && calcDigit(10) === Number(cpf[10]);
   }
 
-  private isValidCnpj(cnpj: string) {
-    if (!/^\d{14}$/.test(cnpj) || /^(\d)\1+$/.test(cnpj)) return false;
-    const calcDigit = (size: number) => {
-      const weights =
-        size === 12
-          ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-          : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
-      const sum = weights.reduce(
-        (total, weight, index) => total + Number(cnpj[index]) * weight,
-        0,
-      );
-      const rest = sum % 11;
-      return rest < 2 ? 0 : 11 - rest;
-    };
-    return (
-      calcDigit(12) === Number(cnpj[12]) &&
-      calcDigit(13) === Number(cnpj[13])
-    );
-  }
-
   private async getTenantTelegramConfiguration(
     tenantId: string,
   ): Promise<TelegramConfiguration | null> {
@@ -453,12 +437,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   private async findPersonByDocument(
     tenantId: string,
-    documentDigits: string,
+    documentValue: string,
     isCpf: boolean,
   ): Promise<TelegramPersonMatch | null> {
     if (isCpf) {
       const personByDigits = await this.prisma.person.findFirst({
-        where: { tenantId, cpfDigits: documentDigits, canceledAt: null },
+        where: { tenantId, cpfDigits: documentValue, canceledAt: null },
         select: {
           id: true,
           name: true,
@@ -477,7 +461,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             telegramChatId: true,
           },
         })
-      ).find((candidate) => this.onlyDigits(candidate.cpf) === documentDigits);
+      ).find((candidate) => this.onlyDigits(candidate.cpf) === documentValue);
       if (personByMaskedCpf) {
         return {
           id: personByMaskedCpf.id,
@@ -496,7 +480,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             telegramChatId: true,
           },
         })
-      ).find((candidate) => this.onlyDigits(candidate.cnpj) === documentDigits);
+      ).find(
+        (candidate) => normalizeCnpj(candidate.cnpj) === documentValue,
+      );
       if (personByCnpj) {
         return {
           id: personByCnpj.id,
@@ -1549,37 +1535,43 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.sendTelegramMessage(
         configuration,
         chatId,
-        "Olá. Para liberar suas notificações, informe seu CPF ou CNPJ, usando apenas números.",
+        "Olá. Para liberar suas notificações, informe seu CPF ou CNPJ. CPF usa somente números; CNPJ pode usar letras e números.",
       );
       return { ok: true, action: "ASK_DOCUMENT" };
     }
 
-    const documentDigits = this.onlyDigits(text);
-    const isCpf = documentDigits.length === 11;
-    const isCnpj = documentDigits.length === 14;
+    const normalizedText = String(text || "").trim().toUpperCase();
+    const cpfDigits = this.onlyDigits(text);
+    const cnpj = normalizeCnpj(text);
+    const isCpf = !/[A-Z]/.test(normalizedText) && cpfDigits.length === 11;
+    const isCnpj = cnpj.length === 14;
 
     if (!isCpf && !isCnpj) {
       await this.sendTelegramMessage(
         configuration,
         chatId,
-        "Não consegui identificar o documento. Envie seu CPF ou CNPJ usando apenas números.",
+        "Não consegui identificar o documento. Envie um CPF numérico ou um CNPJ com letras e números.",
       );
       return { ok: true, action: "INVALID_DOCUMENT_LENGTH" };
     }
 
     if (
-      (isCpf && !this.isValidCpf(documentDigits)) ||
-      (isCnpj && !this.isValidCnpj(documentDigits))
+      (isCpf && !this.isValidCpf(cpfDigits)) ||
+      (isCnpj && !isValidCnpj(cnpj))
     ) {
       await this.sendTelegramMessage(
         configuration,
         chatId,
-        "CPF/CNPJ inválido. Confira os números e envie novamente.",
+        "CPF/CNPJ inválido. Confira os dados e envie novamente.",
       );
       return { ok: true, action: "INVALID_DOCUMENT" };
     }
 
-    const person = await this.findPersonByDocument(tenantId, documentDigits, isCpf);
+    const person = await this.findPersonByDocument(
+      tenantId,
+      isCpf ? cpfDigits : cnpj,
+      isCpf,
+    );
 
     if (!person) {
       await this.sendTelegramMessage(

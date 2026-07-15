@@ -9,6 +9,7 @@ function ConfirmEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
+  const target = searchParams.get('target');
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Confirmando seu e-mail...');
 
@@ -23,7 +24,8 @@ function ConfirmEmailContent() {
 
     const run = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/auth/verify-email?token=${encodeURIComponent(token)}`);
+        const endpoint = target === 'branch' ? '/tenants/branches/verify-email' : '/auth/verify-email';
+        const response = await fetch(`${API_BASE_URL}${endpoint}?token=${encodeURIComponent(token)}`);
         const data = await response.json().catch(() => null);
 
         if (!response.ok) {
@@ -49,7 +51,7 @@ function ConfirmEmailContent() {
     return () => {
       cancelled = true;
     };
-  }, [router, token]);
+  }, [router, target, token]);
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-slate-100 p-4">

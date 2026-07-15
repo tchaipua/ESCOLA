@@ -82,6 +82,16 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
+  @Post("confirm-administrator-password")
+  @ApiOperation({ summary: "Confirma a senha de um administrador da mesma empresa" })
+  async confirmAdministratorPassword(
+    @CurrentUser() user: ICurrentUser,
+    @Body() payload: ConfirmPasswordDto,
+  ) {
+    return this.authService.confirmAdministratorPassword(user.tenantId, payload.password);
+  }
+
+  @ApiBearerAuth()
   @Post("confirm-cash-cancellation-password")
   @ApiOperation({
     summary:

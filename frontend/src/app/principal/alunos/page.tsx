@@ -31,6 +31,7 @@ import {
     isValidCnpj,
     isValidCpf,
     mergeSharedPersonIntoForm,
+    normalizeCnpj,
     normalizeDocumentDigits,
     readImageFileAsDataUrl,
     type EmailUsageRecord,
@@ -1683,7 +1684,7 @@ export default function AlunosPage() {
                 birthDate: detail.birthDate ? new Date(detail.birthDate).toISOString().split('T')[0] : '',
                 cpf: detail.cpf || '',
                 rg: detail.rg || '',
-                cnpj: detail.cnpj || '',
+                cnpj: detail.cnpj ? normalizeCnpj(detail.cnpj) : '',
                 nickname: detail.nickname || '',
                 corporateName: detail.corporateName || '',
                 phone: detail.phone || '',
@@ -2762,7 +2763,7 @@ export default function AlunosPage() {
                                                     onChange={(event) =>
                                                         setFormData((current) => ({
                                                             ...current,
-                                                            cnpj: limitNumericDigits(event.target.value, 14),
+                                                            cnpj: normalizeCnpj(event.target.value),
                                                         }))
                                                     }
                                                     className={inputClass}

@@ -30,7 +30,9 @@ import {
     getDashboardAuthContext,
     hasAllDashboardPermissions,
     hasDashboardPermission,
+    isValidCnpj,
     mergeSharedPersonIntoForm,
+    normalizeCnpj,
     normalizeDocumentDigits,
     type EmailUsageRecord,
     type SharedNameSuggestion,
@@ -1234,7 +1236,7 @@ export default function ProfessoresPage() {
             name: prof.name || '',
             rg: prof.rg || '',
             cpf: prof.cpf ? limitNumericDigits(prof.cpf, 11) : '',
-            cnpj: prof.cnpj ? limitNumericDigits(prof.cnpj, 14) : '',
+            cnpj: prof.cnpj ? normalizeCnpj(prof.cnpj) : '',
             nickname: prof.nickname || '',
             corporateName: prof.corporateName || '',
             birthDate: prof.birthDate ? new Date(prof.birthDate).toISOString().split('T')[0] : '',
@@ -2015,33 +2017,6 @@ export default function ProfessoresPage() {
         return true;
     };
 
-    const isValidCnpj = (cnpj: string) => {
-        cnpj = cnpj.replace(/[^\d]+/g, '');
-        if (cnpj === '' || cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
-        let tamanho = cnpj.length - 2;
-        let numeros = cnpj.substring(0, tamanho);
-        const digitos = cnpj.substring(tamanho);
-        let soma = 0;
-        let pos = tamanho - 7;
-        for (let i = tamanho; i >= 1; i--) {
-            soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
-            if (pos < 2) pos = 9;
-        }
-        let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-        if (resultado !== parseInt(digitos.charAt(0))) return false;
-        tamanho = tamanho + 1;
-        numeros = cnpj.substring(0, tamanho);
-        soma = 0;
-        pos = tamanho - 7;
-        for (let i = tamanho; i >= 1; i--) {
-            soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
-            if (pos < 2) pos = 9;
-        }
-        resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-        if (resultado !== parseInt(digitos.charAt(1))) return false;
-        return true;
-    };
-
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -2711,7 +2686,7 @@ export default function ProfessoresPage() {
                                                         onChange={(e) =>
                                                             setFormData({
                                                                 ...formData,
-                                                                cnpj: limitNumericDigits(e.target.value, 14),
+                                                                cnpj: normalizeCnpj(e.target.value),
                                                             })
                                                         }
                                                         className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"

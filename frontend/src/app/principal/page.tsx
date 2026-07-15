@@ -385,6 +385,12 @@ export default function DashboardPage() {
             image: '/principal-financeiro/vendas.svg?v=1',
         },
         {
+            href: '/principal/financeiro/vendas-2',
+            title: 'Vendas 2',
+            description: 'Card reservado para o novo fluxo de vendas.',
+            image: '/principal-financeiro/vendas.svg?v=1',
+        },
+        {
             href: '/principal/pessoas',
             title: 'Pessoas e Perfis',
             description: 'Consulta somente leitura do cadastro-base compartilhado entre professores, alunos e responsáveis.',
@@ -439,6 +445,9 @@ export default function DashboardPage() {
             image: '/principal-financeiro/estoque.svg?v=2',
         },
     ];
+    const visibleAdminCards = currentRole === 'ADMIN'
+        ? adminCards
+        : adminCards.filter((card) => card.href !== '/principal/financeiro/vendas-2');
 
     if (isPersonalRole(currentRole)) {
         const teacherProfile = currentRole === 'PROFESSOR' ? (ownProfile as TeacherMe | null) : null;
@@ -695,7 +704,7 @@ export default function DashboardPage() {
                         <div className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Visões administrativas</div>
                         <div className="mt-4 rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
-                                {adminCards.map((card) => (
+                                {visibleAdminCards.map((card) => (
                                     <Link
                                         key={card.href}
                                         href={card.href}

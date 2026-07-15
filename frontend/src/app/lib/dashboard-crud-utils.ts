@@ -241,37 +241,23 @@ export function isValidCpf(value: string) {
 }
 
 export function isValidCnpj(value: string) {
-    const cnpj = value.replace(/[^\d]+/g, '');
-    if (cnpj === '' || cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+    const cnpj = normalizeCnpj(value);
+    if (!/^[A-Z0-9]{12}\d{2}$/.test(cnpj) || /^(\d)\1{13}$/.test(cnpj)) return false;
 
-    let length = cnpj.length - 2;
-    let numbers = cnpj.substring(0, length);
-    const digits = cnpj.substring(length);
+    const calculateVerifier = (base: string) => {
+        let sum = 0;
+        for (let index = 0; index < base.length; index += 1) {
+            const weight = 2 + ((base.length - 1 - index) % 8);
+            sum += (base.charCodeAt(index) - 48) * weight;
+        }
+        const remainder = sum % 11;
+        return remainder < 2 ? 0 : 11 - remainder;
+    };
 
-    let sum = 0;
-    let position = length - 7;
-    for (let index = length; index >= 1; index -= 1) {
-        sum += Number.parseInt(numbers.charAt(length - index), 10) * position;
-        position -= 1;
-        if (position < 2) position = 9;
-    }
-
-    let result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-    if (result !== Number.parseInt(digits.charAt(0), 10)) return false;
-
-    length += 1;
-    numbers = cnpj.substring(0, length);
-    sum = 0;
-    position = length - 7;
-
-    for (let index = length; index >= 1; index -= 1) {
-        sum += Number.parseInt(numbers.charAt(length - index), 10) * position;
-        position -= 1;
-        if (position < 2) position = 9;
-    }
-
-    result = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-    return result === Number.parseInt(digits.charAt(1), 10);
+    const base = cnpj.slice(0, 12);
+    const firstVerifier = calculateVerifier(base);
+    const secondVerifier = calculateVerifier(`${base}${firstVerifier}`);
+    return firstVerifier === Number(cnpj[12]) && secondVerifier === Number(cnpj[13]);
 }
 
 export function formatCpf(value: string) {
@@ -281,9 +267,9 @@ export function formatCpf(value: string) {
 }
 
 export function formatCnpj(value: string) {
-    const digits = value.replace(/[^\d]+/g, '');
-    if (digits.length !== 14) return value;
-    return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+    const cnpj = normalizeCnpj(value);
+    if (cnpj.length !== 14) return value;
+    return cnpj.replace(/([A-Z0-9]{2})([A-Z0-9]{3})([A-Z0-9]{3})([A-Z0-9]{4})(\d{2})/, '$1.$2.$3/$4-$5');
 }
 
 export function formatPhone(value: string) {
@@ -319,19 +305,19 @@ export function formatCpfInput(value: string) {
 }
 
 export function formatCnpjInput(value: string) {
-    const digits = normalizeDocumentDigits(value).slice(0, 14);
-    if (!digits) return '';
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 5) {
-        return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    const cnpj = normalizeCnpj(value);
+    if (!cnpj) return '';
+    if (cnpj.length <= 2) return cnpj;
+    if (cnpj.length <= 5) {
+        return `${cnpj.slice(0, 2)}.${cnpj.slice(2)}`;
     }
-    if (digits.length <= 8) {
-        return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+    if (cnpj.length <= 8) {
+        return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5)}`;
     }
-    if (digits.length <= 12) {
-        return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+    if (cnpj.length <= 12) {
+        return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8)}`;
     }
-    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+    return `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}`;
 }
 
 export function formatPhoneInput(value: string) {
@@ -354,6 +340,10 @@ export function formatCepInput(value: string) {
 
 export function normalizeDocumentDigits(value: string) {
     return value.replace(/[^\d]+/g, '');
+}
+
+export function normalizeCnpj(value: string) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, '').slice(0, 14);
 }
 
 function normalizeSearchText(value: string) {

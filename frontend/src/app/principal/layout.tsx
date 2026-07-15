@@ -8,8 +8,10 @@ import { CASHIER_ONLY_HOME_ROUTE, getDashboardAuthContext, hasAllDashboardPermis
 import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS } from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import SalesScreenParametersModal, { type SalesScreenParameters } from '@/app/components/sales-screen-parameters-modal';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const FINANCEIRO_API_BASE_URL = process.env.NEXT_PUBLIC_FINANCEIRO_API_URL || 'http://localhost:3002/api/v1';
 
 type CurrentTenant = {
     id: string;
@@ -57,6 +59,11 @@ type EmbeddedScreenContextMessage = {
     originText?: unknown;
     auditText?: unknown;
     sqlText?: unknown;
+    parameters?: {
+        allowSaleUnitPriceEdit?: boolean;
+        allowSaleItemDiscount?: boolean;
+        groupSameProduct?: boolean;
+    };
 };
 
 function normalizeScreenContextText(value: unknown) {
@@ -186,6 +193,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [manuallyClosedSubmenu, setManuallyClosedSubmenu] = useState<'people' | 'school-config' | 'school-year' | null>(null);
     const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+    const [isSalesScreenParametersOpen, setIsSalesScreenParametersOpen] = useState(false);
+    const [salesScreenParameters, setSalesScreenParameters] = useState<SalesScreenParameters>({
+        allowSaleUnitPriceEdit: true,
+        allowSaleItemDiscount: true,
+        groupSameProduct: true,
+    });
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -300,7 +313,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     useEffect(() => {
         const handleEmbeddedScreenContext = (event: MessageEvent) => {
             const data = event.data as EmbeddedScreenContextMessage | null;
-            if (!data || typeof data !== 'object' || data.type !== 'MSINFOR_SCREEN_CONTEXT') return;
+            if (!data || typeof data !== 'object') return;
+
+            if (data.type === 'MSINFOR_SALES_PARAMETERS_STATE' && data.parameters) {
+                setSalesScreenParameters({
+                    allowSaleUnitPriceEdit: data.parameters.allowSaleUnitPriceEdit !== false,
+                    allowSaleItemDiscount: data.parameters.allowSaleItemDiscount !== false,
+                    groupSameProduct: data.parameters.groupSameProduct !== false,
+                });
+                return;
+            }
+
+            if (data.type !== 'MSINFOR_SCREEN_CONTEXT') return;
 
             const screenId = String(data.screenId || '')
                 .replace(/[^A-Z0-9_]/gi, '_')
@@ -632,6 +656,65 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setChangePasswordErrorVariant(null);
         setChangePasswordAlertType(null);
         setIsChangePasswordOpen(true);
+    };
+
+    const handleOpenSalesScreenParameters = () => {
+        setUserMenuOpen(false);
+        setIsSalesScreenParametersOpen(true);
+    };
+
+    const handleSaveSalesScreenParameters = (parameters: SalesScreenParameters) => {
+        return new Promise<void>((resolve, reject) => {
+            void (async () => {
+                try {
+                    const fetchWithTimeout = (input: RequestInfo | URL, init?: RequestInit) => {
+                        const controller = new AbortController();
+                        const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+                        return fetch(input, { ...init, signal: controller.signal }).finally(() => window.clearTimeout(timeoutId));
+                    };
+                    const { tenantId, branchCode, userId } = getDashboardAuthContext();
+                    const sourceTenantId = currentTenant?.id || tenantId;
+                    if (!sourceTenantId || !Number.isInteger(branchCode)) {
+                        throw new Error('CONTEXTO DA ESCOLA OU DA FILIAL AUSENTE.');
+                    }
+
+                    const scope = `?sourceSystem=ESCOLA&sourceTenantId=${encodeURIComponent(sourceTenantId)}`;
+                    const companiesResponse = await fetchWithTimeout(`${FINANCEIRO_API_BASE_URL}/companies${scope}`);
+                    const companies = await companiesResponse.json().catch(() => null);
+                    if (!companiesResponse.ok || !Array.isArray(companies) || !companies[0]?.id) {
+                        throw new Error(companies?.message || 'NÃO FOI POSSÍVEL LOCALIZAR A EMPRESA NO FINANCEIRO.');
+                    }
+
+                    const branchesResponse = await fetchWithTimeout(`${FINANCEIRO_API_BASE_URL}/companies/${companies[0].id}/branches${scope}`);
+                    const branches = await branchesResponse.json().catch(() => null);
+                    const branch = Array.isArray(branches)
+                        ? branches.find((item: { branchCode?: number }) => item.branchCode === branchCode)
+                        : null;
+                    if (!branchesResponse.ok || !branch?.id) {
+                        throw new Error(branches?.message || 'NÃO FOI POSSÍVEL LOCALIZAR A FILIAL NO FINANCEIRO.');
+                    }
+
+                    const saveResponse = await fetchWithTimeout(`${FINANCEIRO_API_BASE_URL}/companies/${companies[0].id}/branches/${branch.id}/screen-parameters/vendas${scope}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...parameters, requestedBy: userId || undefined }),
+                    });
+                    const savedBranch = await saveResponse.json().catch(() => null);
+                    if (!saveResponse.ok) {
+                        throw new Error(savedBranch?.message || 'O FINANCEIRO NÃO CONFIRMOU O SALVAMENTO DOS PARÂMETROS.');
+                    }
+
+                    setSalesScreenParameters({
+                        allowSaleUnitPriceEdit: savedBranch?.allowSaleUnitPriceEdit !== false,
+                        allowSaleItemDiscount: savedBranch?.allowSaleItemDiscount !== false,
+                        groupSameProduct: savedBranch?.groupSameProduct !== false,
+                    });
+                    resolve();
+                } catch (error) {
+                    reject(error instanceof Error ? error : new Error('NÃO FOI POSSÍVEL SALVAR OS PARÂMETROS NO FINANCEIRO.'));
+                }
+            })();
+        });
     };
 
     const closeChangePassword = () => {
@@ -1043,6 +1126,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
     const showFinanceiroParcelasScreen = pathname.startsWith('/principal/financeiro/parcelas');
     const showFinanceiroVendasScreen = pathname === '/principal/financeiro/vendas';
+    const showSalesParametersButton =
+        pathname === '/principal/financeiro/vendas' || pathname === '/principal/financeiro/vendas-2';
     const showPrincipalHeroHeader = pathname === '/principal';
     const showNotificationsHeroHeader = pathname === '/principal/notificacoes';
     const showPeopleHeroHeader = pathname === '/principal/pessoas';
@@ -1241,14 +1326,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
     const userMenuTrigger = (
-        <div ref={userMenuRef} className="relative">
-            <button
-                type="button"
-                aria-haspopup="true"
-                aria-expanded={isUserMenuOpen}
-                onClick={() => setUserMenuOpen((prev) => !prev)}
-                className={userMenuButtonClassName}
-            >
+        <div className="flex items-center gap-2">
+            {showSalesParametersButton && currentRole === 'ADMIN' ? (
+                <button
+                    type="button"
+                    onClick={handleOpenSalesScreenParameters}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-300/70 bg-red-600 text-white shadow-lg shadow-red-950/30 transition hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300"
+                    title="Parâmetros da tela de vendas"
+                    aria-label="Parâmetros da tela de vendas"
+                >
+                    <svg className="fa-solid fa-gear h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.28 7.28 0 0 0-1.63-.94L14.5 2.78A.5.5 0 0 0 14 2.4h-4a.5.5 0 0 0-.5.38l-.36 2.54c-.58.24-1.12.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.6 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.08.63-.08.94s.03.63.08.94L2.72 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.39 1.05.71 1.63.94l.36 2.54c.04.24.24.42.5.42h4c.25 0 .46-.18.5-.42l.36-2.54c.58-.24 1.12-.55 1.63-.94l2.39.96c.22.09.48 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
+                    </svg>
+                </button>
+            ) : null}
+            <div ref={userMenuRef} className="relative">
+                <button
+                    type="button"
+                    aria-haspopup="true"
+                    aria-expanded={isUserMenuOpen}
+                    onClick={() => setUserMenuOpen((prev) => !prev)}
+                    className={userMenuButtonClassName}
+                >
                 <div className="text-right hidden sm:block">
                     <p className="text-sm font-bold text-slate-700 leading-tight">{userDisplayName}</p>
                     <p className="text-xs font-medium text-slate-400">{getRoleLabel(currentRole)}</p>
@@ -1259,9 +1358,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <svg className={`w-3 h-3 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
                 </svg>
-            </button>
-            {isUserMenuOpen && (
-                <div className="absolute right-0 mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white py-2 shadow-lg shadow-slate-900/5 z-20">
+                </button>
+                {isUserMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 min-w-[180px] rounded-2xl border border-slate-200 bg-white py-2 shadow-lg shadow-slate-900/5 z-20">
                     <button
                         type="button"
                         onClick={handleOpenChangePassword}
@@ -1282,8 +1381,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </svg>
                         <span>SAIR</span>
                     </button>
-                </div>
-            )}
+                    </div>
+                )}
+            </div>
         </div>
     );
 
@@ -2124,6 +2224,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         </div>
                     </div>
                 </div>
+            ) : null}
+
+            {isSalesScreenParametersOpen ? (
+                <SalesScreenParametersModal
+                    isOpen
+                    tenantId={currentTenant?.id || getDashboardAuthContext().tenantId}
+                    initialParameters={salesScreenParameters}
+                    onClose={() => setIsSalesScreenParametersOpen(false)}
+                    onSave={handleSaveSalesScreenParameters}
+                />
             ) : null}
 
             {changePasswordAlertType && (changePasswordError || changePasswordStatus) ? (
