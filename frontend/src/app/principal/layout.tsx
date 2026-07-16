@@ -191,6 +191,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [isSchoolConfigMenuOpen, setSchoolConfigMenuOpen] = useState(false);
     const [isSchoolYearMenuOpen, setSchoolYearMenuOpen] = useState(false);
     const [manuallyClosedSubmenu, setManuallyClosedSubmenu] = useState<'people' | 'school-config' | 'school-year' | null>(null);
+    const [isFooterLogoOpen, setIsFooterLogoOpen] = useState(false);
     const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isSalesScreenParametersOpen, setIsSalesScreenParametersOpen] = useState(false);
@@ -583,6 +584,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     useEffect(() => {
         const handleEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
+                setIsFooterLogoOpen(false);
                 setIsExitConfirmationOpen(false);
                 setIsChangePasswordOpen(false);
                 setChangePasswordAlertType(null);
@@ -598,7 +600,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (isExitConfirmationOpen || isChangePasswordOpen || changePasswordAlertType) return;
+        if (isFooterLogoOpen || isExitConfirmationOpen || isChangePasswordOpen || changePasswordAlertType) return;
 
         const cleanupTimers: number[] = [];
         const scheduleCleanup = () => {
@@ -616,7 +618,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 window.clearTimeout(timerId);
             });
         };
-    }, [pathname, isExitConfirmationOpen, isChangePasswordOpen, changePasswordAlertType]);
+    }, [pathname, isFooterLogoOpen, isExitConfirmationOpen, isChangePasswordOpen, changePasswordAlertType]);
 
     const handleLogout = () => {
         setIsExitConfirmationOpen(false);
@@ -629,6 +631,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             setUserMenuOpen(false);
             setIsExitConfirmationOpen(true);
             return;
+        }
+
+        if (
+            embeddedScreenContextLabel ===
+            'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO'
+        ) {
+            const financeFrame = document.querySelector<HTMLIFrameElement>(
+                'iframe[title="Financeiro integrado - Estoque"]',
+            );
+
+            if (financeFrame?.contentWindow) {
+                financeFrame.contentWindow.postMessage(
+                    {
+                        type: 'MSINFOR_FINANCEIRO_NAVIGATE_BACK',
+                        screenId:
+                            'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO',
+                    },
+                    '*',
+                );
+                return;
+            }
         }
 
         router.back();
@@ -1938,24 +1961,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </main>
                 <footer className={`bg-white border-t border-slate-200 px-6 text-xs italic text-slate-500 ${showFinanceiroVendasScreen ? 'py-1' : 'py-3'}`}>
                     <div className={`flex flex-wrap items-center justify-between ${showFinanceiroVendasScreen ? 'gap-1' : 'gap-2'}`}>
-                        <span className="flex-1 text-slate-500 min-w-[240px] text-left">
-                            Desenvolvido por MSINFOR SISTEMAS
-                            <span className="mx-2 text-slate-400">•</span>
-                            (16) 3025-6025
-                            <span className="mx-2 text-slate-400">/</span>
-                            <a
-                                href="https://wa.me/5516999991978"
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Clique aqui para abrir o Wattsup"
-                                className="inline-flex items-center gap-1 text-slate-600 hover:text-blue-600 transition"
+                        <span className="flex min-w-[240px] flex-1 items-center gap-3 text-left text-slate-500">
+                            <button
+                                type="button"
+                                onClick={() => setIsFooterLogoOpen(true)}
+                                title="Ampliar logotipo da MSINFOR Sistemas"
+                                aria-label="Ampliar logotipo da MSINFOR Sistemas"
+                                className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-1 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
                             >
-                                <svg className={`${showFinanceiroVendasScreen ? 'h-4 w-4' : 'h-5 w-5'} text-emerald-500`} viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 3C7.03 3 3 7.03 3 12c0 1.91.56 3.69 1.53 5.19L5 22l4.88-1.39c1.59.81 3.32 1.13 5.02.62 4.97-1.36 8.02-7.13 6.08-12.04C18.66 4.56 15.6 3 12 3zm0 16c-1.37 0-2.71-.41-3.85-1.18l-.28-.18-3.41.97.83-3.19-.19-.32A8.99 8.99 0 014 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z" />
-                                    <path d="M15.42 14.36c-.23-.12-1.36-.75-1.58-.84-.22-.1-.38-.12-.55.11s-.63.84-.77 1c-.14.15-.28.17-.51.06a5.1 5.1 0 01-1.5-.94 5.8 5.8 0 01-1.1-1.36c-.11-.19-.01-.29.08-.38.09-.08.21-.21.32-.32.1-.1.15-.18.23-.29.08-.11.04-.2-.02-.36-.06-.16-.57-1.36-.78-1.87-.21-.52-.43-.45-.58-.45-.15 0-.32-.01-.49-.01s-.36.05-.55.27c-.19.22-.74.72-.74 1.76s.78 2.54.89 2.72c.11.19 1.92 2.91 4.68 3.98.68.29 1.19.45 1.63.58.67.21 1.28.18 1.76.11.53-.09 1.2-.55 1.53-1.16.33-.61.33-1.12.25-1.22-.08-.1-.33-.16-.68-.28z" />
-                                </svg>
-                                <span>(16) 99999-1978</span>
-                            </a>
+                                <img
+                                    src="/logo-msinfor.jpg"
+                                    alt="Logotipo MSINFOR Sistemas"
+                                    className="h-full w-full object-contain"
+                                />
+                            </button>
+                            <span className="flex min-w-0 flex-col items-start not-italic">
+                                <span className="text-xl font-black uppercase leading-none tracking-[0.08em] text-blue-700">
+                                    MSINFOR SISTEMAS
+                                </span>
+                                <span className="mt-1 flex flex-wrap items-center text-sm font-bold italic text-slate-500">
+                                    <span>(16) 3025-6025</span>
+                                    <span className="mx-2 text-slate-400">/</span>
+                                    <a
+                                        href="https://wa.me/5516999991978"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title="Clique aqui para abrir o Wattsup"
+                                        className="inline-flex items-center gap-1 text-slate-600 transition hover:text-blue-600"
+                                    >
+                                        <svg className={`${showFinanceiroVendasScreen ? 'h-4 w-4' : 'h-5 w-5'} text-emerald-500`} viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 3C7.03 3 3 7.03 3 12c0 1.91.56 3.69 1.53 5.19L5 22l4.88-1.39c1.59.81 3.32 1.13 5.02.62 4.97-1.36 8.02-7.13 6.08-12.04C18.66 4.56 15.6 3 12 3zm0 16c-1.37 0-2.71-.41-3.85-1.18l-.28-.18-3.41.97.83-3.19-.19-.32A8.99 8.99 0 014 12c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9z" />
+                                            <path d="M15.42 14.36c-.23-.12-1.36-.75-1.58-.84-.22-.1-.38-.12-.55.11s-.63.84-.77 1c-.14.15-.28.17-.51.06a5.1 5.1 0 01-1.5-.94 5.8 5.8 0 01-1.1-1.36c-.11-.19-.01-.29.08-.38.09-.08.21-.21.32-.32.1-.1.15-.18.23-.29.08-.11.04-.2-.02-.36-.06-.16-.57-1.36-.78-1.87-.21-.52-.43-.45-.58-.45-.15 0-.32-.01-.49-.01s-.36.05-.55.27c-.19.22-.74.72-.74 1.76s.78 2.54.89 2.72c.11.19 1.92 2.91 4.68 3.98.68.29 1.19.45 1.63.58.67.21 1.28.18 1.76.11.53-.09 1.2-.55 1.53-1.16.33-.61.33-1.12.25-1.22-.08-.1-.33-.16-.68-.28z" />
+                                        </svg>
+                                        <span>(16) 99999-1978</span>
+                                    </a>
+                                </span>
+                            </span>
                         </span>
                         {currentBranchFooterLabel ? (
                             <span className="min-w-[180px] text-center text-[10px] font-black not-italic uppercase tracking-[0.24em] text-slate-500">
@@ -1974,6 +2015,74 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                 </footer>
             </div>
+
+            {isFooterLogoOpen ? (
+                <div
+                    className="fixed inset-0 z-[99] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-md"
+                    onClick={() => setIsFooterLogoOpen(false)}
+                    role="presentation"
+                >
+                    <div
+                        className="w-full max-w-xl overflow-hidden rounded-[30px] border border-blue-100 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.45)]"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="footer-msinfor-logo-title"
+                    >
+                        <div className="flex items-center justify-between gap-4 bg-gradient-to-r from-[#153a6a] via-blue-700 to-blue-600 px-6 py-5 text-white">
+                            <div className="flex min-w-0 items-center gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/30 bg-white shadow-lg">
+                                    {currentTenant?.logoUrl ? (
+                                        <img
+                                            src={currentTenant.logoUrl}
+                                            alt={`Logotipo de ${currentTenant.name}`}
+                                            className="h-full w-full object-contain p-1"
+                                        />
+                                    ) : (
+                                        <span className="text-xs font-black uppercase tracking-[0.14em] text-[#153a6a]">
+                                            {String(currentTenant?.name || 'ESCOLA').slice(0, 3)}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-100">
+                                        Identidade institucional
+                                    </div>
+                                    <h2 id="footer-msinfor-logo-title" className="mt-1 truncate text-xl font-black">
+                                        MSINFOR Sistemas
+                                    </h2>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsFooterLogoOpen(false)}
+                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-xl font-black transition hover:bg-white/20"
+                                aria-label="Fechar logotipo ampliado"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-center bg-slate-50 px-8 py-7">
+                            <img
+                                src="/logo-msinfor.jpg"
+                                alt="Logotipo ampliado da MSINFOR Sistemas"
+                                className="aspect-square w-full max-w-[340px] rounded-[34px] border border-slate-200 bg-white object-contain p-3 shadow-xl"
+                            />
+                        </div>
+
+                        <div className="border-t border-slate-200 bg-white px-5 py-3">
+                            <ScreenNameCopy
+                                screenId="POPUP_PRINCIPAL_RODAPE_LOGOTIPO_MSINFOR"
+                                className="max-w-full justify-end text-right text-[10px]"
+                                disableMargin
+                                originText="Origem: Sistema Escola - caminho físico: C:/Sistemas/IA/Escola/frontend/src/app/principal/layout.tsx"
+                                auditText="Popup global para visualização ampliada do logotipo da MSINFOR Sistemas acionado pelo rodapé padrão."
+                            />
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {isExitConfirmationOpen ? (
                 <div

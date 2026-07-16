@@ -3,13 +3,17 @@ import { randomUUID } from "crypto";
 import {
   FinanceiroBatchDetails,
   FinanceiroBatchSummary,
+  FinanceiroCustomerSyncPayload,
   FinanceiroImportPayload,
   FinanceiroService,
 } from "../../../../integrations/financeiro/financeiro.service";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { CreateStudentFinancialLaunchDto } from "../dto/create-student-financial-launch.dto";
-import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
+import {
+  DEFAULT_BRANCH_CODE,
+  getVisibleBranchCodes,
+} from "../../../../common/tenant/branch.constants";
 
 type LaunchScope = "ALL" | "SERIES" | "SERIES_CLASS";
 type LaunchType = "MENSALIDADE" | "MATERIAL_ESCOLAR" | "FORMATURA" | "EXTRA";
@@ -560,6 +564,10 @@ export class StudentFinancialLaunchesService {
     };
   }
 
+  private branchCode() {
+    return getTenantContext()?.branchCode ?? DEFAULT_BRANCH_CODE;
+  }
+
   private async activeSchoolYear() {
     return this.prisma.schoolYear.findFirst({
       where: {
@@ -746,6 +754,98 @@ export class StudentFinancialLaunchesService {
           }),
         })),
       history,
+    };
+  }
+
+  async syncPayers() {
+    const [tenant, students] = await Promise.all([
+      this.findTenantIdentity(),
+      this.prisma.student.findMany({
+        where: {
+          tenantId: this.tenantId(),
+          branchCode: { in: getVisibleBranchCodes(this.branchCode()) },
+          canceledAt: null,
+        },
+        include: {
+          person: true,
+          billingGuardian: {
+            include: {
+              person: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+    ]);
+
+    const customersByExternalKey = new Map<
+      string,
+      FinanceiroCustomerSyncPayload["customers"][number]
+    >();
+    let skippedPayers = 0;
+
+    students.forEach((student) => {
+      const payerType =
+        String(student.billingPayerType || "").trim().toUpperCase() ===
+        "RESPONSAVEL"
+          ? "RESPONSAVEL"
+          : "ALUNO";
+      const payerRecord =
+        payerType === "RESPONSAVEL" ? student.billingGuardian : student;
+      const person =
+        payerType === "RESPONSAVEL"
+          ? student.billingGuardian?.person
+          : student.person;
+
+      if (!payerRecord || payerRecord.canceledAt || !person || person.canceledAt) {
+        skippedPayers += 1;
+        return;
+      }
+
+      const name = String(person.name || "").trim();
+      if (!name) {
+        skippedPayers += 1;
+        return;
+      }
+
+      const addressLine1 = [person.street, person.number, person.complement]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join(", ");
+      const externalEntityId = payerRecord.id;
+      customersByExternalKey.set(`${payerType}|${externalEntityId}`, {
+        externalEntityType: payerType,
+        externalEntityId,
+        name,
+        document: person.cpf || person.cnpj || undefined,
+        email: person.email || undefined,
+        phone:
+          person.whatsapp ||
+          person.phone ||
+          person.cellphone1 ||
+          person.cellphone2 ||
+          undefined,
+        addressLine1: addressLine1 || undefined,
+        neighborhood: person.neighborhood || undefined,
+        city: person.city || undefined,
+        state: person.state || undefined,
+        postalCode: person.zipCode || undefined,
+      });
+    });
+
+    const result = await this.financeiroService.syncCustomers({
+      requestedBy: this.userId(),
+      companyName: tenant.name,
+      companyDocument: tenant.document || undefined,
+      sourceSystem: "ESCOLA",
+      sourceTenantId: this.tenantId(),
+      sourceBranchCode: this.branchCode(),
+      customers: [...customersByExternalKey.values()],
+    });
+
+    return {
+      ...result,
+      skippedPayers,
     };
   }
 

@@ -66,6 +66,34 @@ export type FinanceiroImportResponse = {
   message: string;
 };
 
+export type FinanceiroCustomerSyncPayload = {
+  requestedBy?: string;
+  companyName?: string;
+  companyDocument?: string;
+  sourceSystem: string;
+  sourceTenantId: string;
+  sourceBranchCode?: number;
+  customers: Array<{
+    externalEntityType: "ALUNO" | "RESPONSAVEL";
+    externalEntityId: string;
+    name: string;
+    document?: string;
+    email?: string;
+    phone?: string;
+    addressLine1?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+  }>;
+};
+
+export type FinanceiroCustomerSyncResponse = {
+  synchronizedCustomers: number;
+  inactivatedCustomers: number;
+  message: string;
+};
+
 export type FinanceiroExistingBusinessKeysResponse = {
   existingBusinessKeys: string[];
 };
@@ -293,6 +321,15 @@ export class FinanceiroService {
       body: JSON.stringify(payload),
       fallbackMessage:
         "Não foi possível gravar os lançamentos no sistema Financeiro.",
+    });
+  }
+
+  async syncCustomers(payload: FinanceiroCustomerSyncPayload) {
+    return this.request<FinanceiroCustomerSyncResponse>("/customers/sync", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      fallbackMessage:
+        "Não foi possível sincronizar os clientes com o sistema Financeiro.",
     });
   }
 

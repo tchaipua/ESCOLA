@@ -42,6 +42,10 @@ const SECTION_CONFIG = {
     label: 'Contas a Receber',
     path: '',
   },
+  clientes: {
+    label: 'Clientes',
+    path: '/clientes',
+  },
   creditos: {
     label: 'Controle de Créditos',
     path: '/recebiveis/creditos',
@@ -128,6 +132,13 @@ const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
 
 const ACCOUNTS_RECEIVABLE_MENU_ITEMS = [
   {
+    id: 'clientes',
+    label: 'Clientes',
+    href: '/principal/financeiro/clientes',
+    description: 'Consulte os pagadores sincronizados pela Escola.',
+    image: '/principal-financeiro/historico-cliente.svg?v=1',
+  },
+  {
     id: 'vendas-periodo',
     label: 'Vendas do Período',
     href: '/principal/financeiro/vendas-periodo',
@@ -179,6 +190,12 @@ const ACCOUNTS_RECEIVABLE_MENU_ITEMS = [
 ] as const;
 
 const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderContent> = {
+  PRINCIPAL_FINANCEIRO_CLIENTES: {
+    eyebrow: 'Contas a Receber',
+    title: 'Clientes',
+    description:
+      'Consulte pagadores sincronizados da Escola e clientes vinculados aos títulos a receber.',
+  },
   PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO: {
     eyebrow: 'Bancos',
     title: 'Extrato bancário',
@@ -499,6 +516,76 @@ export function PrincipalFinanceiroSectionPageContent({
 
     window.addEventListener('message', handleFinanceiroPasswordValidation);
     return () => window.removeEventListener('message', handleFinanceiroPasswordValidation);
+  }, [authContext.token]);
+
+  useEffect(() => {
+    const financeiroOrigin = (() => {
+      try {
+        return new URL(FINANCEIRO_FRONTEND_URL).origin;
+      } catch {
+        return '*';
+      }
+    })();
+
+    async function handleFinancialCustomersSync(event: MessageEvent) {
+      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_SYNC_FINANCIAL_CUSTOMERS') return;
+
+      const requestId = String(payload.requestId || '');
+      const sourceWindow = event.source as Window | null;
+      const postResult = (result: Record<string, unknown>) => {
+        if (!sourceWindow || typeof sourceWindow.postMessage !== 'function') return;
+        sourceWindow.postMessage(
+          {
+            type: 'MSINFOR_SYNC_FINANCIAL_CUSTOMERS_RESULT',
+            requestId,
+            ...result,
+          },
+          financeiroOrigin === '*' ? '*' : event.origin,
+        );
+      };
+
+      if (!requestId || !authContext.token) {
+        postResult({ ok: false, message: 'Sessão da Escola inválida.' });
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/student-financial-launches/sync-payers`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${authContext.token}`,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+        const responsePayload = await response.json().catch(() => null);
+        if (!response.ok) {
+          postResult({
+            ok: false,
+            message:
+              responsePayload?.message ||
+              'Não foi possível sincronizar os clientes da Escola.',
+          });
+          return;
+        }
+
+        postResult({ ok: true, ...responsePayload });
+      } catch {
+        postResult({
+          ok: false,
+          message: 'Não foi possível sincronizar os clientes da Escola agora.',
+        });
+      }
+    }
+
+    window.addEventListener('message', handleFinancialCustomersSync);
+    return () =>
+      window.removeEventListener('message', handleFinancialCustomersSync);
   }, [authContext.token]);
 
   useEffect(() => {

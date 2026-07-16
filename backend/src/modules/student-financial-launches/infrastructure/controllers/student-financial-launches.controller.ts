@@ -24,6 +24,16 @@ export class StudentFinancialLaunchesController {
     return this.studentFinancialLaunchesService.bootstrap();
   }
 
+  @Post("sync-payers")
+  @Permissions("VIEW_FINANCIAL")
+  @ApiOperation({
+    summary:
+      "Sincroniza os pagadores atuais da Escola com o cadastro de clientes do Financeiro",
+  })
+  syncPayers() {
+    return this.studentFinancialLaunchesService.syncPayers();
+  }
+
   @Get(":id/details")
   @Permissions("VIEW_FINANCIAL")
   @ApiOperation({

@@ -988,3 +988,11 @@ Observacao estrutural obrigatoria:
 - Permissao: `SETTLE_RECEIVABLES`
 - Uso: registra baixa em dinheiro no `Financeiro`
 - Regra obrigatoria: o usuario precisa ter caixa aberto na escola atual
+
+### POST `/student-financial-launches/sync-payers`
+
+- Autenticacao: `Authorization: Bearer <access_token>`
+- Permissao: `VIEW_FINANCIAL`
+- Uso: sincroniza no `Financeiro` todos os alunos ou responsáveis atualmente definidos como pagadores na filial
+- Regra: o pagador aparece no cadastro de clientes do `Financeiro` mesmo sem título ou parcela
+- Fonte oficial: dados de identidade e contato permanecem em `people` na Escola

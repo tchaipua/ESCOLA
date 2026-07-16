@@ -303,3 +303,12 @@ Para cada decisao, registrar:
 - Impacto: os papeis operacionais passam a depender de `personId` para nome e identidade compartilhada; telas, notificacoes, login e integracoes devem resolver esses dados pela pessoa central.
 - Alternativas consideradas: deixar os campos nulos; manter nome operacional duplicado; remover somente senha e manter nome no papel.
 - Status: aceita
+
+## DEC-0033
+
+- Data: 2026-07-16
+- Contexto: pagadores escolares precisam aparecer no cadastro de clientes do Financeiro mesmo antes da geração de qualquer mensalidade.
+- Decisao: sincronizar todos os alunos e responsáveis atualmente definidos como pagadores ao abrir a consulta de clientes, mantendo a Escola como fonte exclusiva e bloqueando cadastro local para a vertical `ESCOLA`.
+- Impacto: o Financeiro passa a conhecer antecipadamente os clientes escolares sem criar dependência de títulos ou parcelas; dados continuam isolados por tenant e filial.
+- Alternativas consideradas: criar cliente somente na primeira mensalidade; permitir cadastro duplicado no Financeiro; replicar integralmente o cadastro de pessoas.
+- Status: aceita
