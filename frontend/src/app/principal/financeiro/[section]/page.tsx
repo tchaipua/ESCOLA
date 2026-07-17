@@ -90,6 +90,10 @@ const SECTION_CONFIG = {
     label: 'Vendas 2',
     path: '/vendas-2',
   },
+  msinfor: {
+    label: 'MSINFOR',
+    path: '/msinfor',
+  },
   'vendas-periodo': {
     label: 'Vendas do Período',
     path: '/vendas/periodo',
@@ -268,6 +272,18 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     description:
       'Nova experiência de venda com as mesmas regras de estoque, pagamento e emissão fiscal.',
   },
+  PRINCIPAL_FINANCEIRO_MSINFOR: {
+    eyebrow: 'Financeiro integrado',
+    title: 'MSINFOR',
+    description:
+      'Central de integrações e serviços compartilhados do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_SUPERTEF: {
+    eyebrow: 'MSINFOR',
+    title: 'SuperTEF',
+    description:
+      'Configuração e acompanhamento das operações de cartão do Financeiro.',
+  },
   PRINCIPAL_FINANCEIRO_DEVOLUCAO_MERCADORIAS: {
     eyebrow: 'Contas a Receber',
     title: 'Devolução de Mercadorias',
@@ -396,7 +412,7 @@ export function PrincipalFinanceiroSectionPageContent({
     authContext.permissions,
     ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES', 'VIEW_CASHIER', 'SETTLE_RECEIVABLES'],
   );
-  const isAdminOnlySalesVariant = section === 'vendas-2';
+  const isAdminOnlySection = section === 'vendas-2' || section === 'msinfor';
   const tenantBranding = readCachedTenantBranding(authContext.tenantId);
   const financeBranding = useMemo(
     () => ({
@@ -830,12 +846,12 @@ export function PrincipalFinanceiroSectionPageContent({
     );
   }
 
-  if (!canViewFinancial || (isAdminOnlySalesVariant && authContext.role !== 'ADMIN')) {
+  if (!canViewFinancial || (isAdminOnlySection && authContext.role !== 'ADMIN')) {
     return (
       <DashboardAccessDenied
-        title={isAdminOnlySalesVariant ? 'Vendas 2 indisponível' : 'Financeiro indisponível'}
+        title={isAdminOnlySection ? `${sectionConfig?.label || 'Área'} indisponível` : 'Financeiro indisponível'}
         message={
-          isAdminOnlySalesVariant
+          isAdminOnlySection
             ? 'Esta tela está disponível somente para usuários ADMIN.'
             : 'Seu perfil não possui permissão para visualizar o portal financeiro integrado.'
         }
