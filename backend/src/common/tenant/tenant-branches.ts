@@ -125,6 +125,9 @@ export function mapTenantBranchSummary(branch: {
   stockExpirationControlMode?: string | null;
   stockGridControlMode?: string | null;
   stockNegativeControlMode?: string | null;
+  allowSaleUnitPriceEdit?: boolean | null;
+  allowSaleItemDiscount?: boolean | null;
+  groupSameProduct?: boolean | null;
   smtpHost?: string | null;
   smtpPort?: number | null;
   smtpTimeout?: number | null;
@@ -146,6 +149,8 @@ export function mapTenantBranchSummary(branch: {
   storageRegion?: string | null;
   storageEndpoint?: string | null;
   storageCustomEndpoint?: string | null;
+  storageCapacityGb?: number | null;
+  storageImagesFolderName?: string | null;
   isActive: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -185,6 +190,9 @@ export function mapTenantBranchSummary(branch: {
     stockGridControlMode: branch.stockGridControlMode || "BY_PRODUCT",
     stockNegativeControlMode:
       branch.stockNegativeControlMode || "BY_PRODUCT",
+    allowSaleUnitPriceEdit: branch.allowSaleUnitPriceEdit !== false,
+    allowSaleItemDiscount: branch.allowSaleItemDiscount !== false,
+    groupSameProduct: branch.groupSameProduct !== false,
     smtpHost: branch.smtpHost,
     smtpPort: branch.smtpPort,
     smtpTimeout: branch.smtpTimeout,
@@ -206,6 +214,8 @@ export function mapTenantBranchSummary(branch: {
     storageRegion: branch.storageRegion,
     storageEndpoint: branch.storageEndpoint,
     storageCustomEndpoint: branch.storageCustomEndpoint,
+    storageCapacityGb: branch.storageCapacityGb,
+    storageImagesFolderName: branch.storageImagesFolderName,
     isActive: branch.isActive,
     isShared: branch.branchCode === SHARED_BRANCH_CODE,
     createdAt: branch.createdAt,

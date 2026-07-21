@@ -312,3 +312,39 @@ Para cada decisao, registrar:
 - Impacto: o Financeiro passa a conhecer antecipadamente os clientes escolares sem criar dependência de títulos ou parcelas; dados continuam isolados por tenant e filial.
 - Alternativas consideradas: criar cliente somente na primeira mensalidade; permitir cadastro duplicado no Financeiro; replicar integralmente o cadastro de pessoas.
 - Status: aceita
+
+## DEC-0034
+
+- Data: 2026-07-18
+- Contexto: operadores da Escola precisam emitir notas avulsas pelo sistema Financeiro sem simular uma venda.
+- Decisao: hospedar as rotas `/principal/financeiro/emissao-nfe` e `/principal/financeiro/emissao-nfs`, preservando a regra fiscal no Financeiro e exigindo `ADMIN` ou `MANAGE_FINANCIAL`.
+- Impacto: o mesmo pagador sincronizado com o Financeiro é usado como destinatário/tomador; a Escola apenas fornece tenant, filial, usuário e permissões.
+- Alternativas consideradas: duplicar o motor fiscal na Escola; criar cadastro fiscal separado de destinatários; gerar venda fictícia para cada nota manual.
+- Status: aceita
+
+## DEC-0035
+
+- Data: 2026-07-19
+- Contexto: a mesma pessoa podia chegar ao Financeiro por papéis e identificadores externos diferentes, aparecendo repetida como aluno, responsável, cliente, pagador ou tomador.
+- Decisao: CPF ou CNPJ normalizado identifica uma única `Person` por tenant na Escola. Os papéis permanecem separados e vinculados por `personId`; a integração sempre envia também o identificador estável `PERSON:<personId>`. A identidade não é duplicada por filial e e-mail não é chave de unicidade.
+- Impacto: aluno, responsável, professor, cliente, pagador, destinatário e tomador reutilizam a mesma pessoa; duplicidades legadas são consolidadas por cancelamento lógico, sem exclusão física nem perda de histórico.
+- Alternativas consideradas: manter um cadastro por papel; identificar por e-mail; deduplicar somente na interface; criar destinatários fiscais separados.
+- Status: aceita
+
+## DEC-0036
+
+- Data: 2026-07-20
+- Contexto: o Financeiro precisa usar as configurações de S3, SMTP, Telegram e integrações já cadastradas na empresa ou filial, sem exigir novo cadastro no sistema consumidor.
+- Decisao: manter a Escola como fonte oficial dessas configurações, aplicar prioridade para configuração completa da filial com fallback para a empresa e sincronizar o resultado efetivo diretamente entre os backends. O Financeiro mantém um espelho criptografado e auditável por empresa e filial; nenhum segredo passa pelo frontend.
+- Impacto: a empresa CEC e suas filiais podem usar no Financeiro as mesmas configurações corporativas; cada filial permanece isolada e mudanças futuras podem ser sincronizadas novamente ao entrar no módulo financeiro.
+- Alternativas consideradas: duplicar o cadastro no Financeiro; expor as credenciais ao frontend; acessar diretamente o banco da Escola; usar somente a configuração da empresa sem permitir sobrescrita por filial.
+- Status: aceita
+
+## DEC-0037
+
+- Data: 2026-07-21
+- Contexto: o Financeiro é compartilhado por várias verticais e não pode manter um segundo cadastro independente de empresa e filial.
+- Decisao: tornar o sistema chamador a única fonte oficial. A Escola envia empresa, todas as filiais ativas, identidade e parâmetros ao Financeiro. O Financeiro não inclui filiais nem altera sua identidade; mudanças permitidas de juros, multa, estoque e regras comerciais são confirmadas primeiro na Escola por API técnica e auditadas nos dois sistemas.
+- Impacto: cadastro e inativação de filial ocorrem somente na Escola; o Financeiro mantém espelho operacional. Outros sistemas consumidores devem implementar o mesmo endpoint de retorno e configurar URL/chave por `sourceSystem`.
+- Alternativas consideradas: manter cadastros independentes; acessar diretamente o banco da origem; permitir alteração local com sincronização eventual; aceitar divergência quando a origem estiver indisponível.
+- Status: aceita

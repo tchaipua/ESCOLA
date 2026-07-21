@@ -480,7 +480,6 @@ export default function LoginPage() {
     }
 
     setMasterAccessError(true);
-    setTimeout(() => setMasterAccessError(false), 3000);
   };
 
   const handleChooseTeacherDevice = (mode: 'PRINCIPAL' | 'PWA') => {
@@ -746,11 +745,11 @@ export default function LoginPage() {
               </p>
               <div className="my-3 h-px bg-red-200" />
               <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">
-                CODIGO ERRO: S(DH)+(MM)-4XK
+                CÓDIGO DE REFERÊNCIA: S(D+H)(M+M)
               </p>
             </div>
 
-            <p className="mt-5 text-xs font-medium text-blue-500">Fechando automaticamente em 3s...</p>
+            <p className="mt-5 text-xs font-medium text-blue-500">Confira a chave de acesso e tente novamente.</p>
 
             <button
               type="button"
@@ -869,7 +868,7 @@ export default function LoginPage() {
 
       {/* MODAL MÁGICO DE MÚLTIPLAS ESCOLAS (DESEMPATE) */}
       {multipleSchools && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
+        <div data-system-message-ignore className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-[#2272c7] p-6 text-center">
               <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
@@ -926,7 +925,7 @@ export default function LoginPage() {
       )}
 
       {multipleAccessOptions && (
-        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
+        <div data-system-message-ignore className="fixed inset-0 z-[65] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-[#2272c7] p-6 text-center">
               <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
@@ -995,7 +994,7 @@ export default function LoginPage() {
       )}
 
       {multipleBranchOptions && (
-        <div className="fixed inset-0 z-[66] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
+        <div data-system-message-ignore className="fixed inset-0 z-[66] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-[#2272c7] p-6 text-center">
               <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
@@ -1061,7 +1060,7 @@ export default function LoginPage() {
       )}
 
       {isProfessorDeviceModalOpen && (
-        <div className="fixed inset-0 z-[66] flex items-center justify-center bg-black/65 backdrop-blur-md animate-in fade-in duration-200 p-4">
+        <div data-system-message-ignore className="fixed inset-0 z-[66] flex items-center justify-center bg-black/65 backdrop-blur-md animate-in fade-in duration-200 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-[#2272c7] p-6 text-center">
               <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner overflow-hidden">

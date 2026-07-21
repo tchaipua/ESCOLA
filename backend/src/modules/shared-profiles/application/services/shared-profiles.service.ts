@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import {
   DEFAULT_BRANCH_CODE,
@@ -76,6 +80,7 @@ type SharedPersonRecord = {
   cpf?: string | null;
   cpfDigits?: string | null;
   cnpj?: string | null;
+  cnpjNormalized?: string | null;
   nickname?: string | null;
   corporateName?: string | null;
   phone?: string | null;
@@ -671,6 +676,7 @@ export class SharedProfilesService {
       cpf: true,
       cpfDigits: true,
       cnpj: true,
+      cnpjNormalized: true,
       nickname: true,
       corporateName: true,
       phone: true,
@@ -853,6 +859,24 @@ export class SharedProfilesService {
     });
   }
 
+  private async findPersonByCnpj(
+    tenantId: string,
+    cnpj?: string | null,
+    excludePersonId?: string | null,
+  ) {
+    const normalizedCnpj = normalizeCnpj(cnpj);
+    if (!normalizedCnpj) return null;
+
+    return this.prisma.person.findFirst({
+      where: {
+        tenantId,
+        cnpjNormalized: normalizedCnpj,
+        ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
+      },
+      select: this.selectPersonFields(),
+    });
+  }
+
   private async findPersonByEmail(
     tenantId: string,
     email?: string | null,
@@ -898,17 +922,26 @@ export class SharedProfilesService {
       throw new BadRequestException("CNPJ inválido.");
     }
 
+    const birthDate =
+      payload.birthDate instanceof Date
+        ? payload.birthDate
+        : typeof payload.birthDate === "string" && payload.birthDate.trim()
+          ? new Date(payload.birthDate)
+          : null;
+
     return {
       tenantId,
       branchCode,
       name: this.resolveWritableName(
         typeof payload.name === "string" ? payload.name : null,
       ),
-      birthDate: payload.birthDate instanceof Date ? payload.birthDate : null,
+      birthDate:
+        birthDate && !Number.isNaN(birthDate.getTime()) ? birthDate : null,
       rg: this.isBlank(payload.rg) ? null : String(payload.rg),
       cpf: this.isBlank(payload.cpf) ? null : String(payload.cpf),
       cpfDigits: normalizedCpf || null,
       cnpj: normalizedCnpj,
+      cnpjNormalized: normalizedCnpj,
       nickname: this.isBlank(payload.nickname)
         ? null
         : String(payload.nickname),
@@ -973,6 +1006,7 @@ export class SharedProfilesService {
       cpf: nextData.cpf,
       cpfDigits: nextData.cpfDigits,
       cnpj: nextData.cnpj,
+      cnpjNormalized: nextData.cnpjNormalized,
       nickname: nextData.nickname,
       corporateName: nextData.corporateName,
       phone: nextData.phone,
@@ -1002,8 +1036,6 @@ export class SharedProfilesService {
   ) {
     const payload = this.getSharedPayload(sourceRecord as SharedProfileRecord);
     const payloadCpf = typeof payload.cpf === "string" ? payload.cpf : null;
-    const payloadEmail =
-      typeof payload.email === "string" ? payload.email : null;
     const targetBranchCode = normalizeBranchCode(
       (sourceRecord as { branchCode?: number | null }).branchCode,
       getTenantContext()?.branchCode ?? DEFAULT_BRANCH_CODE,
@@ -1016,13 +1048,18 @@ export class SharedProfilesService {
       payloadCpf || previousCpf || null,
       currentPerson?.id,
     );
-    const emailPerson = await this.findPersonByEmail(
+    const cnpjPerson = await this.findPersonByCnpj(
       tenantId,
-      payloadEmail,
+      typeof payload.cnpj === "string" ? payload.cnpj : null,
       currentPerson?.id,
     );
+    if (cpfPerson && cnpjPerson && cpfPerson.id !== cnpjPerson.id) {
+      throw new BadRequestException(
+        "O CPF e o CNPJ informados pertencem a pessoas diferentes. Revise o cadastro antes de adicionar o papel.",
+      );
+    }
 
-    const basePerson = currentPerson || cpfPerson || emailPerson || null;
+    const basePerson = currentPerson || cpfPerson || cnpjPerson || null;
     const nextData = this.buildPersonCreateData(
       tenantId,
       payload,
@@ -1037,7 +1074,7 @@ export class SharedProfilesService {
       });
     }
 
-    return this.prisma.person.update({
+    const updateResult = await this.prisma.person.updateMany({
       where: { id: basePerson.id },
       data: this.buildPersonUpdateData(
         tenantId,
@@ -1045,8 +1082,26 @@ export class SharedProfilesService {
         userId,
         targetBranchCode,
       ),
+    });
+
+    if (updateResult.count !== 1) {
+      throw new NotFoundException(
+        "Pessoa compartilhada não encontrada na sua Instituição.",
+      );
+    }
+
+    const updatedPerson = await this.prisma.person.findFirst({
+      where: { id: basePerson.id },
       select: this.selectPersonFields(),
     });
+
+    if (!updatedPerson) {
+      throw new NotFoundException(
+        "Pessoa compartilhada não encontrada na sua Instituição.",
+      );
+    }
+
+    return updatedPerson;
   }
 
   private async collectRoleMatchesForPerson(

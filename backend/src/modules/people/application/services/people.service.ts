@@ -465,7 +465,11 @@ export class PeopleService {
   }
 
   private async ensureUniquePersonIdentity(
-    payload: { cpf?: string | null; email?: string | null },
+    payload: {
+      cpf?: string | null;
+      cnpj?: string | null;
+      email?: string | null;
+    },
     excludePersonId?: string,
   ) {
     const normalizedCpf = this.sharedProfilesService.normalizeDocument(
@@ -484,6 +488,24 @@ export class PeopleService {
       if (personByCpf) {
         throw new ConflictException(
           `Já existe uma pessoa com este CPF na escola: ${personByCpf.name}.`,
+        );
+      }
+    }
+
+    const normalizedCnpj = normalizeCnpj(payload.cnpj);
+    if (normalizedCnpj) {
+      const personByCnpj = await this.prisma.person.findFirst({
+        where: {
+          tenantId: this.tenantId(),
+          cnpjNormalized: normalizedCnpj,
+          ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
+        },
+        select: { id: true, name: true },
+      });
+
+      if (personByCnpj) {
+        throw new ConflictException(
+          `Já existe uma pessoa com este CNPJ na escola: ${personByCnpj.name}. Adicione o novo papel ao cadastro existente.`,
         );
       }
     }
@@ -1049,6 +1071,7 @@ export class PeopleService {
       );
       await this.ensureUniquePersonIdentity({
         cpf: createDto.cpf,
+        cnpj: createDto.cnpj,
         email: normalizedEmail,
       });
 
@@ -1067,6 +1090,9 @@ export class PeopleService {
           cpfDigits:
             this.sharedProfilesService.normalizeDocument(createDto.cpf) || null,
           cnpj: mutableData.cnpj || null,
+          cnpjNormalized: mutableData.cnpj
+            ? normalizeCnpj(mutableData.cnpj)
+            : null,
           nickname: mutableData.nickname || null,
           corporateName: mutableData.corporateName || null,
           phone: mutableData.phone || null,
@@ -1165,6 +1191,9 @@ export class PeopleService {
           cpf: Object.prototype.hasOwnProperty.call(updateDto, "cpf")
             ? updateDto.cpf
             : currentPerson.cpf,
+          cnpj: Object.prototype.hasOwnProperty.call(updateDto, "cnpj")
+            ? updateDto.cnpj
+            : currentPerson.cnpj,
           email: normalizedEmail,
         },
         id,
@@ -1202,6 +1231,14 @@ export class PeopleService {
             : undefined,
           cnpj: Object.prototype.hasOwnProperty.call(updateDto, "cnpj")
             ? mutableData.cnpj || null
+            : undefined,
+          cnpjNormalized: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "cnpj",
+          )
+            ? mutableData.cnpj
+              ? normalizeCnpj(mutableData.cnpj)
+              : null
             : undefined,
           nickname: Object.prototype.hasOwnProperty.call(updateDto, "nickname")
             ? mutableData.nickname || null

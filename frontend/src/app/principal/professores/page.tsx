@@ -45,6 +45,7 @@ import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGri
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { showErrorMessage, showSuccessMessage } from '@/app/components/system-message-provider';
 import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
 const PROFESSORES_SCREEN_ID = 'PRINCIPAL_PROFESSORES';
 const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
@@ -749,12 +750,16 @@ export default function ProfessoresPage() {
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [activeTab, setActiveTab] = useState(1);
-    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveError, setSaveErrorState] = useState<string | null>(null);
     const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentBranchCode, setCurrentBranchCode] = useState(1);
     const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
+    const setSaveError = (message: string | null) => {
+        setSaveErrorState(null);
+        if (message) showErrorMessage(message);
+    };
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('ALL');
     const [selectedTeacherForSubjects, setSelectedTeacherForSubjects] = useState<TeacherRecord | null>(null);
@@ -1692,12 +1697,13 @@ export default function ProfessoresPage() {
     const renderTeacherGridCell = (prof: TeacherRecord, columnKey: TeacherColumnKey) => {
         if (columnKey === 'name') {
             const subjectList = getTeacherSubjects(prof);
+            const teacherName = String(prof.name || 'PROFESSOR SEM NOME');
 
             return (
                 <td key={columnKey} className="px-6 py-4">
                     <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border ${prof.canceledAt ? 'bg-rose-100 text-rose-700 border-rose-200/50' : 'bg-blue-100 text-blue-700 border-blue-200/50'}`}>
-                            {prof.name.substring(0, 2).toUpperCase()}
+                            {teacherName.substring(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold ${prof.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
@@ -1707,7 +1713,7 @@ export default function ProfessoresPage() {
                                     aria-label={prof.canceledAt ? 'INATIVO' : 'ATIVO'}
                                     role="img"
                                 />
-                                <span className="min-w-0 max-w-[420px] truncate">{prof.name}</span>
+                                <span className="min-w-0 max-w-[420px] truncate">{teacherName}</span>
                                 {subjectList.map((subjectName, index) => {
                                     const normalizedSubjectName = normalizeTeacherSubjectName(subjectName);
                                     const tone = disciplineToneMap[normalizedSubjectName] || DISCIPLINE_BADGE_TONES[0];
@@ -2020,6 +2026,11 @@ export default function ProfessoresPage() {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (!String(formData.name || '').trim()) {
+            showErrorMessage('Informe o nome completo do professor.');
+            return;
+        }
+
         // Validação de Documentos antes de enviar pro Back-End!
         if (formData.cpf && formData.cpf.trim() !== '') {
             if (!isValidCpf(formData.cpf)) {
@@ -2087,10 +2098,8 @@ export default function ProfessoresPage() {
             closeModal();
             await fetchProfessores();
             setEmailUsageAlert(null);
-            setSaveSuccessPopup({
-                title: wasEditing ? 'Professor salvo com sucesso' : 'Professor inserido com sucesso',
-                message: wasEditing ? 'O professor foi alterado e a lista já foi atualizada.' : 'O professor foi inserido e a lista já foi atualizada.',
-            });
+            setSaveSuccessPopup(null);
+            showSuccessMessage(wasEditing ? 'O professor foi alterado e a lista já foi atualizada.' : 'O professor foi inserido e a lista já foi atualizada.');
 
         } catch (err: any) {
             let errorMsg = err.message || 'Ocorreu um erro.';
@@ -2621,6 +2630,10 @@ export default function ProfessoresPage() {
                                                 type="text"
                                                 required
                                                 value={formData.name}
+                                                onInvalid={(event) => {
+                                                    event.preventDefault();
+                                                    showErrorMessage('Informe o nome completo do professor.');
+                                                }}
                                                 onChange={(event) => handleTeacherNameChange(event.target.value)}
                                                 onFocus={() => {
                                                     if (!editingTeacherId && String(formData.name || '').trim().length >= 2) {
@@ -3103,7 +3116,7 @@ export default function ProfessoresPage() {
                                 />
                             </div>
                             <div className="flex flex-wrap justify-end gap-2">
-                                <button type="submit" form="teacher-form" className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
+                                <button type="submit" form="teacher-form" onClick={() => { if (!String(formData.name || '').trim()) showErrorMessage('Informe o nome completo do professor.'); }} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
                                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
                                                 {editingTeacherId ? 'Salvar' : 'Registrar Professor'}
                                 </button>

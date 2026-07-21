@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import PwaBootstrap from "@/app/components/pwa-bootstrap";
+import SystemMessageProvider from "@/app/components/system-message-provider";
 
 export const metadata: Metadata = {
   title: "MSINFOR | Gestao Escolar",
@@ -48,7 +49,7 @@ export default function RootLayout({
           `}
         </Script>
         <PwaBootstrap />
-        {children}
+        <SystemMessageProvider>{children}</SystemMessageProvider>
       </body>
     </html>
   );

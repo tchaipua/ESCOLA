@@ -8,6 +8,7 @@ import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { showErrorMessage, showSuccessMessage } from '@/app/components/system-message-provider';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import GridStatusFilter, { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
@@ -818,7 +819,7 @@ export default function AlunosPage() {
     const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
-    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveError, setSaveErrorState] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [formData, setFormData] = useState<StudentFormState>(EMPTY_FORM);
     const [studentGuardians, setStudentGuardians] = useState<StudentGuardianLink[]>([]);
@@ -867,6 +868,10 @@ export default function AlunosPage() {
     const [showNameSuggestions, setShowNameSuggestions] = useState(false);
     const [isLoadingNameSuggestions, setIsLoadingNameSuggestions] = useState(false);
     const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
+    const setSaveError = (message: string | null) => {
+        setSaveErrorState(null);
+        if (message) showErrorMessage(message);
+    };
     const [debouncedStudentNameQuery, setDebouncedStudentNameQuery] = useState('');
     const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
 
@@ -2064,10 +2069,8 @@ export default function AlunosPage() {
             const wasEditing = Boolean(editingStudentId);
             closeModal();
             await fetchStudents();
-            setSaveSuccessPopup({
-                title: wasEditing ? 'Aluno salvo com sucesso' : 'Aluno inserido com sucesso',
-                message: wasEditing ? 'O aluno foi alterado e a lista já foi atualizada.' : 'O aluno foi inserido e a lista já foi atualizada.',
-            });
+            setSaveSuccessPopup(null);
+            showSuccessMessage(wasEditing ? 'O aluno foi alterado e a lista já foi atualizada.' : 'O aluno foi inserido e a lista já foi atualizada.');
         } catch (error) {
             setSaveError(errorMessage(error, 'Erro ao salvar aluno.'));
         }

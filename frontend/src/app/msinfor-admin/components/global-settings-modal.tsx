@@ -14,6 +14,8 @@ export type GeneralSettingsForm = {
     s3AccessKey: string;
     s3SecretKey: string;
     s3BaseFolder: string;
+    s3CapacityGb: string;
+    s3ImagesFolderName: string;
     s3PublicBaseUrl: string;
     s3UseSsl: boolean;
     s3ForcePathStyle: boolean;
@@ -40,6 +42,8 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsForm = {
     s3AccessKey: '',
     s3SecretKey: '',
     s3BaseFolder: 'content',
+    s3CapacityGb: '',
+    s3ImagesFolderName: '',
     s3PublicBaseUrl: '',
     s3UseSsl: true,
     s3ForcePathStyle: true,
@@ -111,6 +115,8 @@ function buildGlobalSettingsAuditSql() {
   json_extract(GS.settingValue, '$.s3Region') AS s3Region,
   json_extract(GS.settingValue, '$.s3Bucket') AS s3Bucket,
   json_extract(GS.settingValue, '$.s3BaseFolder') AS s3BaseFolder,
+  json_extract(GS.settingValue, '$.s3CapacityGb') AS s3CapacityGb,
+  json_extract(GS.settingValue, '$.s3ImagesFolderName') AS s3ImagesFolderName,
   json_extract(GS.settingValue, '$.emailEnabled') AS emailEnabled,
   json_extract(GS.settingValue, '$.emailSenderEmail') AS emailSenderEmail,
   json_extract(GS.settingValue, '$.emailSmtpHost') AS emailSmtpHost,
@@ -149,6 +155,8 @@ FILTROS APLICADOS AGORA:
 - modulo S3 ativo em tela: ${values.s3Enabled ? 'SIM' : 'NAO'}
 - bucket S3 informado: ${values.s3Bucket || 'VAZIO'}
 - pasta base S3 informada: ${values.s3BaseFolder || 'VAZIO'}
+- capacidade S3 informada em GB: ${values.s3CapacityGb || 'VAZIO'}
+- pasta de imagens no S3: ${values.s3ImagesFolderName || 'VAZIO'}
 - secret key S3 preenchida: ${values.s3SecretKey ? 'SIM' : 'NAO'}
 - modulo e-mail ativo em tela: ${values.emailEnabled ? 'SIM' : 'NAO'}
 - host SMTP informado: ${values.emailSmtpHost || 'VAZIO'}
@@ -335,6 +343,14 @@ export default function GlobalSettingsModal({
                                             <input type="text" value={values.s3BaseFolder} onChange={(event) => onChange('s3BaseFolder', event.target.value)} autoCapitalize="none" spellCheck={false} className={inputClass()} placeholder="content" />
                                         </label>
                                         <label className={fieldCardClass()}>
+                                            <span className={labelClass()}>Capacidade total (GB)</span>
+                                            <input type="number" min={0} step="0.01" value={values.s3CapacityGb ?? ''} onChange={(event) => onChange('s3CapacityGb', event.target.value)} className={inputClass()} placeholder="100" />
+                                        </label>
+                                        <label className={fieldCardClass()}>
+                                            <span className={labelClass()}>Pasta das imagens no S3</span>
+                                            <input type="text" value={values.s3ImagesFolderName ?? ''} onChange={(event) => onChange('s3ImagesFolderName', event.target.value)} autoCapitalize="none" spellCheck={false} className={inputClass()} placeholder="imagens/produtos" />
+                                        </label>
+                                        <label className={fieldCardClass()}>
                                             <span className={labelClass()}>ACL padrão</span>
                                             <input type="text" value={values.s3DefaultAcl} onChange={(event) => onChange('s3DefaultAcl', event.target.value)} autoCapitalize="none" spellCheck={false} className={inputClass()} placeholder="Default" />
                                         </label>
@@ -359,7 +375,7 @@ export default function GlobalSettingsModal({
                                     </div>
 
                                     <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-4 text-sm font-semibold text-cyan-800">
-                                        Caminho sugerido para as imagens por escola: <span className="font-black">{values.s3BaseFolder || 'content'}/escola/&lt;ID_ESCOLA&gt;</span>
+                                        A pasta de imagens será usada pelo Financeiro apenas como último recurso da softhouse; ela ainda não altera vendas nem imagens de produtos.
                                     </div>
                                 </div>
                             ) : (

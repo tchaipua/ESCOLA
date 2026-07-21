@@ -35,6 +35,10 @@ Campos principais:
   - `stockExpirationControlMode`
   - `stockGridControlMode`
   - `stockNegativeControlMode`
+- parâmetros comerciais sincronizados com o Financeiro:
+  - `allowSaleUnitPriceEdit`
+  - `allowSaleItemDiscount`
+  - `groupSameProduct`
 - `isActive`
 
 Regras:
@@ -50,6 +54,10 @@ Regras:
 - se a escola possuir apenas uma filial ativa, o cadastro deve ser transparente para o usuario e gravado automaticamente na filial existente
 - se a escola possuir mais de uma filial ativa, cadastros operacionais devem permitir escolher uma filial especifica ou comum a todas
 - consultas de uma filial enxergam os registros da filial atual e os registros comuns (`0`)
+
+### `finance_source_parameter_audit_events`
+
+Trilha append-only das alterações feitas na interface do Financeiro e confirmadas na Escola. Registra tenant, filial, entidade, parâmetros não sensíveis, ator e data; nenhuma credencial é armazenada nessa auditoria.
 
 ### `user_branch_accesses`
 
@@ -112,6 +120,7 @@ Campos principais:
 - `cpf`
 - `cpfDigits`
 - `cnpj`
+- `cnpjNormalized`
 - `nickname`
 - `corporateName`
 - `phone`
@@ -133,18 +142,25 @@ Campos principais:
 - `state`
 - `neighborhood`
 - `complement`
+- `mergedIntoPersonId`
+- `mergedAt`
+- `mergedBy`
+- `mergeReason`
 
 ### Regras de unicidade em `people`
 
 Dentro do mesmo tenant:
 
 - um `cpfDigits` identifica uma pessoa mestre
-- um `email` identifica uma credencial compartilhada
+- um `cnpjNormalized` identifica uma pessoa jurídica, inclusive com CNPJ alfanumérico
+- a identidade é única no tenant, independentemente da filial em que o papel é exercido
+- e-mail não identifica pessoa e pode ser compartilhado por familiares ou contatos administrativos
 
 Implementacao atual:
 
 - `@@unique([tenantId, cpfDigits])`
-- `@@unique([tenantId, email])`
+- `@@unique([tenantId, cnpjNormalized])`
+- duplicidades legadas são preservadas com `mergedIntoPersonId`, cancelamento lógico e referências operacionais apontadas para a pessoa canônica
 
 ## Papeis operacionais
 

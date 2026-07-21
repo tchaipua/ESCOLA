@@ -7,6 +7,7 @@ import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
+import ScreenAuditModal from '@/app/components/screen-audit-modal';
 import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, hasAnyDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import {
@@ -474,6 +475,7 @@ export default function PrincipalMensalidadesDetalhesPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [screenCopyStatus, setScreenCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+    const [auditScreenId, setAuditScreenId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<DetailTab>('generated');
     const [generatedPageSize, setGeneratedPageSize] = useState(DEFAULT_PAGE_SIZE);
     const [problemPageSize, setProblemPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -543,6 +545,7 @@ export default function PrincipalMensalidadesDetalhesPage() {
             console.error('Falha ao copiar nome da tela', error);
             setScreenCopyStatus('error');
         } finally {
+            setAuditScreenId(screenId);
             resetCopyFeedback();
         }
     }, [resetCopyFeedback]);
@@ -1095,6 +1098,15 @@ export default function PrincipalMensalidadesDetalhesPage() {
                     </div>
                 </div>
             </div>
+
+            {auditScreenId ? (
+                <ScreenAuditModal
+                    screenId={auditScreenId}
+                    systemName="Sistema Escola"
+                    originText="Origem: Sistema Escola - caminho físico: C:/Sistemas/IA/Escola/frontend/src/app/principal/mensalidades/detalhes/[batchId]/page.tsx"
+                    onClose={() => setAuditScreenId(null)}
+                />
+            ) : null}
 
         </div>
     );

@@ -21,6 +21,10 @@ type TenantRecord = {
     id: string;
     name: string;
     createdAt: string;
+    storageCapacityGb?: number | null;
+    storageImagesFolderName?: string | null;
+    storageCustomEndpoint?: string | null;
+    storageEndpoint?: string | null;
     defaultBranch?: {
         id: string;
         branchCode: number;
@@ -324,7 +328,7 @@ export default function MsinforAdminPage() {
         storageProviderAccessKeyId: '', storageProviderSecretAccessKey: '',
         storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
         storageDefaultExpiration: '1440', storageRegion: '', storageEndpoint: 'custom',
-        storageCustomEndpoint: ''
+        storageCustomEndpoint: '', storageCapacityGb: '', storageImagesFolderName: ''
     });
 
     const buildMasterPass = (date: Date) => {
@@ -359,7 +363,6 @@ export default function MsinforAdminPage() {
                     : current;
             });
         } catch (err: any) {
-            console.error(err);
             setErrorStatus('Não foi possível carregar as escolas. Verifique se o backend está rodando na porta 3001.');
         } finally {
             setIsLoading(false);
@@ -911,6 +914,8 @@ export default function MsinforAdminPage() {
                 storageRegion: formData.storageRegion || null,
                 storageEndpoint: formData.storageEndpoint || null,
                 storageCustomEndpoint: formData.storageCustomEndpoint || null,
+                storageCapacityGb: formData.storageCapacityGb ? parseFloat(formData.storageCapacityGb as string) : null,
+                storageImagesFolderName: formData.storageImagesFolderName || null,
             };
 
             if (!String(formData.adminPassword || '').trim()) {
@@ -1061,7 +1066,9 @@ export default function MsinforAdminPage() {
             storageDefaultExpiration: escola.storageDefaultExpiration ? String(escola.storageDefaultExpiration) : '1440',
             storageRegion: escola.storageRegion ?? '',
             storageEndpoint: escola.storageEndpoint ?? 'custom',
-            storageCustomEndpoint: escola.storageCustomEndpoint ?? ''
+            storageCustomEndpoint: escola.storageCustomEndpoint ?? '',
+            storageCapacityGb: escola.storageCapacityGb !== null && escola.storageCapacityGb !== undefined ? String(escola.storageCapacityGb) : '',
+            storageImagesFolderName: escola.storageImagesFolderName ?? ''
         });
 
         adminEmailLastCheckedRef.current = '';
@@ -1091,9 +1098,9 @@ export default function MsinforAdminPage() {
             telegramBotToken: '',
             telegramBotUsername: '',
             storageProviderAccessKeyId: '', storageProviderSecretAccessKey: '',
-            storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
-            storageDefaultExpiration: '1440', storageRegion: '', storageEndpoint: 'custom',
-            storageCustomEndpoint: ''
+        storageBucketName: '', storageFolderName: '', storageDefaultAcl: 'Default',
+        storageDefaultExpiration: '1440', storageRegion: '', storageEndpoint: 'custom',
+        storageCustomEndpoint: '', storageCapacityGb: '', storageImagesFolderName: ''
         });
         setAdminPasswordEqualityNote(null);
         setAdminEmailCheckError(null);
@@ -2286,6 +2293,14 @@ export default function MsinforAdminPage() {
                                                 <input type="text" value={formData.storageFolderName} onChange={e => setFormData({ ...formData, storageFolderName: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="content" />
                                             </div>
                                             <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Capacidade total (GB)</label>
+                                                <input type="number" min={0} step="0.01" value={formData.storageCapacityGb} onChange={e => setFormData({ ...formData, storageCapacityGb: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="100" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Pasta das imagens no S3</label>
+                                                <input type="text" value={formData.storageImagesFolderName} onChange={e => setFormData({ ...formData, storageImagesFolderName: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="imagens/produtos" />
+                                            </div>
+                                            <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">ACL padrão</label>
                                                 <input type="text" value={formData.storageDefaultAcl} onChange={e => setFormData({ ...formData, storageDefaultAcl: e.target.value })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="Default" />
                                             </div>
@@ -2304,6 +2319,9 @@ export default function MsinforAdminPage() {
                                             <div className="md:col-span-2">
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Endpoint customizado</label>
                                                 <input type="text" value={formData.storageCustomEndpoint} onChange={e => setFormData({ ...formData, storageCustomEndpoint: e.target.value.toLowerCase() })} className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-sm" placeholder="https://usc1.contabostorage.com/" />
+                                            </div>
+                                            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-500">
+                                                A pasta das imagens é apenas informativa neste momento e ainda não é utilizada pelas telas de vendas ou produtos.
                                             </div>
                                         </div>
                                     </div>

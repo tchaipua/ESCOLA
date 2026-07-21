@@ -7,6 +7,7 @@ import { clearStoredSession } from '@/app/lib/auth-storage';
 import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
+import ScreenAuditModal from '@/app/components/screen-audit-modal';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const CACHE_KEY = '@Escola-PWA-Teacher-Cache:v1';
@@ -202,6 +203,7 @@ export default function ProfessorPwaPage() {
     const [pendingReadCount, setPendingReadCount] = useState(0);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [copiedScreenName, setCopiedScreenName] = useState(false);
+    const [isScreenAuditOpen, setIsScreenAuditOpen] = useState(false);
     const snapshotRef = useRef<TeacherSnapshot>({
         tenant: null,
         teacher: null,
@@ -226,6 +228,8 @@ export default function ProfessorPwaPage() {
             }
         } catch {
             setErrorStatus('Nao foi possivel copiar o nome da tela.');
+        } finally {
+            setIsScreenAuditOpen(true);
         }
     }, []);
 
@@ -890,6 +894,14 @@ export default function ProfessorPwaPage() {
                     </section>
                 ) : null}
             </div>
+            {isScreenAuditOpen ? (
+                <ScreenAuditModal
+                    screenId={SCREEN_NAME}
+                    systemName="Sistema Escola"
+                    originText="Origem: Sistema Escola - caminho físico: C:/Sistemas/IA/Escola/frontend/src/app/professor/page.tsx"
+                    onClose={() => setIsScreenAuditOpen(false)}
+                />
+            ) : null}
         </main>
     );
 }

@@ -171,7 +171,12 @@ export class GuardiansService {
     },
   >(guardian: T) {
     const { person, ...rest } = guardian as any;
-    const guardianWithSharedFields = { ...rest, ...(person || {}), person };
+    const guardianWithSharedFields = {
+      ...rest,
+      ...(person || {}),
+      id: (rest as { id?: string }).id,
+      person,
+    };
     return {
       ...withRoleBranchAccessCodes(
         guardianWithSharedFields as T & { branchCode: number },
@@ -615,7 +620,7 @@ export class GuardiansService {
       delete rawData.telegramOptInEnabled;
 
       const updatedGuardian = await this.prisma.$transaction(async (tx) => {
-        const guardian = await tx.guardian.update({
+        const updateResult = await tx.guardian.updateMany({
           where: { id },
           data: {
             ...rawData,
@@ -625,6 +630,19 @@ export class GuardiansService {
             updatedBy: getTenantContext()!.userId,
           },
         });
+
+        if (updateResult.count !== 1) {
+          throw new NotFoundException(
+            "Responsável não encontrado na sua Instituição.",
+          );
+        }
+
+        const guardian = await tx.guardian.findFirst({ where: { id } });
+        if (!guardian) {
+          throw new NotFoundException(
+            "Responsável não encontrado na sua Instituição.",
+          );
+        }
 
         await syncRoleBranchAccesses(
           tx,

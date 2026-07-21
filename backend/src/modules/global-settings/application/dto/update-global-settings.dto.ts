@@ -47,6 +47,16 @@ export class UpdateGlobalSettingsDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  s3CapacityGb?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  s3ImagesFolderName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   s3PublicBaseUrl?: string;
 
   @ApiPropertyOptional()

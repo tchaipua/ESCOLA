@@ -17,6 +17,8 @@ type GlobalSettingsValue = {
   s3AccessKey: string;
   s3SecretKey: string;
   s3BaseFolder: string;
+  s3CapacityGb: string;
+  s3ImagesFolderName: string;
   s3PublicBaseUrl: string;
   s3UseSsl: boolean;
   s3ForcePathStyle: boolean;
@@ -46,6 +48,8 @@ const DEFAULT_GENERAL_SETTINGS: GlobalSettingsValue = {
   s3AccessKey: "",
   s3SecretKey: "",
   s3BaseFolder: "content",
+  s3CapacityGb: "",
+  s3ImagesFolderName: "",
   s3PublicBaseUrl: "",
   s3UseSsl: true,
   s3ForcePathStyle: true,
@@ -97,6 +101,15 @@ export class GlobalSettingsService {
       ).trim(),
       s3BaseFolder: String(
         input?.s3BaseFolder ?? DEFAULT_GENERAL_SETTINGS.s3BaseFolder,
+      )
+        .trim()
+        .replace(/^[\\/]+|[\\/]+$/g, ""),
+      s3CapacityGb: String(
+        input?.s3CapacityGb ?? DEFAULT_GENERAL_SETTINGS.s3CapacityGb,
+      ).trim(),
+      s3ImagesFolderName: String(
+        input?.s3ImagesFolderName ??
+          DEFAULT_GENERAL_SETTINGS.s3ImagesFolderName,
       )
         .trim()
         .replace(/^[\\/]+|[\\/]+$/g, ""),

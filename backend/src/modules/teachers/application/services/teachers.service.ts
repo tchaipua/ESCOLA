@@ -163,7 +163,7 @@ export class TeachersService {
     record: T,
   ) {
     const { person, ...rest } = record as any;
-    return { ...rest, ...(person || {}), person };
+    return { ...(person || {}), ...rest, person };
   }
 
   private transformToUpperCase(data: any): any {
@@ -525,7 +525,7 @@ export class TeachersService {
     );
     const targetBranchCode = branchSelection.branchCode;
 
-    return runWithTenantBranchScope(teacher.branchCode, async () => {
+    return runWithTenantBranchScope(targetBranchCode, async () => {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
 

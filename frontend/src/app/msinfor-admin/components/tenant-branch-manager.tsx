@@ -65,6 +65,9 @@ type TenantBranchRecord = {
   stockExpirationControlMode?: BranchStockParameterMode | null;
   stockGridControlMode?: BranchStockParameterMode | null;
   stockNegativeControlMode?: BranchStockParameterMode | null;
+  allowSaleUnitPriceEdit?: boolean | null;
+  allowSaleItemDiscount?: boolean | null;
+  groupSameProduct?: boolean | null;
   smtpHost?: string | null;
   smtpPort?: number | null;
   smtpTimeout?: number | null;
@@ -82,6 +85,8 @@ type TenantBranchRecord = {
   storageRegion?: string | null;
   storageEndpoint?: string | null;
   storageCustomEndpoint?: string | null;
+  storageCapacityGb?: number | null;
+  storageImagesFolderName?: string | null;
   isActive: boolean;
   updatedAt?: string | null;
   updatedBy?: string | null;
@@ -115,6 +120,9 @@ type TenantBranchForm = {
   stockExpirationControlMode: BranchStockParameterMode;
   stockGridControlMode: BranchStockParameterMode;
   stockNegativeControlMode: BranchStockParameterMode;
+  allowSaleUnitPriceEdit: boolean;
+  allowSaleItemDiscount: boolean;
+  groupSameProduct: boolean;
   smtpHost: string;
   smtpPort: string;
   smtpTimeout: string;
@@ -132,6 +140,8 @@ type TenantBranchForm = {
   storageRegion: string;
   storageEndpoint: string;
   storageCustomEndpoint: string;
+  storageCapacityGb: string;
+  storageImagesFolderName: string;
 };
 
 type TenantBranchManagerProps = {
@@ -171,6 +181,9 @@ const EMPTY_FORM: TenantBranchForm = {
   stockExpirationControlMode: 'BY_PRODUCT',
   stockGridControlMode: 'BY_PRODUCT',
   stockNegativeControlMode: 'BY_PRODUCT',
+  allowSaleUnitPriceEdit: true,
+  allowSaleItemDiscount: true,
+  groupSameProduct: true,
   smtpHost: '',
   smtpPort: '',
   smtpTimeout: '',
@@ -188,6 +201,8 @@ const EMPTY_FORM: TenantBranchForm = {
   storageRegion: '',
   storageEndpoint: '',
   storageCustomEndpoint: '',
+  storageCapacityGb: '',
+  storageImagesFolderName: '',
 };
 
 function normalizeStockParameterMode(value?: string | null): BranchStockParameterMode {
@@ -223,6 +238,9 @@ function toForm(branch: TenantBranchRecord): TenantBranchForm {
     stockExpirationControlMode: normalizeStockParameterMode(branch.stockExpirationControlMode),
     stockGridControlMode: normalizeStockParameterMode(branch.stockGridControlMode),
     stockNegativeControlMode: normalizeStockParameterMode(branch.stockNegativeControlMode),
+    allowSaleUnitPriceEdit: branch.allowSaleUnitPriceEdit !== false,
+    allowSaleItemDiscount: branch.allowSaleItemDiscount !== false,
+    groupSameProduct: branch.groupSameProduct !== false,
     smtpHost: branch.smtpHost || '',
     smtpPort: branch.smtpPort ? String(branch.smtpPort) : '',
     smtpTimeout: branch.smtpTimeout ? String(branch.smtpTimeout) : '',
@@ -240,6 +258,8 @@ function toForm(branch: TenantBranchRecord): TenantBranchForm {
     storageRegion: branch.storageRegion || '',
     storageEndpoint: branch.storageEndpoint || '',
     storageCustomEndpoint: branch.storageCustomEndpoint || '',
+    storageCapacityGb: branch.storageCapacityGb !== null && branch.storageCapacityGb !== undefined ? String(branch.storageCapacityGb) : '',
+    storageImagesFolderName: branch.storageImagesFolderName || '',
   };
 }
 
@@ -476,6 +496,8 @@ export default function TenantBranchManager({
           field === 'storageProviderAccessKeyId' ||
           field === 'storageBucketName' ||
           field === 'storageFolderName' ||
+          field === 'storageImagesFolderName' ||
+          field === 'storageCapacityGb' ||
           field === 'storageDefaultAcl' ||
           field === 'storageRegion' ||
           field === 'storageEndpoint'
@@ -914,6 +936,18 @@ export default function TenantBranchManager({
                 {renderStockParameterSelect('stockExpirationControlMode', 'Controla validade')}
                 {renderStockParameterSelect('stockGridControlMode', 'Controla grade')}
                 {renderStockParameterSelect('stockNegativeControlMode', 'Permite estoque negativo')}
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                  <input type="checkbox" checked={formData.allowSaleUnitPriceEdit} onChange={(event) => updateField('allowSaleUnitPriceEdit', event.target.checked)} className="h-4 w-4 accent-blue-600" />
+                  Permitir alterar preço na venda
+                </label>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                  <input type="checkbox" checked={formData.allowSaleItemDiscount} onChange={(event) => updateField('allowSaleItemDiscount', event.target.checked)} className="h-4 w-4 accent-blue-600" />
+                  Permitir desconto no item
+                </label>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 md:col-span-2">
+                  <input type="checkbox" checked={formData.groupSameProduct} onChange={(event) => updateField('groupSameProduct', event.target.checked)} className="h-4 w-4 accent-blue-600" />
+                  Agrupar o mesmo produto na venda
+                </label>
               </div>
             ) : null}
 
@@ -1037,6 +1071,14 @@ export default function TenantBranchManager({
                   <input type="text" value={formData.storageFolderName} onChange={(event) => updateField('storageFolderName', event.target.value)} className={inputClassName()} placeholder="content" />
                 </div>
                 <div>
+                  <label className={labelClassName()}>Capacidade total (GB)</label>
+                  <input type="number" min={0} step="0.01" value={formData.storageCapacityGb} onChange={(event) => updateField('storageCapacityGb', event.target.value)} className={inputClassName()} placeholder="100" />
+                </div>
+                <div>
+                  <label className={labelClassName()}>Pasta das imagens no S3</label>
+                  <input type="text" value={formData.storageImagesFolderName} onChange={(event) => updateField('storageImagesFolderName', event.target.value)} className={inputClassName()} placeholder="imagens/produtos" />
+                </div>
+                <div>
                   <label className={labelClassName()}>ACL padrão</label>
                   <input type="text" value={formData.storageDefaultAcl} onChange={(event) => updateField('storageDefaultAcl', event.target.value)} className={inputClassName()} placeholder="Default" />
                 </div>
@@ -1055,6 +1097,9 @@ export default function TenantBranchManager({
                 <div className="md:col-span-2">
                   <label className={labelClassName()}>Endpoint customizado</label>
                   <input type="text" value={formData.storageCustomEndpoint} onChange={(event) => updateField('storageCustomEndpoint', event.target.value)} className={inputClassName()} placeholder="https://usc1.contabostorage.com/" />
+                </div>
+                <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500">
+                  A pasta das imagens é apenas informativa neste momento e não altera vendas ou imagens de produtos.
                 </div>
               </div>
             ) : null}

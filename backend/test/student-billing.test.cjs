@@ -63,6 +63,22 @@ function createStudentsService({
   let studentFindFirstCalls = 0;
 
   const prisma = {
+    $executeRawUnsafe: async () => 0,
+    $transaction: async function (task) {
+      return task(this);
+    },
+    tenantBranch: {
+      findFirst: async () => ({ id: "branch-1" }),
+      create: async () => ({ id: "branch-1" }),
+      findMany: async () => [
+        {
+          id: "branch-1",
+          branchCode: 1,
+          name: "FILIAL 1",
+          isActive: true,
+        },
+      ],
+    },
     student: {
       findFirst: async () => {
         studentFindFirstCalls += 1;
@@ -84,6 +100,10 @@ function createStudentsService({
     },
     guardian: {
       findFirst: async () => guardianRecord,
+    },
+    studentBranchAccess: {
+      updateMany: async () => ({ count: 0 }),
+      upsert: async () => ({}),
     },
   };
 
@@ -255,6 +275,7 @@ async function testUnlinkRejectsGuardianUsedAsBillingPayer() {
     billingStudent: {
       id: "student-1",
       name: "ALUNO TESTE",
+      person: { name: "ALUNO TESTE" },
     },
   });
 
@@ -276,6 +297,7 @@ async function testRemoveRejectsGuardianUsedAsBillingPayer() {
     billingStudent: {
       id: "student-1",
       name: "ALUNO TESTE",
+      person: { name: "ALUNO TESTE" },
     },
     onGuardianUpdateMany: () => {
       updateManyCalled = true;
@@ -302,6 +324,7 @@ async function testDeactivateRejectsGuardianUsedAsBillingPayer() {
     billingStudent: {
       id: "student-1",
       name: "ALUNO TESTE",
+      person: { name: "ALUNO TESTE" },
     },
     onGuardianUpdate: () => {
       updateCalled = true;

@@ -138,7 +138,7 @@ export default function ScreenAuditModal({
   const effectiveSqlText = (sqlText && sqlText.trim()) || 'SQL ESPECIFICO PENDENTE PARA ESTA TELA.';
 
   const modal = (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center overflow-y-auto bg-slate-950/55 p-3 backdrop-blur-md sm:p-4">
+    <div data-system-message-root className="fixed inset-0 z-[999] flex items-center justify-center overflow-y-auto bg-slate-950/55 p-3 backdrop-blur-md sm:p-4">
       <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/40 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.45)]">
         <div className="grid flex-none grid-cols-1 gap-4 border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-800 to-blue-900 px-4 py-4 text-white sm:px-6 lg:grid-cols-[minmax(0,1fr)_auto_8rem] lg:items-center">
           <div className="flex min-w-0 items-center gap-4">

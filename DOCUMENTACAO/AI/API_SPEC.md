@@ -996,3 +996,21 @@ Observacao estrutural obrigatoria:
 - Uso: sincroniza no `Financeiro` todos os alunos ou responsáveis atualmente definidos como pagadores na filial
 - Regra: o pagador aparece no cadastro de clientes do `Financeiro` mesmo sem título ou parcela
 - Fonte oficial: dados de identidade e contato permanecem em `people` na Escola
+
+### POST `/tenants/current/sync-financeiro-integration-settings`
+
+- Autenticação: `Authorization: Bearer <access_token>`;
+- Uso: sincroniza com o Financeiro a empresa e todas as filiais ativas, incluindo identidade, parâmetros financeiros/comerciais e configurações efetivas de S3, SMTP e Telegram;
+- Regra: uma configuração completa da filial tem prioridade; caso contrário, é usada a configuração da empresa;
+- Transporte: backend a backend, autenticado por `x-api-key` compartilhada nos ambientes;
+- Segurança: senha SMTP, token Telegram e credenciais S3 nunca são retornados ao frontend nem registrados em log.
+
+### PATCH `/integrations/financeiro/company-branch-parameters`
+
+- Autenticação técnica: `x-api-key`, validada por `FINANCEIRO_INTEGRATION_API_KEY`;
+- Uso: recebe do Financeiro alterações permitidas de parâmetros da empresa ou filial;
+- Empresa: juros, carências e multa;
+- Filial: modos de estoque e parâmetros comerciais da venda;
+- Regra: empresa, filial e código precisam existir e estar ativos na Escola; o endpoint nunca cria cadastro;
+- Auditoria: grava evento append-only em `finance_source_parameter_audit_events`;
+- Segurança: a atualização é executada no contexto explícito do tenant e da filial.

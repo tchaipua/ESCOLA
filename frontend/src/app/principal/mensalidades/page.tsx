@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
+import ScreenAuditModal from '@/app/components/screen-audit-modal';
 import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, hasAnyDashboardPermission, hasDashboardPermission, type DashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
@@ -278,6 +279,7 @@ export default function PrincipalMensalidadesPage() {
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
     const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
+    const [auditScreenId, setAuditScreenId] = useState<string | null>(null);
     const router = useRouter();
 
     const authContext = isClientReady ? getDashboardAuthContext() : EMPTY_AUTH_CONTEXT;
@@ -377,11 +379,13 @@ export default function PrincipalMensalidadesPage() {
         });
     }, [mensalidadesAuditContext]);
 
-    const handleCopyConfirmationScreenName = useCallback(async () => {
+    const handleCopyPopupScreenName = useCallback(async (screenId: string) => {
         try {
-            await copyTextToClipboard(CONFIRMATION_SCREEN_ID);
+            await copyTextToClipboard(screenId);
         } catch (error) {
-            console.error('Falha ao copiar nome da tela de confirmação', error);
+            console.error('Falha ao copiar nome da tela do popup', error);
+        } finally {
+            setAuditScreenId(screenId);
         }
     }, []);
 
@@ -914,7 +918,7 @@ export default function PrincipalMensalidadesPage() {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => void handleCopyConfirmationScreenName()}
+                                            onClick={() => void handleCopyPopupScreenName(CONFIRMATION_SCREEN_ID)}
                                             title="Copiar nome da tela"
                                             aria-label={`Copiar o identificador ${CONFIRMATION_SCREEN_ID}`}
                                             className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 active:scale-95"
@@ -1019,7 +1023,7 @@ export default function PrincipalMensalidadesPage() {
                                         </div>
                                         <button
                                             type="button"
-                                            onClick={() => void copyTextToClipboard(ALERT_SCREEN_ID)}
+                                            onClick={() => void handleCopyPopupScreenName(ALERT_SCREEN_ID)}
                                             title="Copiar nome da tela"
                                             aria-label={`Copiar o identificador ${ALERT_SCREEN_ID}`}
                                             className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
@@ -1038,6 +1042,14 @@ export default function PrincipalMensalidadesPage() {
                         </div>
                     </div>
                 </div>
+            ) : null}
+            {auditScreenId ? (
+                <ScreenAuditModal
+                    screenId={auditScreenId}
+                    systemName="Sistema Escola"
+                    originText="Origem: Sistema Escola - caminho físico: C:/Sistemas/IA/Escola/frontend/src/app/principal/mensalidades/page.tsx"
+                    onClose={() => setAuditScreenId(null)}
+                />
             ) : null}
             </div>
         </div>

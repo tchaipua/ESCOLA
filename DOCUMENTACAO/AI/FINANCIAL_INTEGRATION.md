@@ -195,6 +195,7 @@ Regras:
 - aluno ou responsável definido como pagador deve aparecer no Financeiro mesmo sem mensalidade gerada
 - a Escola continua sendo a única fonte de cadastro e alteração desses clientes
 - o Financeiro não oferece cadastro local quando `sourceSystem = ESCOLA`
-- a chave externa usa o papel do pagador (`ALUNO` ou `RESPONSAVEL`) e o ID escolar correspondente
+- `registeredPersonId = PERSON:<personId>` identifica a pessoa de forma estável; papel (`ALUNO` ou `RESPONSAVEL`) e ID escolar ficam como referências externas adicionais
+- CPF/CNPJ normalizado impede que referências de papéis diferentes criem outra pessoa no Financeiro
 - alterações de nome, CPF/CNPJ, contato e endereço são atualizadas pela sincronização
 - pagadores que deixarem a carga ativa são inativados logicamente no Financeiro, sem apagar histórico

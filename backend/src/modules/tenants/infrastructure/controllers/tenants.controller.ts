@@ -232,12 +232,26 @@ export class TenantsController {
     return this.tenantsService.findCurrent(currentUser.tenantId);
   }
 
+
   @Get("current/branches")
   @ApiOperation({
     summary: "Lista as filiais ativas da escola atual",
   })
   async listCurrentBranches(@CurrentUser() currentUser: ICurrentUser) {
     return this.tenantsService.listCurrentBranches(currentUser.tenantId);
+  }
+
+  @Post("current/sync-financeiro-integration-settings")
+  @ApiOperation({
+    summary:
+      "Sincroniza com segurança as configurações efetivas da empresa e filial com o Financeiro",
+  })
+  async syncCurrentFinanceiroIntegrationSettings(
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.tenantsService.syncCurrentFinanceiroIntegrationSettings(
+      currentUser,
+    );
   }
 
   @Post("current/branches")
@@ -289,6 +303,8 @@ export class TenantsController {
       storageRegion?: string;
       storageEndpoint?: string;
       storageCustomEndpoint?: string;
+      storageCapacityGb?: number | string;
+      storageImagesFolderName?: string;
     },
   ) {
     return this.tenantsService.createCurrentBranch(
@@ -366,6 +382,8 @@ export class TenantsController {
       storageRegion?: string;
       storageEndpoint?: string;
       storageCustomEndpoint?: string;
+      storageCapacityGb?: number | string;
+      storageImagesFolderName?: string;
     },
   ) {
     this.assertMasterPass(req);

@@ -42,6 +42,8 @@ export type FinanceiroImportPayload = {
     payer: {
       externalEntityType: string;
       externalEntityId: string;
+      registeredPersonId?: string;
+      registeredPersonSourceType?: string;
       name: string;
       document?: string;
       email?: string;
@@ -76,6 +78,8 @@ export type FinanceiroCustomerSyncPayload = {
   customers: Array<{
     externalEntityType: "ALUNO" | "RESPONSAVEL";
     externalEntityId: string;
+    registeredPersonId?: string;
+    registeredPersonSourceType?: string;
     name: string;
     document?: string;
     email?: string;
@@ -86,6 +90,68 @@ export type FinanceiroCustomerSyncPayload = {
     state?: string;
     postalCode?: string;
   }>;
+};
+
+export type FinanceiroSourceIntegrationSettingsPayload = {
+  requestedBy?: string;
+  sourceSystem: string;
+  sourceTenantId: string;
+  sourceBranchCode: number;
+  activeBranchCodes?: number[];
+  companyName?: string;
+  companyDocument?: string;
+  branchName?: string;
+  branchLegalName?: string;
+  branchTradeName?: string;
+  branchDocument?: string;
+  branchStreet?: string;
+  branchNumber?: string;
+  branchComplement?: string;
+  branchNeighborhood?: string;
+  branchCity?: string;
+  branchState?: string;
+  branchPostalCode?: string;
+  branchPhone?: string;
+  branchEmail?: string;
+  s3Endpoint?: string;
+  s3Region?: string;
+  s3Bucket?: string;
+  s3BasePrefix?: string;
+  s3AccessKey?: string;
+  s3SecretKey?: string;
+  s3ForcePathStyle?: boolean;
+  s3CapacityGb?: number;
+  s3ImagesFolderName?: string;
+  storageDefaultAcl?: string;
+  storageDefaultExpiration?: number;
+  storageSourceScope?: "SOFTHOUSE" | "COMPANY" | "BRANCH";
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpTimeout?: number;
+  smtpAuthenticate?: boolean;
+  smtpSecure?: boolean;
+  smtpAuthType?: string;
+  smtpEmail?: string;
+  smtpPassword?: string;
+  smtpSourceScope?: "SOFTHOUSE" | "COMPANY" | "BRANCH";
+  telegramEnabled?: boolean;
+  telegramBotToken?: string;
+  telegramBotUsername?: string;
+  telegramSourceScope?: "COMPANY" | "BRANCH";
+  interestRate?: number | null;
+  interestGracePeriod?: number | null;
+  penaltyRate?: number | null;
+  penaltyValue?: number | null;
+  penaltyGracePeriod?: number | null;
+  stockControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  stockIntegerQuantityMode?: "NO" | "YES" | "BY_PRODUCT";
+  stockLotControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  stockExpirationControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  stockGridControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  stockNegativeControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  allowSaleUnitPriceEdit?: boolean;
+  allowSaleItemDiscount?: boolean;
+  groupSameProduct?: boolean;
 };
 
 export type FinanceiroCustomerSyncResponse = {
@@ -330,6 +396,29 @@ export class FinanceiroService {
       body: JSON.stringify(payload),
       fallbackMessage:
         "Não foi possível sincronizar os clientes com o sistema Financeiro.",
+    });
+  }
+
+  async syncSourceIntegrationSettings(
+    payload: FinanceiroSourceIntegrationSettingsPayload,
+  ) {
+    return this.request<{
+      companyId: string;
+      branchCode: number;
+      s3Configured: boolean;
+      smtpConfigured: boolean;
+      telegramConfigured: boolean;
+      synchronizedAt: string;
+    }>("/companies/sync-source-integration-settings", {
+      method: "POST",
+      headers: {
+        "x-api-key": String(
+          process.env.FINANCEIRO_INTEGRATION_API_KEY || "",
+        ).trim(),
+      },
+      body: JSON.stringify(payload),
+      fallbackMessage:
+        "Não foi possível sincronizar as configurações da empresa e filial com o Financeiro.",
     });
   }
 

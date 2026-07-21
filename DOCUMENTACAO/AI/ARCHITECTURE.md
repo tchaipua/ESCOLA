@@ -66,6 +66,10 @@ O `Financeiro` nao deve ser tratado como apenas uma pasta interna da `Escola`. E
 
 A arquitetura passou a usar `Person` como cadastro-base compartilhado por escola (`tenantId`).
 
+CPF ou CNPJ normalizado identifica uma única `Person` em todo o tenant. A filial
+fica nos papéis operacionais; ela não cria outra identidade para a mesma pessoa.
+E-mail não é chave de identidade, pois pode ser compartilhado.
+
 `Person` concentra:
 
 - nome e identificacao civil
@@ -183,6 +187,16 @@ Responsabilidades:
 
 - `Escola`: resolve regra academica, aluno, responsavel/pagador, mensalidade, filial e contexto do usuario
 - `Financeiro`: persiste titulos, parcelas, caixa, baixas, produtos, contas a pagar, certificados e eventos financeiros
+
+Configurações corporativas compartilhadas:
+
+- S3, SMTP, Telegram e futuras integrações permanecem cadastrados na empresa/filial da Escola;
+- configuração completa da filial tem prioridade; quando ausente, a Escola resolve o fallback da empresa;
+- o resultado efetivo é enviado diretamente entre backends, autenticado por `x-api-key`;
+- senhas, tokens e credenciais nunca passam pelo frontend e são armazenados criptografados no Financeiro.
+- empresa e filial são cadastradas somente na Escola; o Financeiro mantém um espelho sincronizado e não oferece inclusão manual;
+- alterações permitidas de parâmetros no Financeiro retornam primeiro à Escola por `PATCH /integrations/financeiro/company-branch-parameters` e só depois atualizam o espelho financeiro;
+- outros sistemas chamadores devem implementar o mesmo contrato de retorno, com URL e chave próprias por `sourceSystem`.
 
 Regra obrigatoria: alteracoes financeiras operacionais devem ser avaliadas no repositorio `C:\Sistemas\IA\Financeiro`; a `Escola` deve manter apenas integracao, contexto e telas hospedeiras quando aplicavel.
 

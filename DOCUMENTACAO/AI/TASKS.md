@@ -87,6 +87,8 @@
 
 ## Notas recentes
 
+- 2026-07-19: Concluída a identidade única por CPF/CNPJ no tenant, sem duplicação por filial ou papel, com `personId` estável enviado ao Financeiro e consolidação lógica de registros legados.
+- 2026-07-18: Adicionados os cards integrados `Emissão NF-e` e `Emissão NFS (Serviço)`, com rotas próprias, RBAC financeiro e emissão manual pertencente ao sistema Financeiro.
 - 2026-07-14: Adicionado o card `Vendas 2` e a rota integrada `/principal/financeiro/vendas-2`, mantendo a regra operacional no sistema Financeiro separado.
 - 2026-07-16: Concluída a sincronização antecipada dos alunos e responsáveis pagadores com o cadastro híbrido de clientes do Financeiro.
 - 2026-03-17: Resumo por turma agora ordena pelas séries conforme o `sortOrder` registrado no cadastro de séries para refletir a sequência natural de aprendizado.

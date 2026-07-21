@@ -391,22 +391,10 @@ export default function DashboardPage() {
             image: '/principal-financeiro/vendas.svg?v=1',
         },
         {
-            href: '/principal/pessoas',
-            title: 'Pessoas e Perfis',
-            description: 'Consulta somente leitura do cadastro-base compartilhado entre professores, alunos e responsáveis.',
-            image: '/principal/pessoas.svg',
-        },
-        {
             href: '/principal/dashboard',
             title: 'Dashboard',
             description: 'Abra a nova tela de métricas e atalhos rápidos para tomar decisões.',
             image: '/principal/dashboard.svg',
-        },
-        {
-            href: '/principal/grade',
-            title: 'Grade Escolar',
-            description: 'Monte os horários semanais vinculados às turmas da escola.',
-            image: '/principal/grade.svg',
         },
         {
             href: '/principal/relatorios',

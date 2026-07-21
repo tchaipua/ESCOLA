@@ -11,6 +11,7 @@ import GridStandardFooter from '@/app/components/grid-standard-footer';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import { showErrorMessage } from '@/app/components/system-message-provider';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import {
@@ -463,7 +464,6 @@ export default function ResponsaveisPage() {
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
-    const [saveError, setSaveError] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [formData, setFormData] = useState<GuardianFormState>(EMPTY_FORM);
     const [selectedGuardianForStudents, setSelectedGuardianForStudents] = useState<GuardianRecord | null>(null);
@@ -847,9 +847,8 @@ export default function ResponsaveisPage() {
                     cpf: formatCpf(formData.cpf),
                 });
                 setGuardianCpfConflictRoles(buildSystemRoleBadges(profile.roles));
-                setSaveError(null);
             } catch (error) {
-                setSaveError(errorMessage(error, 'Não foi possível validar o CPF informado.'));
+                showErrorMessage(errorMessage(error, 'Não foi possível validar o CPF informado.'));
             }
 
             return;
@@ -883,7 +882,7 @@ export default function ResponsaveisPage() {
             });
             setGuardianCpfConflictRoles(resolvedRoles);
         } catch (error) {
-            setSaveError(errorMessage(error, 'Não foi possível reaproveitar os dados deste CPF.'));
+            showErrorMessage(errorMessage(error, 'Não foi possível reaproveitar os dados deste CPF.'));
             setExistingCpfAlert(null);
             setGuardianCpfConflictAlert(null);
             setGuardianCpfConflictRoles([]);
@@ -1236,8 +1235,14 @@ export default function ResponsaveisPage() {
 
     const handleSave = async (event: React.FormEvent) => {
         event.preventDefault();
-        if (formData.cpf && !isValidCpf(formData.cpf)) return setSaveError('CPF inválido. Informe um CPF válido.');
-        if (formData.cnpj && !isValidCnpj(formData.cnpj)) return setSaveError('CNPJ inválido. Informe um CNPJ válido.');
+        if (formData.cpf && !isValidCpf(formData.cpf)) {
+            showErrorMessage('CPF inválido. Informe um CPF válido.');
+            return;
+        }
+        if (formData.cnpj && !isValidCnpj(formData.cnpj)) {
+            showErrorMessage('CNPJ inválido. Informe um CNPJ válido.');
+            return;
+        }
 
         try {
             const { token } = getDashboardAuthContext();
@@ -1259,6 +1264,7 @@ export default function ResponsaveisPage() {
                 delete payload.branchAccessCodes;
             }
             if (!payload.birthDate) delete payload.birthDate;
+            if (!String(payload.email || '').trim()) delete payload.email;
             if (!guardianFieldAccess.access) {
                 delete payload.email;
                 delete payload.accessProfile;
@@ -1267,7 +1273,11 @@ export default function ResponsaveisPage() {
 
             const response = await fetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                    'x-msinfor-system-message': 'silent',
+                },
                 body: JSON.stringify(payload),
             });
             if (!response.ok) {
@@ -1282,7 +1292,7 @@ export default function ResponsaveisPage() {
                 message: wasEditing ? 'O responsável foi alterado e a lista já foi atualizada.' : 'O responsável foi inserido e a lista já foi atualizada.',
             });
         } catch (error) {
-            setSaveError(errorMessage(error, 'Erro ao salvar responsável.'));
+            showErrorMessage(errorMessage(error, 'Erro ao salvar responsável.'));
         }
     };
 
@@ -2121,7 +2131,6 @@ export default function ResponsaveisPage() {
                 </div>
             ) : null}
 
-            {saveError ? <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm"><div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-3 text-lg font-bold text-slate-800">Atenção</div><div className="text-sm font-medium text-red-600">{saveError}</div><div className="mt-4 text-right"><button onClick={() => setSaveError(null)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200">Fechar</button></div></div></div> : null}
             </div>
         </div>
     );

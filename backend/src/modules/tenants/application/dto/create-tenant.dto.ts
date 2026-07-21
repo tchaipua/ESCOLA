@@ -8,8 +8,10 @@ import {
   Min,
   Max,
   IsBoolean,
+  IsNumber,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 
 export class CreateTenantDto {
   @ApiProperty({ description: "Nome da Escola / Inquilino" })
@@ -84,6 +86,8 @@ export class CreateTenantDto {
   @IsOptional() @IsString() storageRegion?: string;
   @IsOptional() @IsString() storageEndpoint?: string;
   @IsOptional() @IsString() storageCustomEndpoint?: string;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) storageCapacityGb?: number;
+  @IsOptional() @IsString() storageImagesFolderName?: string;
 
   @ApiProperty({ description: "Nome do primeiro Administrador" })
   @IsString()

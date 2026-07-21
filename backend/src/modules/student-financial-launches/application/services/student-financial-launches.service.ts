@@ -816,6 +816,8 @@ export class StudentFinancialLaunchesService {
       customersByExternalKey.set(`${payerType}|${externalEntityId}`, {
         externalEntityType: payerType,
         externalEntityId,
+        registeredPersonId: `PERSON:${person.id}`,
+        registeredPersonSourceType: "ESCOLA",
         name,
         document: person.cpf || person.cnpj || undefined,
         email: person.email || undefined,
@@ -1064,6 +1066,10 @@ export class StudentFinancialLaunchesService {
             payerGuardianPerson?.phone ||
             undefined
           : studentPerson?.whatsapp || studentPerson?.phone || undefined;
+      const payerPersonId =
+        payerType === "RESPONSAVEL"
+          ? payerGuardianPerson?.id
+          : studentPerson?.id;
 
       financeItems.push({
         sourceEntityType: "ALUNO",
@@ -1080,6 +1086,10 @@ export class StudentFinancialLaunchesService {
             payerType === "RESPONSAVEL"
               ? payerGuardian?.id || student.id
               : student.id,
+          registeredPersonId: payerPersonId
+            ? `PERSON:${payerPersonId}`
+            : undefined,
+          registeredPersonSourceType: "ESCOLA",
           name: payerName,
           document: payerDocument,
           email: payerEmail,

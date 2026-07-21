@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import {
@@ -40,7 +39,7 @@ const SECTION_CONFIG = {
   },
   'contas-a-receber': {
     label: 'Contas a Receber',
-    path: '',
+    path: '/contas-a-receber',
   },
   clientes: {
     label: 'Clientes',
@@ -90,6 +89,14 @@ const SECTION_CONFIG = {
     label: 'Vendas 2',
     path: '/vendas-2',
   },
+  'emissao-nfe': {
+    label: 'Emissão NF-e',
+    path: '/emissao-nfe',
+  },
+  'emissao-nfs': {
+    label: 'Emissão NFS (Serviço)',
+    path: '/emissao-nfs',
+  },
   msinfor: {
     label: 'MSINFOR',
     path: '/msinfor',
@@ -133,65 +140,6 @@ const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
   title: 'Contas a Pagar',
   description: 'Tela completa do Financeiro aberta dentro do sistema da Escola.',
 };
-
-const ACCOUNTS_RECEIVABLE_MENU_ITEMS = [
-  {
-    id: 'clientes',
-    label: 'Clientes',
-    href: '/principal/financeiro/clientes',
-    description: 'Consulte os pagadores sincronizados pela Escola.',
-    image: '/principal-financeiro/historico-cliente.svg?v=1',
-  },
-  {
-    id: 'vendas-periodo',
-    label: 'Vendas do Período',
-    href: '/principal/financeiro/vendas-periodo',
-    description: 'Grid das vendas realizadas por período.',
-    image: '/principal-financeiro/vendas.svg?v=2',
-  },
-  {
-    id: 'devolucao-mercadorias',
-    label: 'Devolução de Mercadorias',
-    href: '/principal/financeiro/devolucao-mercadorias',
-    description: 'Fluxo de devolução de produtos em definição.',
-    image: '/principal-financeiro/vendas.svg?v=2',
-  },
-  {
-    id: 'parcelas',
-    label: 'Parcelas a Receber',
-    href: '/principal/financeiro/parcelas',
-    description: 'Parcelas abertas, vencidas e baixadas da escola.',
-    image: '/principal-financeiro/parcelas.svg?v=2',
-  },
-  {
-    id: 'creditos',
-    label: 'Controle de Créditos',
-    href: '/principal/financeiro/creditos',
-    description: 'Controle de créditos em contas a receber.',
-    image: '/principal-financeiro/creditos.svg?v=1',
-  },
-  {
-    id: 'recebimentos-por-cliente',
-    label: 'Recebimentos por Cliente',
-    href: '/principal/financeiro/recebimentos-por-cliente',
-    description: 'Receba parcelas abertas agrupadas por cliente.',
-    image: '/principal-financeiro/recebimentos-por-cliente.svg?v=1',
-  },
-  {
-    id: 'historico-cliente',
-    label: 'Histórico Cliente',
-    href: '/principal/financeiro/historico-cliente',
-    description: 'Consulte compras, parcelas e pagamentos por cliente.',
-    image: '/principal-financeiro/historico-cliente.svg?v=1',
-  },
-  {
-    id: 'historico-baixas',
-    label: 'Histórico Baixas',
-    href: '/principal/financeiro/historico-baixas',
-    description: 'Consulte baixas realizadas e estorne recebimentos.',
-    image: '/principal-financeiro/historico-baixas.svg?v=1',
-  },
-] as const;
 
 const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderContent> = {
   PRINCIPAL_FINANCEIRO_CLIENTES: {
@@ -271,6 +219,18 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     title: 'Vendas 2',
     description:
       'Nova experiência de venda com as mesmas regras de estoque, pagamento e emissão fiscal.',
+  },
+  PRINCIPAL_FINANCEIRO_EMISSAO_NFE: {
+    eyebrow: 'Emissão fiscal manual',
+    title: 'Emissão NF-e',
+    description:
+      'Emita manualmente NF-e de produtos e escolha se a nota também criará parcelas no Contas a Receber.',
+  },
+  PRINCIPAL_FINANCEIRO_EMISSAO_NFS: {
+    eyebrow: 'Emissão fiscal manual',
+    title: 'Emissão NFS (Serviço)',
+    description:
+      'Emita manualmente NFS-e Nacional e escolha se a nota também criará parcelas no Contas a Receber.',
   },
   PRINCIPAL_FINANCEIRO_MSINFOR: {
     eyebrow: 'Financeiro integrado',
@@ -406,6 +366,8 @@ export function PrincipalFinanceiroSectionPageContent({
   const [branchStockParameters, setBranchStockParameters] =
     useState<BranchStockParameters | null>(null);
   const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
+  const [isSourceSettingsSyncing, setIsSourceSettingsSyncing] = useState(false);
+  const [sourceSettingsSyncCompleted, setSourceSettingsSyncCompleted] = useState(false);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
     authContext.role,
@@ -413,6 +375,11 @@ export function PrincipalFinanceiroSectionPageContent({
     ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES', 'VIEW_CASHIER', 'SETTLE_RECEIVABLES'],
   );
   const isAdminOnlySection = section === 'vendas-2' || section === 'msinfor';
+  const isFiscalEmissionSection =
+    section === 'emissao-nfe' || section === 'emissao-nfs';
+  const canManageFiscalEmission =
+    authContext.role === 'ADMIN' ||
+    authContext.permissions.includes('MANAGE_FINANCIAL');
   const tenantBranding = readCachedTenantBranding(authContext.tenantId);
   const financeBranding = useMemo(
     () => ({
@@ -436,9 +403,35 @@ export function PrincipalFinanceiroSectionPageContent({
     return SECTION_CONFIG[section as SectionKey] || null;
   }, [section]);
 
+  useEffect(() => {
+    if (!section || !authContext.token) return;
+
+    let active = true;
+    setIsSourceSettingsSyncing(true);
+    setSourceSettingsSyncCompleted(false);
+
+    void fetch(`${API_BASE_URL}/tenants/current/sync-financeiro-integration-settings`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authContext.token}`,
+        'Content-Type': 'application/json',
+      },
+    })
+      .catch(() => null)
+      .finally(() => {
+        if (!active) return;
+        setSourceSettingsSyncCompleted(true);
+        setIsSourceSettingsSyncing(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authContext.token, section]);
+
   const iframeSrc = useMemo(() => {
     if (!sectionConfig) return null;
-    if (section === 'contas-a-receber') return null;
+    if (!sourceSettingsSyncCompleted) return null;
     const nestedPath = subpath.length ? `/${subpath.join('/')}` : '';
 
     return buildFinanceFrameUrl(
@@ -448,7 +441,7 @@ export function PrincipalFinanceiroSectionPageContent({
       financeBranding,
       branchStockParameters,
     );
-  }, [authContext, branchStockParameters, financeBranding, section, sectionConfig, subpath]);
+  }, [authContext, branchStockParameters, financeBranding, section, sectionConfig, sourceSettingsSyncCompleted, subpath]);
 
   useEffect(() => {
     const financeiroOrigin = (() => {
@@ -753,7 +746,8 @@ export function PrincipalFinanceiroSectionPageContent({
     return () => window.clearTimeout(timer);
   }, [section]);
 
-  const isFrameLoading = Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
+  const isFrameLoading =
+    isSourceSettingsSyncing || Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
   const isCompactFinanceSection = section === 'parcelas';
   const isTightFinanceSection = false;
   const isCompactFinanceHeader = true;
@@ -782,8 +776,6 @@ export function PrincipalFinanceiroSectionPageContent({
     : isCompactFinanceHeader
       ? 'mt-1 text-xs'
       : 'mt-2 text-sm';
-  const isAccountsReceivableSection = section === 'contas-a-receber';
-
   useEffect(() => {
     const handleEmbeddedScreenContext = (
       event: MessageEvent<{ type?: string; screenId?: string }>,
@@ -846,13 +838,23 @@ export function PrincipalFinanceiroSectionPageContent({
     );
   }
 
-  if (!canViewFinancial || (isAdminOnlySection && authContext.role !== 'ADMIN')) {
+  if (
+    !canViewFinancial ||
+    (isAdminOnlySection && authContext.role !== 'ADMIN') ||
+    (isFiscalEmissionSection && !canManageFiscalEmission)
+  ) {
     return (
       <DashboardAccessDenied
-        title={isAdminOnlySection ? `${sectionConfig?.label || 'Área'} indisponível` : 'Financeiro indisponível'}
+        title={
+          isAdminOnlySection || isFiscalEmissionSection
+            ? `${sectionConfig?.label || 'Área'} indisponível`
+            : 'Financeiro indisponível'
+        }
         message={
           isAdminOnlySection
             ? 'Esta tela está disponível somente para usuários ADMIN.'
+            : isFiscalEmissionSection
+              ? 'A emissão fiscal exige perfil ADMIN ou permissão MANAGE_FINANCIAL.'
             : 'Seu perfil não possui permissão para visualizar o portal financeiro integrado.'
         }
       />
@@ -934,36 +936,7 @@ export function PrincipalFinanceiroSectionPageContent({
 
       <section className={`${cardClass} ${isCompactFinanceSection ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'overflow-hidden'}`}>
         <div className={`relative bg-slate-100 ${isCompactFinanceSection ? 'min-h-0 flex-1' : ''}`}>
-          {isAccountsReceivableSection ? (
-            <div className="h-[calc(100vh-11rem)] bg-slate-50 p-6">
-              <div className="h-full rounded-[28px] border border-slate-200 bg-white p-6 shadow-inner">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8">
-                  {ACCOUNTS_RECEIVABLE_MENU_ITEMS.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={item.href}
-                      title={item.description}
-                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-                    >
-                        <div className="flex h-20 items-center justify-center overflow-hidden bg-slate-100 p-3">
-                          <img
-                            src={item.image}
-                            alt={item.label}
-                            className="max-h-full max-w-full object-contain opacity-95 transition-transform duration-300 group-hover:scale-105"
-                          />
-                        </div>
-                        <div className="flex min-h-11 items-center justify-center p-2.5 text-center">
-                          <div className="text-sm font-black text-slate-800">
-                            {item.label}
-                          </div>
-                        </div>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
+          <>
               {isFrameLoading ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm">
               <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
@@ -979,8 +952,7 @@ export function PrincipalFinanceiroSectionPageContent({
                 onLoad={() => setLoadedFrameSrc(iframeSrc)}
                 className={`block ${isCompactFinanceSection ? 'h-full' : section === 'vendas' || section === 'vendas-2' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
               />
-            </>
-          )}
+          </>
         </div>
       </section>
     </div>

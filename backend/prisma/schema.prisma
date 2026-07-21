@@ -41,6 +41,8 @@ model Tenant {
   storageRegion                  String?
   storageEndpoint                String?
   storageCustomEndpoint          String?
+  storageCapacityGb              Float?
+  storageImagesFolderName        String?
 
   // Auditoria Obrigatória
   createdAt  DateTime  @default(now())
@@ -79,6 +81,7 @@ model Tenant {
   communicationCampaigns      CommunicationCampaign[]
   userPreferences             UserPreference[]
   branches                    TenantBranch[]
+  financeSourceParameterAuditEvents FinanceSourceParameterAuditEvent[]
   userBranchAccesses          UserBranchAccess[]
   teacherBranchAccesses       TeacherBranchAccess[]
   studentBranchAccesses       StudentBranchAccess[]
@@ -121,6 +124,9 @@ model TenantBranch {
   stockExpirationControlMode     String    @default("BY_PRODUCT")
   stockGridControlMode           String    @default("BY_PRODUCT")
   stockNegativeControlMode       String    @default("BY_PRODUCT")
+  allowSaleUnitPriceEdit         Boolean   @default(true)
+  allowSaleItemDiscount          Boolean   @default(true)
+  groupSameProduct               Boolean   @default(true)
   smtpHost                       String?
   smtpPort                       Int?
   smtpTimeout                    Int?
@@ -142,6 +148,8 @@ model TenantBranch {
   storageRegion                  String?
   storageEndpoint                String?
   storageCustomEndpoint          String?
+  storageCapacityGb              Float?
+  storageImagesFolderName        String?
   isActive                       Boolean   @default(true)
   createdAt                      DateTime  @default(now())
   createdBy                      String?
@@ -156,6 +164,25 @@ model TenantBranch {
   @@index([tenantId, isActive, name])
   @@index([emailVerificationToken])
   @@map("tenant_branches")
+}
+
+model FinanceSourceParameterAuditEvent {
+  id             String   @id @default(uuid())
+  tenantId       String
+  branchCode     Int?
+  sourceSystem   String
+  entityType     String
+  action         String
+  parametersJson String
+  performedBy    String?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  createdBy      String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, branchCode, occurredAt])
+  @@map("finance_source_parameter_audit_events")
 }
 
 model UserPreference {
@@ -350,6 +377,7 @@ model Person {
   cpf                  String?
   cpfDigits            String?
   cnpj                 String?
+  cnpjNormalized       String?
   nickname             String?
   corporateName        String?
   phone                String?
@@ -371,6 +399,10 @@ model Person {
   state                String?
   neighborhood         String?
   complement           String?
+  mergedIntoPersonId   String?
+  mergedAt             DateTime?
+  mergedBy             String?
+  mergeReason          String?
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -384,7 +416,8 @@ model Person {
   students  Student[]
   guardians Guardian[]
 
-  @@unique([tenantId, branchCode, cpfDigits])
+  @@unique([tenantId, cpfDigits])
+  @@unique([tenantId, cnpjNormalized])
   @@index([tenantId])
   @@map("people")
 }

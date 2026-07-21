@@ -12,7 +12,7 @@ import {
   Min,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 
 export class CreateGuardianDto {
   /* ===============================
@@ -43,6 +43,9 @@ export class CreateGuardianDto {
   @ApiPropertyOptional() @IsString() @IsOptional() cellphone2?: string;
 
   @ApiPropertyOptional({ description: "E-mail para acesso futuro ao APP" })
+  @Transform(({ value }) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  )
   @IsEmail()
   @IsOptional()
   email?: string;

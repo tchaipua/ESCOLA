@@ -9,6 +9,7 @@ import { CreateTenantDto } from "../dto/create-tenant.dto";
 import { PurgeTenantDto } from "../dto/purge-tenant.dto";
 import { PurgeTenantDeletionSummary } from "../dto/purge-tenant-response.dto";
 import { UpdateTenantDto } from "../dto/update-tenant.dto";
+import { ApplyFinanceSourceParametersDto } from "../dto/finance-source-parameters.dto";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import * as nodemailer from "nodemailer";
@@ -27,6 +28,8 @@ import {
 } from "../../../../common/auth/access-profiles";
 import { tenantContext } from "../../../../common/tenant/tenant.context";
 import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
+import { FinanceiroService } from "../../../../integrations/financeiro/financeiro.service";
+import { GlobalSettingsService } from "../../../global-settings/application/services/global-settings.service";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
   DEFAULT_BRANCH_CODE,
@@ -91,6 +94,9 @@ type TenantBranchPayload = {
   stockExpirationControlMode?: string | null;
   stockGridControlMode?: string | null;
   stockNegativeControlMode?: string | null;
+  allowSaleUnitPriceEdit?: boolean | null;
+  allowSaleItemDiscount?: boolean | null;
+  groupSameProduct?: boolean | null;
   smtpHost?: string | null;
   smtpPort?: number | string | null;
   smtpTimeout?: number | string | null;
@@ -112,6 +118,8 @@ type TenantBranchPayload = {
   storageRegion?: string | null;
   storageEndpoint?: string | null;
   storageCustomEndpoint?: string | null;
+  storageCapacityGb?: number | string | null;
+  storageImagesFolderName?: string | null;
 };
 
 type SmtpConfiguration = {
@@ -160,6 +168,8 @@ export class TenantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
+    private readonly financeiroService: FinanceiroService,
+    private readonly globalSettingsService: GlobalSettingsService,
   ) {}
 
   private readonly masterAuditUser = "MSINFOR_MASTER";
@@ -177,6 +187,24 @@ export class TenantsService {
     };
 
     return tenantContext.run(context, async () => await operation());
+  }
+
+  private runAsFinanceiroTenantContext<T>(
+    tenantId: string,
+    branchCode: number,
+    actor: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return tenantContext.run(
+      {
+        userId: actor,
+        tenantId,
+        branchCode,
+        role: "ADMIN",
+        isMaster: false,
+      },
+      async () => await operation(),
+    );
   }
 
   private parseBoolean(value: unknown, defaultValue: boolean): boolean {
@@ -210,6 +238,18 @@ export class TenantsService {
     return String(email || "")
       .trim()
       .toUpperCase();
+  }
+
+  private parseOptionalFloat(value: unknown): number | undefined {
+    if (value === undefined || value === null || String(value).trim() === "") {
+      return undefined;
+    }
+
+    const parsed = Number(String(value).replace(",", "."));
+    if (!Number.isFinite(parsed)) {
+      throw new BadRequestException("Capacidade do S3 inválida.");
+    }
+    return parsed;
   }
 
   private normalizeOptionalText(value?: string | null) {
@@ -402,6 +442,18 @@ export class TenantsService {
       stockNegativeControlMode: this.normalizeBranchStockParameterMode(
         payload.stockNegativeControlMode,
       ),
+      ...(payload.allowSaleUnitPriceEdit === undefined ||
+      payload.allowSaleUnitPriceEdit === null
+        ? {}
+        : { allowSaleUnitPriceEdit: Boolean(payload.allowSaleUnitPriceEdit) }),
+      ...(payload.allowSaleItemDiscount === undefined ||
+      payload.allowSaleItemDiscount === null
+        ? {}
+        : { allowSaleItemDiscount: Boolean(payload.allowSaleItemDiscount) }),
+      ...(payload.groupSameProduct === undefined ||
+      payload.groupSameProduct === null
+        ? {}
+        : { groupSameProduct: Boolean(payload.groupSameProduct) }),
       ...this.buildTenantBranchSmtpData(payload),
       ...this.buildTenantBranchTelegramData(payload),
       ...this.buildTenantBranchStorageData(payload),
@@ -522,10 +574,13 @@ export class TenantsService {
     storageRegion?: string | null;
     storageEndpoint?: string | null;
     storageCustomEndpoint?: string | null;
+    storageCapacityGb?: number | string | null;
+    storageImagesFolderName?: string | null;
   }) {
     const storageDefaultExpiration = this.parseOptionalInt(
       payload.storageDefaultExpiration,
     );
+    const storageCapacityGb = this.parseOptionalFloat(payload.storageCapacityGb);
 
     if (
       storageDefaultExpiration !== undefined &&
@@ -534,6 +589,10 @@ export class TenantsService {
       throw new ConflictException(
         "Expiração padrão do storage deve ser maior que zero.",
       );
+    }
+
+    if (storageCapacityGb !== undefined && storageCapacityGb < 0) {
+      throw new ConflictException("Capacidade do S3 não pode ser negativa.");
     }
 
     return {
@@ -554,6 +613,9 @@ export class TenantsService {
         String(payload.storageEndpoint || "").trim() || null,
       storageCustomEndpoint:
         String(payload.storageCustomEndpoint || "").trim() || null,
+      storageCapacityGb: storageCapacityGb ?? null,
+      storageImagesFolderName:
+        String(payload.storageImagesFolderName || "").trim() || null,
     };
   }
 
@@ -981,6 +1043,404 @@ export class TenantsService {
       city: defaultBranch?.city ?? null,
       state: defaultBranch?.state ?? null,
       defaultBranch,
+    };
+  }
+
+  async applyFinanceSourceParameters(
+    payload: ApplyFinanceSourceParametersDto,
+  ) {
+    const sourceSystem = String(payload.sourceSystem || "")
+      .trim()
+      .toUpperCase();
+    const sourceTenantId = String(payload.sourceTenantId || "").trim();
+    const actor = `FINANCEIRO:${String(
+      payload.requestedBy || "INTEGRACAO",
+    )
+      .trim()
+      .toUpperCase()}`;
+
+    if (sourceSystem !== "ESCOLA" || !sourceTenantId) {
+      throw new BadRequestException("Origem da empresa inválida.");
+    }
+
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: sourceTenantId.toLowerCase(), canceledAt: null },
+      select: { id: true },
+    });
+    if (!tenant) {
+      throw new NotFoundException("Escola não encontrada.");
+    }
+
+    if (payload.entityType === "COMPANY") {
+      const companyData: Record<string, number | null | string> = {
+        updatedBy: actor,
+      };
+      const companyKeys = [
+        "interestRate",
+        "interestGracePeriod",
+        "penaltyRate",
+        "penaltyValue",
+        "penaltyGracePeriod",
+      ] as const;
+
+      for (const key of companyKeys) {
+        if (payload.parameters[key] !== undefined) {
+          companyData[key] = payload.parameters[key] as number | null;
+        }
+      }
+
+      if (Object.keys(companyData).length === 1) {
+        throw new BadRequestException(
+          "Nenhum parâmetro de empresa foi informado.",
+        );
+      }
+
+      const updated = await this.runAsFinanceiroTenantContext(
+        tenant.id,
+        DEFAULT_BRANCH_CODE,
+        actor,
+        () => this.prisma.$transaction(async (tx) => {
+        const result = await tx.tenant.update({
+          where: { id: tenant.id },
+          data: companyData,
+          select: {
+            interestRate: true,
+            interestGracePeriod: true,
+            penaltyRate: true,
+            penaltyValue: true,
+            penaltyGracePeriod: true,
+          },
+        });
+
+        await tx.financeSourceParameterAuditEvent.create({
+          data: {
+            tenantId: tenant.id,
+            sourceSystem: "FINANCEIRO",
+            entityType: "COMPANY",
+            action: "COMPANY_PARAMETERS_UPDATED_BY_FINANCEIRO",
+            parametersJson: JSON.stringify(companyData),
+            performedBy: actor,
+            createdBy: actor,
+          },
+        });
+
+        return result;
+        }),
+      );
+
+      return {
+        synchronized: true,
+        sourceSystem,
+        sourceTenantId,
+        entityType: "COMPANY",
+        parameters: updated,
+      };
+    }
+
+    const branchCode = normalizeBranchCode(payload.sourceBranchCode, -1);
+    if (branchCode < DEFAULT_BRANCH_CODE) {
+      throw new BadRequestException("Filial de origem inválida.");
+    }
+
+    const branch = await this.prisma.tenantBranch.findFirst({
+      where: {
+        tenantId: tenant.id,
+        branchCode,
+        isActive: true,
+        canceledAt: null,
+      },
+      select: { id: true },
+    });
+    if (!branch) {
+      throw new NotFoundException("Filial ativa não encontrada na Escola.");
+    }
+
+    const branchData: Record<string, string | boolean> = { updatedBy: actor };
+    const stockKeys = [
+      "stockControlMode",
+      "stockIntegerQuantityMode",
+      "stockLotControlMode",
+      "stockExpirationControlMode",
+      "stockGridControlMode",
+      "stockNegativeControlMode",
+    ] as const;
+    for (const key of stockKeys) {
+      if (payload.parameters[key] !== undefined) {
+        branchData[key] = this.normalizeBranchStockParameterMode(
+          payload.parameters[key],
+        );
+      }
+    }
+
+    const booleanKeys = [
+      "allowSaleUnitPriceEdit",
+      "allowSaleItemDiscount",
+      "groupSameProduct",
+    ] as const;
+    for (const key of booleanKeys) {
+      if (payload.parameters[key] !== undefined) {
+        branchData[key] = Boolean(payload.parameters[key]);
+      }
+    }
+
+    if (Object.keys(branchData).length === 1) {
+      throw new BadRequestException(
+        "Nenhum parâmetro de filial foi informado.",
+      );
+    }
+
+    const updated = await this.runAsFinanceiroTenantContext(
+      tenant.id,
+      branchCode,
+      actor,
+      () => this.prisma.$transaction(async (tx) => {
+      const result = await tx.tenantBranch.update({
+        where: { id: branch.id },
+        data: branchData,
+        select: {
+          branchCode: true,
+          stockControlMode: true,
+          stockIntegerQuantityMode: true,
+          stockLotControlMode: true,
+          stockExpirationControlMode: true,
+          stockGridControlMode: true,
+          stockNegativeControlMode: true,
+          allowSaleUnitPriceEdit: true,
+          allowSaleItemDiscount: true,
+          groupSameProduct: true,
+        },
+      });
+
+      await tx.financeSourceParameterAuditEvent.create({
+        data: {
+          tenantId: tenant.id,
+          branchCode,
+          sourceSystem: "FINANCEIRO",
+          entityType: "BRANCH",
+          action: "BRANCH_PARAMETERS_UPDATED_BY_FINANCEIRO",
+          parametersJson: JSON.stringify(branchData),
+          performedBy: actor,
+          createdBy: actor,
+        },
+      });
+
+      return result;
+      }),
+    );
+
+    return {
+      synchronized: true,
+      sourceSystem,
+      sourceTenantId,
+      sourceBranchCode: branchCode,
+      entityType: "BRANCH",
+      parameters: updated,
+    };
+  }
+
+  async syncCurrentFinanceiroIntegrationSettings(
+    currentUser: ICurrentUser,
+  ) {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: currentUser.tenantId, canceledAt: null },
+      include: {
+        branches: {
+          where: { canceledAt: null, isActive: true },
+          orderBy: { branchCode: "asc" },
+        },
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException("Escola não encontrada.");
+    }
+
+    if (!tenant.branches.length) {
+      throw new NotFoundException("Nenhuma filial ativa foi encontrada.");
+    }
+
+    const hasCompleteSmtp = (configuration: {
+      smtpHost?: string | null;
+      smtpPort?: number | null;
+      smtpAuthenticate?: boolean | null;
+      smtpEmail?: string | null;
+      smtpPassword?: string | null;
+    }) =>
+      Boolean(
+        configuration.smtpHost &&
+          configuration.smtpPort &&
+          configuration.smtpEmail &&
+          (configuration.smtpAuthenticate === false ||
+            configuration.smtpPassword),
+      );
+    const softHouseSettings = await this.globalSettingsService.findSettings();
+    const softHouseStorage = {
+      storageProviderAccessKeyId: softHouseSettings.s3AccessKey,
+      storageProviderSecretAccessKey: softHouseSettings.s3SecretKey,
+      storageBucketName: softHouseSettings.s3Bucket,
+      storageFolderName: softHouseSettings.s3BaseFolder,
+      storageDefaultAcl: softHouseSettings.s3DefaultAcl,
+      storageDefaultExpiration: Number(softHouseSettings.s3DefaultExpirationMinutes) || undefined,
+      storageRegion: softHouseSettings.s3Region,
+      storageEndpoint: softHouseSettings.s3Endpoint,
+      storageCustomEndpoint: softHouseSettings.s3Endpoint,
+      storageCapacityGb: Number(softHouseSettings.s3CapacityGb) || undefined,
+      storageImagesFolderName: softHouseSettings.s3ImagesFolderName,
+    };
+    const softHouseHasStorage = Boolean(
+      softHouseSettings.s3Enabled &&
+        softHouseStorage.storageProviderAccessKeyId &&
+        softHouseStorage.storageProviderSecretAccessKey &&
+        softHouseStorage.storageBucketName &&
+        softHouseStorage.storageFolderName,
+    );
+    const softHouseSmtp = {
+      smtpHost: softHouseSettings.emailSmtpHost,
+      smtpPort: Number(softHouseSettings.emailSmtpPort) || undefined,
+      smtpTimeout: 60,
+      smtpAuthenticate: softHouseSettings.emailUseAuth,
+      smtpSecure: softHouseSettings.emailUseSsl,
+      smtpAuthType: softHouseSettings.emailUseSsl ? "SSL" : "STARTTLS",
+      smtpEmail: softHouseSettings.emailSmtpUser || softHouseSettings.emailSenderEmail,
+      smtpPassword: softHouseSettings.emailSmtpPassword,
+    };
+    const softHouseHasSmtp = Boolean(
+      softHouseSettings.emailEnabled && hasCompleteSmtp(softHouseSmtp),
+    );
+    const synchronizedBranches = [];
+    const activeBranchCodes = tenant.branches.map((branch) => branch.branchCode);
+    for (const branch of tenant.branches) {
+      const branchHasStorage = Boolean(
+        branch.storageProviderAccessKeyId &&
+          branch.storageProviderSecretAccessKey &&
+          branch.storageBucketName &&
+          branch.storageFolderName,
+      );
+      const companyHasStorage = Boolean(
+        tenant.storageProviderAccessKeyId &&
+          tenant.storageProviderSecretAccessKey &&
+          tenant.storageBucketName &&
+          tenant.storageFolderName,
+      );
+      const storage = branchHasStorage
+        ? branch
+        : companyHasStorage
+          ? tenant
+          : softHouseStorage;
+      const storageSourceScope = branchHasStorage
+        ? "BRANCH"
+        : companyHasStorage
+          ? "COMPANY"
+          : "SOFTHOUSE";
+      const storageEndpointMode = String(storage.storageEndpoint || "")
+        .trim()
+        .toLowerCase();
+      const storageEndpoint =
+        storageEndpointMode === "custom"
+          ? String(storage.storageCustomEndpoint || "").trim()
+          : storageEndpointMode.startsWith("http")
+            ? String(storage.storageEndpoint || "").trim()
+            : "";
+      const branchHasSmtp = hasCompleteSmtp(branch);
+      const companyHasSmtp = hasCompleteSmtp(tenant);
+      const smtp = branchHasSmtp
+        ? branch
+        : companyHasSmtp
+          ? tenant
+          : softHouseSmtp;
+      const smtpSourceScope = branchHasSmtp
+        ? "BRANCH"
+        : companyHasSmtp
+          ? "COMPANY"
+          : "SOFTHOUSE";
+      const branchHasTelegram = Boolean(branch.telegramBotToken);
+      const telegram = branchHasTelegram ? branch : tenant;
+      const telegramSourceScope = branchHasTelegram ? "BRANCH" : "COMPANY";
+
+      synchronizedBranches.push(
+        await this.financeiroService.syncSourceIntegrationSettings({
+          requestedBy: currentUser.userId,
+          sourceSystem: "ESCOLA",
+          sourceTenantId: tenant.id,
+          sourceBranchCode: branch.branchCode,
+          activeBranchCodes,
+          companyName: tenant.name,
+          companyDocument:
+            branch.cnpj || branch.cpf || branch.document || undefined,
+          branchName: branch.name,
+          branchLegalName: branch.corporateName || branch.name,
+          branchTradeName: branch.nickname || branch.name,
+          branchDocument:
+            branch.cnpj || branch.cpf || branch.document || undefined,
+          branchStreet: branch.street || undefined,
+          branchNumber: branch.number || undefined,
+          branchComplement: branch.complement || undefined,
+          branchNeighborhood: branch.neighborhood || undefined,
+          branchCity: branch.city || undefined,
+          branchState: branch.state || undefined,
+          branchPostalCode: branch.zipCode || undefined,
+          branchPhone:
+            branch.phone || branch.cellphone1 || branch.whatsapp || undefined,
+          branchEmail: branch.email || undefined,
+          interestRate: tenant.interestRate,
+          interestGracePeriod: tenant.interestGracePeriod,
+          penaltyRate: tenant.penaltyRate,
+          penaltyValue: tenant.penaltyValue,
+          penaltyGracePeriod: tenant.penaltyGracePeriod,
+          stockControlMode: this.normalizeBranchStockParameterMode(
+            branch.stockControlMode,
+          ) as "NO" | "YES" | "BY_PRODUCT",
+          stockIntegerQuantityMode: this.normalizeBranchStockParameterMode(
+            branch.stockIntegerQuantityMode,
+          ) as "NO" | "YES" | "BY_PRODUCT",
+          stockLotControlMode: this.normalizeBranchStockParameterMode(
+            branch.stockLotControlMode,
+          ) as "NO" | "YES" | "BY_PRODUCT",
+          stockExpirationControlMode: this.normalizeBranchStockParameterMode(
+            branch.stockExpirationControlMode,
+          ) as "NO" | "YES" | "BY_PRODUCT",
+          stockGridControlMode: this.normalizeBranchStockParameterMode(
+            branch.stockGridControlMode,
+          ) as "NO" | "YES" | "BY_PRODUCT",
+          stockNegativeControlMode: this.normalizeBranchStockParameterMode(
+            branch.stockNegativeControlMode,
+          ) as "NO" | "YES" | "BY_PRODUCT",
+          allowSaleUnitPriceEdit: branch.allowSaleUnitPriceEdit !== false,
+          allowSaleItemDiscount: branch.allowSaleItemDiscount !== false,
+          groupSameProduct: branch.groupSameProduct !== false,
+          s3Endpoint: softHouseHasStorage || branchHasStorage || companyHasStorage ? storageEndpoint || undefined : undefined,
+          s3Region: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageRegion || undefined : undefined,
+          s3Bucket: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageBucketName || undefined : undefined,
+          s3BasePrefix: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageFolderName || undefined : undefined,
+          s3AccessKey: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageProviderAccessKeyId || undefined : undefined,
+          s3SecretKey: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageProviderSecretAccessKey || undefined : undefined,
+          s3ForcePathStyle: Boolean(storageEndpoint),
+          s3CapacityGb: storage.storageCapacityGb ?? undefined,
+          s3ImagesFolderName: storage.storageImagesFolderName || undefined,
+          storageDefaultAcl: storage.storageDefaultAcl || undefined,
+          storageDefaultExpiration:
+            storage.storageDefaultExpiration || undefined,
+          storageSourceScope,
+          smtpHost: softHouseHasSmtp || branchHasSmtp || companyHasSmtp ? smtp.smtpHost || undefined : undefined,
+          smtpPort: smtp.smtpPort || undefined,
+          smtpTimeout: smtp.smtpTimeout || undefined,
+          smtpAuthenticate: smtp.smtpAuthenticate ?? undefined,
+          smtpSecure: smtp.smtpSecure ?? undefined,
+          smtpAuthType: smtp.smtpAuthType || undefined,
+          smtpEmail: smtp.smtpEmail || undefined,
+          smtpPassword: smtp.smtpPassword || undefined,
+          smtpSourceScope,
+          telegramEnabled: telegram.telegramEnabled ?? undefined,
+          telegramBotToken: telegram.telegramBotToken || undefined,
+          telegramBotUsername: telegram.telegramBotUsername || undefined,
+          telegramSourceScope,
+        }),
+      );
+    }
+
+    return {
+      synchronizedBranchCount: synchronizedBranches.length,
+      branches: synchronizedBranches,
     };
   }
 
