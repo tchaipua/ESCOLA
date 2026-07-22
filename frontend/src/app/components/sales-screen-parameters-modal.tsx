@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import ScreenNameCopy from '@/app/components/screen-name-copy';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
@@ -93,20 +94,15 @@ export default function SalesScreenParametersModal({
     return (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
             <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-white/30 bg-white shadow-[0_30px_100px_rgba(15,23,42,0.45)]">
-                <div className="flex items-center gap-4 bg-gradient-to-r from-slate-950 via-slate-800 to-blue-900 px-6 py-5 text-white">
-                    <img
-                        src={branding?.logoUrl || '/logo-msinfor.jpg'}
-                        alt={branding?.schoolName || 'MSINFOR Sistemas'}
-                        className="h-14 w-14 rounded-full border-2 border-white bg-white object-contain"
-                    />
-                    <div className="min-w-0 flex-1">
-                        <div className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-200">Parâmetros da tela</div>
-                        <div className="mt-1 truncate text-sm font-black">PRINCIPAL_FINANCEIRO_VENDAS</div>
-                    </div>
-                    <button type="button" onClick={onClose} disabled={isSaving} className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] hover:bg-white/20">
-                        Fechar
-                    </button>
-                </div>
+                <MaintenanceModalHeader
+                    title="Parâmetros da tela de vendas"
+                    eyebrow="Financeiro • Vendas"
+                    description="Defina as permissões e o comportamento dos itens na tela de vendas."
+                    tenantId={tenantId}
+                    schoolName={branding?.schoolName}
+                    logoUrl={branding?.logoUrl}
+                    onClose={onClose}
+                />
 
                 <div className="space-y-5 px-6 py-6">
                     <div>
@@ -131,16 +127,14 @@ export default function SalesScreenParametersModal({
                         </label>
                     </div>
 
-                    <div className="flex justify-end border-t border-slate-100 pt-4">
-                        <button type="button" onClick={() => void handleSave()} disabled={isSaving} className="rounded-xl bg-blue-700 px-6 py-3 text-xs font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-blue-700/20 hover:bg-blue-800 disabled:opacity-60">
-                            {isSaving ? 'Validando...' : 'Salvar parâmetros'}
-                        </button>
-                    </div>
                 </div>
-
-                <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-                    <ScreenNameCopy screenId={SCREEN_ID} className="mt-0" />
-                </div>
+                <MaintenanceModalFooter
+                    screenId={SCREEN_ID}
+                    saveLabel="Salvar parâmetros"
+                    savingLabel="Validando..."
+                    isSaving={isSaving}
+                    onSave={() => void handleSave()}
+                />
             </div>
 
             {errorMessage ? (

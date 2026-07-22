@@ -7,6 +7,8 @@ import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
 import { CASHIER_ONLY_HOME_ROUTE, getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
 import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS } from '@/app/components/principal-program-header';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import SalesScreenParametersModal, { type SalesScreenParameters } from '@/app/components/sales-screen-parameters-modal';
 
@@ -635,7 +637,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         if (
             embeddedScreenContextLabel ===
-            'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO'
+                'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO' ||
+            embeddedScreenContextLabel === 'PRINCIPAL_FINANCEIRO_ESTOQUE'
         ) {
             const financeFrame = document.querySelector<HTMLIFrameElement>(
                 'iframe[title="Financeiro integrado - Estoque"]',
@@ -645,8 +648,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 financeFrame.contentWindow.postMessage(
                     {
                         type: 'MSINFOR_FINANCEIRO_NAVIGATE_BACK',
-                        screenId:
-                            'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO',
+                        screenId: embeddedScreenContextLabel,
                     },
                     '*',
                 );
@@ -2176,30 +2178,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         role="dialog"
                         aria-modal="true"
                     >
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-blue-50 to-indigo-50 px-6 py-5">
-                            <div className="flex items-center gap-4">
-                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white bg-white shadow-md">
-                                    {currentTenant?.logoUrl ? (
-                                        <img src={currentTenant.logoUrl} alt={currentTenant.name} className="h-full w-full object-contain p-2" />
-                                    ) : (
-                                        <span className="text-lg font-black uppercase text-slate-500">
-                                            {String(currentTenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div>
-                                    <div className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">Alterar senha</div>
-                                    <div className="mt-1 text-2xl font-black text-slate-900">Senha do e-mail geral</div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={closeChangePassword}
-                                className="rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-red-700"
-                            >
-                                FECHAR
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title="Senha do e-mail geral"
+                            eyebrow="Alterar senha"
+                            description="A nova senha será validada e sincronizada nos cadastros vinculados."
+                            tenantId={currentTenant?.id}
+                            schoolName={currentTenant?.name}
+                            logoUrl={currentTenant?.logoUrl}
+                            onClose={closeChangePassword}
+                        />
 
                         <div className="px-6 py-6">
                             <div className="grid gap-4 md:grid-cols-3">
@@ -2315,22 +2302,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
-                            <button
-                                type="button"
-                                onClick={() => void handleSubmitChangePassword()}
-                                disabled={isChangingPassword}
-                                className="w-full rounded-xl bg-[#153a6a] px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-800 disabled:cursor-wait disabled:bg-slate-300"
-                            >
-                                {isChangingPassword ? 'SALVANDO...' : 'ALTERAR SENHA'}
-                            </button>
-                            <ScreenNameCopy
-                                screenId={CHANGE_PASSWORD_SCREEN_ID}
-                                label="NOME DA TELA"
-                                className="justify-end"
-                                disableMargin
-                            />
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId={CHANGE_PASSWORD_SCREEN_ID}
+                            saveLabel="Alterar senha"
+                            isSaving={isChangingPassword}
+                            onSave={() => void handleSubmitChangePassword()}
+                        />
                     </div>
                 </div>
             ) : null}

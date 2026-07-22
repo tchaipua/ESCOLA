@@ -11,6 +11,8 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { fetchTenantBranches, getDashboardAuthContext, hasDashboardPermission, type TenantBranchSummary } from '@/app/lib/dashboard-crud-utils';
 import {
@@ -642,6 +644,9 @@ export default function SeriesPage() {
             title={item.name}
             subtitle={item.code ? `Código: ${item.code}` : 'Série sem código informado'}
             buttonLabel={`Ver detalhes da série ${item.name}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             badges={[
                 item.canceledAt ? 'INATIVA' : 'ATIVA',
                 item.code || 'SEM CÓDIGO',
@@ -936,19 +941,19 @@ export default function SeriesPage() {
                                         <td className="w-56 px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 {renderSeriesInfoButton(item)}
-                                                <GridRowActionIconButton title="Ver alunos da série" onClick={() => handleShowSeriesStudents(item)} tone="slate">
+                                                <GridRowActionIconButton title="Ver alunos da série" onClick={() => handleShowSeriesStudents(item)} tone="slate" visualStyle="outlined">
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
                                                         <circle cx="17" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" fill="none" />
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 20v-1a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v1" />
                                                     </svg>
                                                 </GridRowActionIconButton>
-                                                <GridRowActionIconButton title="Editar série" onClick={() => handleEdit(item)} tone="blue">
+                                                <GridRowActionIconButton title="Editar série" onClick={() => handleEdit(item)} tone="blue" visualStyle="outlined">
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                     </svg>
                                                 </GridRowActionIconButton>
-                                                <GridRowActionIconButton title={item.canceledAt ? 'Ativar série' : 'Inativar série'} onClick={() => openSeriesStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'}>
+                                                <GridRowActionIconButton title={item.canceledAt ? 'Ativar série' : 'Inativar série'} onClick={() => openSeriesStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'} visualStyle="outlined">
                                                     {item.canceledAt ? (
                                                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1135,30 +1140,14 @@ export default function SeriesPage() {
             {isModalOpen ? (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <div className="flex min-w-0 items-center gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
-                                        {currentTenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">{editingId ? 'Editar série' : 'Nova série'}</h2>
-                                </div>
-                            </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingId ? 'Editar série' : 'Nova série'}
+                            eyebrow="Escola · Cadastros"
+                            description="Preencha os dados da série e confirme para salvar."
+                            onClose={closeModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                        />
 
                         <form onSubmit={handleSave} className="p-6 space-y-5">
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1175,27 +1164,14 @@ export default function SeriesPage() {
                                 />
                             </div>
 
-                            <div className="flex flex-col gap-3 border-t border-slate-100 pt-5">
-                                <div className="flex items-center justify-between gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={closeModal}
-                                        className="rounded-xl bg-rose-500 px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white transition hover:bg-rose-600"
-                                    >
-                                        Fechar
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={!canManage || isSaving}
-                                        className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
-                                    >
-                                        {isSaving ? 'Salvando...' : editingId ? 'Salvar edição' : 'Cadastrar série'}
-                                    </button>
-                                </div>
-                                <div className="flex justify-end">
-                                    <ScreenNameCopy screenId={SERIES_NEW_MODAL_SCREEN_ID} className="mt-0" />
-                                </div>
-                            </div>
+                            <MaintenanceModalFooter
+                                screenId={SERIES_NEW_MODAL_SCREEN_ID}
+                                screenNameCompact
+                                saveLabel={editingId ? 'Salvar' : 'Cadastrar série'}
+                                isSaving={isSaving}
+                                disabled={!canManage}
+                                className="-mx-6 -mb-6 mt-5"
+                            />
                         </form>
                     </div>
                 </div>

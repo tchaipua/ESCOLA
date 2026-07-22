@@ -15,6 +15,7 @@ type ScreenNameCopyProps = {
   label?: string;
   className?: string;
   disableMargin?: boolean;
+  compact?: boolean;
   originText?: string;
   auditText?: string;
   sqlText?: string;
@@ -56,6 +57,7 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_RESPONSAVEL_PWA', match: 'exact', physicalPath: escolaAppPath('responsavel', 'page.tsx') },
 
   { screenId: 'MSINFOR_ADMIN_CONFIGURACOES_GERAIS_MODAL', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'components', 'global-settings-modal.tsx') },
+  { screenId: 'POPUP_MSINFOR_ADMIN_ALTERAR_EMAIL_VINCULO', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'page.tsx') },
   { screenId: 'MSINFOR_ADMIN_FILIAIS_ESCOLA', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'components', 'tenant-branch-manager.tsx') },
   { screenId: 'MSINFOR_ADMIN_EDITAR_FILIAL_ESCOLA', match: 'exact', physicalPath: escolaAppPath('msinfor-admin', 'components', 'tenant-branch-manager.tsx') },
   { screenId: 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA', match: 'prefix', physicalPath: escolaAppPath('msinfor-admin', 'components', 'tenant-access-manager.tsx') },
@@ -108,6 +110,8 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_DASHBOARD_RESUMO', match: 'prefix', physicalPath: escolaAppPath('principal', 'dashboard', 'resumo', 'page.tsx') },
 
   { screenId: 'PRINCIPAL_CALENDARIO_AULAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'calendario-aulas', 'page.tsx') },
+  { screenId: 'POPUP_PWA_DOCENTE_AGENDA_EVENTO_MANUTENCAO', match: 'exact', physicalPath: escolaAppPath('components', 'teacher-daily-agenda-panel.tsx') },
+  { screenId: 'POPUP_PRINCIPAL_PESSOAS_MANUTENCAO', match: 'exact', physicalPath: escolaAppPath('principal', 'pessoas', 'page.tsx') },
   { screenId: 'PRINCIPAL_GRADE_ANUAL', match: 'prefix', physicalPath: escolaAppPath('principal', 'grade-anual', 'page.tsx') },
   { screenId: 'PRINCIPAL_HISTORICO_NOTAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'historico-notas', 'page.tsx') },
   { screenId: 'PRINCIPAL_LANCAR_NOTAS', match: 'prefix', physicalPath: escolaAppPath('principal', 'lancar-notas', 'page.tsx') },
@@ -534,6 +538,7 @@ export default function ScreenNameCopy({
   label = 'Tela',
   className = '',
   disableMargin = false,
+  compact = false,
   originText,
   auditText,
   sqlText,
@@ -602,8 +607,8 @@ export default function ScreenNameCopy({
 
   return (
     <>
-    <div className={containerClasses}>
-      <span className="flex-1 truncate">
+    <div className={`${containerClasses} ${compact ? 'justify-end' : ''}`.trim()}>
+      <span className={compact ? 'max-w-[calc(100%-42px)] truncate' : 'flex-1 truncate'}>
         {label}: <span className="font-normal text-[10px] tracking-[0.35em] text-slate-500">{screenId}</span>
       </span>
       <button
@@ -621,7 +626,7 @@ export default function ScreenNameCopy({
           <path d="M12 18h3" />
         </svg>
       </button>
-      <span aria-live="polite" className="min-w-[48px] text-[9px] font-semibold uppercase tracking-[0.4em] text-emerald-600">
+      <span aria-live="polite" className={`${compact ? 'min-w-0' : 'min-w-[48px]'} text-[9px] font-semibold uppercase tracking-[0.4em] text-emerald-600`}>
         {statusMessage}
       </span>
     </div>

@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import { useEffect, useMemo, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 
@@ -1718,42 +1720,21 @@ const handleMonthChange = (value: string) => {
             {modalState ? (
                 <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
                 <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl relative">
-                        <div className="dashboard-band border-b px-6 py-5">
-                            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                <div className="flex items-center gap-4">
-                                    <TenantLogoBadge
-                                        tenant={tenant}
-                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-                                        imageClassName="h-full w-full object-contain p-1.5"
-                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
-                                    />
-                                    <div>
-                                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-                                            {modalState.mode === 'lesson'
-                                                ? `${modalState.lessonItem.dateLabel} • ${modalState.lessonItem.startTime} - ${modalState.lessonItem.endTime}`
-                                                : getFullDateLabel(modalState.selectedDate)}
-                                        </div>
-                                        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">
-                                            {modalState.existingEvent ? `Editar ${eventTypeLabel}` : `Lançar ${eventTypeLabel}`}
-                                        </h2>
-                                        <p className="mt-2 text-sm font-medium text-slate-500">
-                                            {modalState.mode === 'lesson'
-                                                ? `${modalState.lessonItem.subjectName} • ${modalState.lessonItem.seriesName} - ${modalState.lessonItem.className}`
-                                                : selectedStandaloneTarget
-                                                    ? `${selectedStandaloneTarget.subjectName} • ${selectedStandaloneTarget.seriesName} - ${selectedStandaloneTarget.className}${selectedStandaloneTarget.shift ? ` • ${selectedStandaloneTarget.shift}` : ''}`
-                                                    : 'Selecione a turma e a disciplina do aviso avulso.'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setModalState(null)}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={modalState.existingEvent ? `Editar ${eventTypeLabel}` : `Lançar ${eventTypeLabel}`}
+                            eyebrow={modalState.mode === 'lesson'
+                                ? `${modalState.lessonItem.dateLabel} • ${modalState.lessonItem.startTime} - ${modalState.lessonItem.endTime}`
+                                : getFullDateLabel(modalState.selectedDate)}
+                            description={modalState.mode === 'lesson'
+                                ? `${modalState.lessonItem.subjectName} • ${modalState.lessonItem.seriesName} - ${modalState.lessonItem.className}`
+                                : selectedStandaloneTarget
+                                    ? `${selectedStandaloneTarget.subjectName} • ${selectedStandaloneTarget.seriesName} - ${selectedStandaloneTarget.className}${selectedStandaloneTarget.shift ? ` • ${selectedStandaloneTarget.shift}` : ''}`
+                                    : 'Selecione a turma e a disciplina do aviso avulso.'}
+                            tenantId={tenant?.id}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={() => setModalState(null)}
+                        />
 
                         <div className="max-h-[70vh] overflow-y-auto px-6 py-6">
                             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -1853,48 +1834,24 @@ const handleMonthChange = (value: string) => {
                             </div>
                         </div>
 
-                        <div className="dashboard-band-footer border-t px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex gap-3">
-                                {modalState.existingEvent ? (
-                                    <button
-                                        type="button"
-                                        onClick={handleRemoveEvent}
-                                        disabled={saving}
-                                        className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-60"
-                                    >
-                                        Remover evento
-                                    </button>
-                                ) : null}
-                            </div>
-                            <div className="flex gap-3 items-center">
-                                <div className="flex justify-end">
-                                    <ScreenNameCopy
-                                        screenId={modalState.mode === 'standalone' ? 'PRINCIPAL_CALENDARIO_AULAS_STANDALONE' : 'PRINCIPAL_CALENDARIO_AULAS'}
-                                        label="Tela"
-                                        className="text-[9px]"
-                                        auditText={calendarioAuditContext.auditText}
-                                        sqlText={calendarioAuditContext.sqlText}
-                                    />
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setModalState(null)}
-                                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveEvent}
-                                        disabled={saving}
-                                        className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
-                                    >
-                                        {saving ? 'Salvando...' : modalState.existingEvent ? 'Salvar alterações' : 'Lançar evento'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId={modalState.mode === 'standalone' ? 'PRINCIPAL_CALENDARIO_AULAS_STANDALONE' : 'PRINCIPAL_CALENDARIO_AULAS'}
+                            saveLabel={modalState.existingEvent ? 'Salvar alterações' : 'Lançar evento'}
+                            isSaving={saving}
+                            onSave={() => void handleSaveEvent()}
+                            auditText={calendarioAuditContext.auditText}
+                            sqlText={calendarioAuditContext.sqlText}
+                            secondaryActions={modalState.existingEvent ? (
+                                <button
+                                    type="button"
+                                    onClick={handleRemoveEvent}
+                                    disabled={saving}
+                                    className="min-h-12 rounded-[18px] border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-60"
+                                >
+                                    Remover evento
+                                </button>
+                            ) : null}
+                        />
                         {confirmationDialog ? (
                             <div className="absolute inset-0 z-[96] flex items-center justify-center bg-slate-900/50">
                                 <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-2xl">
@@ -2119,35 +2076,15 @@ const handleMonthChange = (value: string) => {
             {attendanceModal ? (
                 <div className="fixed inset-0 z-[85] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
-                        <div className="dashboard-band border-b px-6 py-5">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div className="flex items-center gap-4">
-                                    <TenantLogoBadge
-                                        tenant={tenant}
-                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-                                        imageClassName="h-full w-full object-contain p-1.5"
-                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
-                                    />
-                                    <div>
-                                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-                                            {attendanceModal.lessonItem.dateLabel} • {attendanceModal.lessonItem.startTime} - {attendanceModal.lessonItem.endTime}
-                                        </div>
-                                        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">Chamada da aula</h2>
-                                        <p className="mt-2 text-sm font-medium text-slate-500">
-                                            {attendanceModal.lessonItem.subjectName} • {attendanceModal.lessonItem.seriesName} - {attendanceModal.lessonItem.className}
-                                            {attendanceModal.lessonItem.shift ? ` • ${attendanceModal.lessonItem.shift}` : ''}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setAttendanceModal(null)}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                        </div>
+                        <MaintenanceModalHeader
+                            title="Chamada da aula"
+                            eyebrow={`${attendanceModal.lessonItem.dateLabel} • ${attendanceModal.lessonItem.startTime} - ${attendanceModal.lessonItem.endTime}`}
+                            description={`${attendanceModal.lessonItem.subjectName} • ${attendanceModal.lessonItem.seriesName} - ${attendanceModal.lessonItem.className}${attendanceModal.lessonItem.shift ? ` • ${attendanceModal.lessonItem.shift}` : ''}`}
+                            tenantId={tenant?.id}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={() => setAttendanceModal(null)}
+                        />
 
                         <div className="max-h-[72vh] overflow-y-auto px-6 py-6">
                             {attendanceLoading ? (
@@ -2330,34 +2267,16 @@ const handleMonthChange = (value: string) => {
                             )}
                         </div>
 
-                        <div className="dashboard-band-footer border-t px-6 py-4">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <ScreenNameCopy
-                                    screenId="PRINCIPAL_CALENDARIO_AULAS_CHAMADA"
-                                    label="Tela"
-                                    className="mt-0 text-[11px]"
-                                    auditText={calendarioAuditContext.auditText}
-                                    sqlText={calendarioAuditContext.sqlText}
-                                />
-                                <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setAttendanceModal(null)}
-                                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveAttendance}
-                                        disabled={attendanceSaving || attendanceLoading}
-                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-                                    >
-                                        {attendanceSaving ? 'Finalizando chamada...' : 'Finalizar chamada'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId="PRINCIPAL_CALENDARIO_AULAS_CHAMADA"
+                            saveLabel="Finalizar chamada"
+                            savingLabel="Finalizando chamada..."
+                            isSaving={attendanceSaving}
+                            disabled={attendanceLoading}
+                            onSave={() => void handleSaveAttendance()}
+                            auditText={calendarioAuditContext.auditText}
+                            sqlText={calendarioAuditContext.sqlText}
+                        />
                         {confirmationDialog?.kind === 'attendance' ? (
                             <div className="absolute inset-0 z-[96] flex items-center justify-center bg-slate-900/50">
                                 <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 text-center shadow-2xl">
@@ -2381,36 +2300,15 @@ const handleMonthChange = (value: string) => {
             {assessmentModal ? (
                 <div className="fixed inset-0 z-[86] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
-                        <div className="dashboard-band border-b px-6 py-5">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div className="flex items-center gap-4">
-                                    <TenantLogoBadge
-                                        tenant={tenant}
-                                        wrapperClassName="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-                                        imageClassName="h-full w-full object-contain p-1.5"
-                                        fallbackClassName="text-sm font-black tracking-[0.25em] text-[#153a6a]"
-                                    />
-                                    <div>
-                                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-                                            {assessmentModal.lessonItem.dateLabel} • {assessmentModal.lessonItem.startTime} - {assessmentModal.lessonItem.endTime}
-                                        </div>
-                                        <h2 className="mt-2 text-2xl font-extrabold text-slate-800">
-                                            Lançamento de notas • {assessmentModal.event.eventTypeLabel}
-                                        </h2>
-                                        <p className="mt-2 text-sm font-medium text-slate-500">
-                                            {assessmentModal.lessonItem.subjectName} • {assessmentModal.lessonItem.seriesName} - {assessmentModal.lessonItem.className}
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setAssessmentModal(null)}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={`Lançamento de notas • ${assessmentModal.event.eventTypeLabel}`}
+                            eyebrow={`${assessmentModal.lessonItem.dateLabel} • ${assessmentModal.lessonItem.startTime} - ${assessmentModal.lessonItem.endTime}`}
+                            description={`${assessmentModal.lessonItem.subjectName} • ${assessmentModal.lessonItem.seriesName} - ${assessmentModal.lessonItem.className}`}
+                            tenantId={tenant?.id}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={() => setAssessmentModal(null)}
+                        />
 
                         <div className="max-h-[78vh] overflow-y-auto px-5 py-4">
                             {assessmentLoading ? (
@@ -2554,39 +2452,16 @@ const handleMonthChange = (value: string) => {
                             )}
                         </div>
 
-                        <div className="dashboard-band-footer border-t px-5 py-3">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="text-xs font-medium text-slate-500">
-                                    Salve as notas para disponibilizar a avaliação aos alunos da turma e aos responsáveis definidos.
-                                </div>
-                                <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setAssessmentModal(null)}
-                                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveAssessment}
-                                        disabled={assessmentSaving || assessmentLoading}
-                                        className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-                                    >
-                                        {assessmentSaving ? 'Salvando notas...' : 'Salvar notas'}
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="mt-2 flex justify-end">
-                                <ScreenNameCopy
-                                    screenId="PRINCIPAL_CALENDARIO_AULAS_LANCAMENTO_NOTAS_PROVA"
-                                    label="Tela"
-                                    disableMargin
-                                    auditText={calendarioAuditContext.auditText}
-                                    sqlText={calendarioAuditContext.sqlText}
-                                />
-                            </div>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId="PRINCIPAL_CALENDARIO_AULAS_LANCAMENTO_NOTAS_PROVA"
+                            saveLabel="Salvar notas"
+                            savingLabel="Salvando notas..."
+                            isSaving={assessmentSaving}
+                            disabled={assessmentLoading}
+                            onSave={() => void handleSaveAssessment()}
+                            auditText={calendarioAuditContext.auditText}
+                            sqlText={calendarioAuditContext.sqlText}
+                        />
                     </div>
                 </div>
             ) : null}

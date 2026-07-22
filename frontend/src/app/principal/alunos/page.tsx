@@ -6,6 +6,8 @@ import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { showErrorMessage, showSuccessMessage } from '@/app/components/system-message-provider';
@@ -2167,6 +2169,9 @@ export default function AlunosPage() {
             title={student.name}
             subtitle={student.birthDate ? `Nascimento: ${formatStudentDate(student.birthDate)}` : 'Aluno sem data de nascimento informada'}
             buttonLabel={`Ver detalhes do aluno ${student.name}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             avatarUrl={student.photoUrl}
             badges={[
                 student.canceledAt ? 'INATIVO' : 'ATIVO',
@@ -2343,17 +2348,17 @@ export default function AlunosPage() {
                                                     {canManageStudents ? (
                                                         <div className="flex justify-end gap-2">
                                                             {renderStudentInfoButton(student)}
-                                                            <GridRowActionIconButton title="Abrir responsáveis do aluno" onClick={() => handleManageGuardians(student)} tone="violet">
+                                                            <GridRowActionIconButton title="Abrir responsáveis do aluno" onClick={() => handleManageGuardians(student)} tone="violet" visualStyle="outlined">
                                                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
                                                                 </svg>
                                                             </GridRowActionIconButton>
-                                                            <GridRowActionIconButton title="Editar aluno" onClick={() => handleEdit(student)} tone="blue">
+                                                            <GridRowActionIconButton title="Editar aluno" onClick={() => handleEdit(student)} tone="blue" visualStyle="outlined">
                                                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                                 </svg>
                                                             </GridRowActionIconButton>
-                                                            <GridRowActionIconButton title={student.canceledAt ? 'Ativar aluno' : 'Inativar aluno'} onClick={() => openStudentStatusModal(student)} tone={student.canceledAt ? 'emerald' : 'rose'}>
+                                                            <GridRowActionIconButton title={student.canceledAt ? 'Ativar aluno' : 'Inativar aluno'} onClick={() => openStudentStatusModal(student)} tone={student.canceledAt ? 'emerald' : 'rose'} visualStyle="outlined">
                                                                 {student.canceledAt ? (
                                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -2565,28 +2570,14 @@ export default function AlunosPage() {
             {isModalOpen ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex min-w-0 items-center gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
-                                        {currentTenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">
-                                        {editingStudentId ? `Editar aluno: ${formData.name || 'ALUNO'}` : 'Cadastrar aluno'}
-                                    </h2>
-                                </div>
-                            </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">×</button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingStudentId ? `Editar aluno: ${formData.name || 'ALUNO'}` : 'Cadastrar aluno'}
+                            eyebrow="Escola · Cadastros"
+                            description="Preencha os dados do aluno e confirme para salvar."
+                            onClose={closeModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                        />
                         <div className="border-b border-slate-100 bg-white px-6 py-3">
                             <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
                                 Esta pessoa ja possui os seguintes papeis no sistema
@@ -3240,15 +3231,12 @@ export default function AlunosPage() {
                                 </div>
                             ) : null}
 
-                            <div className="sticky bottom-0 -mx-6 mt-8 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <button type="button" onClick={closeModal} className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100">Sair sem Gravar</button>
-                                    <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingStudentId ? 'Salvar' : 'Registrar aluno'}</button>
-                                </div>
-                                <div className="mt-3 flex justify-end">
-                                    <ScreenNameCopy screenId="PRINCIPAL_ALUNOS_POPUP_EDITAR_ALUNO" className="mt-0" />
-                                </div>
-                            </div>
+                            <MaintenanceModalFooter
+                                screenId="PRINCIPAL_ALUNOS_POPUP_EDITAR_ALUNO"
+                                screenNameCompact
+                                saveLabel={editingStudentId ? 'Salvar' : 'Registrar aluno'}
+                                className="sticky -bottom-6 -mx-6 -mb-6 mt-8"
+                            />
                         </form>
                     </div>
                 </div>
@@ -3291,7 +3279,7 @@ export default function AlunosPage() {
             {isGuardiansViewOpen ? (
                 <div className="fixed inset-0 z-[57] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
+                        <div className="flex items-center justify-between border-b border-blue-800 bg-blue-700 px-6 py-4">
                             <div className="flex min-w-0 items-center gap-4">
                                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                                     {currentTenantBranding?.logoUrl ? (
@@ -3304,7 +3292,7 @@ export default function AlunosPage() {
                                     )}
                                 </div>
                                 <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-100">
                                         {currentTenantBranding?.schoolName || 'Escola'}
                                     </div>
                                     <h2 className="text-xl font-bold text-[#153a6a]">Responsáveis do aluno</h2>
@@ -3375,7 +3363,7 @@ export default function AlunosPage() {
             {selectedGuardianDetails ? (
                 <div className="fixed inset-0 z-[58] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
+                        <div className="flex items-center justify-between border-b border-blue-800 bg-blue-700 px-6 py-4">
                             <div className="flex min-w-0 items-center gap-4">
                                 <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                                     {currentTenantBranding?.logoUrl ? (
@@ -3388,7 +3376,7 @@ export default function AlunosPage() {
                                     )}
                                 </div>
                                 <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-100">
                                         {currentTenantBranding?.schoolName || 'Escola'}
                                     </div>
                                     <h2 className="text-xl font-bold text-[#153a6a]">Dados do responsável</h2>

@@ -7,6 +7,8 @@ import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridStandardFooter from '@/app/components/grid-standard-footer';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import {
@@ -2098,38 +2100,14 @@ REGRA:
             {isHolidayModalOpen ? (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex min-w-0 items-center gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-600">
-                                        {currentTenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-xl font-black text-[#153a6a]">
-                                        {editingHolidayId ? 'Alterar feriado' : 'Incluir feriado'}
-                                    </h2>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={closeHolidayModal}
-                                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                                title="Fechar"
-                                aria-label="Fechar popup de feriado"
-                            >
-                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingHolidayId ? 'Alterar feriado' : 'Incluir feriado'}
+                            eyebrow="Escola · Ano letivo"
+                            description="Informe a data, o tipo e o nome do feriado."
+                            onClose={closeHolidayModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                        />
 
                         <form
                             onSubmit={(event) => {
@@ -2179,32 +2157,13 @@ REGRA:
                                 </label>
                             </div>
 
-                            <div className="border-t border-slate-100 pt-5">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={closeHolidayModal}
-                                        className="rounded-xl bg-rose-500 px-5 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-rose-600"
-                                    >
-                                        Fechar
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={!canManage || isSavingHolidays}
-                                        className="rounded-xl bg-blue-600 px-6 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-                                    >
-                                        {isSavingHolidays ? 'Salvando...' : editingHolidayId ? 'Salvar alteração' : 'Salvar feriado'}
-                                    </button>
-                                </div>
-                                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
-                                        Auditoria visual: grava em school_holidays por tenant, filial e ano letivo. Não trata turma.
-                                    </div>
-                                    <ScreenNameCopy
-                                        screenId={HOLIDAY_MODAL_SCREEN_ID}
-                                        label="Popup"
-                                        className="mt-3"
-                                        auditText={`--- LOGICA DO POPUP ---
+                            <MaintenanceModalFooter
+                                screenId={HOLIDAY_MODAL_SCREEN_ID}
+                                saveLabel={editingHolidayId ? 'Salvar alteração' : 'Salvar feriado'}
+                                isSaving={isSavingHolidays}
+                                disabled={!canManage}
+                                className="-mx-6 -mb-6 mt-5"
+                                auditText={`--- LOGICA DO POPUP ---
 Popup de inclusao e alteracao de feriados da tela PRINCIPAL_CONFIGURA_ANO_LETIVO.
 
 TABELA PRINCIPAL:
@@ -2215,7 +2174,7 @@ REGRA:
 - nao trata turma.
 - salvar sincroniza a lista de feriados pelo endpoint PUT /school-years/holidays.
 - remocao permanece como cancelamento logico pelo mesmo fluxo de sincronizacao.`}
-                                        sqlText={`SELECT
+                                sqlText={`SELECT
   SH.id,
   SH.tenantId,
   SH.branchCode,
@@ -2229,9 +2188,7 @@ WHERE SH.tenantId = ${toSqlLiteral(currentTenantId || 'ESCOLA_LOGADA')}
   AND SH.year = ${Number(form.year) || currentYear}
   AND SH.canceledAt IS NULL
 ORDER BY SH.date ASC, SH.name ASC;`}
-                                    />
-                                </div>
-                            </div>
+                            />
                         </form>
                     </div>
                 </div>

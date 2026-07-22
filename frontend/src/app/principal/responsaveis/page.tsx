@@ -8,6 +8,8 @@ import GridExportModal from '@/app/components/grid-export-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import GridStandardFooter from '@/app/components/grid-standard-footer';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
@@ -994,6 +996,9 @@ export default function ResponsaveisPage() {
             title={guardian.name}
             subtitle={guardian.birthDate ? `Nascimento: ${formatGuardianDate(guardian.birthDate)}` : 'Responsável sem data de nascimento informada'}
             buttonLabel={`Ver detalhes do responsável ${guardian.name}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             badges={[
                 guardian.canceledAt ? 'INATIVO' : 'ATIVO',
                 ...(guardianFieldAccess.access ? [guardian.email ? 'APP LIBERADO' : 'SEM ACESSO', formatGuardianAccessProfile(guardian.accessProfile)] : []),
@@ -1040,6 +1045,11 @@ export default function ResponsaveisPage() {
                         ...(guardianFieldAccess.access ? [{ label: 'Permissões específicas', value: formatGuardianPermissions(guardian.permissions) }] : []),
                     ],
                 },
+            ]}
+            tabs={[
+                { label: 'Cadastro', sectionTitles: ['Cadastro'] },
+                { label: 'Contato e endereço', sectionTitles: ['Contato', 'Endereço'] },
+                { label: 'Vínculos', sectionTitles: ['Vínculos'] },
             ]}
             contextLabel="PRINCIPAL_RESPONSAVEIS_POPUP"
         />
@@ -1424,19 +1434,19 @@ export default function ResponsaveisPage() {
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-2">
                                                         {renderGuardianInfoButton(guardian)}
-                                                        <GridRowActionIconButton title="Abrir alunos do responsável" onClick={() => handleOpenStudentsModal(guardian)} tone="violet">
+                                                        <GridRowActionIconButton title="Abrir alunos do responsável" onClick={() => handleOpenStudentsModal(guardian)} tone="violet" visualStyle="outlined">
                                                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
                                                             </svg>
                                                         </GridRowActionIconButton>
                                                         {canManageGuardians ? (
                                                             <>
-                                                                <GridRowActionIconButton title="Editar responsável" onClick={() => handleEdit(guardian)} tone="blue">
+                                                                <GridRowActionIconButton title="Editar responsável" onClick={() => handleEdit(guardian)} tone="blue" visualStyle="outlined">
                                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                                     </svg>
                                                                 </GridRowActionIconButton>
-                                                                <GridRowActionIconButton title={guardian.canceledAt ? 'Ativar responsável' : 'Inativar responsável'} onClick={() => openGuardianStatusModal(guardian)} tone={guardian.canceledAt ? 'emerald' : 'rose'}>
+                                                                <GridRowActionIconButton title={guardian.canceledAt ? 'Ativar responsável' : 'Inativar responsável'} onClick={() => openGuardianStatusModal(guardian)} tone={guardian.canceledAt ? 'emerald' : 'rose'} visualStyle="outlined">
                                                                     {guardian.canceledAt ? (
                                                                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1551,28 +1561,14 @@ export default function ResponsaveisPage() {
             {isModalOpen ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex min-w-0 items-center gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
-                                        {currentTenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">
-                                        {editingGuardianId ? `Editar responsável: ${formData.name || 'RESPONSAVEL'}` : 'Cadastrar responsável'}
-                                    </h2>
-                                </div>
-                            </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">×</button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingGuardianId ? `Editar responsável: ${formData.name || 'RESPONSAVEL'}` : 'Cadastrar responsável'}
+                            eyebrow="Escola · Cadastros"
+                            description="Preencha os dados do responsável e confirme para salvar."
+                            onClose={closeModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                        />
                         <div className="border-b border-slate-100 bg-white px-6 py-3">
                             <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
                                 Esta pessoa ja possui os seguintes papeis no sistema
@@ -1874,24 +1870,12 @@ export default function ResponsaveisPage() {
                                     </div>
                                 </div>
                             ) : null}
-                            <div className="sticky bottom-0 -mx-6 mt-8 flex flex-col gap-3 border-t border-slate-100 bg-white/95 px-6 py-5 backdrop-blur-sm">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="flex flex-wrap gap-3">
-                                        <button type="button" onClick={closeModal} className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100">Sair sem Gravar</button>
-                                    </div>
-                                    <div className="flex flex-wrap justify-end gap-3">
-                                        <button type="submit" className="rounded-xl bg-green-600 px-8 py-3 text-sm font-bold text-white hover:bg-green-700">{editingGuardianId ? 'Salvar' : 'Registrar responsável'}</button>
-                                    </div>
-                                </div>
-                                <div className="flex justify-end">
-                                    <ScreenNameCopy
-                                        screenId="PRINCIPAL_RESPONSAVEIS_POPUP_EDITAR_RESPONSAVEL"
-                                        label="Tela"
-                                        disableMargin
-                                        className="w-auto justify-end"
-                                    />
-                                </div>
-                            </div>
+      <MaintenanceModalFooter
+        screenId="PRINCIPAL_RESPONSAVEIS_POPUP_EDITAR_RESPONSAVEL"
+        screenNameCompact
+        saveLabel={editingGuardianId ? 'Salvar' : 'Registrar responsável'}
+        className="sticky -bottom-6 -mx-6 -mb-6 mt-8"
+      />
                         </form>
                     </div>
                 </div>

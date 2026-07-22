@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding, type TenantBranding } from '@/app/lib/tenant-branding-cache';
 import { dispatchScreenAuditContext, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
@@ -487,11 +489,15 @@ export default function NotificationUserSettingsPage() {
             {editForm ? (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl">
-                        <div className="bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-5 text-white">
-                            <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">PRINCIPAL_NOTIFICACOES_CONFIGURAR_USUARIOS_MODAL_EDITAR</div>
-                            <h2 className="mt-2 text-2xl font-black">{editForm.person.name}</h2>
-                            <p className="mt-1 text-sm font-bold text-blue-100">{editForm.person.sourceLabel}</p>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={`Editar ${editForm.person.name}`}
+                            eyebrow="Notificações • Usuário"
+                            description={editForm.person.sourceLabel}
+                            tenantId={tenantId}
+                            schoolName={tenantBranding?.schoolName}
+                            logoUrl={tenantBranding?.logoUrl}
+                            onClose={() => setEditForm(null)}
+                        />
                         <div className="space-y-4 p-6">
                             <div>
                                 <label className="mb-1 block text-xs font-black uppercase tracking-[0.16em] text-slate-500">E-mail</label>
@@ -532,24 +538,11 @@ export default function NotificationUserSettingsPage() {
                                 Telegram ativo para notificações
                             </label>
                         </div>
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
-                            <button
-                                type="button"
-                                onClick={() => setEditForm(null)}
-                                disabled={savingEdit}
-                                className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-rose-700 disabled:opacity-60"
-                            >
-                                Fechar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void saveEditForm()}
-                                disabled={savingEdit}
-                                className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black uppercase tracking-[0.14em] text-white transition hover:bg-blue-700 disabled:opacity-60"
-                            >
-                                {savingEdit ? 'Salvando...' : 'Salvar'}
-                            </button>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId="PRINCIPAL_NOTIFICACOES_CONFIGURAR_USUARIOS_MODAL_EDITAR"
+                            isSaving={savingEdit}
+                            onSave={() => void saveEditForm()}
+                        />
                     </div>
                 </div>
             ) : null}

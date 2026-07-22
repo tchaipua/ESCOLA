@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
@@ -9,6 +11,7 @@ import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, t
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const PESSOAS_SCREEN_ID = 'PRINCIPAL_PESSOAS';
+const PESSOAS_EDIT_MODAL_SCREEN_ID = 'POPUP_PRINCIPAL_PESSOAS_MANUTENCAO';
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
   ADMINISTRADOR: { label: 'Administrador', color: 'border-violet-200 bg-violet-50 text-violet-700' },
@@ -670,21 +673,14 @@ export default function PessoasPage() {
       {editingPerson && editForm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm">
           <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
-            <div className="flex items-center justify-between gap-4 bg-[#153a6a] px-6 py-4 text-white">
-              <div>
-                <div className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-100">PRINCIPAL_PESSOAS</div>
-                <h2 className="mt-1 text-xl font-black">Alterar dados básicos</h2>
-                <p className="mt-1 text-sm font-semibold text-blue-100">{editingPerson.name}</p>
-              </div>
-              <button
-                type="button"
-                onClick={closeEditPerson}
-                disabled={isSavingEdit}
-                className="rounded-xl border border-white/25 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10 disabled:opacity-50"
-              >
-                Fechar
-              </button>
-            </div>
+            <MaintenanceModalHeader
+              title="Alterar dados básicos"
+              eyebrow="Escola · Pessoas"
+              description={editingPerson.name}
+              onClose={closeEditPerson}
+              schoolName={currentTenantBranding?.schoolName}
+              logoUrl={currentTenantBranding?.logoUrl}
+            />
 
             <form onSubmit={saveEditPerson} className="max-h-[calc(92vh-96px)] overflow-y-auto px-6 py-5">
               {editError ? (
@@ -732,23 +728,13 @@ export default function PessoasPage() {
                 ))}
               </div>
 
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={closeEditPerson}
-                  disabled={isSavingEdit}
-                  className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingEdit || !editForm.name.trim()}
-                  className="rounded-xl bg-green-600 px-7 py-3 text-sm font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingEdit ? 'Salvando...' : 'Salvar dados básicos'}
-                </button>
-              </div>
+              <MaintenanceModalFooter
+                screenId={PESSOAS_EDIT_MODAL_SCREEN_ID}
+                saveLabel="Salvar dados básicos"
+                isSaving={isSavingEdit}
+                disabled={!editForm.name.trim()}
+                className="-mx-6 -mb-5 mt-6"
+              />
             </form>
           </div>
         </div>

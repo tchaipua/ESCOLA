@@ -7,6 +7,8 @@ import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import { getDashboardAuthContext, hasAllDashboardPermissions, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
@@ -1761,6 +1763,9 @@ export default function GradeAnualPage() {
             title={getSeriesClassLabel(record.seriesClass)}
             subtitle={`Ano letivo ${record.schoolYear?.year || '---'}`}
             buttonLabel={`Ver detalhes da grade anual de ${getSeriesClassLabel(record.seriesClass)}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             sections={[
                 {
                     title: 'Resumo anual',
@@ -2504,24 +2509,17 @@ export default function GradeAnualPage() {
             {extraEventEditModal ? (
                 <div className="fixed inset-0 z-[58] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
                     <div className="relative w-full max-w-2xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-5">
-                            <div>
-                                <div className="inline-flex rounded-full bg-[#ff003c] px-4 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow">
-                                    EVENTO EXTRA
-                                </div>
-                                <h2 className="mt-3 text-xl font-black text-slate-800">Alterar evento extra</h2>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => closeExtraEventEditModal()}
-                                disabled={isSavingExtraEventEdit || isDeletingExtraEvent}
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-red-300 hover:text-red-600 disabled:opacity-60"
-                            >
-                                Fechar
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title="Alterar evento extra"
+                            eyebrow="Grade anual • Evento extra"
+                            description="Atualize os dados e as opções de notificação do evento."
+                            tenantId={currentTenantId}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={() => closeExtraEventEditModal()}
+                        />
 
-                        <form onSubmit={handleSaveExtraEventEdit} className="space-y-4 px-6 py-5">
+                        <form id="grade-annual-extra-event-form" onSubmit={handleSaveExtraEventEdit} className="space-y-4 px-6 py-5">
                             {extraEventEditError ? (
                                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                                     {extraEventEditError}
@@ -2572,28 +2570,24 @@ export default function GradeAnualPage() {
                                 Teste temporário: e-mail limitado somente para TCHAIPUA@GMAIL.COM.
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                        </form>
+                        <MaintenanceModalFooter
+                            screenId="PRINCIPAL_GRADE_ANUAL_MODAL_EVENTO_EXTRA"
+                            saveLabel="Salvar alteração"
+                            isSaving={isSavingExtraEventEdit}
+                            disabled={isDeletingExtraEvent || !extraEventEditForm.title.trim()}
+                            formId="grade-annual-extra-event-form"
+                            secondaryActions={(
                                 <button
                                     type="button"
                                     onClick={handleDeleteExtraEvent}
                                     disabled={isSavingExtraEventEdit || isDeletingExtraEvent}
-                                    className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow hover:bg-rose-500 disabled:bg-rose-300"
+                                    className="min-h-12 rounded-[18px] bg-rose-600 px-5 py-2.5 text-sm font-black text-white shadow transition hover:bg-rose-500 disabled:opacity-60"
                                 >
                                     {isDeletingExtraEvent ? 'Excluindo...' : 'Excluir'}
                                 </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSavingExtraEventEdit || isDeletingExtraEvent || !extraEventEditForm.title.trim()}
-                                    className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-                                >
-                                    {isSavingExtraEventEdit ? 'Salvando...' : 'Salvar alteração'}
-                                </button>
-                            </div>
-                        </form>
-
-                        <div className="flex justify-end px-6 pb-4">
-                            <ScreenNameCopy screenId="PRINCIPAL_GRADE_ANUAL_MODAL_EVENTO_EXTRA" label="NOME DA TELA" className="mt-0 justify-end" />
-                        </div>
+                            )}
+                        />
                         {renderModalSuccessPopup(extraEventEditSuccess, () => {
                             if (shouldCloseExtraEventAfterSuccess) {
                                 closeExtraEventEditModal(true);
@@ -2608,17 +2602,15 @@ export default function GradeAnualPage() {
             {isModalOpen ? (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-[#153a6a]">{editingId ? 'Editar grade anual' : 'Nova grade anual'}</h2>
-                                <p className="mt-1 text-sm font-medium text-slate-500">Informe períodos de aula e férias para gerar o calendário anual a partir da grade semanal.</p>
-                            </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
-                                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingId ? 'Editar grade anual' : 'Nova grade anual'}
+                            eyebrow="Grade anual"
+                            description="Informe períodos de aula e férias para gerar o calendário anual a partir da grade semanal."
+                            tenantId={currentTenantId}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={closeModal}
+                        />
 
                         <form onSubmit={handleSave} className="flex flex-1 flex-col min-h-0">
                             <div className="flex-1 overflow-y-auto px-6">
@@ -2720,29 +2712,15 @@ export default function GradeAnualPage() {
                                 <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm font-medium text-slate-600">
                                     Sempre que a grade semanal mudar ao longo do ano, use o botão <span className="font-bold text-slate-800">Buscar novamente grade semanal</span> antes de salvar ou use a ação da listagem para regenerar a grade anual já cadastrada.
                                 </div>
-                                <div className="mt-6 text-right text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">
-                                    <ScreenNameCopy screenId={GRADE_ANNUAL_MODAL_LABEL} className="justify-end" />
-                                </div>
                             </div>
                         </div>
-                        <div className="sticky bottom-0 left-0 right-0 z-20 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm">
-                            <div className="flex items-center justify-between gap-3">
-                                <button
-                                    type="button"
-                                    onClick={closeModal}
-                                    className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-bold uppercase tracking-[0.25em] text-white shadow hover:bg-rose-600 transition"
-                                >
-                                    Sair sem Salvar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!canManage || isSaving || isLoadingWeeklySource || !hasWeeklySource || !hasClassPeriod}
-                                    className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300"
-                                >
-                                    {isSaving ? 'Salvando...' : editingId ? 'Salvar grade anual' : 'Cadastrar grade anual'}
-                                </button>
-                            </div>
-                            </div>
+                        <MaintenanceModalFooter
+                            screenId={GRADE_ANNUAL_MODAL_LABEL}
+                            saveLabel={editingId ? 'Salvar grade anual' : 'Cadastrar grade anual'}
+                            isSaving={isSaving}
+                            disabled={!canManage || isLoadingWeeklySource || !hasWeeklySource || !hasClassPeriod}
+                            className="sticky bottom-0 z-20"
+                        />
                         </form>
                     </div>
                 </div>
@@ -2751,35 +2729,17 @@ export default function GradeAnualPage() {
             {administrativeEventModal ? (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-4">
                     <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {tenant?.logoUrl ? (
-                                        <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-contain p-1.5" />
-                                    ) : (
-                                        <span className="text-xs font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(tenant?.name || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div>
-                                    <div className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Lançamento administrativo</div>
-                                    <h2 className="mt-1 text-xl font-bold text-[#153a6a]">
-                                        Lançar {administrativeEventModal.eventType === 'PROVA' ? 'prova' : 'trabalho'}
-                                    </h2>
-                                    <p className="mt-1 text-sm font-semibold uppercase text-slate-500">
-                                        {administrativeEventModal.lessonItem.date} • {administrativeEventModal.lessonItem.startTime} ÀS {administrativeEventModal.lessonItem.endTime} • {administrativeEventModal.lessonItem.subjectName}
-                                    </p>
-                                </div>
-                            </div>
-                            <button onClick={() => closeAdministrativeEventModal()} className="text-slate-400 hover:text-red-500">
-                                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={`Lançar ${administrativeEventModal.eventType === 'PROVA' ? 'prova' : 'trabalho'}`}
+                            eyebrow="Grade anual • Lançamento administrativo"
+                            description={`${administrativeEventModal.lessonItem.date} • ${administrativeEventModal.lessonItem.startTime} às ${administrativeEventModal.lessonItem.endTime} • ${administrativeEventModal.lessonItem.subjectName}`}
+                            tenantId={currentTenantId}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={() => closeAdministrativeEventModal()}
+                        />
 
-                        <form onSubmit={saveAdministrativeEvent} className="space-y-4 px-6 py-6">
+                        <form id="grade-annual-administrative-event-form" onSubmit={saveAdministrativeEvent} className="space-y-4 px-6 py-6">
                             {administrativeEventError ? (
                                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                                     {administrativeEventError}
@@ -2834,30 +2794,14 @@ export default function GradeAnualPage() {
                                   Teste temporário: e-mail limitado somente para TCHAIPUA@GMAIL.COM.
                               </div>
 
-                              <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                                <button
-                                    type="button"
-                                    onClick={() => closeAdministrativeEventModal()}
-                                    disabled={isSavingAdministrativeEvent}
-                                    className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow hover:bg-rose-500 disabled:bg-rose-300"
-                                >
-                                    Fechar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSavingAdministrativeEvent || !administrativeEventForm.title.trim()}
-                                    className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-                                >
-                                    {isSavingAdministrativeEvent ? 'Salvando...' : 'Salvar lançamento'}
-                                </button>
-                            </div>
                         </form>
-
-                        <div className="flex justify-end px-6 pb-4">
-                            <div className="w-full max-w-sm">
-                                <ScreenNameCopy screenId={ADMINISTRATIVE_EVENT_MODAL_LABEL} label="NOME DA TELA" className="mt-0 justify-end" />
-                            </div>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId={ADMINISTRATIVE_EVENT_MODAL_LABEL}
+                            saveLabel="Salvar lançamento"
+                            isSaving={isSavingAdministrativeEvent}
+                            disabled={!administrativeEventForm.title.trim()}
+                            formId="grade-annual-administrative-event-form"
+                        />
                         {renderModalSuccessPopup(administrativeEventSuccess, () => {
                             if (shouldCloseAdministrativeEventAfterSuccess) {
                                 closeAdministrativeEventModal(true);
@@ -2872,19 +2816,15 @@ export default function GradeAnualPage() {
             {editingLesson ? (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 p-4">
                     <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-[#153a6a]">Alterar matéria e professor</h2>
-                                <p className="mt-1 text-sm text-slate-500">
-                                    Horário e turma não mudam; apenas o vínculo professor + matéria é atualizado.
-                                </p>
-                            </div>
-                            <button onClick={closeLessonEdit} className="text-slate-400 hover:text-red-500">
-                                <svg className="h-6 w-6" viewBox="0 0 24 24" stroke="currentColor" fill="none">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title="Alterar matéria e professor"
+                            eyebrow="Grade anual • Aula"
+                            description="Horário e turma não mudam; apenas o vínculo professor + matéria é atualizado."
+                            tenantId={currentTenantId}
+                            schoolName={tenant?.name}
+                            logoUrl={tenant?.logoUrl}
+                            onClose={closeLessonEdit}
+                        />
                         <div className="space-y-4 px-6 py-6">
                             {lessonEditError ? (
                                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -2913,30 +2853,13 @@ export default function GradeAnualPage() {
                                 Apenas o professor + matéria muda; turma e horários são imutáveis nesta tela.
                             </p>
                         </div>
-                        <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
-                            <button
-                                type="button"
-                                onClick={closeLessonEdit}
-                                disabled={isSavingLessonEdit}
-                                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold uppercase tracking-[0.18em] text-white shadow hover:bg-rose-500 disabled:bg-rose-300"
-                                style={{ minWidth: '110px' }}
-                            >
-                                Fechar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={saveLessonEdit}
-                                disabled={isSavingLessonEdit || !lessonEditTeacherSubjectId}
-                                className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-                            >
-                                {isSavingLessonEdit ? 'Salvando...' : 'Salvar alteração'}
-                            </button>
-                        </div>
-                        <div className="flex justify-end px-6 pb-4">
-                            <div className="w-full max-w-sm">
-                                <ScreenNameCopy screenId={LESSON_EDIT_MODAL_LABEL} label="NOME DA TELA" className="mt-0 justify-end" />
-                            </div>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId={LESSON_EDIT_MODAL_LABEL}
+                            saveLabel="Salvar alteração"
+                            isSaving={isSavingLessonEdit}
+                            disabled={!lessonEditTeacherSubjectId}
+                            onSave={() => void saveLessonEdit()}
+                        />
                     </div>
                 </div>
             ) : null}

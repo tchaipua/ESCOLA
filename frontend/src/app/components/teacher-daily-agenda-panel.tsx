@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
@@ -389,28 +391,12 @@ export default function TeacherDailyAgendaPanel() {
             {modalState ? (
                 <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-3xl overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl">
-                        <div className="dashboard-band border-b px-6 py-5">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                    <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-                                        {modalState.lessonItem.dateLabel} • {modalState.lessonItem.startTime} - {modalState.lessonItem.endTime}
-                                    </div>
-                                    <h3 className="mt-2 text-2xl font-extrabold text-slate-800">
-                                        {modalState.existingEvent ? `Editar ${eventTypeLabel}` : `Lançar ${eventTypeLabel}`}
-                                    </h3>
-                                    <p className="mt-2 text-sm font-medium text-slate-500">
-                                        {modalState.lessonItem.subjectName} • {modalState.lessonItem.seriesName} - {modalState.lessonItem.className}
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setModalState(null)}
-                                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={modalState.existingEvent ? `Editar ${eventTypeLabel}` : `Lançar ${eventTypeLabel}`}
+                            eyebrow={`${modalState.lessonItem.dateLabel} • ${modalState.lessonItem.startTime} - ${modalState.lessonItem.endTime}`}
+                            description={`${modalState.lessonItem.subjectName} • ${modalState.lessonItem.seriesName} - ${modalState.lessonItem.className}`}
+                            onClose={() => setModalState(null)}
+                        />
 
                         <div className="max-h-[72vh] overflow-y-auto px-6 py-6">
                             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -477,40 +463,22 @@ export default function TeacherDailyAgendaPanel() {
                             </div>
                         </div>
 
-                        <div className="dashboard-band-footer border-t px-6 py-4">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="flex gap-3">
-                                    {modalState.existingEvent ? (
-                                        <button
-                                            type="button"
-                                            onClick={handleRemoveEvent}
-                                            disabled={saving}
-                                            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-600 transition hover:bg-red-100 disabled:opacity-60"
-                                        >
-                                            Remover evento
-                                        </button>
-                                    ) : null}
-                                </div>
-
-                                <div className="flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setModalState(null)}
-                                        className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:border-blue-300 hover:text-blue-700"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleSaveEvent}
-                                        disabled={saving}
-                                        className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
-                                    >
-                                        {saving ? 'Salvando...' : modalState.existingEvent ? 'Salvar alterações' : 'Lançar evento'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                        <MaintenanceModalFooter
+                            screenId="POPUP_PWA_DOCENTE_AGENDA_EVENTO_MANUTENCAO"
+                            saveLabel={modalState.existingEvent ? 'Salvar alterações' : 'Lançar evento'}
+                            isSaving={saving}
+                            onSave={() => void handleSaveEvent()}
+                            secondaryActions={modalState.existingEvent ? (
+                                <button
+                                    type="button"
+                                    onClick={handleRemoveEvent}
+                                    disabled={saving}
+                                    className="min-h-12 rounded-[18px] border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-60"
+                                >
+                                    Remover evento
+                                </button>
+                            ) : null}
+                        />
                     </div>
                 </div>
             ) : null}

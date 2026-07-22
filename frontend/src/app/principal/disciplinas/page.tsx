@@ -10,6 +10,8 @@ import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { getStoredToken } from '@/app/lib/auth-storage';
@@ -44,6 +46,7 @@ type Teacher = {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const DISCIPLINAS_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS';
 const DISCIPLINAS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS_STATUS_MODAL';
+const DISCIPLINAS_DETAIL_COPY_SCREEN_ID = 'PRINCIPAL_DISCIPLINAS_POPUP_EDITAR_DISCIPLINA';
 
 type SubjectColumnKey = 'name' | 'recordStatus';
 type SubjectExportColumnKey = SubjectColumnKey;
@@ -529,6 +532,9 @@ export default function DisciplinasPage() {
                 title={subject.name}
                 subtitle={subject.canceledAt ? 'Disciplina inativa' : 'Disciplina ativa'}
                 buttonLabel={`Ver detalhes da disciplina ${subject.name}`}
+                modalVariant="school-record-detail"
+                compactFooter
+                buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
                 badges={[
                     subject.canceledAt ? 'INATIVA' : 'ATIVA',
                     `${linkedTeachers.length} DOCENTE(S)`,
@@ -999,7 +1005,7 @@ export default function DisciplinasPage() {
                                                     {canManage ? (
                                                         <div className="flex justify-end gap-2">
                                                             {renderSubjectInfoButton(subject)}
-                                                            <GridRowActionIconButton title="Editar disciplina" onClick={() => handleEditSubject(subject)} tone="blue">
+                                                            <GridRowActionIconButton title="Editar disciplina" onClick={() => handleEditSubject(subject)} tone="blue" visualStyle="outlined">
                                                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                                 </svg>
@@ -1008,6 +1014,7 @@ export default function DisciplinasPage() {
                                                                 title={subject.canceledAt ? 'Ativar disciplina' : 'Inativar disciplina'}
                                                                 onClick={() => handleToggleSubjectStatus(subject)}
                                                                 tone={subject.canceledAt ? 'emerald' : 'rose'}
+                                                                visualStyle="outlined"
                                                             >
                                                                 {subject.canceledAt ? (
                                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1127,32 +1134,14 @@ export default function DisciplinasPage() {
                     {isModalOpen ? (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in">
                     <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95">
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                            <div className="flex min-w-0 items-center gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
-                                    ) : (
-                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
-                                        {currentTenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-xl font-bold text-[#153a6a]">
-                                        {editingSubjectId ? 'Editar disciplina' : 'Nova disciplina'}
-                                    </h2>
-                                </div>
-                            </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingSubjectId ? 'Editar disciplina' : 'Nova disciplina'}
+                            eyebrow="Escola · Cadastros"
+                            description="Preencha os dados da disciplina e confirme para salvar."
+                            onClose={closeModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                        />
 
                         <form onSubmit={handleSaveSubject} className="p-6 space-y-5">
                             <div className="relative">
@@ -1215,22 +1204,14 @@ export default function DisciplinasPage() {
                                 label="Filiais"
                             />
 
-                            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
-                                <button
-                                    type="button"
-                                    onClick={closeModal}
-                                    className="px-5 py-2.5 text-slate-500 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={!canManage || isSavingSubject}
-                                    className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold shadow-md shadow-blue-500/20 transition-all text-sm disabled:bg-slate-300 disabled:cursor-not-allowed"
-                                >
-                                    {isSavingSubject ? 'Salvando...' : editingSubjectId ? 'Salvar edição' : 'Cadastrar disciplina'}
-                                </button>
-                            </div>
+                            <MaintenanceModalFooter
+                                screenId={DISCIPLINAS_DETAIL_COPY_SCREEN_ID}
+                                screenNameCompact
+                                saveLabel={editingSubjectId ? 'Salvar' : 'Cadastrar disciplina'}
+                                isSaving={isSavingSubject}
+                                disabled={!canManage}
+                                className="-mx-6 -mb-6 mt-5"
+                            />
                         </form>
                     </div>
                 </div>

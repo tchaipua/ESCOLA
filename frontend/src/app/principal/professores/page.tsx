@@ -8,6 +8,8 @@ import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
@@ -1452,6 +1454,9 @@ export default function ProfessoresPage() {
             title={teacher.name}
             subtitle={teacher.birthDate ? `Nascimento: ${formatTeacherDate(teacher.birthDate)}` : 'Docente sem data de nascimento informada'}
             buttonLabel={`Ver detalhes do professor ${teacher.name}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             badges={[
                 teacher.canceledAt ? 'INATIVO' : 'ATIVO',
             ]}
@@ -1491,6 +1496,10 @@ export default function ProfessoresPage() {
                 }] : []),
             ]}
             disciplines={getTeacherSubjectNames(teacher)}
+            tabs={[
+                { label: 'Cadastro', sectionTitles: ['Cadastro'], showDisciplines: true },
+                { label: 'Contato e endereço', sectionTitles: ['Contato', 'Endereço'] },
+            ]}
             contextLabel="PRINCIPAL_PROFESSORES_POPUP"
         />
     );
@@ -2298,6 +2307,7 @@ export default function ProfessoresPage() {
                                                     title="Abrir manutenção do professor"
                                                     onClick={() => handleEdit(prof)}
                                                     tone="blue"
+                                                    visualStyle="outlined"
                                                 >
                                                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -2307,6 +2317,7 @@ export default function ProfessoresPage() {
                                                     title={prof.canceledAt ? 'Ativar professor' : 'Inativar professor'}
                                                     onClick={() => openTeacherStatusModal(prof)}
                                                     tone={prof.canceledAt ? 'emerald' : 'rose'}
+                                                    visualStyle="outlined"
                                                 >
                                                         {prof.canceledAt ? (
                                                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2511,31 +2522,16 @@ export default function ProfessoresPage() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 animate-in fade-in">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[96vh]">
 
-                        <div className="px-4 py-2.5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img
-                                            src={currentTenantBranding.logoUrl}
-                                            alt={currentTenantBranding.schoolName}
-                                            className="h-full w-full object-contain"
-                                        />
-                                    ) : (
-                                        <span className="text-[11px] font-black tracking-[0.18em] text-[#153a6a]">
-                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="min-w-0">
-                                    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-blue-600">
-                                        {currentTenantBranding?.schoolName || 'Escola'}
-                                    </div>
-                                    <h2 className="truncate text-lg font-bold text-[#153a6a]">
-                                        {editingTeacherId ? `Editar dossiê do docente: ${formData.name || 'DOCENTE'}` : 'Cadastrar Novo Docente'}
-                                    </h2>
-                                </div>
-                            </div>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingTeacherId ? `Editar dossiê do docente: ${formData.name || 'DOCENTE'}` : 'Cadastrar novo docente'}
+                            eyebrow="Escola · Cadastros"
+                            description="Preencha os dados do professor e confirme para salvar."
+                            onClose={closeModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                            compact
+                            className="px-4 py-2.5"
+                        />
                         <div className="border-b border-slate-100 bg-white px-4 py-2">
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
@@ -3104,25 +3100,16 @@ export default function ProfessoresPage() {
                             )}
 
                         </form>
-                        <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-2 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <button type="button" onClick={closeModal} className="px-5 py-2 font-semibold rounded-xl border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:bg-rose-100 text-sm">Sair sem Gravar</button>
-                                <ScreenNameCopy
-                                    screenId={PROFESSORES_DETAIL_COPY_SCREEN_ID}
-                                    label="NOME DA TELA"
-                                    className="mt-0 max-w-[360px]"
-                                    disableMargin
-                                />
-                            </div>
-                            <div className="flex flex-wrap justify-end gap-2">
-                                <button type="submit" form="teacher-form" onClick={() => { if (!String(formData.name || '').trim()) showErrorMessage('Informe o nome completo do professor.'); }} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all flex items-center gap-2">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                                {editingTeacherId ? 'Salvar' : 'Registrar Professor'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                        <MaintenanceModalFooter
+                            screenId={PROFESSORES_DETAIL_COPY_SCREEN_ID}
+                            screenNameCompact
+                            saveLabel={editingTeacherId ? 'Salvar' : 'Registrar professor'}
+                            formId="teacher-form"
+                            onSaveClick={() => {
+                                if (!String(formData.name || '').trim()) showErrorMessage('Informe o nome completo do professor.');
+                            }}
+                            className="px-4 py-2"
+                        />
                     </div>
                 </div>
             )}

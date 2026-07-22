@@ -8,6 +8,8 @@ import GridFooterControls from '@/app/components/grid-footer-controls';
 import RecordStatusIndicator from '@/app/components/record-status-indicator';
 import GridRecordPopover from '@/app/components/grid-record-popover';
 import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
@@ -1049,6 +1051,9 @@ export default function GradeHorariaPlanejadaPage() {
             title={getSeriesClassLabel(item.seriesClass)}
             subtitle={`${getDayLabel(item.dayOfWeek)} - ${item.startTime} às ${item.endTime}`}
             buttonLabel={`Ver detalhes do lançamento da grade ${getSeriesClassLabel(item.seriesClass)}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
             badges={[
                 item.canceledAt ? 'INATIVO' : 'ATIVO',
                 item.schoolYear?.year ? String(item.schoolYear.year) : 'SEM ANO',
@@ -1527,12 +1532,12 @@ export default function GradeHorariaPlanejadaPage() {
                                                             {renderGridItemInfoButton(item)}
                                                             {canManage ? (
                                                                 <div className="flex flex-nowrap items-center gap-1">
-                                                                    <GridRowActionIconButton title="Editar lançamento" onClick={() => handleEdit(item)} tone="blue">
+                                                                    <GridRowActionIconButton title="Editar lançamento" onClick={() => handleEdit(item)} tone="blue" visualStyle="outlined">
                                                                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                                                         </svg>
                                                                     </GridRowActionIconButton>
-                                                                    <GridRowActionIconButton title={item.canceledAt ? 'Ativar lançamento' : 'Inativar lançamento'} onClick={() => openScheduleStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'}>
+                                                                    <GridRowActionIconButton title={item.canceledAt ? 'Ativar lançamento' : 'Inativar lançamento'} onClick={() => openScheduleStatusModal(item)} tone={item.canceledAt ? 'emerald' : 'rose'} visualStyle="outlined">
                                                                         {item.canceledAt ? (
                                                                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1575,14 +1580,14 @@ export default function GradeHorariaPlanejadaPage() {
             {isModalOpen ? (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
                     <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
-                            <h2 className="text-xl font-bold text-[#153a6a]">{editingId ? 'Editar horário da turma' : 'Novo horário da turma'}</h2>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
-                                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingId ? 'Editar horário da turma' : 'Novo horário da turma'}
+                            eyebrow="Escola · Grade horária"
+                            description="Informe turma, dia, professor, matéria e faixa de horário."
+                            onClose={closeModal}
+                            schoolName={currentTenant?.name}
+                            logoUrl={currentTenant?.logoUrl}
+                        />
 
                         <form onSubmit={handleSave} className="space-y-5 p-6">
                             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -1753,24 +1758,13 @@ export default function GradeHorariaPlanejadaPage() {
                                 </div>
                             ) : null}
 
-                            <div className="space-y-3 border-t border-slate-100 pt-5">
-                                  <div className="flex items-center justify-between gap-3">
-                                      <button type="button" onClick={closeModal} className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-500">Fechar</button>
-                                      <button type="submit" disabled={!canSubmitForm} className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300">
-                                          {isSaving ? 'Salvando...' : 'Salvar'}
-                                      </button>
-                                </div>
-                                <div className="flex justify-end">
-                                    <div className="w-full max-w-2xl">
-                                        <ScreenNameCopy
-                                            screenId={editingId ? GRADE_HORARIA_EDIT_MODAL_SCREEN_ID : GRADE_HORARIA_NEW_MODAL_SCREEN_ID}
-                                            label="NOME DA TELA"
-                                            className="mt-0 justify-end"
-                                            disableMargin
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                            <MaintenanceModalFooter
+                                screenId={editingId ? GRADE_HORARIA_EDIT_MODAL_SCREEN_ID : GRADE_HORARIA_NEW_MODAL_SCREEN_ID}
+                                saveLabel="Salvar"
+                                isSaving={isSaving}
+                                disabled={!canSubmitForm}
+                                className="-mx-6 -mb-6 mt-5"
+                            />
                         </form>
                     </div>
                 </div>

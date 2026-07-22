@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import ScreenNameCopy from '@/app/components/screen-name-copy';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 
 export type GeneralSettingsTab = 's3' | 'email';
 
@@ -204,29 +205,14 @@ export default function GlobalSettingsModal({
         <div className="fixed inset-0 z-[58] overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-sm">
             <div className="flex min-h-full items-center justify-center py-2">
                 <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-                <div className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-950 via-[#153a6a] to-indigo-700 px-6 py-5 text-white">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="flex min-w-0 items-center gap-4">
-                            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/95 shadow-lg">
-                                <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="h-full w-full object-cover" />
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-200">Configurações gerais</div>
-                                <h3 className="mt-1 text-2xl font-black tracking-tight">Parâmetros globais da softhouse</h3>
-                                <p className="mt-1 max-w-3xl text-sm font-medium text-indigo-100/90">
-                                    Este módulo é global da MSINFOR e não pertence a nenhuma escola. Campos sensíveis preservam exatamente maiúsculas e minúsculas digitadas.
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-white/20"
-                        >
-                            Fechar
-                        </button>
-                    </div>
-                </div>
+                <MaintenanceModalHeader
+                    title="Parâmetros globais da softhouse"
+                    eyebrow="Configurações gerais"
+                    description="Este módulo é global da MSINFOR e não pertence a nenhuma escola. Campos sensíveis preservam maiúsculas e minúsculas."
+                    schoolName="MSINFOR SISTEMAS"
+                    logoUrl="/logo-msinfor.jpg"
+                    onClose={onClose}
+                />
 
                 <form onSubmit={onSave} className="min-h-0 flex flex-1 flex-col overflow-hidden bg-slate-50">
                     <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[260px_1fr]">
@@ -478,41 +464,22 @@ export default function GlobalSettingsModal({
                         </div>
                     </div>
 
-                    <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-4">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="text-xs font-semibold text-slate-500">
-                                Campos sensíveis não sofrem uppercase automático neste módulo global.
-                            </div>
-                            <div className="flex flex-col items-end gap-3">
-                                <div className="flex items-center gap-3">
-                                    {activeTab === 's3' ? (
-                                        <button type="button" onClick={onTestS3} disabled={isTesting} className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-black text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70">
-                                            {isTesting ? 'Testando S3...' : 'Testar comunicação S3'}
-                                        </button>
-                                    ) : null}
-                                    {activeTab === 'email' ? (
-                                        <button type="button" onClick={onTestEmail} disabled={isTesting} className="rounded-xl border border-sky-200 bg-sky-50 px-5 py-3 text-sm font-black text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-70">
-                                            {isTesting ? 'Testando SMTP...' : 'Testar credenciais SMTP'}
-                                        </button>
-                                    ) : null}
-                                    <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50">
-                                        Cancelar
-                                    </button>
-                                    <button type="submit" disabled={isSaving} className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70">
-                                        {isSaving ? 'Salvando...' : 'Salvar configurações gerais'}
-                                    </button>
-                                </div>
-                                <ScreenNameCopy
-                                    screenId={GLOBAL_SETTINGS_MODAL_SCREEN_ID}
-                                    label="Tela"
-                                    className="mt-0 justify-end"
-                                    disableMargin
-                                    auditText={auditText}
-                                    sqlText={auditSqlText}
-                                />
-                            </div>
-                        </div>
-                    </div>
+                    <MaintenanceModalFooter
+                        screenId={GLOBAL_SETTINGS_MODAL_SCREEN_ID}
+                        saveLabel="Salvar configurações gerais"
+                        isSaving={isSaving}
+                        auditText={auditText}
+                        sqlText={auditSqlText}
+                        secondaryActions={activeTab === 's3' ? (
+                            <button type="button" onClick={onTestS3} disabled={isTesting} className="min-h-12 rounded-[18px] border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-60">
+                                {isTesting ? 'Testando S3...' : 'Testar comunicação S3'}
+                            </button>
+                        ) : (
+                            <button type="button" onClick={onTestEmail} disabled={isTesting} className="min-h-12 rounded-[18px] border border-sky-200 bg-sky-50 px-5 py-2.5 text-sm font-black text-sky-700 transition hover:bg-sky-100 disabled:opacity-60">
+                                {isTesting ? 'Testando SMTP...' : 'Testar credenciais SMTP'}
+                            </button>
+                        )}
+                    />
                 </form>
                 </div>
             </div>

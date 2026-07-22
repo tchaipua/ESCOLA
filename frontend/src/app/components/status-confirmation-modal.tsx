@@ -26,7 +26,7 @@ type StatusConfirmationModalProps = {
     screenId: string;
     requirePassword?: boolean;
     onCancel: () => void;
-    onConfirm: () => void;
+    onConfirm: (reason?: string) => void;
     isProcessing?: boolean;
     statusActive?: boolean;
 };
@@ -53,27 +53,33 @@ export default function StatusConfirmationModal({
     const { token, userId } = getDashboardAuthContext();
     const [password, setPassword] = useState('');
     const [passwordError, setPasswordError] = useState<string | null>(null);
+    const [reason, setReason] = useState('');
     const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
 
     useEffect(() => {
         if (!isOpen) {
             setPassword('');
             setPasswordError(null);
+            setReason('');
             setIsVerifyingPassword(false);
             return;
         }
 
         setPassword('');
         setPasswordError(null);
+        setReason('');
     }, [isOpen, actionType, itemName]);
 
-    const shouldRequestPassword =
-        requirePassword && actionType !== 'activate' && !isPasswordConfirmationValid(userId);
+    const shouldRequestPassword = requirePassword && actionType !== 'activate';
 
     const handleConfirm = async () => {
         if (shouldRequestPassword) {
             if (!password.trim()) {
                 setPasswordError('SENHA OBRIGATÓRIA.');
+                return;
+            }
+            if (!reason.trim()) {
+                setPasswordError('OBSERVAÇÃO OBRIGATÓRIA.');
                 return;
             }
             if (!token) {
@@ -95,11 +101,8 @@ export default function StatusConfirmationModal({
                 if (!response.ok) {
                     throw new Error(payload?.message || 'Senha inválida.');
                 }
-                if (userId) {
-                    markPasswordConfirmed(userId);
-                }
                 setPassword('');
-                onConfirm();
+                onConfirm(reason.trim());
             } catch (error) {
                 setPasswordError(
                     error instanceof Error ? error.message : 'Não foi possível validar a senha.',
@@ -118,7 +121,7 @@ export default function StatusConfirmationModal({
 
     return (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in">
-            <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.35)]">
+            <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.35)]">
                 {passwordError ? (
                     <div className="pointer-events-none absolute right-5 top-5 z-20">
                         <div
@@ -130,7 +133,7 @@ export default function StatusConfirmationModal({
                         </div>
                     </div>
                 ) : null}
-                <div className="flex items-center gap-4 border-b border-slate-100 px-6 py-5 bg-slate-50">
+                <div className="flex items-center gap-4 border-b border-blue-600 bg-gradient-to-r from-blue-700 to-blue-600 px-6 py-4 text-white">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white">
                         {branding?.logoUrl ? (
                             <img src={branding.logoUrl} alt={branding.schoolName} className="h-12 w-12 rounded-xl object-contain" />
@@ -141,32 +144,26 @@ export default function StatusConfirmationModal({
                         )}
                     </div>
                     <div>
-                        <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">
-                            Confirmação visual
+                        <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-blue-100">
+                            Confirmação de inativação
                         </p>
-                        <h3 className="text-lg font-bold text-slate-900">
+                        <h3 className="text-2xl font-extrabold">
                             {title}
                         </h3>
                     </div>
                     <button
                         onClick={onCancel}
                         disabled={isProcessing}
-                        className="ml-auto rounded-full border border-transparent bg-white p-2 text-slate-400 transition hover:text-slate-600 disabled:cursor-wait"
+                        className="ml-auto rounded-full border border-white/70 bg-red-600 p-2 text-white transition hover:bg-red-700 disabled:cursor-wait"
                     >
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
-                <div className="space-y-4 px-6 py-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-3">
-                        <RecordStatusIndicator active={statusActive} />
-                        <div>
-                            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{itemLabel}</p>
-                            <p className="text-base font-semibold text-slate-800">{itemName}</p>
-                        </div>
-                    </div>
+                <div className="space-y-4 px-6 py-8 text-center text-sm text-slate-600">
                     <p>{description}</p>
+                    <p className="text-lg font-extrabold text-blue-700">{itemName}</p>
                     {hintText ? (
                         <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
                             {hintText}
@@ -174,7 +171,7 @@ export default function StatusConfirmationModal({
                     ) : null}
                 </div>
                 {shouldRequestPassword ? (
-                    <div className="space-y-2 border-t border-slate-100 px-6 pb-6 pt-3">
+                    <div className="space-y-4 border-t border-slate-100 px-6 pb-6 pt-5">
                         <input
                             type="password"
                             value={password}
@@ -189,23 +186,16 @@ export default function StatusConfirmationModal({
                             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 placeholder:text-rose-600 placeholder:font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                             disabled={isVerifyingPassword}
                         />
+                        <textarea value={reason} onChange={(event) => setReason(event.target.value)} aria-label="Observação do motivo" placeholder="Descreva o motivo da inativação" className="min-h-24 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:bg-white" disabled={isVerifyingPassword} />
                     </div>
                 ) : null}
                 <div className="border-t border-slate-100 px-6 py-4">
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
-                            onClick={onCancel}
-                            disabled={isProcessing}
-                            className="rounded-2xl border border-rose-300 bg-white px-5 py-3 text-xs font-semibold uppercase tracking-[0.3em] text-rose-600 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-70"
-                        >
-                            {cancelLabel}
-                        </button>
-                        <button
-                            type="button"
                             onClick={handleConfirm}
                             disabled={isProcessing || isVerifyingPassword}
-                            className={`rounded-2xl px-6 py-3 text-sm font-bold uppercase tracking-[0.3em] text-white shadow-lg transition ${actionType === 'activate' ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/40' : 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/40'} disabled:cursor-wait disabled:opacity-70`}
+                            className="rounded-full border-2 border-emerald-600 bg-white px-6 py-3 text-sm font-extrabold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-wait disabled:opacity-70"
                         >
                             {isProcessing || isVerifyingPassword ? 'Processando...' : confirmLabel}
                         </button>

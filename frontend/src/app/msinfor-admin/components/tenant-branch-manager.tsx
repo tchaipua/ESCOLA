@@ -1,6 +1,8 @@
 'use client';
 
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useState } from 'react';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { formatCnpjInput, isValidCnpj, normalizeCnpj, readImageFileAsDataUrl } from '@/app/lib/dashboard-crud-utils';
 
@@ -777,18 +779,16 @@ export default function TenantBranchManager({
           {isEditorOpen ? (
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
               <form onSubmit={handleSubmit} className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl">
+                <MaintenanceModalHeader
+                  title={editingBranch ? 'Editar filial' : 'Incluir filial'}
+                  eyebrow="Administração MSINFOR • Filiais"
+                  description="Dados próprios da filial, como CNPJ, contato e endereço operacional."
+                  tenantId={tenant.id}
+                  schoolName={tenant.name}
+                  logoUrl="/logo-msinfor.jpg"
+                  onClose={closeEditor}
+                />
                 <div className="min-h-0 overflow-y-auto p-6">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-sm font-black uppercase tracking-[0.18em] text-slate-700">
-                  {editingBranch ? 'Editar filial' : 'Incluir filial'}
-                </h4>
-                <p className="mt-1 text-xs font-medium text-slate-500">
-                  Dados próprios da filial, como CNPJ, contato e endereço operacional.
-                </p>
-              </div>
-            </div>
-
             <div className="mb-5 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
               {BRANCH_EDITOR_TABS.map((tab) => (
                 <button
@@ -1104,25 +1104,14 @@ export default function TenantBranchManager({
               </div>
             ) : null}
 
-            <div className="mt-6 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-              <ScreenNameCopy
-                screenId={BRANCH_EDITOR_SCREEN_ID}
-                label="Tela"
-                className="mt-0"
-                disableMargin
-                auditText={branchAuditContext.auditText}
-                sqlText={branchAuditContext.sqlText}
-              />
-              <div className="flex gap-3">
-                <button type="button" onClick={closeEditor} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-500 transition hover:bg-slate-50">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={isSaving} className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-70">
-                  {isSaving ? 'Salvando...' : editingBranch ? 'Salvar Filial' : 'Incluir Filial'}
-                </button>
-              </div>
-            </div>
                 </div>
+                <MaintenanceModalFooter
+                  screenId={BRANCH_EDITOR_SCREEN_ID}
+                  saveLabel={editingBranch ? 'Salvar filial' : 'Incluir filial'}
+                  isSaving={isSaving}
+                  auditText={branchAuditContext.auditText}
+                  sqlText={branchAuditContext.sqlText}
+                />
           </form>
             </div>
           ) : null}

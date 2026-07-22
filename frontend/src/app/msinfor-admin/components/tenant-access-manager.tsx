@@ -16,6 +16,8 @@ import {
 
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import ScreenAuditModal from '@/app/components/screen-audit-modal';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
 const SCREEN_NAME = 'ACESSOS_ESPECIAIS_GESTAO_ESCOLA';
@@ -1214,35 +1216,17 @@ export default function TenantAccessManager({
         role="dialog"
         aria-modal="true"
       >
-        <div className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              {tenant.logoUrl ? (
-                <img src={tenant.logoUrl} alt={`Logotipo de ${tenant.name}`} className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Sem logo</span>
-              )}
-            </div>
-            <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-indigo-500">
-              {showFocusedEditor || showFocusedCreate ? 'Edição de acesso' : 'Acessos especiais'}
-            </div>
-            <h2 className="mt-1 text-xl font-bold text-slate-800">
-              {showFocusedEditor || showFocusedCreate ? 'Editar acesso da escola' : tenant.name}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {showFocusedEditor || showFocusedCreate
-                ? `Altere os dados do acesso de ${formData.name || 'USUÁRIO'}. Ao voltar, você retornará para ${SCREEN_NAME}.`
-                : 'Crie logins e marque o que cada usuario pode cadastrar na escola.'}
-            </p>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-rose-500">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        <MaintenanceModalHeader
+          title={showFocusedEditor ? 'Editar acesso da escola' : showFocusedCreate ? 'Novo acesso da escola' : tenant.name}
+          eyebrow={showFocusedEditor || showFocusedCreate ? 'Edição de acesso' : 'Acessos especiais'}
+          description={showFocusedEditor || showFocusedCreate
+            ? `Altere os dados do acesso de ${formData.name || 'USUÁRIO'}.`
+            : 'Crie logins e defina o que cada usuário pode cadastrar na escola.'}
+          tenantId={tenant.id}
+          schoolName={tenant.name}
+          logoUrl={tenant.logoUrl}
+          onClose={onClose}
+        />
 
         {showPermissionScreen ? (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/70 p-6">
@@ -1364,20 +1348,13 @@ export default function TenantAccessManager({
                     Se você marcar exceções abaixo, a permissão específica da tela passa a valer acima do perfil padrão.
                   </div>
                 </div>
-                  <div className="mt-4 flex items-center justify-between gap-4 border-t border-slate-100 pt-4">
+                  <div className="mt-4 flex items-center justify-start gap-4 border-t border-slate-100 pt-4">
                     <button
                       type="button"
                       onClick={() => setFormStep('BASICO')}
                       className="rounded-xl border border-emerald-300 bg-emerald-500 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-600"
                     >
                       Voltar aos dados
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSaving}
-                      className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-70"
-                    >
-                      {isSaving ? 'Salvando...' : editingUserId ? 'Salvar alteracoes' : 'Salvar'}
                     </button>
                   </div>
                 </div>
@@ -1432,6 +1409,14 @@ export default function TenantAccessManager({
                   )})}
                 </div>
               </div>
+              <MaintenanceModalFooter
+                screenId={EDIT_SCREEN_NAME}
+                saveLabel={editingUserId ? 'Salvar alterações' : 'Salvar'}
+                isSaving={isSaving}
+                auditText={accessAuditContext.auditText}
+                sqlText={accessAuditContext.sqlText}
+                className="sticky bottom-0 z-20 rounded-[24px] border border-slate-200 shadow-lg"
+              />
             </form>
           </div>
         ) : showFocusedEditor || showFocusedCreate ? (
@@ -1645,44 +1630,30 @@ export default function TenantAccessManager({
               ) : null}
             </div>
 
-            <div className="flex w-full items-center gap-3">
-              <div className="flex flex-1 justify-start">
+            <MaintenanceModalFooter
+              screenId={EDIT_SCREEN_NAME}
+              saveLabel={showFocusedEditor ? 'Salvar alterações' : 'Salvar'}
+              isSaving={isSaving}
+              auditText={accessAuditContext.auditText}
+              sqlText={accessAuditContext.sqlText}
+              className="sticky bottom-0 z-20 rounded-[24px] border border-slate-200 shadow-lg"
+              secondaryActions={formData.role !== 'ADMIN' ? (
                 <button
                   type="button"
-                  onClick={() => resetForm({ announce: true })}
-                  className="rounded-xl bg-red-600 px-6 py-3 text-sm font-bold text-white hover:bg-red-700"
+                  onClick={() => {
+                    if (canAdvanceToPermissions) {
+                      setErrorMessage(null);
+                      setFormStep('PERMISSOES');
+                    } else {
+                      setErrorMessage('Preencha nome e e-mail antes de abrir a tela de permissões.');
+                    }
+                  }}
+                  className="min-h-12 rounded-[18px] bg-slate-900 px-5 py-2.5 text-sm font-black text-white hover:bg-slate-800"
                 >
-                  Voltar para acessos
+                  Abrir permissões
                 </button>
-              </div>
-              <div className="flex flex-1 justify-center">
-                {formData.role !== 'ADMIN' ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (canAdvanceToPermissions) {
-                        setErrorMessage(null);
-                        setFormStep('PERMISSOES');
-                      } else {
-                        setErrorMessage('Preencha nome e e-mail antes de abrir a tela de permissões.');
-                      }
-                    }}
-                    className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-800"
-                  >
-                    Abrir permissões
-                  </button>
-                ) : null}
-              </div>
-              <div className="flex flex-1 justify-end">
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-70"
-                >
-                  {isSaving ? 'Salvando...' : showFocusedEditor ? 'Salvar alteracoes' : 'Salvar'}
-                </button>
-              </div>
-            </div>
+              ) : null}
+            />
           </form>
         </div>
         ) : (
@@ -1800,6 +1771,7 @@ export default function TenantAccessManager({
             </div>
           </div>
         )}
+        {!(showFocusedEditor || showFocusedCreate || showPermissionScreen) ? (
         <div className="mt-2 border-t border-slate-200 bg-white px-6 py-3">
           <div className="flex w-full items-center justify-end gap-3 text-[11px] font-semibold uppercase tracking-[0.4em] text-slate-500">
             <span className="text-slate-800">{showFocusedEditor || showFocusedCreate ? EDIT_SCREEN_NAME : SCREEN_NAME}</span>
@@ -1819,6 +1791,7 @@ export default function TenantAccessManager({
             </span>
           </div>
         </div>
+        ) : null}
       </div>
       {cpfConflictAlert ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm">

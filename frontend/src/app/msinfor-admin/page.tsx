@@ -8,6 +8,8 @@ import GridRowActionIconButton from '@/app/components/grid-row-action-icon-butto
 import { MSINFOR_MASTER_SESSION_KEY } from '@/app/lib/auth-storage';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridSortableHeader from '@/app/components/grid-sortable-header';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { getAllGridColumnKeys, getDefaultVisibleGridColumnKeys, loadGridColumnConfig, type ConfigurableGridColumn, writeGridColumnConfig } from '@/app/lib/grid-column-config-utils';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridExportFormat, type GridSortState } from '@/app/lib/grid-export-utils';
@@ -1783,15 +1785,14 @@ export default function MsinforAdminPage() {
             {editingEmailUsage && (
                 <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95">
-                        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-800">Alterar E-mail do Vínculo</h3>
-                                <p className="text-xs text-slate-500 mt-1">Atualize apenas o registro selecionado na consulta master.</p>
-                            </div>
-                            <button onClick={closeEmailUsageEditor} className="text-slate-400 hover:text-red-500">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title="Alterar e-mail do vínculo"
+                            eyebrow="Administração MSINFOR"
+                            description="Atualize apenas o registro selecionado na consulta master."
+                            schoolName="MSINFOR SISTEMAS"
+                            logoUrl="/logo-msinfor.jpg"
+                            onClose={closeEmailUsageEditor}
+                        />
 
                         <form onSubmit={handleEmailUsageUpdate} className="p-6 space-y-5">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1827,14 +1828,12 @@ export default function MsinforAdminPage() {
                                 />
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-2">
-                                <button type="button" onClick={closeEmailUsageEditor} className="px-5 py-3 text-slate-500 font-semibold hover:bg-slate-100 rounded-xl transition-colors text-sm">
-                                    Cancelar
-                                </button>
-                                <button type="submit" disabled={emailUpdateLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-md shadow-indigo-600/30 text-sm tracking-wide transition-all active:scale-95 disabled:opacity-70">
-                                    {emailUpdateLoading ? 'Salvando...' : 'Salvar Novo E-mail'}
-                                </button>
-                            </div>
+                            <MaintenanceModalFooter
+                                screenId="POPUP_MSINFOR_ADMIN_ALTERAR_EMAIL_VINCULO"
+                                saveLabel="Salvar novo e-mail"
+                                isSaving={emailUpdateLoading}
+                                className="-mx-6 -mb-6 mt-6"
+                            />
                         </form>
                     </div>
                 </div>
@@ -1976,22 +1975,14 @@ export default function MsinforAdminPage() {
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[90vh]">
-
-                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
-                            <div className="flex items-center gap-4">
-                                <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                    <span className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">
-                                        Empresa
-                                    </span>
-                                </div>
-                                <h2 className="text-xl font-bold text-[#153a6a] flex items-center gap-2">
-                                    {editingTenantId ? 'Editar Escola Cliente' : 'Nova Escola Cliente'}
-                                </h2>
-                            </div>
-                            <button onClick={closeModal} className="text-slate-400 hover:text-red-500">
-                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                            </button>
-                        </div>
+                        <MaintenanceModalHeader
+                            title={editingTenantId ? 'Editar escola cliente' : 'Nova escola cliente'}
+                            eyebrow="Administração MSINFOR • Escolas"
+                            description="Cadastre os dados da escola, administrador e parâmetros de integração."
+                            schoolName="MSINFOR SISTEMAS"
+                            logoUrl="/logo-msinfor.jpg"
+                            onClose={closeModal}
+                        />
 
                         {/* NAVEGAÇÃO DE ABAS */}
                         <div className="flex border-b border-slate-200 bg-slate-50/50 px-6 pt-4 gap-3 flex-wrap items-end">
@@ -2327,25 +2318,13 @@ export default function MsinforAdminPage() {
                                     </div>
                                 )}
                             </div>
-                            <div className="mt-6 flex justify-between gap-3 border-t border-slate-100 pt-5 max-w-4xl">
-                                <button type="button" onClick={closeModal} className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors text-sm">
-                                    SAIR SEM SALVAR
-                                </button>
-                                <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-green-600/30 text-sm tracking-wide transition-all active:scale-95 flex items-center gap-2">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
-                                    {editingTenantId ? 'Salvar' : 'Confirmar e Implantar Escola'}
-                                </button>
-                            </div>
-                            <div className="mt-4 flex justify-end max-w-4xl">
-                                <ScreenNameCopy
-                                    screenId={EDIT_SCHOOL_SCREEN_ID}
-                                    label="Tela"
-                                    disableMargin
-                                    className="justify-end"
-                                    auditText={tenantAuditContext.auditText}
-                                    sqlText={tenantAuditContext.sqlText}
-                                />
-                            </div>
+                            <MaintenanceModalFooter
+                                screenId={EDIT_SCHOOL_SCREEN_ID}
+                                saveLabel={editingTenantId ? 'Salvar' : 'Confirmar e implantar escola'}
+                                auditText={tenantAuditContext.auditText}
+                                sqlText={tenantAuditContext.sqlText}
+                                className="sticky -bottom-6 -mx-6 -mb-6 mt-6 z-20"
+                            />
                         </form>
                     </div>
                 </div>
