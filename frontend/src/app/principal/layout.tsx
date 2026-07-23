@@ -48,6 +48,94 @@ type NavItem = {
 
 type ChangePasswordErrorVariant = 'blank' | 'mismatch' | 'invalid-current' | 'generic';
 
+type SchoolColorThemeId = 'blue' | 'green' | 'purple' | 'red' | 'orange' | 'gray';
+type SchoolColorIntensity = 1 | 2 | 3 | 4 | 5;
+
+const SCHOOL_COLOR_THEME_OPTIONS: Array<{
+    id: SchoolColorThemeId;
+    label: string;
+    description: string;
+    color: string;
+    softColor: string;
+}> = [
+    { id: 'blue', label: 'Azul', description: 'Padrão original do sistema', color: '#2563eb', softColor: '#dbeafe' },
+    { id: 'green', label: 'Verde', description: 'Visual institucional em verde', color: '#059669', softColor: '#d1fae5' },
+    { id: 'purple', label: 'Roxo', description: 'Visual institucional em roxo', color: '#7c3aed', softColor: '#ede9fe' },
+    { id: 'red', label: 'Vermelho', description: 'Visual institucional em vermelho', color: '#dc2626', softColor: '#fee2e2' },
+    { id: 'orange', label: 'Laranja', description: 'Visual institucional em laranja', color: '#ea580c', softColor: '#ffedd5' },
+    { id: 'gray', label: 'Cinza', description: 'Visual institucional neutro', color: '#64748b', softColor: '#e2e8f0' },
+];
+
+const DEFAULT_SCHOOL_COLOR_THEME: SchoolColorThemeId = 'blue';
+const DEFAULT_SCHOOL_COLOR_INTENSITY: SchoolColorIntensity = 3;
+const SCHOOL_COLOR_INTENSITY_LABELS: Record<SchoolColorIntensity, string> = {
+    1: 'Muito suave',
+    2: 'Suave',
+    3: 'Normal',
+    4: 'Forte',
+    5: 'Muito forte',
+};
+const SCHOOL_THEME_COLOR_VARIABLES = [
+    '--color-blue-50',
+    '--color-blue-100',
+    '--color-blue-200',
+    '--color-blue-300',
+    '--color-blue-400',
+    '--color-blue-500',
+    '--color-blue-600',
+    '--color-blue-700',
+    '--color-blue-800',
+    '--color-blue-900',
+    '--color-blue-950',
+    '--school-theme-deep',
+    '--school-theme-mid',
+] as const;
+
+function isSchoolColorThemeId(value: string | null): value is SchoolColorThemeId {
+    return SCHOOL_COLOR_THEME_OPTIONS.some((theme) => theme.id === value);
+}
+
+function getSchoolColorThemeStorageKey() {
+    const { tenantId, userId } = getDashboardAuthContext();
+    return `msinfor:school-color-theme:${tenantId || 'school'}:${userId || 'user'}`;
+}
+
+function getSchoolColorIntensityStorageKey() {
+    return `${getSchoolColorThemeStorageKey()}:intensity`;
+}
+
+function normalizeSchoolColorIntensity(value: string | number | null): SchoolColorIntensity {
+    const parsedValue = Number(value);
+    return parsedValue >= 1 && parsedValue <= 5 ? parsedValue as SchoolColorIntensity : DEFAULT_SCHOOL_COLOR_INTENSITY;
+}
+
+function adjustSchoolThemeColor(color: string, intensity: SchoolColorIntensity) {
+    if (intensity === 1) return `color-mix(in srgb, ${color} 78%, white)`;
+    if (intensity === 2) return `color-mix(in srgb, ${color} 90%, white)`;
+    if (intensity === 4) return `color-mix(in srgb, ${color} 90%, black)`;
+    if (intensity === 5) return `color-mix(in srgb, ${color} 78%, black)`;
+    return color;
+}
+
+function applySchoolColorTheme(theme: SchoolColorThemeId, intensity: SchoolColorIntensity) {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    SCHOOL_THEME_COLOR_VARIABLES.forEach((variableName) => root.style.removeProperty(variableName));
+    root.dataset.schoolColorTheme = theme;
+    root.dataset.schoolColorIntensity = String(intensity);
+
+    const themeStyles = window.getComputedStyle(root);
+    const baseColors = SCHOOL_THEME_COLOR_VARIABLES.map((variableName) => [
+        variableName,
+        themeStyles.getPropertyValue(variableName).trim(),
+    ] as const);
+
+    baseColors.forEach(([variableName, color]) => {
+        if (!color) return;
+        root.style.setProperty(variableName, adjustSchoolThemeColor(color, intensity));
+    });
+}
+
 type ScreenAuditOverride = {
     screenId: string;
     originText?: string;
@@ -189,6 +277,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [embeddedScreenContextLabel, setEmbeddedScreenContextLabel] = useState<string | null>(null);
     const [screenAuditOverride, setScreenAuditOverride] = useState<ScreenAuditOverride | null>(null);
     const [isUserMenuOpen, setUserMenuOpen] = useState(false);
+    const [isColorThemeOpen, setIsColorThemeOpen] = useState(false);
+    const [schoolColorTheme, setSchoolColorTheme] = useState<SchoolColorThemeId>(DEFAULT_SCHOOL_COLOR_THEME);
+    const [draftSchoolColorTheme, setDraftSchoolColorTheme] = useState<SchoolColorThemeId>(DEFAULT_SCHOOL_COLOR_THEME);
+    const [schoolColorIntensity, setSchoolColorIntensity] = useState<SchoolColorIntensity>(DEFAULT_SCHOOL_COLOR_INTENSITY);
+    const [draftSchoolColorIntensity, setDraftSchoolColorIntensity] = useState<SchoolColorIntensity>(DEFAULT_SCHOOL_COLOR_INTENSITY);
     const [isPeopleControlMenuOpen, setPeopleControlMenuOpen] = useState(false);
     const [isSchoolConfigMenuOpen, setSchoolConfigMenuOpen] = useState(false);
     const [isSchoolYearMenuOpen, setSchoolYearMenuOpen] = useState(false);
@@ -217,6 +310,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const hasInvalidatedSessionRef = useRef(false);
     const EXIT_CONFIRMATION_SCREEN_ID = 'PRINCIPAL_SOMENTE_CAIXA_SAIR_SISTEMA';
     const CHANGE_PASSWORD_SCREEN_ID = 'PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL';
+    const COLOR_THEME_SCREEN_ID = 'PRINCIPAL_MENU_CONFIGURAR_COR';
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const storedTheme = window.localStorage.getItem(getSchoolColorThemeStorageKey());
+        const storedIntensity = window.localStorage.getItem(getSchoolColorIntensityStorageKey());
+        const resolvedTheme = isSchoolColorThemeId(storedTheme) ? storedTheme : DEFAULT_SCHOOL_COLOR_THEME;
+        const resolvedIntensity = normalizeSchoolColorIntensity(storedIntensity);
+        setSchoolColorTheme(resolvedTheme);
+        setDraftSchoolColorTheme(resolvedTheme);
+        setSchoolColorIntensity(resolvedIntensity);
+        setDraftSchoolColorIntensity(resolvedIntensity);
+        applySchoolColorTheme(resolvedTheme, resolvedIntensity);
+    }, []);
 
     const isPersonalRole = currentRole === 'PROFESSOR' || currentRole === 'ALUNO' || currentRole === 'RESPONSAVEL';
 
@@ -589,6 +696,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 setIsFooterLogoOpen(false);
                 setIsExitConfirmationOpen(false);
                 setIsChangePasswordOpen(false);
+                setIsColorThemeOpen(false);
+                setDraftSchoolColorTheme(schoolColorTheme);
+                setDraftSchoolColorIntensity(schoolColorIntensity);
+                applySchoolColorTheme(schoolColorTheme, schoolColorIntensity);
                 setChangePasswordAlertType(null);
                 setChangePasswordError(null);
                 setChangePasswordErrorVariant(null);
@@ -598,11 +709,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         window.addEventListener('keydown', handleEscape);
         return () => window.removeEventListener('keydown', handleEscape);
-    }, []);
+    }, [schoolColorIntensity, schoolColorTheme]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (isFooterLogoOpen || isExitConfirmationOpen || isChangePasswordOpen || changePasswordAlertType) return;
+        if (isFooterLogoOpen || isExitConfirmationOpen || isChangePasswordOpen || isColorThemeOpen || changePasswordAlertType) return;
 
         const cleanupTimers: number[] = [];
         const scheduleCleanup = () => {
@@ -620,7 +731,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 window.clearTimeout(timerId);
             });
         };
-    }, [pathname, isFooterLogoOpen, isExitConfirmationOpen, isChangePasswordOpen, changePasswordAlertType]);
+    }, [pathname, isFooterLogoOpen, isExitConfirmationOpen, isChangePasswordOpen, isColorThemeOpen, changePasswordAlertType]);
 
     const handleLogout = () => {
         setIsExitConfirmationOpen(false);
@@ -681,6 +792,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setChangePasswordErrorVariant(null);
         setChangePasswordAlertType(null);
         setIsChangePasswordOpen(true);
+    };
+
+    const handleOpenColorTheme = () => {
+        setUserMenuOpen(false);
+        setDraftSchoolColorTheme(schoolColorTheme);
+        setDraftSchoolColorIntensity(schoolColorIntensity);
+        setIsColorThemeOpen(true);
+    };
+
+    const handlePreviewColorTheme = (theme: SchoolColorThemeId) => {
+        setDraftSchoolColorTheme(theme);
+        applySchoolColorTheme(theme, draftSchoolColorIntensity);
+    };
+
+    const handlePreviewColorIntensity = (theme: SchoolColorThemeId, intensityValue: string) => {
+        const intensity = normalizeSchoolColorIntensity(intensityValue);
+        setDraftSchoolColorTheme(theme);
+        setDraftSchoolColorIntensity(intensity);
+        applySchoolColorTheme(theme, intensity);
+    };
+
+    const handleCloseColorTheme = () => {
+        applySchoolColorTheme(schoolColorTheme, schoolColorIntensity);
+        setDraftSchoolColorTheme(schoolColorTheme);
+        setDraftSchoolColorIntensity(schoolColorIntensity);
+        setIsColorThemeOpen(false);
+    };
+
+    const handleSaveColorTheme = () => {
+        setSchoolColorTheme(draftSchoolColorTheme);
+        setSchoolColorIntensity(draftSchoolColorIntensity);
+        applySchoolColorTheme(draftSchoolColorTheme, draftSchoolColorIntensity);
+        window.localStorage.setItem(getSchoolColorThemeStorageKey(), draftSchoolColorTheme);
+        window.localStorage.setItem(getSchoolColorIntensityStorageKey(), String(draftSchoolColorIntensity));
+        setIsColorThemeOpen(false);
     };
 
     const handleOpenSalesScreenParameters = () => {
@@ -1395,6 +1541,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
                         </svg>
                         <span>ALTERAR SENHA</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleOpenColorTheme}
+                        className="flex items-center gap-2 w-full px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                        <svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3a9 9 0 1 0 0 18h1.25a1.75 1.75 0 0 0 0-3.5H12a1.5 1.5 0 0 1 0-3h2.5A6.5 6.5 0 0 0 21 8c0-2.76-4.03-5-9-5Z" />
+                            <circle cx="7.5" cy="9" r="1" fill="currentColor" stroke="none" />
+                            <circle cx="11" cy="6.8" r="1" fill="currentColor" stroke="none" />
+                            <circle cx="15" cy="7.4" r="1" fill="currentColor" stroke="none" />
+                        </svg>
+                        <span>CONFIGURAR COR</span>
                     </button>
                     <button
                         type="button"
@@ -2162,6 +2321,107 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 disableMargin
                             />
                         </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {isColorThemeOpen ? (
+                <div
+                    className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+                    onClick={handleCloseColorTheme}
+                    role="presentation"
+                >
+                    <div
+                        className="relative flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.35)]"
+                        onClick={(event) => event.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="school-color-theme-title"
+                    >
+                        <MaintenanceModalHeader
+                            title="Configurar cor do sistema"
+                            eyebrow="Preferência visual"
+                            description="Escolha a cor principal usada nas telas do Sistema Escola."
+                            tenantId={currentTenant?.id}
+                            schoolName={currentTenant?.name}
+                            logoUrl={currentTenant?.logoUrl}
+                            onClose={handleCloseColorTheme}
+                        />
+
+                        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
+                            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.1em] text-blue-900">
+                                A PRÉVIA É APLICADA AO SELECIONAR. CLIQUE EM APLICAR COR PARA MANTER A ESCOLHA.
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                {SCHOOL_COLOR_THEME_OPTIONS.map((theme) => {
+                                    const isSelected = draftSchoolColorTheme === theme.id;
+                                    const sliderValue = isSelected ? draftSchoolColorIntensity : DEFAULT_SCHOOL_COLOR_INTENSITY;
+                                    return (
+                                        <div
+                                            key={theme.id}
+                                            className={`overflow-hidden rounded-2xl border-2 transition ${isSelected ? 'border-blue-600 bg-blue-50 shadow-md' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => handlePreviewColorTheme(theme.id)}
+                                                className="flex w-full items-center gap-4 p-4 text-left"
+                                                aria-pressed={isSelected}
+                                            >
+                                                <span
+                                                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-4 border-white shadow-md ring-1 ring-slate-200"
+                                                    style={{ backgroundColor: theme.color }}
+                                                >
+                                                    {isSelected ? (
+                                                        <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="m5 12 4 4L19 6" />
+                                                        </svg>
+                                                    ) : null}
+                                                </span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="block text-sm font-black uppercase tracking-[0.12em] text-slate-800">{theme.label}</span>
+                                                    <span className="mt-1 block text-xs font-semibold uppercase text-slate-500">{theme.description}</span>
+                                                    <span className="mt-2 flex gap-1" aria-hidden="true">
+                                                        {[theme.softColor, theme.color].map((color) => (
+                                                            <span key={color} className="h-2.5 flex-1 rounded-full" style={{ backgroundColor: color }} />
+                                                        ))}
+                                                    </span>
+                                                </span>
+                                            </button>
+
+                                            <div className={`border-t px-4 pb-4 pt-3 ${isSelected ? 'border-blue-200' : 'border-slate-200'}`}>
+                                                <div className="mb-2 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-[0.14em] text-slate-500">
+                                                    <label htmlFor={`school-color-intensity-${theme.id}`}>Intensidade</label>
+                                                    <span className={isSelected ? 'text-blue-700' : 'text-slate-400'}>{SCHOOL_COLOR_INTENSITY_LABELS[sliderValue]}</span>
+                                                </div>
+                                                <input
+                                                    id={`school-color-intensity-${theme.id}`}
+                                                    type="range"
+                                                    min="1"
+                                                    max="5"
+                                                    step="1"
+                                                    value={sliderValue}
+                                                    onChange={(event) => handlePreviewColorIntensity(theme.id, event.target.value)}
+                                                    aria-label={`Intensidade da cor ${theme.label}`}
+                                                    className="h-2 w-full cursor-pointer accent-blue-600"
+                                                />
+                                                <div className="mt-1 flex justify-between text-[8px] font-bold uppercase tracking-[0.08em] text-slate-400" aria-hidden="true">
+                                                    <span>Suave</span>
+                                                    <span>Forte</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <MaintenanceModalFooter
+                            screenId={COLOR_THEME_SCREEN_ID}
+                            saveLabel="Aplicar cor"
+                            onSave={handleSaveColorTheme}
+                            screenNameCompact
+                        />
                     </div>
                 </div>
             ) : null}

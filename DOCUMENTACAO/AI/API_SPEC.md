@@ -1014,3 +1014,22 @@ Observacao estrutural obrigatoria:
 - Regra: empresa, filial e código precisam existir e estar ativos na Escola; o endpoint nunca cria cadastro;
 - Auditoria: grava evento append-only em `finance_source_parameter_audit_events`;
 - Segurança: a atualização é executada no contexto explícito do tenant e da filial.
+
+## Configuracoes globais MSINFOR Central
+
+### GET/PUT `/global-settings`
+
+- Acesso: chave master no header `x-msinfor-master-pass`.
+- Implementação: a API da Escola atua como fachada e encaminha a operação ao `MSINFOR_CENTRAL_IA`.
+- Segurança: respostas administrativas nunca retornam `s3SecretKey` ou `emailSmtpPassword`; informam apenas se o segredo está configurado.
+
+### POST `/global-settings/test-s3` e `/global-settings/test-email`
+
+- Acesso: chave master.
+- Regra: o teste é executado pelo backend central, preservando segredos fora do navegador e dos bancos consumidores.
+
+### GET central `/api/v1/global-settings/effective`
+
+- Acesso técnico: `x-msinfor-system-id` e `x-msinfor-system-key`.
+- Uso: retorna a configuração efetiva completa somente ao backend consumidor.
+- Prioridade preparada: `BRANCH > TENANT > SYSTEM > GLOBAL`.

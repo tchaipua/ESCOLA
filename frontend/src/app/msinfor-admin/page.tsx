@@ -18,6 +18,10 @@ import TenantAccessManager from './components/tenant-access-manager';
 import TenantBranchManager from './components/tenant-branch-manager';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const MSINFOR_CENTRAL_FRONTEND_URL =
+    process.env.NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL || 'http://localhost:3200';
+const MSINFOR_CENTRAL_API_URL =
+    process.env.NEXT_PUBLIC_MSINFOR_CENTRAL_API_URL || 'http://localhost:3201/api/v1';
 
 type TenantRecord = {
     id: string;
@@ -345,6 +349,28 @@ export default function MsinforAdminPage() {
     const getMasterPassForRequest = useCallback(() => {
         return isMasterLogged ? buildMasterPass(new Date()) : '';
     }, [isMasterLogged]);
+
+    const openMsInforCentral = useCallback(async () => {
+        try {
+            setErrorStatus(null);
+            const response = await fetch(`${MSINFOR_CENTRAL_API_URL}/admin-auth/launch`, {
+                method: 'POST',
+                headers: {
+                    'x-msinfor-master-pass': getMasterPassForRequest(),
+                    'x-msinfor-source-system': 'ESCOLA',
+                },
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok || !payload?.launchToken) {
+                throw new Error(payload?.message || 'Não foi possível abrir a Central MSINFOR.');
+            }
+            const centralUrl = new URL(MSINFOR_CENTRAL_FRONTEND_URL);
+            centralUrl.hash = new URLSearchParams({ launch: payload.launchToken }).toString();
+            window.location.assign(centralUrl.toString());
+        } catch (error: any) {
+            setErrorStatus(error?.message || 'Não foi possível abrir a Central MSINFOR.');
+        }
+    }, [getMasterPassForRequest]);
 
     // Buscar Escolas da API
     const fetchEscolas = useCallback(async () => {
@@ -1346,13 +1372,7 @@ export default function MsinforAdminPage() {
                     <div className="flex justify-center">
                         <button
                             type="button"
-                                onClick={() => {
-                                    setGeneralSettingsStatus(null);
-                                    setGeneralSettingsTestResult(null);
-                                    setGeneralSettingsTab('s3');
-                                    setIsGeneralSettingsOpen(true);
-                                    void fetchGeneralSettings();
-                                }}
+                            onClick={() => void openMsInforCentral()}
                             className="rounded-xl border border-emerald-500 bg-emerald-600 px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm shadow-emerald-600/25 transition-all hover:border-emerald-600 hover:bg-emerald-700"
                         >
                             CONFIGURAÇÕES GERAIS (VALE PRA TODAS AS FILIAIS)

@@ -362,6 +362,13 @@ Regra atual:
 - Em 2026-06-29 os campos legados `name`, `password`, `resetPasswordToken` e `resetPasswordExpires` tambem foram removidos fisicamente de `teachers`, `students` e `guardians`.
 - O fluxo de Telegram valida CPF/CNPJ exclusivamente em `people`.
 
+## Configuracoes globais da softhouse
+
+- `global_settings` permanece no banco da Escola somente como registro legado de migração; novas leituras e mutações master usam a API do `MSINFOR_CENTRAL_IA`.
+- O banco independente central mantém `central_settings`, `central_setting_audit_events` e `system_clients`.
+- Valores de configuração são criptografados com AES-256-GCM; chaves dos sistemas são persistidas somente como hash.
+- Nenhuma entidade de negócio escolar ou dado de tenant é armazenado no banco central.
+
 ## Financeiro operacional
 
 Desde 2026-04-05, o banco da `Escola` nao mantem mais as tabelas operacionais de lotes e parcelas de mensalidade.

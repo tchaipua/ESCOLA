@@ -8,6 +8,7 @@
     "prestart:dev": "prisma migrate deploy",
     "prestart:prod": "prisma migrate deploy",
     "build": "nest build",
+    "migrate:global-settings-central": "node scripts/migrate-global-settings-to-msinfor-central.cjs",
     "backfill:people": "ts-node scripts/backfill-people.ts",
     "qa:tcha-smoke": "ts-node scripts/tcha-general-smoke.ts",
     "qa:tcha-grade-visibility": "ts-node scripts/tcha-grade-visibility-smoke.ts",

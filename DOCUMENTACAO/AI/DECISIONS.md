@@ -348,3 +348,41 @@ Para cada decisao, registrar:
 - Impacto: cadastro e inativação de filial ocorrem somente na Escola; o Financeiro mantém espelho operacional. Outros sistemas consumidores devem implementar o mesmo endpoint de retorno e configurar URL/chave por `sourceSystem`.
 - Alternativas consideradas: manter cadastros independentes; acessar diretamente o banco da origem; permitir alteração local com sincronização eventual; aceitar divergência quando a origem estiver indisponível.
 - Status: aceita
+
+## DEC-0038
+
+- Data: 2026-07-22
+- Contexto: recibos e etiquetas precisam ser configurados uma única vez e usados pela Escola e por outras verticais integradas ao Financeiro.
+- Decisao: manter modelos, impressoras, vínculos e histórico no projeto Financeiro. A Escola apenas hospeda a tela `PRINCIPAL_FINANCEIRO_MSINFOR_MODELOS_IMPRESSAO` e fornece tenant, filial, usuário e permissões. A Venda 2 preserva a leitura de imagens do HD e aciona o mesmo agente local para imprimir o recibo após a venda.
+- Impacto: não há regra de impressão duplicada na Escola; todo dado permanece isolado por tenant e filial e as tentativas ficam auditadas no Financeiro.
+- Alternativas consideradas: guardar layouts na Escola; usar impressão direta do navegador; criar um segundo executável; misturar arquivos locais com o banco do Financeiro.
+- Status: aceita
+
+## DEC-0039
+
+- Data: 2026-07-23
+- Contexto: a softhouse quer reconstruir recibos a partir de fotos no Codex e instalar um modelo separado para cada cliente, sem manter IA em tempo de execução.
+- Decisao: hospedar no menu MSINFOR a central `PRINCIPAL_FINANCEIRO_MSINFOR_CONFIGURACAO_RECIBOS`, com acesso ao editor existente e à tela `PRINCIPAL_FINANCEIRO_MSINFOR_CONFIGURA_RECIBOS_IMAGEM`. Validação, importação, publicação, exportação e auditoria dos pacotes `.msreport.json` continuam pertencendo exclusivamente ao Financeiro.
+- Impacto: a Escola fornece somente tenant, filial, usuário e perfil; nenhum layout é duplicado no banco escolar. O arquivo não contém identificadores do cliente e o backend financeiro aplica o contexto corrente na importação.
+- Alternativas consideradas: embarcar IA no sistema; guardar pacotes na Escola; usar um único modelo compartilhado por todos os clientes.
+- Status: aceita
+
+## DEC-0040
+
+- Data: 2026-07-23
+- Contexto: configurações gerais da softhouse, como S3 e SMTP master, precisam valer para Escola, Projeto Inicial e futuras verticais mesmo quando cada sistema usa banco próprio.
+- Decisao: criar o projeto independente `C:\Sistemas\IA\MSINFOR_CENTRAL_IA`, com banco, API e painel próprios. Os backends consumidores acessam a API com credencial técnica exclusiva; as telas `MSINFOR_ADMIN_CONFIGURACOES_GERAIS_MODAL` continuam como fachadas sem alteração de layout. A resolução preparada é `FILIAL > EMPRESA > SISTEMA > GLOBAL`, o conteúdo fica criptografado em repouso e toda mutação gera auditoria append-only.
+- Impacto: a configuração global deixa de pertencer ao banco da Escola ou do Projeto Inicial. A parte corporativa por empresa/filial da DEC-0036 permanece na origem operacional; somente os parâmetros globais da softhouse passam para a Central.
+- Alternativas consideradas: duplicar configuração em cada banco; permitir acesso direto ao banco central; manter a Escola como fonte global; expor segredos ao frontend.
+- Status: aceita
+
+## DEC-0041
+
+- Data: 2026-07-23
+- Contexto: a softhouse precisa manter um mostruário reutilizável de recibos para apresentar aos clientes e importar o modelo escolhido no Financeiro.
+- Decisao: ampliar o `MSINFOR_CENTRAL_IA` com o card `CONFIGURA RECIBOS`, categorias administradas pela softhouse, imagem de demonstração, pacote JSON genérico, versionamento e auditoria. O catálogo nasce com `VENDAS`, `PAGAMENTOS`, `ORÇAMENTOS` e `COBRANÇA`.
+- Decisao: no acesso master da Escola, o botão `CONFIGURAÇÕES GERAIS` abre o painel de cards do `MSINFOR_CENTRAL_IA`, usando `NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL` e `http://localhost:3200` como padrão local. O modal legado deixa de ser o ponto de entrada desse botão.
+- Decisao: o acesso ao `MSINFOR_CENTRAL_IA` pela Escola usa token temporário de 60 segundos e uso único, emitido após validar a chave master já ativa. A Central troca o token por sessão administrativa opaca e auditada, eliminando a segunda solicitação de senha sem compartilhar a credencial pela URL.
+- Impacto: modelos não possuem vínculo com tenant, empresa ou filial na Central. O contexto do cliente é aplicado somente quando o JSON é importado no Financeiro, que mantém sua própria cópia operacional.
+- Alternativas consideradas: armazenar o mostruário no banco da Escola; vincular o modelo central diretamente ao cliente; guardar somente a imagem sem o JSON; compartilhar uma única cópia viva entre clientes.
+- Status: aceita

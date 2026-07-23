@@ -26,7 +26,6 @@ export class GlobalSettingsController {
         "Acesso negado: cabeçalho master ausente.",
       );
     }
-
     const now = new Date();
     const prevMinute = new Date(now.getTime() - 60_000);
     const nextMinute = new Date(now.getTime() + 60_000);
@@ -43,14 +42,15 @@ export class GlobalSettingsController {
         "Acesso negado: chave master inválida ou expirada.",
       );
     }
+    return incoming;
   }
 
   @Public()
   @Get()
   @ApiOperation({ summary: "Retorna as configurações globais da softhouse" })
   async findSettings(@Req() req: Request) {
-    this.assertMasterPass(req);
-    return this.globalSettingsService.findSettings();
+    const masterPass = this.assertMasterPass(req);
+    return this.globalSettingsService.findSettingsForAdmin(masterPass);
   }
 
   @Public()
@@ -60,8 +60,8 @@ export class GlobalSettingsController {
     @Req() req: Request,
     @Body() payload: UpdateGlobalSettingsDto,
   ) {
-    this.assertMasterPass(req);
-    return this.globalSettingsService.saveSettings(payload);
+    const masterPass = this.assertMasterPass(req);
+    return this.globalSettingsService.saveSettings(payload, masterPass);
   }
 
   @Public()
@@ -71,8 +71,8 @@ export class GlobalSettingsController {
     @Req() req: Request,
     @Body() payload: UpdateGlobalSettingsDto,
   ) {
-    this.assertMasterPass(req);
-    return this.globalSettingsService.testS3Connection(payload);
+    const masterPass = this.assertMasterPass(req);
+    return this.globalSettingsService.testS3Connection(payload, masterPass);
   }
 
   @Public()
@@ -84,7 +84,7 @@ export class GlobalSettingsController {
     @Req() req: Request,
     @Body() payload: UpdateGlobalSettingsDto,
   ) {
-    this.assertMasterPass(req);
-    return this.globalSettingsService.testEmailConnection(payload);
+    const masterPass = this.assertMasterPass(req);
+    return this.globalSettingsService.testEmailConnection(payload, masterPass);
   }
 }

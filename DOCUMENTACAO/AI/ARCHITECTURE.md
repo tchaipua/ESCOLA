@@ -190,6 +190,9 @@ Responsabilidades:
 
 Configurações corporativas compartilhadas:
 
+- parâmetros globais da softhouse pertencem ao projeto independente `C:\Sistemas\IA\MSINFOR_CENTRAL_IA` e são consumidos exclusivamente por API backend a backend;
+- cada sistema usa `MSINFOR_CENTRAL_SYSTEM_ID` e uma chave técnica exclusiva, sem conexão direta com o banco central;
+- os backends mantêm cache válido por 60 segundos e podem usar a última cópia por até 15 minutos quando a Central estiver temporariamente indisponível;
 - S3, SMTP, Telegram e futuras integrações permanecem cadastrados na empresa/filial da Escola;
 - configuração completa da filial tem prioridade; quando ausente, a Escola resolve o fallback da empresa;
 - o resultado efetivo é enviado diretamente entre backends, autenticado por `x-api-key`;

@@ -110,23 +110,18 @@ function inputClass() {
 function buildGlobalSettingsAuditSql() {
     return `SELECT
   GS.id,
+  GS.scopeType,
+  GS.scopeRef,
   GS.settingKey,
-  json_extract(GS.settingValue, '$.s3Enabled') AS s3Enabled,
-  json_extract(GS.settingValue, '$.s3EndpointType') AS s3EndpointType,
-  json_extract(GS.settingValue, '$.s3Region') AS s3Region,
-  json_extract(GS.settingValue, '$.s3Bucket') AS s3Bucket,
-  json_extract(GS.settingValue, '$.s3BaseFolder') AS s3BaseFolder,
-  json_extract(GS.settingValue, '$.s3CapacityGb') AS s3CapacityGb,
-  json_extract(GS.settingValue, '$.s3ImagesFolderName') AS s3ImagesFolderName,
-  json_extract(GS.settingValue, '$.emailEnabled') AS emailEnabled,
-  json_extract(GS.settingValue, '$.emailSenderEmail') AS emailSenderEmail,
-  json_extract(GS.settingValue, '$.emailSmtpHost') AS emailSmtpHost,
-  json_extract(GS.settingValue, '$.emailSmtpPort') AS emailSmtpPort,
+  GS.contentHash,
+  GS.version,
   GS.createdAt,
   GS.updatedAt,
   GS.updatedBy
-FROM global_settings GS
+FROM central_settings GS
 WHERE GS.settingKey = '${GLOBAL_SETTINGS_KEY}'
+  AND GS.scopeType = 'GLOBAL'
+  AND GS.scopeRef = '*'
   AND GS.canceledAt IS NULL
 LIMIT 1;`;
 }
@@ -138,10 +133,12 @@ function buildGlobalSettingsAuditText(activeTab: GeneralSettingsTab, values: Gen
 Modal master global da MSINFOR para parametrizar S3 e e-mail usados pela softhouse.
 
 TABELAS PRINCIPAIS:
-- global_settings (GS) - armazena parametros globais em JSON por chave de configuracao
+- central_settings (GS), no banco independente MSINFOR_CENTRAL_IA - armazena parametros criptografados por escopo
+- central_setting_audit_events - registra versao, autor, origem e campos alterados sem expor os segredos
 
 RELACIONAMENTOS:
-- Nao aplicavel. A configuracao e global da softhouse e nao pertence a uma escola/tenant.
+- A Escola acessa a configuracao pela API central, usando sua credencial tecnica.
+- A configuracao global da softhouse nao pertence ao banco de uma escola/tenant.
 
 METRICAS / CAMPOS EXIBIDOS:
 - aba ativa
@@ -165,7 +162,7 @@ FILTROS APLICADOS AGORA:
 - senha SMTP preenchida: ${values.emailSmtpPassword ? 'SIM' : 'NAO'}
 
 OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
-- Esta tela nao usa schoolId porque grava parametros globais da MSINFOR.
+- Esta tela nao usa schoolId porque grava parametros globais da MSINFOR no servico central.
 - A auditoria de mutacao e registrada no backend com usuario tecnico MSINFOR_MASTER.
 
 SQL EQUIVALENTE DOS FILTROS DA TELA:
@@ -233,7 +230,7 @@ export default function GlobalSettingsModal({
                             </div>
 
                             <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-xs font-medium text-emerald-700">
-                                Tela global pronta para virar backend central mais à frente, com auditoria e persistência definitiva.
+                                Configuração atendida pelo MSINFOR CENTRAL IA, com auditoria e persistência independentes.
                             </div>
                         </aside>
 

@@ -7,6 +7,7 @@ import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import * as nodemailer from "nodemailer";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { UpdateGlobalSettingsDto } from "../dto/update-global-settings.dto";
+import { MsInforCentralSettingsClient } from "../../../../integrations/msinfor-central/msinfor-central-settings.client";
 
 type GlobalSettingsValue = {
   s3Enabled: boolean;
@@ -69,7 +70,10 @@ const DEFAULT_GENERAL_SETTINGS: GlobalSettingsValue = {
 
 @Injectable()
 export class GlobalSettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly centralSettings: MsInforCentralSettingsClient,
+  ) {}
 
   private mergeSettings(
     input?: Partial<UpdateGlobalSettingsDto> | Partial<GlobalSettingsValue>,
@@ -191,6 +195,9 @@ export class GlobalSettingsService {
   }
 
   async findSettings() {
+    const central = await this.centralSettings.findEffective();
+    if (central) return this.mergeSettings(central as Partial<GlobalSettingsValue>);
+
     const record = await this.prisma.globalSetting.findUnique({
       where: { settingKey: GLOBAL_SETTINGS_KEY },
     });
@@ -209,7 +216,9 @@ export class GlobalSettingsService {
     }
   }
 
-  async saveSettings(payload: UpdateGlobalSettingsDto) {
+  async saveSettings(payload: UpdateGlobalSettingsDto, masterPass: string) {
+    return this.centralSettings.save(payload, masterPass);
+    /* CACHE LEGADO LOCAL MANTIDO APENAS PARA MIGRACAO/FALLBACK DE LEITURA.
     const settings = this.mergeSettings(payload);
     const serialized = JSON.stringify(settings);
 
@@ -243,9 +252,16 @@ export class GlobalSettingsService {
       message: "Configurações gerais salvas com sucesso.",
       settings,
     };
+    */
   }
 
-  async testS3Connection(payload: UpdateGlobalSettingsDto) {
+  async findSettingsForAdmin(masterPass: string) {
+    return this.centralSettings.findAdmin(masterPass);
+  }
+
+  async testS3Connection(payload: UpdateGlobalSettingsDto, masterPass: string) {
+    return this.centralSettings.test("s3", payload, masterPass);
+    /* TESTE LOCAL LEGADO DESATIVADO APOS CENTRALIZACAO.
     const savedSettings = await this.findSettings();
     const settings = this.mergeSettings({
       ...savedSettings,
@@ -317,9 +333,12 @@ export class GlobalSettingsService {
         `Não foi possível comunicar com o S3. ${rawMessage}`,
       );
     }
+    */
   }
 
-  async testEmailConnection(payload: UpdateGlobalSettingsDto) {
+  async testEmailConnection(payload: UpdateGlobalSettingsDto, masterPass: string) {
+    return this.centralSettings.test("email", payload, masterPass);
+    /* TESTE LOCAL LEGADO DESATIVADO APOS CENTRALIZACAO.
     const savedSettings = await this.findSettings();
     const settings = this.mergeSettings({
       ...savedSettings,
@@ -391,5 +410,6 @@ export class GlobalSettingsService {
         `Não foi possível validar as credenciais SMTP. ${rawMessage}`,
       );
     }
+    */
   }
 }

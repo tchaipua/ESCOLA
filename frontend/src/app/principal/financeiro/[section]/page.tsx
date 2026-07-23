@@ -244,6 +244,24 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
     description:
       'Configuração e acompanhamento das operações de cartão do Financeiro.',
   },
+  PRINCIPAL_FINANCEIRO_MSINFOR_MODELOS_IMPRESSAO: {
+    eyebrow: 'MSINFOR',
+    title: 'Modelos e impressão local',
+    description:
+      'Configure recibos, etiquetas, impressoras e automações de impressão do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_CONFIGURACAO_RECIBOS: {
+    eyebrow: 'MSINFOR',
+    title: 'Configuração de recibos',
+    description:
+      'Escolha o editor visual ou a configuração de recibos preparada a partir de uma imagem.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_CONFIGURA_RECIBOS_IMAGEM: {
+    eyebrow: 'MSINFOR',
+    title: 'Configura recibos por imagem',
+    description:
+      'Valide, visualize, importe, publique e exporte pacotes de recibos exclusivos por cliente.',
+  },
   PRINCIPAL_FINANCEIRO_DEVOLUCAO_MERCADORIAS: {
     eyebrow: 'Contas a Receber',
     title: 'Devolução de Mercadorias',

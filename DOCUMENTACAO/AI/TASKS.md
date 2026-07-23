@@ -87,6 +87,11 @@
 
 ## Notas recentes
 
+- 2026-07-23: Criado `C:\Sistemas\IA\MSINFOR_CENTRAL_IA` como fonte única das configurações globais da softhouse. Escola e Projeto Inicial usam fachadas backend, credenciais técnicas separadas, cache de 60 segundos com tolerância stale de 15 minutos, segredos criptografados e auditoria central.
+- 2026-07-23: O `MSINFOR_CENTRAL_IA` recebeu painel por cards e o mostruário `CONFIGURA RECIBOS`, com categorias, imagem, JSON genérico, versões, download e auditoria.
+- 2026-07-23: Ajustado o botão `CONFIGURAÇÕES GERAIS` da tela master da Escola para abrir o painel de cards do `MSINFOR_CENTRAL_IA`, com endereço configurável por ambiente.
+- 2026-07-23: Implementado acesso administrativo integrado à Central: Escola e Projeto Inicial entram sem repetir senha por token temporário de uso único; o acesso direto valida a senha uma vez e mantém sessão central auditada.
+- 2026-07-23: A central MSINFOR passou a hospedar `CONFIGURAÇÃO RECIBOS`, com o editor existente e a importação/exportação de pacotes por imagem, mantendo toda a regra, o tenant e a auditoria no Financeiro separado.
 - 2026-07-19: Concluída a identidade única por CPF/CNPJ no tenant, sem duplicação por filial ou papel, com `personId` estável enviado ao Financeiro e consolidação lógica de registros legados.
 - 2026-07-18: Adicionados os cards integrados `Emissão NF-e` e `Emissão NFS (Serviço)`, com rotas próprias, RBAC financeiro e emissão manual pertencente ao sistema Financeiro.
 - 2026-07-14: Adicionado o card `Vendas 2` e a rota integrada `/principal/financeiro/vendas-2`, mantendo a regra operacional no sistema Financeiro separado.
