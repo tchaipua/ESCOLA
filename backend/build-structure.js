@@ -123,7 +123,7 @@ model Enrollment {
 `,
     ".env": `
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/escola_db?schema=public"
-JWT_SECRET="super-secret-escolar-key-2026"
+JWT_SECRET=""
 PORT=3000
 `,
     "src/main.ts": `
@@ -232,7 +232,7 @@ import { JwtStrategy } from './application/strategies/jwt.strategy';
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'super-secret-escolar-key-2026',
+      secret: process.env.JWT_SECRET,
       signOptions: { expiresIn: '1d' },
     }),
   ],
@@ -298,7 +298,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'super-secret-escolar-key-2026',
+      secretOrKey: process.env.JWT_SECRET,
     });
   }
 

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import {
   CurrentUser,
@@ -9,7 +9,6 @@ import { PeopleService } from "../../application/services/people.service";
 import { CreatePersonDto } from "../../application/dto/create-person.dto";
 import { UpdatePersonDto } from "../../application/dto/update-person.dto";
 
-@ApiBearerAuth()
 @ApiTags("Pessoas")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("people")

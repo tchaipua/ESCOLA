@@ -1,11 +1,10 @@
 import { Body, Controller, Get, Param, Put } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { UpsertLessonAttendanceDto } from "../../application/dto/upsert-lesson-attendance.dto";
 import { LessonAttendancesService } from "../../application/services/lesson-attendances.service";
 
-@ApiBearerAuth()
 @ApiTags("Chamada da Aula")
 @Roles("PROFESSOR")
 @Controller("lesson-attendances")

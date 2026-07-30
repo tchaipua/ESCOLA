@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import * as crypto from "crypto";
 import * as nodemailer from "nodemailer";
 import { PrismaService } from "../../../../prisma/prisma.service";
@@ -396,6 +401,7 @@ export class NotificationSettingsService {
       select: {
         id: true,
         email: true,
+        telegramChatId: true,
         telegramOptInAt: true,
       },
     });
@@ -427,6 +433,11 @@ export class NotificationSettingsService {
 
     if (Object.prototype.hasOwnProperty.call(dto, "telegramChatId")) {
       const telegramChatId = String(dto.telegramChatId || "").trim();
+      if (telegramChatId && !/^[1-9]\d{0,15}$/.test(telegramChatId)) {
+        throw new BadRequestException(
+          "O código do Telegram deve identificar uma conversa privada válida.",
+        );
+      }
       data.telegramChatId = telegramChatId || null;
       roleData.telegramChatId = telegramChatId || null;
     }
@@ -440,6 +451,17 @@ export class NotificationSettingsService {
     if (
       Object.prototype.hasOwnProperty.call(dto, "telegramOptInEnabled")
     ) {
+      const requestedChatId = Object.prototype.hasOwnProperty.call(
+        dto,
+        "telegramChatId",
+      )
+        ? String(dto.telegramChatId || "").trim()
+        : currentPerson.telegramChatId;
+      if (dto.telegramOptInEnabled && !requestedChatId) {
+        throw new BadRequestException(
+          "Valide e informe o código do Telegram antes de ativar notificações.",
+        );
+      }
       data.telegramOptInAt = dto.telegramOptInEnabled
         ? currentPerson.telegramOptInAt || new Date()
         : null;
@@ -448,29 +470,44 @@ export class NotificationSettingsService {
       roleData.telegramOptOutAt = data.telegramOptOutAt;
     }
 
-    const updatedPerson = await this.prisma.$transaction(async (tx) => {
-      const person = await tx.person.update({
-        where: { id: currentPerson.id },
-        data,
+    let updatedPerson;
+    try {
+      updatedPerson = await this.prisma.$transaction(async (tx) => {
+        const person = await tx.person.update({
+          where: { id: currentPerson.id },
+          data,
+        });
+
+        await Promise.all([
+          tx.teacher.updateMany({
+            where: { tenantId, personId: currentPerson.id },
+            data: roleData,
+          }),
+          tx.student.updateMany({
+            where: { tenantId, personId: currentPerson.id },
+            data: roleData,
+          }),
+          tx.guardian.updateMany({
+            where: { tenantId, personId: currentPerson.id },
+            data: roleData,
+          }),
+        ]);
+
+        return person;
       });
-
-      await Promise.all([
-        tx.teacher.updateMany({
-          where: { tenantId, personId: currentPerson.id },
-          data: roleData,
-        }),
-        tx.student.updateMany({
-          where: { tenantId, personId: currentPerson.id },
-          data: roleData,
-        }),
-        tx.guardian.updateMany({
-          where: { tenantId, personId: currentPerson.id },
-          data: roleData,
-        }),
-      ]);
-
-      return person;
-    });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictException(
+          "Este código do Telegram já está vinculado a outra pessoa desta escola.",
+        );
+      }
+      throw error;
+    }
 
     return {
       message: "Dados de notificação atualizados com sucesso.",

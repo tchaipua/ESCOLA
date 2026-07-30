@@ -30,6 +30,7 @@ import {
   canViewTeacherAccessData,
   sanitizeTeacherForViewer,
 } from "../../../../common/auth/entity-visibility";
+import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 
 @Injectable()
 export class TeachersService {
@@ -38,6 +39,7 @@ export class TeachersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
+    private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
   ) {}
 
   private async normalizeLegacyTeacherDateTimes(tenantId: string) {
@@ -400,6 +402,18 @@ export class TeachersService {
       }
     }
 
+    if (sanitizedDto.email && hashedPassword) {
+      await this.centralIdentityProvisioning.synchronize({
+        tenantId,
+        login: sanitizedDto.email,
+        email: sanitizedDto.email,
+        displayName: sanitizedDto.name,
+        credential: String(sanitizedDto.password),
+        branchCodes: branchSelection.explicitBranchCodes,
+        roleCode: accessProfile || "PROFESSOR",
+      });
+    }
+
     const refreshedTeacher = await this.findTeacherEntity(createdTeacher.id);
     return sanitizeTeacherForViewer(
       this.mapTeacherAccess(refreshedTeacher),
@@ -661,6 +675,18 @@ export class TeachersService {
           { userId: getTenantContext()!.userId },
         );
       }
+    }
+
+    if (emailForPasswordSync && sanitizedDto.password) {
+      await this.centralIdentityProvisioning.synchronize({
+        tenantId,
+        login: emailForPasswordSync,
+        email: emailForPasswordSync,
+        displayName: sanitizedDto.name || teacher.person?.name || "Professor",
+        credential: String(sanitizedDto.password),
+        branchCodes: branchSelection.explicitBranchCodes,
+        roleCode: accessProfile || "PROFESSOR",
+      });
     }
 
     const refreshedTeacher = await this.findTeacherEntity(updatedTeacher.id);

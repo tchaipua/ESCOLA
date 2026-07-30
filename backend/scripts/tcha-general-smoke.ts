@@ -4,11 +4,15 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { PrismaClient } from "@prisma/client";
 import { AppModule } from "../src/app.module";
-import { buildMasterPass } from "../src/common/auth/master-auth";
 import { createValidationException } from "../src/common/validation/validation-exception.factory";
+import { TenantsService } from "../src/modules/tenants/application/services/tenants.service";
+import {
+  getEscolaCsrfCookieName,
+  getSessionCookieName,
+} from "../src/common/security/financeiro-session";
 
 type Session = {
-  token: string;
+  cookies: Map<string, string>;
   user: {
     id: string;
     tenantId: string;
@@ -30,7 +34,8 @@ type TeacherSubjectAssignment = {
 };
 
 type RequestOptions = {
-  token?: string;
+  session?: Session;
+  cookies?: Map<string, string>;
   headers?: Record<string, string>;
   body?: unknown;
   expectedStatus?: number | number[];
@@ -38,7 +43,6 @@ type RequestOptions = {
 
 type LoginResponse = {
   status: string;
-  access_token?: string;
   user?: Session["user"];
   devVerificationLink?: string;
 };
@@ -49,7 +53,7 @@ const CONFIG = {
     document: "TCHA-20260326",
     adminName: "ADMIN TCHA",
     adminEmail: "ADMIN.TCHA@MSINFOR.COM",
-    adminPassword: "Admin001",
+    adminPassword: "TchaAdmin#2026",
     email: "CONTATO.TCHA@MSINFOR.COM",
     city: "SAO PAULO",
     state: "SP",
@@ -196,9 +200,24 @@ async function requestJson<T>(
   const expectedStatuses = Array.isArray(options.expectedStatus)
     ? options.expectedStatus
     : [options.expectedStatus ?? (method === "POST" ? 201 : 200)];
+  const cookies = options.session?.cookies || options.cookies;
+  const cookieHeader = cookies
+    ? Array.from(cookies.entries())
+        .map(([name, value]) => `${name}=${value}`)
+        .join("; ")
+    : "";
+  const isUnsafe = !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
+  const csrfToken = cookies?.get(getEscolaCsrfCookieName()) || "";
   const headers: Record<string, string> = {
     ...(options.body ? { "content-type": "application/json" } : {}),
-    ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+    ...(cookieHeader ? { cookie: cookieHeader } : {}),
+    ...(options.session && isUnsafe
+      ? {
+          origin: process.env.FRONTEND_URL || "http://127.0.0.1:3000",
+          "sec-fetch-site": "same-origin",
+          "x-msinfor-csrf": csrfToken,
+        }
+      : {}),
     ...(options.headers || {}),
   };
 
@@ -207,6 +226,19 @@ async function requestJson<T>(
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
+  const setCookieValues =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie") || ""].filter(Boolean);
+  for (const setCookie of setCookieValues) {
+    const [nameValue] = setCookie.split(";", 1);
+    const separator = nameValue.indexOf("=");
+    if (separator < 1 || !cookies) continue;
+    const name = nameValue.slice(0, separator).trim();
+    const value = nameValue.slice(separator + 1).trim();
+    if (value) cookies.set(name, value);
+    else cookies.delete(name);
+  }
   const rawText = await response.text();
   const payload = rawText ? JSON.parse(rawText) : null;
 
@@ -225,8 +257,10 @@ async function login(
   password: string,
   tenantId: string,
 ) {
+  const cookies = new Map<string, string>();
   const doLogin = () =>
     requestJson<LoginResponse>(baseUrl, "POST", "/api/v1/auth/login", {
+      cookies,
       body: {
         email,
         password,
@@ -264,11 +298,18 @@ async function login(
   }
 
   assert(response.status === "SUCCESS", `Login não retornou SUCCESS para ${email}.`);
-  assert(response.access_token, `Login sem token para ${email}.`);
   assert(response.user, `Login sem usuário para ${email}.`);
+  assert(
+    cookies.has(getSessionCookieName()),
+    `Login sem cookie HttpOnly de sessão para ${email}.`,
+  );
+  assert(
+    cookies.has(getEscolaCsrfCookieName()),
+    `Login sem cookie CSRF para ${email}.`,
+  );
 
   return {
-    token: response.access_token,
+    cookies,
     user: response.user,
   } satisfies Session;
 }
@@ -302,21 +343,25 @@ async function bootstrapApp() {
   };
 }
 
-async function ensureTenantDoesNotExist(baseUrl: string) {
-  const tenants = await requestJson<
-    Array<{ id: string; name: string; document?: string | null }>
-  >(baseUrl, "GET", "/api/v1/tenants", {
-    headers: {
-      "x-msinfor-master-pass": buildMasterPass(new Date()),
+async function ensureTenantDoesNotExist(prisma: PrismaClient) {
+  const tenants = await prisma.tenant.findMany({
+    where: {
+      OR: [
+        { name: CONFIG.tenant.name },
+        {
+          branches: {
+            some: {
+              document: CONFIG.tenant.document,
+              canceledAt: null,
+            },
+          },
+        },
+      ],
     },
+    select: { id: true, name: true },
   });
 
-  const existing = tenants.find(
-    (tenant) =>
-      tenant.name === CONFIG.tenant.name ||
-      tenant.document === CONFIG.tenant.document,
-  );
-
+  const existing = tenants[0];
   if (existing) {
     throw new Error(
       `Já existe uma escola ${CONFIG.tenant.name} no banco alvo (${existing.id}). Interrompi para evitar duplicidade.`,
@@ -331,17 +376,11 @@ async function main() {
 
   try {
     console.log("[TCHA SMOKE] Iniciando preflight...");
-    await ensureTenantDoesNotExist(baseUrl);
+    await ensureTenantDoesNotExist(prisma);
 
     console.log("[TCHA SMOKE] Criando escola TCHA...");
-    const tenantCreation = await requestJson<{
-      tenant: { id: string; name: string; document?: string | null };
-      admin: { id: string; email: string };
-    }>(baseUrl, "POST", "/api/v1/tenants", {
-      headers: {
-        "x-msinfor-master-pass": buildMasterPass(new Date()),
-      },
-      body: {
+    const tenantCreation = await app.get(TenantsService).create(
+      {
         name: CONFIG.tenant.name,
         document: CONFIG.tenant.document,
         email: CONFIG.tenant.email,
@@ -351,7 +390,7 @@ async function main() {
         adminEmail: CONFIG.tenant.adminEmail,
         adminPassword: CONFIG.tenant.adminPassword,
       },
-    });
+    );
 
     const tenantId = tenantCreation.tenant.id;
     const adminSession = await login(
@@ -367,7 +406,7 @@ async function main() {
       "POST",
       "/api/v1/school-years",
       {
-        token: adminSession.token,
+        session: adminSession,
         body: {
           year: CONFIG.schoolYear.year,
           startDate: CONFIG.schoolYear.startDate,
@@ -381,7 +420,7 @@ async function main() {
     for (const item of CONFIG.series) {
       series.push(
         await requestJson<NamedEntity>(baseUrl, "POST", "/api/v1/series", {
-          token: adminSession.token,
+          session: adminSession,
           body: item,
         }),
       );
@@ -391,7 +430,7 @@ async function main() {
     for (const item of CONFIG.classes) {
       classes.push(
         await requestJson<NamedEntity>(baseUrl, "POST", "/api/v1/classes", {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             ...item,
             defaultMonthlyFee: 650,
@@ -416,7 +455,7 @@ async function main() {
           "POST",
           "/api/v1/series-classes",
           {
-            token: adminSession.token,
+            session: adminSession,
             body: item,
           },
         ),
@@ -427,7 +466,7 @@ async function main() {
     for (const name of CONFIG.subjects) {
       subjects.push(
         await requestJson<NamedEntity>(baseUrl, "POST", "/api/v1/subjects", {
-          token: adminSession.token,
+          session: adminSession,
           body: { name },
         }),
       );
@@ -438,7 +477,7 @@ async function main() {
     for (let index = 0; index < 12; index += 1) {
       teachers.push(
         await requestJson<NamedEntity>(baseUrl, "POST", "/api/v1/teachers", {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             name: `PROFESSOR ${pad(index + 1, 2)} TCHA`,
             birthDate: buildBirthDate(1980 + (index % 8), index + 1),
@@ -478,7 +517,7 @@ async function main() {
         "POST",
         `/api/v1/teachers/${teachers[item.teacherIndex].id}/subjects`,
         {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             subjectId: subjects[item.subjectIndex].id,
             hourlyRate: item.hourlyRate,
@@ -499,7 +538,7 @@ async function main() {
     for (let index = 0; index < 100; index += 1) {
       students.push(
         await requestJson<NamedEntity>(baseUrl, "POST", "/api/v1/students", {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             name: `ALUNO ${pad(index + 1, 3)} TCHA`,
             birthDate: buildBirthDate(2010 + (index % 5), index + 1),
@@ -523,7 +562,7 @@ async function main() {
         "PATCH",
         `/api/v1/students/${students[index].id}/series-class-assignment`,
         {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             seriesClassId: seriesClass.id,
           },
@@ -536,7 +575,7 @@ async function main() {
     for (let index = 0; index < 200; index += 1) {
       guardians.push(
         await requestJson<NamedEntity>(baseUrl, "POST", "/api/v1/guardians", {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             name: `RESPONSAVEL ${pad(index + 1, 3)} TCHA`,
             birthDate: buildBirthDate(1975 + (index % 10), index + 1),
@@ -562,7 +601,7 @@ async function main() {
         "POST",
         `/api/v1/guardians/${father.id}/students`,
         {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             studentId: students[index].id,
             kinship: "PAI",
@@ -575,7 +614,7 @@ async function main() {
         "POST",
         `/api/v1/guardians/${mother.id}/students`,
         {
-          token: adminSession.token,
+          session: adminSession,
           body: {
             studentId: students[index].id,
             kinship: "MAE",
@@ -612,7 +651,7 @@ async function main() {
             "POST",
             "/api/v1/class-schedule-items",
             {
-              token: adminSession.token,
+              session: adminSession,
               body: {
                 schoolYearId: schoolYear.id,
                 seriesClassId: seriesClasses[seriesClassIndex].id,
@@ -629,26 +668,54 @@ async function main() {
     }
 
     console.log("[TCHA SMOKE] Gerando 5 calendários anuais com recesso de julho...");
+    const existingCalendars = await requestJson<
+      Array<{
+        id: string;
+        schoolYearId: string;
+        seriesClassId: string;
+        canceledAt?: string | null;
+      }>
+    >(baseUrl, "GET", "/api/v1/lesson-calendars", {
+      session: adminSession,
+    });
+
     for (const seriesClass of seriesClasses) {
-      await requestJson(baseUrl, "POST", "/api/v1/lesson-calendars", {
-        token: adminSession.token,
-        body: {
-          schoolYearId: schoolYear.id,
-          seriesClassId: seriesClass.id,
-          periods: [
-            {
-              periodType: "AULA",
-              startDate: CONFIG.schoolYear.startDate,
-              endDate: CONFIG.schoolYear.endDate,
-            },
-            {
-              periodType: "INTERVALO",
-              startDate: CONFIG.schoolYear.intervalStart,
-              endDate: CONFIG.schoolYear.intervalEnd,
-            },
-          ],
+      const existingCalendar = existingCalendars.find(
+        (calendar) =>
+          !calendar.canceledAt &&
+          calendar.schoolYearId === schoolYear.id &&
+          calendar.seriesClassId === seriesClass.id,
+      );
+      const periods = [
+        {
+          periodType: "AULA",
+          startDate: CONFIG.schoolYear.startDate,
+          endDate: CONFIG.schoolYear.endDate,
         },
-      });
+        {
+          periodType: "INTERVALO",
+          startDate: CONFIG.schoolYear.intervalStart,
+          endDate: CONFIG.schoolYear.intervalEnd,
+        },
+      ];
+
+      await requestJson(
+        baseUrl,
+        existingCalendar ? "PATCH" : "POST",
+        existingCalendar
+          ? `/api/v1/lesson-calendars/${existingCalendar.id}`
+          : "/api/v1/lesson-calendars",
+        {
+          session: adminSession,
+          body: existingCalendar
+            ? { periods }
+            : {
+                schoolYearId: schoolYear.id,
+                seriesClassId: seriesClass.id,
+                periods,
+              },
+        },
+      );
     }
 
     console.log("[TCHA SMOKE] Simulando comunicação WEB <-> PWA...");
@@ -664,7 +731,7 @@ async function main() {
       "GET",
       "/api/v1/class-schedule-items/me",
       {
-        token: teacherSession.token,
+        session: teacherSession,
       },
     );
     assert(
@@ -710,7 +777,7 @@ async function main() {
       "GET",
       `/api/v1/lesson-events/my-agenda?date=${CONFIG.referenceDate}`,
       {
-        token: teacherSession.token,
+        session: teacherSession,
       },
     );
     assert(
@@ -723,7 +790,7 @@ async function main() {
       "GET",
       `/api/v1/lesson-events/my-calendar?referenceDate=${CONFIG.referenceDate}&view=MONTH`,
       {
-        token: teacherSession.token,
+        session: teacherSession,
       },
     );
     assert(
@@ -737,7 +804,7 @@ async function main() {
       "GET",
       `/api/v1/lesson-attendances/by-lesson-item/${simulatedLessonItem.id}`,
       {
-        token: teacherSession.token,
+        session: teacherSession,
       },
     );
     assert(
@@ -763,7 +830,7 @@ async function main() {
       "PUT",
       `/api/v1/lesson-attendances/by-lesson-item/${simulatedLessonItem.id}`,
       {
-        token: teacherSession.token,
+        session: teacherSession,
         body: attendancePayload,
       },
     );
@@ -773,7 +840,7 @@ async function main() {
       "POST",
       "/api/v1/lesson-events",
       {
-        token: teacherSession.token,
+        session: teacherSession,
         body: {
           lessonCalendarItemId: simulatedLessonItem.id,
           eventType: "PROVA",
@@ -806,9 +873,13 @@ async function main() {
         canceledAt: null,
       },
       include: {
-        student: true,
+        student: {
+          include: {
+            person: true,
+          },
+        },
       },
-      orderBy: [{ student: { name: "asc" } }],
+      orderBy: [{ student: { person: { name: "asc" } } }],
     });
     assert(classEnrollments.length > 0, "Não há alunos ativos na turma simulada.");
 
@@ -817,7 +888,7 @@ async function main() {
       "PUT",
       `/api/v1/lesson-assessments/by-event/${createdLessonEvent.id}`,
       {
-        token: teacherSession.token,
+        session: teacherSession,
         body: {
           title: "PROVA BIMESTRAL TCHA",
           description: "NOTAS LANÇADAS PELO SMOKE TEST",
@@ -848,7 +919,7 @@ async function main() {
       "GET",
       `/api/v1/lesson-calendars/school-calendar-events?referenceDate=${CONFIG.referenceDate}`,
       {
-        token: adminSession.token,
+        session: adminSession,
       },
     );
     const webSeesTeacherEvent = Array.isArray(webCalendarView.lessonItems)
@@ -864,7 +935,7 @@ async function main() {
     );
 
     const simulatedStudent = classEnrollments[0].student;
-    assert(simulatedStudent.email, "Aluno simulado sem email.");
+    assert(simulatedStudent.person?.email, "Aluno simulado sem email.");
 
     const guardianLink = await prisma.guardianStudent.findFirst({
       where: {
@@ -873,21 +944,28 @@ async function main() {
         canceledAt: null,
       },
       include: {
-        guardian: true,
+        guardian: {
+          include: {
+            person: true,
+          },
+        },
       },
-      orderBy: [{ guardian: { name: "asc" } }],
+      orderBy: [{ guardian: { person: { name: "asc" } } }],
     });
-    assert(guardianLink?.guardian.email, "Responsável simulado sem email.");
+    assert(
+      guardianLink?.guardian.person?.email,
+      "Responsável simulado sem email.",
+    );
 
     const studentSession = await login(
       baseUrl,
-      simulatedStudent.email,
+      simulatedStudent.person.email,
       CONFIG.passwords.student,
       tenantId,
     );
     const guardianSession = await login(
       baseUrl,
-      guardianLink.guardian.email,
+      guardianLink.guardian.person.email,
       CONFIG.passwords.guardian,
       tenantId,
     );
@@ -897,7 +975,7 @@ async function main() {
       "GET",
       "/api/v1/class-schedule-items/me",
       {
-        token: studentSession.token,
+        session: studentSession,
       },
     );
     assert(
@@ -910,7 +988,7 @@ async function main() {
       "GET",
       "/api/v1/class-schedule-items/me",
       {
-        token: guardianSession.token,
+        session: guardianSession,
       },
     );
     assert(
@@ -924,7 +1002,7 @@ async function main() {
       "GET",
       "/api/v1/students/me/pwa-summary",
       {
-        token: studentSession.token,
+        session: studentSession,
       },
     );
     assert(
@@ -937,7 +1015,7 @@ async function main() {
       "GET",
       "/api/v1/guardians/me/pwa-summary",
       {
-        token: guardianSession.token,
+        session: guardianSession,
       },
     );
     assert(
@@ -950,7 +1028,7 @@ async function main() {
       "GET",
       "/api/v1/notifications/my",
       {
-        token: studentSession.token,
+        session: studentSession,
       },
     );
     assert(studentNotifications.length > 0, "Aluno não recebeu notificações.");
@@ -960,7 +1038,7 @@ async function main() {
       "GET",
       "/api/v1/notifications/my/unread-summary",
       {
-        token: studentSession.token,
+        session: studentSession,
       },
     );
     assert(
@@ -976,7 +1054,7 @@ async function main() {
       "POST",
       "/api/v1/notifications/my/read-batch",
       {
-        token: studentSession.token,
+        session: studentSession,
         body: {
           ids: studentIdsToRead,
         },
@@ -993,7 +1071,7 @@ async function main() {
       "GET",
       "/api/v1/notifications/my/unread-summary",
       {
-        token: studentSession.token,
+        session: studentSession,
       },
     );
     assert(
@@ -1006,7 +1084,7 @@ async function main() {
       "GET",
       "/api/v1/notifications/my",
       {
-        token: guardianSession.token,
+        session: guardianSession,
       },
     );
     assert(
@@ -1019,7 +1097,7 @@ async function main() {
       "GET",
       "/api/v1/notifications/my/unread-summary",
       {
-        token: guardianSession.token,
+        session: guardianSession,
       },
     );
     assert(
@@ -1035,7 +1113,7 @@ async function main() {
       "POST",
       "/api/v1/notifications/my/read-batch",
       {
-        token: guardianSession.token,
+        session: guardianSession,
         body: {
           ids: guardianIdsToRead,
         },
@@ -1052,7 +1130,7 @@ async function main() {
       "GET",
       "/api/v1/notifications/my/unread-summary",
       {
-        token: guardianSession.token,
+        session: guardianSession,
       },
     );
     assert(
@@ -1116,12 +1194,15 @@ async function main() {
       prisma.notification.count({ where: { tenantId, canceledAt: null } }),
       prisma.student.findFirst({
         where: { tenantId, canceledAt: null },
+        include: { person: true },
       }),
       prisma.guardian.findFirst({
         where: { tenantId, canceledAt: null },
+        include: { person: true },
       }),
       prisma.teacher.findFirst({
         where: { tenantId, canceledAt: null },
+        include: { person: true },
       }),
     ]);
     const expectedLessonCalendarItemCount =
@@ -1151,9 +1232,21 @@ async function main() {
     assert(assessmentGradeCount >= 5, "Nenhuma nota foi persistida.");
     assert(attendanceCount >= classEnrollments.length, "A chamada não foi persistida.");
     assert(notificationCount > 0, "Nenhuma notificação foi persistida.");
-    assert(sampleStudent?.name === sampleStudent?.name.toUpperCase(), "Aluno fora do padrão uppercase.");
-    assert(sampleGuardian?.name === sampleGuardian?.name.toUpperCase(), "Responsável fora do padrão uppercase.");
-    assert(sampleTeacher?.name === sampleTeacher?.name.toUpperCase(), "Professor fora do padrão uppercase.");
+    assert(
+      sampleStudent?.person?.name ===
+        sampleStudent?.person?.name.toUpperCase(),
+      "Aluno fora do padrão uppercase.",
+    );
+    assert(
+      sampleGuardian?.person?.name ===
+        sampleGuardian?.person?.name.toUpperCase(),
+      "Responsável fora do padrão uppercase.",
+    );
+    assert(
+      sampleTeacher?.person?.name ===
+        sampleTeacher?.person?.name.toUpperCase(),
+      "Professor fora do padrão uppercase.",
+    );
 
     const teacherSubjectCounts = await prisma.teacherSubject.findMany({
       where: { tenantId, canceledAt: null },
@@ -1219,8 +1312,8 @@ async function main() {
       },
       simulatedUsers: {
         teacher: teachers[0].email,
-        student: simulatedStudent.email,
-        guardian: guardianLink.guardian.email,
+        student: simulatedStudent.person.email,
+        guardian: guardianLink.guardian.person.email,
       },
     };
 

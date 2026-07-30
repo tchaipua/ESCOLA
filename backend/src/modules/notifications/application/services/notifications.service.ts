@@ -5,6 +5,7 @@ import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
 import { ListMyNotificationsDto } from "../dto/list-my-notifications.dto";
 import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
+import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
 
 type RecipientType = "USER" | "TEACHER" | "STUDENT" | "GUARDIAN";
 
@@ -158,7 +159,10 @@ type TelegramConfiguration = {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly centralConfiguration: CentralTenantConfigurationService,
+  ) {}
 
   private tenantId() {
     return getTenantContext()!.tenantId;
@@ -170,78 +174,6 @@ export class NotificationsService {
 
   private branchCode() {
     return getTenantContext()?.branchCode;
-  }
-
-  private hasSmtpInformation(config?: Partial<SmtpConfiguration> | null) {
-    return !!(
-      config?.smtpHost ||
-      config?.smtpPort ||
-      config?.smtpTimeout ||
-      config?.smtpEmail ||
-      config?.smtpPassword
-    );
-  }
-
-  private parseEnvBoolean(value: string | undefined, defaultValue: boolean) {
-    if (value === undefined || value === null || value.trim() === "") {
-      return defaultValue;
-    }
-    const normalized = value.trim().toLowerCase();
-    return (
-      normalized === "true" ||
-      normalized === "1" ||
-      normalized === "yes" ||
-      normalized === "sim"
-    );
-  }
-
-  private parseEnvInteger(value: string | undefined) {
-    if (value === undefined || value === null || value.trim() === "") {
-      return null;
-    }
-    const parsed = Number(value);
-    return Number.isInteger(parsed) ? parsed : null;
-  }
-
-  private buildEnvSmtpConfiguration(
-    tenant: { id: string; name: string } | null,
-  ): SmtpConfiguration | null {
-    const smtpHost = process.env.SMTP_HOST?.trim() || "";
-    const smtpPort = this.parseEnvInteger(process.env.SMTP_PORT);
-    const smtpEmail = process.env.SMTP_EMAIL?.trim() || "";
-
-    if (!tenant || !smtpHost || !smtpPort || !smtpEmail) {
-      return null;
-    }
-
-    const smtpPassword = process.env.SMTP_PASSWORD?.trim() || null;
-    return {
-      id: tenant.id,
-      name: tenant.name,
-      smtpHost,
-      smtpPort,
-      smtpTimeout: this.parseEnvInteger(process.env.SMTP_TIMEOUT) || 60,
-      smtpAuthenticate: this.parseEnvBoolean(
-        process.env.SMTP_AUTHENTICATE,
-        !!smtpPassword,
-      ),
-      smtpSecure: this.parseEnvBoolean(
-        process.env.SMTP_SECURE,
-        smtpPort === 465,
-      ),
-      smtpEmail,
-      smtpPassword,
-    };
-  }
-
-  private hasTelegramInformation(
-    config?: Partial<TelegramConfiguration> | null,
-  ) {
-    return !!(
-      config?.telegramBotToken ||
-      config?.telegramBotUsername ||
-      config?.telegramEnabled !== undefined
-    );
   }
 
   private normalizeText(value: string) {
@@ -317,175 +249,64 @@ export class NotificationsService {
     }
   }
 
-  private async getTenantSmtpConfiguration(
-    seriesClassId?: string | null,
-  ): Promise<SmtpConfiguration | null> {
+  private async getTenantSmtpConfiguration(): Promise<SmtpConfiguration | null> {
     const branchCode = this.branchCode();
-    if (seriesClassId) {
-      const seriesClass = await this.prisma.seriesClass.findFirst({
-        where: {
-          id: seriesClassId,
-          tenantId: this.tenantId(),
-          canceledAt: null,
-          smtpEnabled: true,
-        },
-        select: {
-          id: true,
-          smtpHost: true,
-          smtpPort: true,
-          smtpTimeout: true,
-          smtpAuthenticate: true,
-          smtpSecure: true,
-          smtpAuthType: true,
-          smtpEmail: true,
-          smtpPassword: true,
-          smtpSenderName: true,
-          smtpReplyTo: true,
-          series: { select: { name: true } },
-          class: { select: { name: true } },
-        },
-      });
-
-      if (
-        seriesClass?.smtpHost &&
-        seriesClass.smtpPort &&
-        seriesClass.smtpEmail
-      ) {
-        return {
-          id: seriesClass.id,
-          name:
-            seriesClass.smtpSenderName ||
-            `${seriesClass.series?.name || "TURMA"} - ${seriesClass.class?.name || "ESCOLA"}`,
-          smtpHost: seriesClass.smtpHost,
-          smtpPort: seriesClass.smtpPort,
-          smtpTimeout: seriesClass.smtpTimeout,
-          smtpAuthenticate: seriesClass.smtpAuthenticate,
-          smtpSecure: seriesClass.smtpSecure,
-          smtpAuthType: seriesClass.smtpAuthType,
-          smtpEmail: seriesClass.smtpEmail,
-          smtpPassword: seriesClass.smtpPassword,
-          smtpSenderName: seriesClass.smtpSenderName,
-          smtpReplyTo: seriesClass.smtpReplyTo,
-        };
-      }
-    }
-
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        id: this.tenantId(),
-        canceledAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        smtpHost: true,
-        smtpPort: true,
-        smtpTimeout: true,
-        smtpAuthenticate: true,
-        smtpSecure: true,
-        smtpEmail: true,
-        smtpPassword: true,
-        branches:
-          branchCode && branchCode >= DEFAULT_BRANCH_CODE
-            ? {
-                where: { branchCode, canceledAt: null },
-                select: {
-                  smtpHost: true,
-                  smtpPort: true,
-                  smtpTimeout: true,
-                  smtpAuthenticate: true,
-                  smtpSecure: true,
-                  smtpEmail: true,
-                  smtpPassword: true,
-                },
-                take: 1,
-              }
-            : false,
-      },
-    });
-
-    if (!tenant) return null;
-
-    const branch = tenant.branches?.[0];
-    if (this.hasSmtpInformation(branch)) {
-      return {
-        id: tenant.id,
-        name: tenant.name,
-        smtpHost: branch.smtpHost,
-        smtpPort: branch.smtpPort,
-        smtpTimeout: branch.smtpTimeout,
-        smtpAuthenticate: branch.smtpAuthenticate,
-        smtpSecure: branch.smtpSecure,
-        smtpEmail: branch.smtpEmail,
-        smtpPassword: branch.smtpPassword,
-      };
-    }
-
-    const { branches: _branches, ...tenantSmtp } = tenant;
-    if (tenantSmtp.smtpHost && tenantSmtp.smtpPort && tenantSmtp.smtpEmail) {
-      return tenantSmtp;
-    }
-
-    return this.buildEnvSmtpConfiguration(tenant) || tenantSmtp;
+    const central = await this.centralConfiguration.findConfiguration(
+      this.tenantId(),
+      branchCode && branchCode >= DEFAULT_BRANCH_CODE
+        ? branchCode
+        : undefined,
+    );
+    const smtp = central.effective.smtp;
+    if (!smtp) return null;
+    const company = this.centralConfiguration.mergeCompany(
+      central.tenant.company,
+      central.branch?.company,
+    );
+    return {
+      id: central.branch?.id || central.tenant.id,
+      name:
+        smtp.fromName ||
+        company.tradeName ||
+        company.legalName ||
+        central.tenant.displayName,
+      smtpHost: smtp.host,
+      smtpPort: smtp.port,
+      smtpTimeout: smtp.timeout,
+      smtpAuthenticate: smtp.authenticate,
+      smtpSecure: smtp.secure,
+      smtpAuthType: smtp.authType,
+      smtpEmail: smtp.username || smtp.fromEmail,
+      smtpPassword: smtp.password,
+      smtpSenderName: smtp.fromName,
+      smtpReplyTo: smtp.replyTo,
+    };
   }
 
   private async getTenantTelegramConfiguration(): Promise<TelegramConfiguration | null> {
     const branchCode = this.branchCode();
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        id: this.tenantId(),
-        canceledAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        telegramEnabled: true,
-        telegramBotToken: true,
-        telegramBotUsername: true,
-        branches:
-          branchCode && branchCode >= DEFAULT_BRANCH_CODE
-            ? {
-                where: { branchCode, canceledAt: null, isActive: true },
-                select: {
-                  telegramEnabled: true,
-                  telegramBotToken: true,
-                  telegramBotUsername: true,
-                },
-                take: 1,
-              }
-            : false,
-      },
-    });
-
-    if (!tenant) return null;
-
-    const branch = tenant.branches?.[0];
-    if (this.hasTelegramInformation(branch)) {
-      return {
-        id: tenant.id,
-        name: tenant.name,
-        telegramEnabled: branch.telegramEnabled,
-        telegramBotToken: branch.telegramBotToken,
-        telegramBotUsername: branch.telegramBotUsername,
-      };
-    }
-
-    if (tenant.telegramEnabled && tenant.telegramBotToken) {
-      const { branches: _branches, ...tenantTelegram } = tenant;
-      return tenantTelegram;
-    }
-
-    if (process.env.TELEGRAM_BOT_TOKEN) {
-      return {
-        id: tenant.id,
-        name: tenant.name,
-        telegramEnabled: true,
-        telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
-        telegramBotUsername: process.env.TELEGRAM_BOT_USERNAME || null,
-      };
-    }
-
-    return null;
+    const central = await this.centralConfiguration.findConfiguration(
+      this.tenantId(),
+      branchCode && branchCode >= DEFAULT_BRANCH_CODE
+        ? branchCode
+        : undefined,
+    );
+    const telegram = central.effective.telegram;
+    if (!telegram?.enabled || !telegram.botToken) return null;
+    const company = this.centralConfiguration.mergeCompany(
+      central.tenant.company,
+      central.branch?.company,
+    );
+    return {
+      id: central.branch?.id || central.tenant.id,
+      name:
+        company.tradeName ||
+        company.legalName ||
+        central.tenant.displayName,
+      telegramEnabled: telegram.enabled,
+      telegramBotToken: telegram.botToken,
+      telegramBotUsername: telegram.botUsername || null,
+    };
   }
 
   private buildNotificationTitle(payload: LessonEventNotificationPayload) {
@@ -722,9 +543,7 @@ export class NotificationsService {
       return { sent: false, count: 0 };
     }
 
-    const tenant = await this.getTenantSmtpConfiguration(
-      payload.lessonItem.seriesClassId,
-    );
+    const tenant = await this.getTenantSmtpConfiguration();
     if (!tenant?.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) {
       return { sent: false, count: 0 };
     }
@@ -1017,9 +836,7 @@ export class NotificationsService {
       return false;
     }
 
-    const tenant = await this.getTenantSmtpConfiguration(
-      payload.lessonItem.seriesClassId,
-    );
+    const tenant = await this.getTenantSmtpConfiguration();
     if (!tenant?.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) {
       return false;
     }

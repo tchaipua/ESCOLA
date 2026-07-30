@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
   ConflictException,
@@ -30,11 +31,6 @@ import {
 } from "../../../../common/auth/access-profiles";
 import {
   isMasterLoginIdentifier,
-  isValidMasterPass,
-  MASTER_LOGIN_USERNAME,
-  MASTER_PERMISSIONS,
-  MASTER_ROLE,
-  MASTER_USER_ID,
 } from "../../../../common/auth/master-auth";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import { GlobalSettingsService } from "../../../global-settings/application/services/global-settings.service";
@@ -45,11 +41,28 @@ import {
   SHARED_BRANCH_CODE,
 } from "../../../../common/tenant/branch.constants";
 import {
-  listTenantBranches,
   mapTenantBranchSummary,
 } from "../../../../common/tenant/tenant-branches";
+import {
+  isCentralIdentityEnabled,
+} from "../../../../common/security/security-config";
+import {
+  type CentralIdentityResolution,
+  MsInforCentralSettingsClient,
+} from "../../../../integrations/msinfor-central/msinfor-central-settings.client";
+import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
 
 type AccountModelType = "user" | "teacher" | "student" | "guardian";
+
+export const AUTH_SESSION_TOKEN = Symbol("AUTH_SESSION_TOKEN");
+
+export function readAuthSessionToken(result: unknown): string {
+  if (!result || typeof result !== "object") return "";
+  const value = (result as { [AUTH_SESSION_TOKEN]?: unknown })[
+    AUTH_SESSION_TOKEN
+  ];
+  return typeof value === "string" ? value : "";
+}
 
 type AccountLookup = {
   id: string;
@@ -69,13 +82,6 @@ type AccountLookup = {
     name: string;
     logoUrl?: string | null;
     branches?: Array<{ logoUrl?: string | null }>;
-    smtpHost?: string | null;
-    smtpPort?: number | null;
-    smtpTimeout?: number | null;
-    smtpSecure?: boolean | null;
-    smtpAuthenticate?: boolean | null;
-    smtpEmail?: string | null;
-    smtpPassword?: string | null;
   };
 };
 
@@ -93,11 +99,7 @@ type LoginAccountSelection = {
   };
 };
 
-type TenantSelectionSummary = {
-  id: string;
-  name: string;
-  logoUrl?: string | null;
-};
+const AUTH_SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -106,6 +108,8 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly globalSettingsService: GlobalSettingsService,
+    private readonly centralIdentity: MsInforCentralSettingsClient,
+    private readonly centralConfiguration: CentralTenantConfigurationService,
   ) {}
 
   private normalizeEmailVariants(email: string): string[] {
@@ -152,13 +156,6 @@ export class AuthService {
         select: { logoUrl: true },
         take: 1,
       },
-      smtpHost: true,
-      smtpPort: true,
-      smtpTimeout: true,
-      smtpSecure: true,
-      smtpAuthenticate: true,
-      smtpEmail: true,
-      smtpPassword: true,
     } as const;
     const baseSelect = {
       id: true,
@@ -345,7 +342,11 @@ export class AuthService {
       email: account.email,
       modelType: account.modelType,
       tenant: account.tenant
-        ? { id: account.tenant.id, name: account.tenant.name }
+        ? {
+            id: account.tenant.id,
+            name: account.tenant.name,
+            logoUrl: this.getTenantLogoUrl(account.tenant),
+          }
         : undefined,
     };
   }
@@ -392,13 +393,13 @@ export class AuthService {
     modelType: AccountModelType,
     userId: string,
     tenantId: string,
-  ): Promise<{ email: string | null } | null> {
+  ): Promise<{ email: string | null; role: string } | null> {
     const where = { id: userId, tenantId };
     switch (modelType) {
       case "user":
         return this.prisma.user.findFirst({
           where,
-          select: { email: true },
+          select: { email: true, role: true },
         });
       case "teacher":
         return this.prisma.teacher
@@ -406,21 +407,42 @@ export class AuthService {
             where,
             select: { person: { select: { email: true } } },
           })
-          .then((record) => ({ email: record?.person?.email ?? null }));
+          .then((record) =>
+            record
+              ? {
+                  email: record.person?.email ?? null,
+                  role: "PROFESSOR",
+                }
+              : null,
+          );
       case "student":
         return this.prisma.student
           .findFirst({
             where,
             select: { person: { select: { email: true } } },
           })
-          .then((record) => ({ email: record?.person?.email ?? null }));
+          .then((record) =>
+            record
+              ? {
+                  email: record.person?.email ?? null,
+                  role: "ALUNO",
+                }
+              : null,
+          );
       case "guardian":
         return this.prisma.guardian
           .findFirst({
             where,
             select: { person: { select: { email: true } } },
           })
-          .then((record) => ({ email: record?.person?.email ?? null }));
+          .then((record) =>
+            record
+              ? {
+                  email: record.person?.email ?? null,
+                  role: "RESPONSAVEL",
+                }
+              : null,
+          );
       default:
         return null;
     }
@@ -504,19 +526,21 @@ export class AuthService {
     modelType?: AccountModelType | "master";
   }) {
     return (
-      account.modelType === "master" ||
       String(account.role || "")
         .trim()
-        .toUpperCase() === "ADMIN" ||
-      String(account.role || "")
-        .trim()
-        .toUpperCase() === MASTER_ROLE
+        .toUpperCase() === "ADMIN"
     );
   }
 
   private async listSelectableBranchesForTenant(tenantId: string) {
-    const branches = await listTenantBranches(this.prisma, tenantId);
-    return branches.filter((branch) => branch.isActive);
+    const branches = await this.centralConfiguration.listBranches(tenantId);
+    return branches.map((branch) => ({
+      id: branch.id,
+      branchCode: branch.branchCode,
+      name: branch.displayName,
+      logoUrl: branch.company.logoReference || null,
+      isActive: true,
+    }));
   }
 
   private async listAllowedBranchesForAccount(account: AccountLookup) {
@@ -684,28 +708,6 @@ export class AuthService {
     })[0];
   }
 
-  private async listMasterTenants(): Promise<TenantSelectionSummary[]> {
-    const tenants = await this.prisma.tenant.findMany({
-      where: { canceledAt: null },
-      select: {
-        id: true,
-        name: true,
-        branches: {
-          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
-          select: { logoUrl: true },
-          take: 1,
-        },
-      },
-      orderBy: { name: "asc" },
-    });
-
-    return tenants.map((tenant) => ({
-      id: tenant.id,
-      name: tenant.name,
-      logoUrl: tenant.branches[0]?.logoUrl ?? null,
-    }));
-  }
-
   private async loadEmailCredential(email?: string | null) {
     return this.sharedProfilesService.getOrCreateEmailCredentialFromLegacy(
       email,
@@ -835,133 +837,15 @@ export class AuthService {
     return response;
   }
 
-  async login(loginDto: LoginDto) {
-    const normalizedIdentifier = loginDto.email.trim().toUpperCase();
-
-    if (isMasterLoginIdentifier(normalizedIdentifier)) {
-      if (!isValidMasterPass(loginDto.password)) {
-        throw new UnauthorizedException("SENHA MASTER INVÁLIDA");
-      }
-
-      const availableTenants = await this.listMasterTenants();
-
-      if (!loginDto.tenantId) {
-        if (availableTenants.length === 0) {
-          throw new NotFoundException(
-            "Nenhuma escola cadastrada para acesso master.",
-          );
-        }
-
-        return {
-          status: "MULTIPLE_TENANTS",
-          tenants: availableTenants,
-        };
-      }
-
-      const selectedTenant =
-        availableTenants.find((tenant) => tenant.id === loginDto.tenantId) ||
-        null;
-
-      if (!selectedTenant) {
-        throw new UnauthorizedException(
-          "Escola inválida para o acesso master.",
-        );
-      }
-
-      const masterBranches = await this.listSelectableBranchesForTenant(
-        selectedTenant.id,
-      );
-      const hasRequestedBranch =
-        loginDto.branchCode !== undefined &&
-        loginDto.branchCode !== null &&
-        String(loginDto.branchCode).trim() !== "";
-
-      if (!hasRequestedBranch && masterBranches.length > 1) {
-        return {
-          status: "MULTIPLE_BRANCHES",
-          tenant: selectedTenant,
-          account: null,
-          branches: masterBranches.map(mapTenantBranchSummary),
-        };
-      }
-
-      const masterBranchCode = hasRequestedBranch
-        ? normalizeBranchCode(loginDto.branchCode, DEFAULT_BRANCH_CODE)
-        : masterBranches[0]?.branchCode || DEFAULT_BRANCH_CODE;
-
-      if (
-        masterBranches.length > 0 &&
-        !masterBranches.some((branch) => branch.branchCode === masterBranchCode)
-      ) {
-        throw new UnauthorizedException(
-          "Filial inválida para o acesso master.",
-        );
-      }
-
-      const payload = {
-        userId: MASTER_USER_ID,
-        tenantId: selectedTenant.id,
-        branchCode: masterBranchCode,
-        role: MASTER_ROLE,
-        permissions: MASTER_PERMISSIONS,
-        branchAccessCodes: masterBranches.map((branch) => branch.branchCode),
-        canAccessAllBranches: true,
-        isMaster: true,
-        name: MASTER_LOGIN_USERNAME,
-        modelType: "master",
-      };
-
-      return {
-        status: "SUCCESS",
-        access_token: this.jwtService.sign(payload),
-        user: {
-          id: MASTER_USER_ID,
-          tenantId: selectedTenant.id,
-          branchCode: masterBranchCode,
-          role: MASTER_ROLE,
-          permissions: MASTER_PERMISSIONS,
-          branchAccessCodes: masterBranches.map((branch) => branch.branchCode),
-          canAccessAllBranches: true,
-          name: MASTER_LOGIN_USERNAME,
-          email: MASTER_LOGIN_USERNAME,
-          modelType: "master",
-          isMaster: true,
-          tenant: selectedTenant,
-        },
-      };
-    }
-
-    const accounts = await this.findAccountByEmail(loginDto.email);
-
-    if (accounts.length === 0) {
-      throw new UnauthorizedException(
-        `USUÁRIO NÃO LOCALIZADO.|${loginDto.email}`,
-      );
-    }
-
-    const credential = await this.loadEmailCredential(loginDto.email);
-    if (!credential?.passwordHash) {
-      throw new UnauthorizedException(
-        "ESTE E-MAIL AINDA NÃO POSSUI UMA SENHA DE ACESSO CONFIGURADA. USE A OPÇÃO ESQUECI A SENHA PARA CRIAR SUA SENHA E ENTRAR NO SISTEMA.",
-      );
-    }
-
-    const isPasswordValid = await bcrypt.compare(
-      loginDto.password,
-      credential.passwordHash,
-    );
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException(
-        `SENHA INVÁLIDA PARA O USUÁRIO|${accounts[0].name.toUpperCase()}`,
-      );
-    }
-
-    if (!credential.emailVerified) {
-      return this.triggerEmailVerification(loginDto.email, accounts[0]?.name);
-    }
-
-    const validUsers = accounts;
+  private async completeAuthenticatedLogin(
+    validUsers: AccountLookup[],
+    loginDto: LoginDto,
+    options: {
+      forcedLocalTenantId?: string;
+      exposedTenantId?: string;
+      centralIdentityAccountId?: string;
+    } = {},
+  ) {
     const requestedBranchCode =
       loginDto.branchCode !== undefined &&
       loginDto.branchCode !== null &&
@@ -975,6 +859,7 @@ export class AuthService {
     );
 
     if (
+      !options.forcedLocalTenantId &&
       !loginDto.accountId &&
       !loginDto.accountType &&
       !loginDto.tenantId &&
@@ -987,6 +872,7 @@ export class AuthService {
     }
 
     const selectedTenantId =
+      options.forcedLocalTenantId ||
       loginDto.tenantId ||
       (validTenantIds.length === 1 ? validTenantIds[0] : null);
 
@@ -1009,13 +895,24 @@ export class AuthService {
     }
 
     const selectableAccounts = validUsersForTenant;
+    const exposeSelection = (account: AccountLookup) => {
+      const selection = this.toLoginSelection(account);
+      if (!options.exposedTenantId) return selection;
+      return {
+        ...selection,
+        tenant: {
+          ...selection.tenant,
+          id: options.exposedTenantId,
+        },
+      };
+    };
 
     if (!loginDto.accountId && !loginDto.accountType) {
       if (selectableAccounts.length > 1) {
         return {
           status: "MULTIPLE_ACCOUNTS",
           accounts: this.sortLoginSelections(selectableAccounts).map(
-            (account) => this.toLoginSelection(account),
+            exposeSelection,
           ),
         };
       }
@@ -1050,7 +947,7 @@ export class AuthService {
       return {
         status: "MULTIPLE_ACCOUNTS",
         accounts: this.sortLoginSelections(selectableAccounts).map((account) =>
-          this.toLoginSelection(account),
+          exposeSelection(account),
         ),
       };
     }
@@ -1070,11 +967,11 @@ export class AuthService {
       return {
         status: "MULTIPLE_BRANCHES",
         tenant: {
-          id: userToLogin.tenant.id,
+          id: options.exposedTenantId || userToLogin.tenant.id,
           name: userToLogin.tenant.name,
           logoUrl: this.getTenantLogoUrl(userToLogin.tenant),
         },
-        account: this.toLoginSelection(userToLogin),
+        account: exposeSelection(userToLogin),
         branches: branchResolution.allowedBranches.map(mapTenantBranchSummary),
       };
     }
@@ -1093,18 +990,398 @@ export class AuthService {
       canAccessAllBranches: this.canAccountAccessAllBranches(userToLogin),
       name: userToLogin.name,
       modelType: userToLogin.modelType,
+      identityProvider: options.centralIdentityAccountId
+        ? "MSINFOR_CENTRAL"
+        : "LOCAL",
     };
 
+    const accessToken = await this.issueAuthSessionToken(payload);
     return {
       status: "SUCCESS",
-      access_token: this.jwtService.sign(payload),
+      [AUTH_SESSION_TOKEN]: accessToken,
       user: {
         ...this.toSafeLoginUser(userToLogin, branchResolution.branchCode),
         branchAccessCodes: branchResolution.allowedBranches.map(
           (branch) => branch.branchCode,
         ),
+        identityProvider: options.centralIdentityAccountId
+          ? "MSINFOR_CENTRAL"
+          : "LOCAL",
       },
     };
+  }
+
+  private getMaximumActiveSessions() {
+    const configured = Number(
+      process.env.AUTH_SESSION_MAX_PER_ACCOUNT || 10,
+    );
+    if (
+      !Number.isSafeInteger(configured) ||
+      configured < 1 ||
+      configured > 50
+    ) {
+      throw new ServiceUnavailableException(
+        "Limite de sessões autenticadas inválido.",
+      );
+    }
+    return configured;
+  }
+
+  private async issueAuthSessionToken(payload: {
+    userId: string;
+    tenantId: string;
+    branchCode: number;
+    modelType: AccountModelType;
+    identityProvider: string;
+    [key: string]: unknown;
+  }) {
+    const jti = crypto.randomBytes(32).toString("base64url");
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + AUTH_SESSION_LIFETIME_MS);
+    const maximumSessions = this.getMaximumActiveSessions();
+    const prismaClient = this.getCrossTenantPrisma() as any;
+    const persist = async (database: any) => {
+      await database.authSession.create({
+        data: {
+          jti,
+          tenantId: payload.tenantId,
+          userId: payload.userId,
+          modelType: payload.modelType,
+          branchCode: payload.branchCode,
+          identityProvider: payload.identityProvider,
+          expiresAt,
+        },
+      });
+      const overflow = await database.authSession.findMany({
+        where: {
+          tenantId: payload.tenantId,
+          userId: payload.userId,
+          modelType: payload.modelType,
+          canceledAt: null,
+          expiresAt: { gt: now },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: maximumSessions,
+        select: { id: true },
+      });
+      if (overflow.length) {
+        await database.authSession.updateMany({
+          where: { id: { in: overflow.map((session: any) => session.id) } },
+          data: {
+            canceledAt: now,
+            canceledBy: "SESSION_LIMIT",
+          },
+        });
+      }
+    };
+    if (typeof prismaClient.$transaction === "function") {
+      await prismaClient.$transaction(async (transaction: any) =>
+        persist(transaction),
+      );
+    } else {
+      await persist(prismaClient);
+    }
+    return this.jwtService.sign({ ...payload, jti });
+  }
+
+  async logout(currentUser: ICurrentUser) {
+    if (!currentUser.sessionJti) {
+      throw new UnauthorizedException("Sessão revogável inválida.");
+    }
+    const prismaClient = this.getCrossTenantPrisma();
+    await prismaClient.authSession.updateMany({
+      where: {
+        jti: currentUser.sessionJti,
+        tenantId: currentUser.tenantId,
+        userId: currentUser.userId,
+        canceledAt: null,
+      },
+      data: {
+        canceledAt: new Date(),
+        canceledBy: currentUser.userId,
+      },
+    });
+    return { status: "SUCCESS" };
+  }
+
+  private assertCentralRouteBelongsToThisDatabase(
+    resolution: CentralIdentityResolution,
+  ) {
+    const configuredAlias = String(
+      process.env.MSINFOR_DATABASE_ALIAS || "",
+    )
+      .trim()
+      .toUpperCase();
+    if (
+      !configuredAlias ||
+      configuredAlias !== resolution.databaseAlias.toUpperCase()
+    ) {
+      throw new ServiceUnavailableException(
+        "A empresa selecionada não está disponível neste banco de dados.",
+      );
+    }
+  }
+
+  private async ensureMasterProjection(
+    tenantId: string,
+    roleCode: string,
+  ) {
+    if (roleCode.trim().toUpperCase() !== "ADMIN") {
+      throw new ForbiddenException(
+        "O usuário Master não possui o perfil administrativo exigido.",
+      );
+    }
+    const prismaClient = this.getCrossTenantPrisma();
+    const existing = await prismaClient.user.findFirst({
+      where: {
+        tenantId,
+        email: { in: this.normalizeEmailVariants("MSINFOR") },
+        canceledAt: null,
+      },
+      select: { id: true, role: true },
+    });
+    if (existing && existing.role.trim().toUpperCase() !== "ADMIN") {
+      throw new ForbiddenException(
+        "A projeção local do usuário Master possui um perfil incompatível.",
+      );
+    }
+    if (!existing) {
+      await prismaClient.user.create({
+        data: {
+          tenantId,
+          branchCode: DEFAULT_BRANCH_CODE,
+          name: "MSINFOR",
+          email: "MSINFOR",
+          password: null,
+          role: "ADMIN",
+          accessProfile: getDefaultAccessProfileForRole("ADMIN"),
+          permissions: null,
+          createdBy: "CENTRAL_MASTER_PROJECTION",
+          updatedBy: "CENTRAL_MASTER_PROJECTION",
+        },
+      });
+    }
+  }
+
+  private async loginWithCentralIdentity(loginDto: LoginDto) {
+    if (!this.centralIdentity) {
+      throw new ServiceUnavailableException(
+        "A identidade do MSINFOR Central não está configurada.",
+      );
+    }
+    let identity = await this.centralIdentity.authenticateAndResolve(
+      loginDto.email,
+      loginDto.password,
+      loginDto.tenantId,
+      loginDto.branchCode,
+    );
+    let discoveredRole: string | undefined;
+
+    if ("memberships" in identity) {
+      if (identity.status === "MULTIPLE_TENANTS") {
+        return {
+          status: "MULTIPLE_TENANTS",
+          tenants: identity.memberships.map((membership) => ({
+            id: membership.tenantId,
+            name: membership.tenantDisplayName,
+            logoUrl: null,
+            documentNumber: membership.tenantDocumentNumber,
+            city: membership.tenantCity,
+          })),
+        };
+      }
+      const membership = identity.memberships[0];
+      discoveredRole = membership.roleCode;
+      identity = await this.centralIdentity.authenticateAndResolve(
+        loginDto.email,
+        loginDto.password,
+        membership.tenantId,
+        loginDto.branchCode,
+      );
+    }
+    if ("memberships" in identity) {
+      throw new ServiceUnavailableException(
+        "A Central não resolveu a empresa selecionada.",
+      );
+    }
+    if (
+      discoveredRole &&
+      discoveredRole.toUpperCase() !== identity.roleCode.toUpperCase()
+    ) {
+      throw new ForbiddenException(
+        "O papel da identidade central mudou durante a autenticação.",
+      );
+    }
+
+    this.assertCentralRouteBelongsToThisDatabase(identity);
+    const crossTenantPrisma = this.getCrossTenantPrisma();
+    const localTenant = await crossTenantPrisma.tenant.findFirst({
+      where: {
+        centralTenantId: identity.tenantId,
+        canceledAt: null,
+      },
+      select: {
+        id: true,
+        centralTenantId: true,
+      },
+    });
+    if (!localTenant?.centralTenantId) {
+      throw new ServiceUnavailableException(
+        "A empresa autenticada ainda não foi provisionada neste banco de dados.",
+      );
+    }
+
+    const normalizedCentralRole = identity.roleCode.trim().toUpperCase();
+    if (isMasterLoginIdentifier(loginDto.email.trim().toUpperCase())) {
+      await this.ensureMasterProjection(localTenant.id, normalizedCentralRole);
+    }
+    const centralTenantConfiguration =
+      await this.centralConfiguration.findConfiguration(localTenant.id);
+    const centralCompany = centralTenantConfiguration.tenant.company;
+    const centralTenantName =
+      centralCompany.tradeName ||
+      centralCompany.legalName ||
+      centralTenantConfiguration.tenant.displayName;
+    const localAccounts = (await this.findAccountByEmail(loginDto.email))
+      .filter(
+        (account) =>
+          account.tenantId === localTenant.id &&
+          account.role.trim().toUpperCase() === normalizedCentralRole,
+      )
+      .map((account) => ({
+        ...account,
+        branchAccessCodes: identity.branchCodes,
+        tenant: {
+          ...account.tenant,
+          name: centralTenantName,
+          logoUrl: centralCompany.logoReference || null,
+          branches: [],
+        },
+      }));
+    if (!localAccounts.length) {
+      throw new ForbiddenException(
+        "O vínculo central não corresponde a um acesso local ativo.",
+      );
+    }
+
+    const existingCredential =
+      await this.sharedProfilesService.findEmailCredential(loginDto.email);
+    if (
+      existingCredential?.centralIdentityAccountId &&
+      existingCredential.centralIdentityAccountId.toLowerCase() !==
+        identity.account.id.toLowerCase()
+    ) {
+      throw new UnauthorizedException(
+        "Não foi possível autenticar a conta.",
+      );
+    }
+    await this.sharedProfilesService.bindCentralIdentity(
+      loginDto.email,
+      identity.account.id,
+      identity.account.id,
+    );
+
+    return this.completeAuthenticatedLogin(
+      localAccounts,
+      {
+        ...loginDto,
+        tenantId: localTenant.id,
+      },
+      {
+        forcedLocalTenantId: localTenant.id,
+        exposedTenantId: identity.tenantId,
+        centralIdentityAccountId: identity.account.id,
+      },
+    );
+  }
+
+  private async loginWithLocalIdentity(loginDto: LoginDto) {
+    const accounts = await this.findAccountByEmail(loginDto.email);
+    if (accounts.length === 0) {
+      throw new UnauthorizedException(
+        `USUÁRIO NÃO LOCALIZADO.|${loginDto.email}`,
+      );
+    }
+
+    const credential = await this.loadEmailCredential(loginDto.email);
+    if (!credential?.passwordHash) {
+      throw new UnauthorizedException(
+        "ESTE E-MAIL AINDA NÃO POSSUI UMA SENHA DE ACESSO CONFIGURADA. USE A OPÇÃO ESQUECI A SENHA PARA CRIAR SUA SENHA E ENTRAR NO SISTEMA.",
+      );
+    }
+    if (
+      !(await bcrypt.compare(loginDto.password, credential.passwordHash))
+    ) {
+      throw new UnauthorizedException(
+        `SENHA INVÁLIDA PARA O USUÁRIO|${accounts[0].name.toUpperCase()}`,
+      );
+    }
+    if (!credential.emailVerified) {
+      return this.triggerEmailVerification(loginDto.email, accounts[0]?.name);
+    }
+    return this.completeAuthenticatedLogin(accounts, loginDto);
+  }
+
+  async login(loginDto: LoginDto) {
+    const isMasterLogin = isMasterLoginIdentifier(
+      String(loginDto.email || "").trim().toUpperCase(),
+    );
+    return isMasterLogin || isCentralIdentityEnabled()
+      ? this.loginWithCentralIdentity(loginDto)
+      : this.loginWithLocalIdentity(loginDto);
+  }
+
+  private async confirmCentralCredential(
+    userId: string,
+    tenantId: string,
+    modelType: AccountModelType,
+    credential: string,
+  ) {
+    if (!this.centralIdentity) {
+      throw new ServiceUnavailableException(
+        "A identidade do MSINFOR Central não está configurada.",
+      );
+    }
+    const currentAccount = await this.loadAccountById(
+      modelType,
+      userId,
+      tenantId,
+    );
+    if (!currentAccount?.email) {
+      throw new UnauthorizedException("Credencial inválida.");
+    }
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, canceledAt: null },
+      select: { centralTenantId: true },
+    });
+    if (!tenant?.centralTenantId) {
+      throw new ServiceUnavailableException(
+        "Empresa sem identidade central provisionada.",
+      );
+    }
+    const localCredential =
+      await this.sharedProfilesService.findEmailCredential(
+        currentAccount.email,
+      );
+    if (!localCredential?.centralIdentityAccountId) {
+      throw new UnauthorizedException("Credencial inválida.");
+    }
+    const resolution = await this.centralIdentity.authenticateAndResolve(
+      currentAccount.email,
+      credential,
+      tenant.centralTenantId,
+    );
+    if (
+      "memberships" in resolution ||
+      resolution.account.id.toLowerCase() !==
+        localCredential.centralIdentityAccountId.toLowerCase() ||
+      resolution.roleCode.toUpperCase() !==
+        currentAccount.role.trim().toUpperCase()
+    ) {
+      throw new UnauthorizedException("Credencial inválida.");
+    }
+    this.assertCentralRouteBelongsToThisDatabase(resolution);
+    return { status: "SUCCESS" as const };
   }
 
   async confirmPassword(
@@ -1122,13 +1399,20 @@ export class AuthService {
     }
 
     if (modelType === "master") {
-      if (!isValidMasterPass(password)) {
-        throw new UnauthorizedException("Senha inválida.");
-      }
-      return { status: "SUCCESS" };
+      throw new UnauthorizedException(
+        "Sessão administrativa legada não é aceita.",
+      );
     }
 
     const effectiveModel: AccountModelType = modelType || "user";
+    if (isCentralIdentityEnabled()) {
+      return this.confirmCentralCredential(
+        userId,
+        tenantId,
+        effectiveModel,
+        password,
+      );
+    }
     const currentAccount = await this.loadAccountById(
       effectiveModel,
       userId,
@@ -1170,13 +1454,20 @@ export class AuthService {
     }
 
     if (modelType === "master") {
-      if (!isValidMasterPass(normalizedPassword)) {
-        throw new UnauthorizedException("Senha inválida.");
-      }
-      return { status: "SUCCESS" };
+      throw new UnauthorizedException(
+        "Sessão administrativa legada não é aceita.",
+      );
     }
 
     const effectiveModel: AccountModelType = modelType || "user";
+    if (isCentralIdentityEnabled()) {
+      return this.confirmCentralCredential(
+        userId,
+        tenantId,
+        effectiveModel,
+        normalizedPassword,
+      );
+    }
     const currentAccount = await this.loadAccountById(
       effectiveModel,
       userId,
@@ -1205,14 +1496,31 @@ export class AuthService {
     return { status: "SUCCESS" };
   }
 
-  async confirmAdministratorPassword(tenantId: string | null, password: string) {
+  async confirmAdministratorPassword(
+    currentUser: ICurrentUser,
+    password: string,
+  ) {
     const normalizedPassword = String(password || "").trim();
+    const tenantId = currentUser.tenantId;
     if (!tenantId) throw new UnauthorizedException("Empresa inválida.");
     if (!normalizedPassword) throw new UnauthorizedException("Informe a senha para continuar.");
 
-    // Senha temporária exclusiva para testes locais; nunca é aceita em produção.
-    if (process.env.NODE_ENV !== "production" && normalizedPassword === "123") {
-      return { status: "SUCCESS", testMode: true };
+    if (isCentralIdentityEnabled()) {
+      if (
+        !["ADMIN", "SOFTHOUSE_ADMIN"].includes(
+          String(currentUser.role || "").trim().toUpperCase(),
+        )
+      ) {
+        throw new ForbiddenException(
+          "Somente o administrador autenticado pode confirmar esta operação.",
+        );
+      }
+      return this.confirmCentralCredential(
+        currentUser.userId,
+        tenantId,
+        (currentUser.modelType as AccountModelType | undefined) || "user",
+        normalizedPassword,
+      );
     }
 
     const administrators = await this.prisma.user.findMany({
@@ -1254,13 +1562,22 @@ export class AuthService {
     }
 
     if (modelType === "master") {
-      if (!isValidMasterPass(normalizedPassword)) {
-        throw new UnauthorizedException("Senha inválida.");
-      }
+      throw new UnauthorizedException(
+        "Sessão administrativa legada não é aceita.",
+      );
+    }
+
+    if (isCentralIdentityEnabled()) {
+      await this.confirmCentralCredential(
+        userId,
+        tenantId,
+        (modelType as AccountModelType | undefined) || "user",
+        normalizedPassword,
+      );
       return {
         status: "SUCCESS",
-        authorizedBy: "SUPERVISOR",
-        supervisorUserId: userId,
+        authorizedBy: "OPERADOR",
+        operatorUserId: userId,
       };
     }
 
@@ -1354,11 +1671,14 @@ export class AuthService {
     }
 
     if (modelType === "master") {
-      if (!isValidMasterPass(normalizedCurrentPassword)) {
-        throw new UnauthorizedException("Senha inválida.");
-      }
+      throw new UnauthorizedException(
+        "Sessão administrativa legada não é aceita.",
+      );
+    }
+
+    if (isCentralIdentityEnabled()) {
       throw new BadRequestException(
-        "Alteração de senha do master não disponível nesta tela.",
+        "A senha desta conta é administrada pelo MSINFOR Central.",
       );
     }
 
@@ -1421,6 +1741,11 @@ export class AuthService {
             });
 
     const normalizedPassword = String(registerDto.password || "").trim();
+    if (normalizedPassword && isCentralIdentityEnabled()) {
+      throw new BadRequestException(
+        "Cadastre a credencial da conta no MSINFOR Central.",
+      );
+    }
     let hashedPassword: string | null = null;
     if (normalizedPassword) {
       const salt = await bcrypt.genSalt(10);
@@ -1471,6 +1796,13 @@ export class AuthService {
   }
 
   async forgotPassword(forgotDto: ForgotPasswordDto) {
+    if (isCentralIdentityEnabled()) {
+      return {
+        status: "CENTRAL_IDENTITY_REQUIRED",
+        message:
+          "A recuperação de senha desta conta é feita no MSINFOR Central.",
+      };
+    }
     const accounts = await this.findAccountByEmail(forgotDto.email);
 
     if (accounts.length === 0) {
@@ -1544,6 +1876,11 @@ export class AuthService {
   }
 
   async resetPassword(resetDto: ResetPasswordDto) {
+    if (isCentralIdentityEnabled()) {
+      throw new BadRequestException(
+        "A redefinição de senha é feita no MSINFOR Central.",
+      );
+    }
     const hash = crypto
       .createHash("sha256")
       .update(resetDto.token)

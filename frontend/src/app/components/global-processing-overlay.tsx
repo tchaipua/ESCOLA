@@ -56,16 +56,10 @@ export default function GlobalProcessingOverlay() {
       if (destination.origin === window.location.origin && `${destination.pathname}${destination.search}` !== `${window.location.pathname}${window.location.search}`) show();
     };
 
-    const originalPushState = window.history.pushState.bind(window.history);
-    const originalReplaceState = window.history.replaceState.bind(window.history);
-    window.history.pushState = (...args) => { show(); return originalPushState(...args); };
-    window.history.replaceState = (...args) => { show(); return originalReplaceState(...args); };
     window.addEventListener('click', openForNavigation, true);
 
     return () => {
       window.fetch = originalFetch;
-      window.history.pushState = originalPushState;
-      window.history.replaceState = originalReplaceState;
       window.removeEventListener('click', openForNavigation, true);
       clearShowTimer();
     };

@@ -1,0 +1,1251 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// MODELS (COM AUDITORIA E SOFT DELETE)
+// ==========================================
+
+model Tenant {
+  id                String  @id @default(uuid())
+  name              String
+  centralTenantId   String? @unique
+  centralTenantCode String? @unique
+
+  // (DF) DADOS FINANCEIROS
+  interestRate                   Float?
+  penaltyRate                    Float?
+  penaltyValue                   Float?
+  penaltyGracePeriod             Int?
+  interestGracePeriod            Int? // (SMTP) GATEWAY DE MENSAGERIA E EMAILS
+  smtpHost                       String?
+  smtpPort                       Int?
+  smtpTimeout                    Int?
+  smtpAuthenticate               Boolean?
+  smtpSecure                     Boolean?
+  smtpAuthType                   String?
+  smtpEmail                      String?
+  smtpPassword                   String?
+  telegramEnabled                Boolean   @default(false)
+  telegramBotToken               String?
+  telegramBotUsername            String?
+  storageProviderAccessKeyId     String?
+  storageProviderSecretAccessKey String?
+  storageBucketName              String?
+  storageFolderName              String?
+  storageDefaultAcl              String?
+  storageDefaultExpiration       Int?
+  storageRegion                  String?
+  storageEndpoint                String?
+  storageCustomEndpoint          String?
+  storageCapacityGb              Float?
+  storageImagesFolderName        String?
+  storageDescription             String?
+
+  // Auditoria Obrigatória
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  users                       User[]
+  people                      Person[]
+  schoolYears                 SchoolYear[]
+  schoolYearPeriods           SchoolYearPeriod[]
+  schoolHolidays              SchoolHoliday[]
+  classes                     Class[]
+  series                      Series[]
+  seriesClasses               SeriesClass[]
+  students                    Student[]
+  enrollments                 Enrollment[]
+  guardians                   Guardian[]
+  guardianStudents            GuardianStudent[]
+  teachers                    Teacher[]
+  subjects                    Subject[]
+  teacherSubjects             TeacherSubject[]
+  teacherSubjectRateHistories TeacherSubjectRateHistory[]
+  schedules                   Schedule[]
+  classScheduleItems          ClassScheduleItem[]
+  lessonCalendars             LessonCalendar[]
+  lessonCalendarPeriods       LessonCalendarPeriod[]
+  lessonCalendarItems         LessonCalendarItem[]
+  lessonEvents                LessonEvent[]
+  lessonAssessments           LessonAssessment[]
+  lessonAssessmentGrades      LessonAssessmentGrade[]
+  lessonAttendances           LessonAttendance[]
+  notifications               Notification[]
+  communicationCampaigns      CommunicationCampaign[]
+  userPreferences             UserPreference[]
+  branches                    TenantBranch[]
+  financeSourceParameterAuditEvents FinanceSourceParameterAuditEvent[]
+  telegramProcessedUpdates          TelegramProcessedUpdate[]
+  telegramPendingActions            TelegramPendingAction[]
+  userBranchAccesses          UserBranchAccess[]
+  teacherBranchAccesses       TeacherBranchAccess[]
+  studentBranchAccesses       StudentBranchAccess[]
+  guardianBranchAccesses      GuardianBranchAccess[]
+
+  @@map("tenants")
+}
+
+model TenantBranch {
+  id                             String    @id @default(uuid())
+  tenantId                       String
+  branchCode                     Int
+  name                           String
+  logoUrl                        String?
+  document                       String?
+  rg                             String?
+  cpf                            String?
+  cnpj                           String?
+  nickname                       String?
+  corporateName                  String?
+  phone                          String?
+  whatsapp                       String?
+  cellphone1                     String?
+  cellphone2                     String?
+  email                          String?
+  emailVerified                  Boolean   @default(false)
+  emailVerifiedAt                DateTime?
+  emailVerificationToken         String?
+  emailVerificationExpires       DateTime?
+  zipCode                        String?
+  street                         String?
+  number                         String?
+  city                           String?
+  state                          String?
+  neighborhood                   String?
+  complement                     String?
+  stockControlMode               String    @default("BY_PRODUCT")
+  stockIntegerQuantityMode       String    @default("BY_PRODUCT")
+  stockLotControlMode            String    @default("BY_PRODUCT")
+  stockExpirationControlMode     String    @default("BY_PRODUCT")
+  stockGridControlMode           String    @default("BY_PRODUCT")
+  stockNegativeControlMode       String    @default("BY_PRODUCT")
+  allowSaleUnitPriceEdit         Boolean   @default(true)
+  allowSaleItemDiscount          Boolean   @default(true)
+  groupSameProduct               Boolean   @default(true)
+  allowProductImageEdit          Boolean   @default(true)
+  requirePasswordToRemoveSaleItems Boolean @default(false)
+  smtpHost                       String?
+  smtpPort                       Int?
+  smtpTimeout                    Int?
+  smtpAuthenticate               Boolean?
+  smtpSecure                     Boolean?
+  smtpAuthType                   String?
+  smtpEmail                      String?
+  smtpPassword                   String?
+  telegramEnabled                Boolean?
+  telegramBotToken               String?
+  telegramBotUsername            String?
+  telegramHeaderImageUrl         String?
+  storageProviderAccessKeyId     String?
+  storageProviderSecretAccessKey String?
+  storageBucketName              String?
+  storageFolderName              String?
+  storageDefaultAcl              String?
+  storageDefaultExpiration       Int?
+  storageRegion                  String?
+  storageEndpoint                String?
+  storageCustomEndpoint          String?
+  storageCapacityGb              Float?
+  storageImagesFolderName        String?
+  storageDescription             String?
+  isActive                       Boolean   @default(true)
+  createdAt                      DateTime  @default(now())
+  createdBy                      String?
+  updatedAt                      DateTime  @updatedAt
+  updatedBy                      String?
+  canceledAt                     DateTime?
+  canceledBy                     String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, branchCode])
+  @@index([tenantId, isActive, name])
+  @@index([emailVerificationToken])
+  @@map("tenant_branches")
+}
+
+model FinanceSourceParameterAuditEvent {
+  id             String   @id @default(uuid())
+  tenantId       String
+  branchCode     Int?
+  sourceSystem   String
+  entityType     String
+  action         String
+  parametersJson String
+  performedBy    String?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  createdBy      String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, branchCode, occurredAt])
+  @@map("finance_source_parameter_audit_events")
+}
+
+model TelegramProcessedUpdate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  updateId    String
+  processedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, updateId])
+  @@index([processedAt])
+  @@map("telegram_processed_updates")
+}
+
+model TelegramPendingAction {
+  tenantId  String
+  chatId    String
+  intent    String
+  studentId String
+  date      String?
+  endDate   String?
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, chatId])
+  @@index([expiresAt])
+  @@map("telegram_pending_actions")
+}
+
+model UserPreference {
+  id              String @id @default(uuid())
+  tenantId        String
+  branchCode      Int    @default(1)
+  userId          String
+  preferenceKey   String
+  preferenceValue String
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, branchCode, userId, preferenceKey])
+  @@index([tenantId, branchCode, userId])
+  @@map("user_preferences")
+}
+
+model GlobalSetting {
+  id           String @id @default(uuid())
+  settingKey   String @unique
+  settingValue String
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  @@map("global_settings")
+}
+
+model EmailCredential {
+  id                       String    @id @default(uuid())
+  email                    String    @unique
+  centralIdentityAccountId String?   @unique
+  passwordHash             String?
+  emailVerified        Boolean   @default(false)
+  verifiedAt           DateTime?
+  verificationToken    String?
+  verificationExpires  DateTime?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  @@map("email_credentials")
+}
+
+model AuthSession {
+  id               String   @id @default(uuid())
+  jti              String   @unique
+  tenantId         String
+  userId           String
+  modelType        String
+  branchCode       Int
+  identityProvider String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  canceledAt       DateTime?
+  canceledBy       String?
+
+  @@index([tenantId, userId, modelType, canceledAt, expiresAt])
+  @@index([expiresAt, canceledAt])
+  @@map("auth_sessions")
+}
+
+model User {
+  id                    String  @id @default(uuid())
+  tenantId              String
+  branchCode            Int     @default(1)
+  name                  String
+  email                 String
+  password              String?
+  photoUrl              String?
+  complementaryProfiles String?
+  role                  String  @default("SECRETARIA") // ADMIN | SECRETARIA | PROFESSOR | ALUNO | RESPONSAVEL
+  accessProfile         String?
+  permissions           String?
+  cashierOnly           Boolean @default(false)
+
+  // Recuperação de Senha
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branchAccesses UserBranchAccess[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model UserBranchAccess {
+  id         String  @id @default(uuid())
+  tenantId   String
+  userId     String
+  branchCode Int
+  isDefault  Boolean @default(false)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, userId, branchCode])
+  @@index([tenantId, userId, canceledAt])
+  @@index([tenantId, branchCode, canceledAt])
+  @@map("user_branch_accesses")
+}
+
+model TeacherBranchAccess {
+  id         String  @id @default(uuid())
+  tenantId   String
+  teacherId  String
+  branchCode Int
+  isDefault  Boolean @default(false)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, teacherId, branchCode])
+  @@index([tenantId, teacherId, canceledAt])
+  @@index([tenantId, branchCode, canceledAt])
+  @@map("teacher_branch_accesses")
+}
+
+model StudentBranchAccess {
+  id         String  @id @default(uuid())
+  tenantId   String
+  studentId  String
+  branchCode Int
+  isDefault  Boolean @default(false)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, studentId, branchCode])
+  @@index([tenantId, studentId, canceledAt])
+  @@index([tenantId, branchCode, canceledAt])
+  @@map("student_branch_accesses")
+}
+
+model GuardianBranchAccess {
+  id         String  @id @default(uuid())
+  tenantId   String
+  guardianId String
+  branchCode Int
+  isDefault  Boolean @default(false)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, guardianId, branchCode])
+  @@index([tenantId, guardianId, canceledAt])
+  @@index([tenantId, branchCode, canceledAt])
+  @@map("guardian_branch_accesses")
+}
+
+model Person {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  branchCode           Int       @default(1)
+  name                 String
+  birthDate            DateTime?
+  rg                   String?
+  cpf                  String?
+  cpfDigits            String?
+  cnpj                 String?
+  cnpjNormalized       String?
+  nickname             String?
+  corporateName        String?
+  phone                String?
+  whatsapp             String?
+  cellphone1           String?
+  cellphone2           String?
+  email                String?
+  telegramChatId       String?
+  telegramUsername     String?
+  telegramOptInAt      DateTime?
+  telegramOptOutAt     DateTime?
+  password             String?
+  resetPasswordToken   String?
+  resetPasswordExpires DateTime?
+  zipCode              String?
+  street               String?
+  number               String?
+  city                 String?
+  state                String?
+  neighborhood         String?
+  complement           String?
+  mergedIntoPersonId   String?
+  mergedAt             DateTime?
+  mergedBy             String?
+  mergeReason          String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teachers  Teacher[]
+  students  Student[]
+  guardians Guardian[]
+
+  @@unique([tenantId, cpfDigits])
+  @@unique([tenantId, cnpjNormalized])
+  @@unique([tenantId, telegramChatId])
+  @@index([tenantId])
+  @@map("people")
+}
+
+model SchoolYear {
+  id         String   @id @default(uuid())
+  tenantId   String
+  branchCode Int      @default(1)
+  year       Int
+  startDate  DateTime
+  endDate    DateTime
+  isActive   Boolean  @default(false)
+  monday     Boolean  @default(true)
+  tuesday    Boolean  @default(true)
+  wednesday  Boolean  @default(true)
+  thursday   Boolean  @default(true)
+  friday     Boolean  @default(true)
+  saturday   Boolean  @default(false)
+  sunday     Boolean  @default(false)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  enrollments         Enrollment[]
+  classScheduleItems  ClassScheduleItem[]
+  lessonCalendars     LessonCalendar[]
+  lessonCalendarItems LessonCalendarItem[]
+  periods             SchoolYearPeriod[]
+
+  @@unique([tenantId, branchCode, year])
+  @@map("school_years")
+}
+
+model SchoolYearPeriod {
+  id           String   @id @default(uuid())
+  tenantId     String
+  schoolYearId String
+  branchCode   Int      @default(1)
+  periodType   String
+  startDate    DateTime
+  endDate      DateTime
+  appliesTo    String   @default("TODAS AS TURMAS")
+  sortOrder    Int      @default(0)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, branchCode, schoolYearId])
+  @@index([startDate, endDate])
+  @@map("school_year_periods")
+}
+
+model SchoolHoliday {
+  id          String   @id @default(uuid())
+  tenantId    String
+  branchCode  Int      @default(1)
+  year        Int
+  date        DateTime
+  name        String
+  holidayType String
+  appliesTo   String   @default("TODAS AS TURMAS")
+  source      String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([tenantId, branchCode, year])
+  @@index([date])
+  @@map("school_holidays")
+}
+
+model Class {
+  id                String @id @default(uuid())
+  tenantId          String
+  branchCode        Int    @default(1)
+  name              String
+  gradeLevel        Int?
+  shift             String
+  defaultMonthlyFee Float?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  seriesClasses SeriesClass[]
+  enrollments   Enrollment[]
+
+  @@index([tenantId])
+  @@map("classes")
+}
+
+model Series {
+  id         String  @id @default(uuid())
+  tenantId   String
+  branchCode Int     @default(1)
+  name       String
+  code       String?
+  sortOrder  Int?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  seriesClasses SeriesClass[]
+
+  @@index([tenantId])
+  @@map("series")
+}
+
+model SeriesClass {
+  id         String @id @default(uuid())
+  tenantId   String
+  branchCode Int    @default(1)
+  seriesId   String
+  classId    String
+
+  smtpEnabled      Boolean @default(false)
+  smtpHost         String?
+  smtpPort         Int?
+  smtpTimeout      Int?
+  smtpAuthenticate Boolean?
+  smtpSecure       Boolean?
+  smtpAuthType     String?
+  smtpEmail        String?
+  smtpPassword     String?
+  smtpSenderName   String?
+  smtpReplyTo      String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  series              Series               @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  class               Class                @relation(fields: [classId], references: [id], onDelete: Restrict)
+  enrollments         Enrollment[]
+  classScheduleItems  ClassScheduleItem[]
+  lessonCalendars     LessonCalendar[]
+  lessonCalendarItems LessonCalendarItem[]
+
+  @@unique([seriesId, classId])
+  @@index([tenantId])
+  @@index([seriesId])
+  @@index([classId])
+  @@map("series_classes")
+}
+
+// ==========================================
+// (F-RE) RESPONSÁVEIS
+// ==========================================
+model Guardian {
+  id         String  @id @default(uuid())
+  tenantId   String
+  branchCode Int     @default(1)
+  personId   String?
+
+  accessProfile String?
+  permissions   String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person          Person?                @relation(fields: [personId], references: [id], onDelete: SetNull)
+  students        GuardianStudent[]
+  billingStudents Student[]              @relation("StudentBillingGuardian")
+  branchAccesses  GuardianBranchAccess[]
+
+  @@index([tenantId])
+  @@index([personId])
+  @@map("guardians")
+}
+
+// ==========================================
+// (F-AL) ALUNOS
+// ==========================================
+model Student {
+  id         String  @id @default(uuid())
+  tenantId   String
+  branchCode Int     @default(1)
+  personId   String?
+
+  photoUrl          String?
+  accessProfile     String?
+  permissions       String?
+  monthlyFee        Float?
+  billingPayerType  String  @default("ALUNO")
+  billingGuardianId String?
+  notes             String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person                 Person?                 @relation(fields: [personId], references: [id], onDelete: SetNull)
+  guardians              GuardianStudent[]
+  billingGuardian        Guardian?               @relation("StudentBillingGuardian", fields: [billingGuardianId], references: [id], onDelete: Restrict)
+  enrollments            Enrollment[]
+  lessonAssessmentGrades LessonAssessmentGrade[]
+  lessonAttendances      LessonAttendance[]
+  branchAccesses         StudentBranchAccess[]
+
+  @@index([tenantId])
+  @@index([personId])
+  @@index([billingGuardianId])
+  @@map("students")
+}
+
+// ==========================================
+// (RA) RESPONSÁVEL x ALUNO
+// ==========================================
+model GuardianStudent {
+  id         String @id @default(uuid())
+  tenantId   String
+  branchCode Int    @default(1)
+  studentId  String
+  guardianId String
+
+  kinship            String // PAI, MAE, PADRASTO, MADRASTA, TIO, AVOS, OUTROS
+  kinshipDescription String? // Preenchido caso kinship seja OUTROS
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  student  Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  guardian Guardian @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, guardianId])
+  @@index([tenantId])
+  @@map("guardian_students")
+}
+
+model Enrollment {
+  id            String  @id @default(uuid())
+  tenantId      String
+  branchCode    Int     @default(1)
+  studentId     String
+  classId       String
+  seriesClassId String?
+  schoolYearId  String
+  status        String  @default("ATIVO")
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  class       Class        @relation(fields: [classId], references: [id], onDelete: Restrict)
+  seriesClass SeriesClass? @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  schoolYear  SchoolYear   @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, schoolYearId])
+  @@index([tenantId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@map("enrollments")
+}
+
+// ==========================================
+// (F-PR) PROFESSORES
+// ==========================================
+model Teacher {
+  id         String  @id @default(uuid())
+  tenantId   String
+  branchCode Int     @default(1)
+  personId   String?
+
+  accessProfile String?
+  permissions   String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person            Person?               @relation(fields: [personId], references: [id], onDelete: SetNull)
+  teacherSubjects   TeacherSubject[]
+  lessonEvents      LessonEvent[]
+  lessonAssessments LessonAssessment[]
+  lessonAttendances LessonAttendance[]
+  branchAccesses    TeacherBranchAccess[]
+
+  @@index([tenantId])
+  @@index([personId])
+  @@map("teachers")
+}
+
+// ==========================================
+// (MA) MATÉRIAS / DISCIPLINAS
+// ==========================================
+model Subject {
+  id         String @id @default(uuid())
+  tenantId   String
+  branchCode Int    @default(1)
+  name       String // Matemática, Inglês, etc
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacherSubjects TeacherSubject[]
+
+  @@index([tenantId])
+  @@map("subjects")
+}
+
+// ==========================================
+// (PM) PROFESSOR x MATÉRIA
+// ==========================================
+model TeacherSubject {
+  id         String @id @default(uuid())
+  tenantId   String
+  branchCode Int    @default(1)
+  teacherId  String
+  subjectId  String
+  hourlyRate Float? // Valor pago por aula dada
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant              Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacher             Teacher                     @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  subject             Subject                     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  classScheduleItems  ClassScheduleItem[]
+  lessonCalendarItems LessonCalendarItem[]
+  rateHistories       TeacherSubjectRateHistory[]
+
+  @@unique([teacherId, subjectId])
+  @@index([tenantId])
+  @@map("teacher_subjects")
+}
+
+model TeacherSubjectRateHistory {
+  id               String    @id @default(uuid())
+  tenantId         String
+  branchCode       Int       @default(1)
+  teacherSubjectId String
+  hourlyRate       Float?
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teacherSubject TeacherSubject @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([teacherSubjectId])
+  @@index([effectiveFrom])
+  @@map("teacher_subject_rate_histories")
+}
+
+// ==========================================
+// (GH) HORÁRIOS BASE / AULAS POR PERÍODO
+// ==========================================
+model Schedule {
+  id           String @id @default(uuid())
+  tenantId     String
+  branchCode   Int    @default(1)
+  period       String // MANHA, TARDE, NOITE
+  lessonNumber Int // 1, 2, 3...
+  startTime    String // "07:00"
+  endTime      String // "07:50"
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, branchCode, period, lessonNumber])
+  @@index([tenantId])
+  @@map("schedules")
+}
+
+model ClassScheduleItem {
+  id               String  @id @default(uuid())
+  tenantId         String
+  branchCode       Int     @default(1)
+  schoolYearId     String
+  seriesClassId    String
+  teacherSubjectId String?
+  dayOfWeek        String
+  startTime        String
+  endTime          String
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schoolYear          SchoolYear           @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  seriesClass         SeriesClass          @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  teacherSubject      TeacherSubject?      @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+  lessonCalendarItems LessonCalendarItem[]
+
+  @@unique([tenantId, branchCode, schoolYearId, seriesClassId, teacherSubjectId, dayOfWeek, startTime, endTime])
+  @@index([tenantId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@index([teacherSubjectId])
+  @@map("class_schedule_items")
+}
+
+model LessonCalendar {
+  id               String    @id @default(uuid())
+  tenantId         String
+  branchCode       Int       @default(1)
+  schoolYearId     String
+  seriesClassId    String
+  lastWeeklySyncAt DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  schoolYear  SchoolYear             @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  seriesClass SeriesClass            @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  periods     LessonCalendarPeriod[]
+  items       LessonCalendarItem[]
+
+  @@index([tenantId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@map("lesson_calendars")
+}
+
+model LessonCalendarPeriod {
+  id               String   @id @default(uuid())
+  tenantId         String
+  branchCode       Int      @default(1)
+  lessonCalendarId String
+  periodType       String
+  startDate        DateTime
+  endDate          DateTime
+  sortOrder        Int
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendar LessonCalendar @relation(fields: [lessonCalendarId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([lessonCalendarId])
+  @@map("lesson_calendar_periods")
+}
+
+model LessonCalendarItem {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  branchCode          Int      @default(1)
+  lessonCalendarId    String
+  schoolYearId        String
+  seriesClassId       String
+  teacherSubjectId    String?
+  classScheduleItemId String?
+  lessonDate          DateTime
+  dayOfWeek           String
+  startTime           String
+  endTime             String
+  hourlyRate          Float?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendar    LessonCalendar     @relation(fields: [lessonCalendarId], references: [id], onDelete: Restrict)
+  schoolYear        SchoolYear         @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  seriesClass       SeriesClass        @relation(fields: [seriesClassId], references: [id], onDelete: Restrict)
+  teacherSubject    TeacherSubject?    @relation(fields: [teacherSubjectId], references: [id], onDelete: Restrict)
+  classScheduleItem ClassScheduleItem? @relation(fields: [classScheduleItemId], references: [id], onDelete: Restrict)
+  lessonEvents      LessonEvent[]
+  lessonAssessments LessonAssessment[]
+  lessonAttendances LessonAttendance[]
+
+  @@index([tenantId])
+  @@index([lessonCalendarId])
+  @@index([schoolYearId])
+  @@index([seriesClassId])
+  @@index([teacherSubjectId])
+  @@index([classScheduleItemId])
+  @@map("lesson_calendar_items")
+}
+
+model LessonEvent {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  branchCode           Int       @default(1)
+  lessonCalendarItemId String?
+  teacherId            String
+  eventType            String
+  title                String
+  description          String?
+  eventDate            DateTime?
+  schoolYearId         String?
+  seriesClassId        String?
+  teacherSubjectId     String?
+  subjectNameSnapshot  String?
+  seriesNameSnapshot   String?
+  classNameSnapshot    String?
+  shiftSnapshot        String?
+  notifyStudents       Boolean   @default(true)
+  notifyGuardians      Boolean   @default(true)
+  notifyByEmail        Boolean   @default(true)
+  notifyByTelegram     Boolean   @default(false)
+  lastNotifiedAt       DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem? @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  teacher            Teacher             @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  assessment         LessonAssessment?
+
+  @@index([tenantId])
+  @@index([lessonCalendarItemId])
+  @@index([teacherId])
+  @@index([eventDate])
+  @@index([schoolYearId, seriesClassId])
+  @@map("lesson_events")
+}
+
+model LessonAssessment {
+  id                   String    @id @default(uuid())
+  tenantId             String
+  branchCode           Int       @default(1)
+  lessonEventId        String    @unique
+  lessonCalendarItemId String
+  teacherId            String
+  assessmentType       String
+  title                String
+  description          String?
+  maxScore             Float?
+  notifyStudents       Boolean   @default(true)
+  notifyGuardians      Boolean   @default(true)
+  notifyByEmail        Boolean   @default(true)
+  notifyByTelegram     Boolean   @default(false)
+  lastNotifiedAt       DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonEvent        LessonEvent             @relation(fields: [lessonEventId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem      @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  teacher            Teacher                 @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  grades             LessonAssessmentGrade[]
+
+  @@index([tenantId])
+  @@index([lessonCalendarItemId])
+  @@index([teacherId])
+  @@map("lesson_assessments")
+}
+
+model LessonAssessmentGrade {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  branchCode         Int       @default(1)
+  lessonAssessmentId String
+  studentId          String
+  score              Float?
+  remarks            String?
+  releasedAt         DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonAssessment LessonAssessment @relation(fields: [lessonAssessmentId], references: [id], onDelete: Restrict)
+  student          Student          @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([lessonAssessmentId, studentId])
+  @@index([tenantId])
+  @@index([lessonAssessmentId])
+  @@index([studentId])
+  @@map("lesson_assessment_grades")
+}
+
+model LessonAttendance {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  branchCode           Int      @default(1)
+  lessonCalendarItemId String
+  studentId            String
+  teacherId            String
+  status               String
+  recordedAt           DateTime @default(now())
+  notes                String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lessonCalendarItem LessonCalendarItem @relation(fields: [lessonCalendarItemId], references: [id], onDelete: Restrict)
+  student            Student            @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  teacher            Teacher            @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  @@unique([lessonCalendarItemId, studentId])
+  @@index([tenantId])
+  @@index([lessonCalendarItemId])
+  @@index([studentId])
+  @@index([teacherId])
+  @@map("lesson_attendances")
+}
+
+model Notification {
+  id            String    @id @default(uuid())
+  tenantId      String
+  branchCode    Int       @default(1)
+  recipientType String
+  recipientId   String
+  category      String
+  title         String
+  message       String
+  actionUrl     String?
+  sourceType    String?
+  sourceId      String?
+  readAt        DateTime?
+  readBy        String?
+  emailedAt     DateTime?
+  telegramSentAt DateTime?
+  telegramStatus String?
+  telegramError  String?
+  metadata      String?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([recipientType, recipientId])
+  @@index([readAt])
+  @@map("notifications")
+}
+
+model CommunicationCampaign {
+  id              String    @id @default(uuid())
+  tenantId        String
+  branchCode      Int       @default(1)
+  senderType      String
+  senderId        String
+  senderRole      String
+  senderName      String
+  title           String
+  message         String
+  sendInternal    Boolean   @default(true)
+  sendEmail       Boolean   @default(false)
+  sendTelegram    Boolean   @default(false)
+  recipientGroups String
+  totalRecipients Int       @default(0)
+  internalCount   Int       @default(0)
+  emailCount      Int       @default(0)
+  telegramCount   Int       @default(0)
+  lastSentAt      DateTime?
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([senderType, senderId])
+  @@map("communication_campaigns")
+}

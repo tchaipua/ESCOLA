@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   CurrentUser,
   type ICurrentUser,
@@ -16,7 +16,6 @@ import {
 } from "../../application/dto/cashier.dto";
 import { FinancialCashierService } from "../../application/services/financial-cashier.service";
 
-@ApiBearerAuth()
 @ApiTags("Caixa Financeiro Integrado")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("financial-cashier")

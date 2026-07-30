@@ -1,11 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { NotificationSettingsService } from "../../application/services/notification-settings.service";
 import { SendUserEmailConfirmationDto } from "../../application/dto/send-user-email-confirmation.dto";
 import { UpdatePersonNotificationSettingsDto } from "../../application/dto/update-person-notification-settings.dto";
 
-@ApiBearerAuth()
 @ApiTags("Configurações de notificações por usuário")
 @Controller("notification-settings")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")

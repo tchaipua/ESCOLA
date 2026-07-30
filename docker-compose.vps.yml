@@ -1,3 +1,6 @@
+# LEGADO DE DESENVOLVIMENTO LOCAL. NÃO USAR EM PRODUÇÃO.
+name: escola-legacy-development
+
 services:
   backend:
     build:
@@ -7,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: file:./dev.db
-      JWT_SECRET: super-secret-escolar-key-2026
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PORT: 3001
       FRONTEND_URL: http://212.56.42.45:3010
       FINANCEIRO_API_URL: http://212.56.42.45:3002/api/v1

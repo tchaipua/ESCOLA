@@ -1,0 +1,49 @@
+FROM node:20-bookworm-slim AS build
+
+WORKDIR /app
+COPY backend/package*.json ./
+RUN npm ci
+COPY backend/prisma ./prisma
+# A imagem de produção compila contra PostgreSQL; o schema SQLite continua
+# disponível apenas para a ponte de desenvolvimento local.
+RUN npx prisma generate --schema prisma/postgresql/schema.prisma
+COPY backend/ ./
+RUN npm run build
+
+FROM build AS migrator
+
+ENV NODE_ENV=production
+WORKDIR /app
+RUN groupadd --gid 10002 escola-migrator \
+    && useradd --uid 10002 --gid escola-migrator --no-create-home --shell /usr/sbin/nologin escola-migrator \
+    && chown -R escola-migrator:escola-migrator /app
+USER 10002:10002
+CMD ["node", "scripts/docker-entrypoint.cjs", "migrate"]
+
+FROM node:20-bookworm-slim AS production
+
+ENV NODE_ENV=production \
+    PORT=3001
+WORKDIR /app
+
+COPY backend/package*.json ./
+COPY backend/prisma ./prisma
+RUN npm ci --omit=dev --ignore-scripts \
+    && npm cache clean --force
+# npm ci não pode regenerar o cliente SQLite. Copiamos exclusivamente o
+# cliente PostgreSQL produzido no estágio de build.
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/dist ./dist
+COPY backend/scripts/docker-entrypoint.cjs ./scripts/docker-entrypoint.cjs
+COPY backend/scripts/assert-postgres-runtime-role.cjs ./scripts/assert-postgres-runtime-role.cjs
+COPY backend/scripts/link-central-tenant.cjs ./scripts/link-central-tenant.cjs
+
+RUN groupadd --gid 10001 escola \
+    && useradd --uid 10001 --gid escola --no-create-home --shell /usr/sbin/nologin escola \
+    && mkdir -p /data /backups \
+    && chown -R escola:escola /app /data /backups
+
+USER 10001:10001
+EXPOSE 3001
+CMD ["node", "scripts/docker-entrypoint.cjs", "serve"]

@@ -29,7 +29,7 @@
 
 - [ ] Criar monorepo com apps API, web-admin, pwa-professor e pwa-aluno
 - [ ] Configurar lint, format, tsconfig compartilhado e scripts padrao
-- [ ] Configurar Docker e Docker Compose (api, postgres, redis, nginx)
+- [~] Docker de producao seguro preparado; PostgreSQL permanece paralelo ate a migracao controlada
 - [ ] Configurar CI minima (lint + testes)
 
 ## Fase 1 - Identidade, tenant e seguranca
@@ -87,6 +87,37 @@
 
 ## Notas recentes
 
+- 2026-07-29: [x] Dados cadastrais e configuracoes de empresa/filial passaram a
+  vir exclusivamente do MSINFOR Central por HMAC; projecao local reduzida a
+  codigo/status auditados, rotas de mutacao legadas desativadas e fallback local
+  removido de login, branding, comunicacoes, Telegram e Financeiro.
+- 2026-07-29: [x] Bootstrap `creation-only` preparado com simulacao padrao para
+  migrar dados legados sem sobrescrever a Central e sem registrar segredos.
+- 2026-07-29: [x] Contrato Central de configuracao/filiais coberto por testes de
+  assinatura, heranca `SYSTEM/GLOBAL`, isolamento e ausencia de segredos na
+  resposta ao frontend.
+- 2026-07-24: [x] Fase 2 de seguranca: algoritmo master e compatibilidade local removidos; rotas/tokens legados recusados e UI redirecionada ao Central sem credencial em URL/storage.
+- 2026-07-24: [x] Segredos SMTP/Telegram/S3 cifrados em repouso por AES-256-GCM versionado, com migracao automatica idempotente, backup criptografado e testes de adulteracao.
+- 2026-07-24: [x] Docker de producao multi-stage/non-root preparado com TLS, read-only, `cap_drop: ALL`, healthchecks, redes separadas e Financeiro sem porta publica.
+- 2026-07-24: [x] Schema/baseline PostgreSQL paralelo e SQL RLS manual preparados; SQLite continua ponte local e RLS permanece fora do deploy automatico.
+- 2026-07-24: [x] Homologacao E2E desacoplada de snapshot SQLite versionado; smokes atualizados para o modelo `Person` e Playwright aprovado em 5/5 cenarios sem alterar a UI.
+- 2026-07-24: [x] Financeiro servido pela mesma origem em `/financeiro-app`, com BFF `/api/financeiro`, sessão HttpOnly, CSRF vinculado, HMAC direcional `v1`, callback antirreplay e quatro downloads fiscais limitados a 10 MiB.
+- 2026-07-24: [x] Consumo técnico do MSINFOR Central convertido de chave bearer em cabeçalho para HMAC canônico `v1`, sem `x-msinfor-system-key`.
+- 2026-07-24: [x] Imagem backend preparada com cliente PostgreSQL e target `migrator` separado; runtime não executa migração nem `db push`.
+- 2026-07-24: [x] Login da Escola centralizado por HMAC no MSINFOR Central,
+  com tenant global mapeado no servidor, alias/papel validados e fallback local
+  restrito ao desenvolvimento explícito.
+- 2026-07-24: [x] JWT vinculado a sessão revogável por `jti`, logout imediato,
+  limite de sessões e revogação global após troca de senha ou vínculo central.
+- 2026-07-24: [x] API da Escola publicada na mesma origem em `/api/v1`, com
+  proteção CSRF global para mutações por cookie.
+- 2026-07-24: [x] Sessão da Escola convertida para cookie HttpOnly exclusivo:
+  login sem token no JSON, Bearer recusado, nenhum JWT no storage e CSRF
+  obrigatório nas mutações autenticadas.
+- 2026-07-24: [x] Runtime PostgreSQL protegido por credencial distinta do
+  migrator e auditoria de role sem owner/superuser/DDL/BYPASSRLS.
+- 2026-07-24: [ ] Concluir no MSINFOR Central identidade administrativa com MFA e sessao auditada; a Escola nao aceita mais master local.
+- 2026-07-24: [ ] Em janela coordenada, higienizar o historico Git e rotacionar JWT, SMTP, Telegram, S3 e chaves tecnicas potencialmente expostas.
 - 2026-07-23: Criado `C:\Sistemas\IA\MSINFOR_CENTRAL_IA` como fonte única das configurações globais da softhouse. Escola e Projeto Inicial usam fachadas backend, credenciais técnicas separadas, cache de 60 segundos com tolerância stale de 15 minutos, segredos criptografados e auditoria central.
 - 2026-07-23: O `MSINFOR_CENTRAL_IA` recebeu painel por cards e o mostruário `CONFIGURA RECIBOS`, com categorias, imagem, JSON genérico, versões, download e auditoria.
 - 2026-07-23: Ajustado o botão `CONFIGURAÇÕES GERAIS` da tela master da Escola para abrir o painel de cards do `MSINFOR_CENTRAL_IA`, com endereço configurável por ambiente.

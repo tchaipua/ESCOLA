@@ -7,7 +7,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   CurrentUser,
   type ICurrentUser,
@@ -16,7 +16,6 @@ import { NotificationsService } from "../../application/services/notifications.s
 import { ListMyNotificationsDto } from "../../application/dto/list-my-notifications.dto";
 import { MarkNotificationsReadDto } from "../../application/dto/mark-notifications-read.dto";
 
-@ApiBearerAuth()
 @ApiTags("Notificações")
 @Controller("notifications")
 export class NotificationsController {

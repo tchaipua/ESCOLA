@@ -35,6 +35,9 @@ test.describe.serial('FLUXO PWA TCHA', () => {
     await attendanceCard.getByRole('button', { name: 'Faltou' }).click();
     await attendanceCard.getByPlaceholder('Observacao da chamada').fill(state.uiEdits.attendanceNote);
     await page.getByRole('button', { name: 'Salvar chamada' }).click();
+    const attendanceSuccessDialog = page.getByRole('alertdialog', { name: 'Sucesso' });
+    await expect(attendanceSuccessDialog).toBeVisible();
+    await attendanceSuccessDialog.getByRole('button', { name: 'Fechar mensagem' }).click();
     await expect(attendanceCard.getByPlaceholder('Observacao da chamada')).toHaveValue(state.uiEdits.attendanceNote);
 
     await page.getByRole('button', { name: 'notas' }).click();

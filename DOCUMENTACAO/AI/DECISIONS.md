@@ -254,10 +254,10 @@ Para cada decisao, registrar:
 
 - Data: 2026-06-25
 - Contexto: a escola precisa avisar alunos e responsaveis sobre provas, trabalhos e comunicados tambem por Telegram, mantendo e-mail e notificacao interna.
-- Decisao: configurar Telegram por escola e opcionalmente por filial, com prioridade para filial, fallback para escola e fallback local por `TELEGRAM_BOT_TOKEN`; destinatarios recebem somente se tiverem `telegramChatId` e opt-in ativo.
+- Decisao: configurar Telegram por escola e opcionalmente por filial, com prioridade para filial e fallback para escola; cada token fica criptografado e pertence a uma empresa. Destinatarios recebem somente se tiverem `telegramChatId` e opt-in ativo.
 - Impacto: lancamentos da agenda escolar podem marcar `notifyByTelegram` sem travar o cadastro caso o bot esteja ausente ou o envio falhe; a tentativa fica registrada em `notifications`.
 - Alternativas consideradas: usar apenas e-mail; gravar token somente em variavel de ambiente; enviar para todos os contatos sem opt-in.
-- Status: aceita
+- Status: aceita, com o fallback global removido pela DEC-0040.
 
 ## DEC-0028
 
@@ -275,7 +275,7 @@ Para cada decisao, registrar:
 - Decisao: adicionar SMTP opcional em `series_classes` e resolver e-mails da agenda escolar na ordem turma, filial, escola e variaveis `SMTP_*`.
 - Impacto: provas, trabalhos e demais eventos da agenda vinculados a uma turma podem sair pelo remetente especifico da turma quando `smtpEnabled` estiver ativo e a configuracao estiver completa.
 - Alternativas consideradas: criar e-mail apenas no cadastro de `classes`; manter somente filial/escola; criar uma tabela generica de contas SMTP sem vinculo direto com turma.
-- Status: aceita
+- Status: supersedida pela DEC-0047
 
 ## DEC-0030
 
@@ -284,6 +284,15 @@ Para cada decisao, registrar:
 - Decisao: criar webhook publico por escola em `/telegram/webhook/:tenantId/:secret`, validar a origem com segredo derivado do token do bot e vincular automaticamente a pessoa central por CPF/CNPJ informado no chat.
 - Impacto: ao enviar `oi` ou `/start`, o bot pede CPF/CNPJ; quando o documento existe em `people`, o sistema grava `telegramChatId`, `telegramUsername`, `telegramOptInAt` e sincroniza perfis vinculados. Comandos `sair/parar/cancelar/stop` fazem opt-out. Em ambiente local, o backend pode usar polling por `getUpdates`, pois o Telegram nao chama webhook em `localhost`.
 - Alternativas consideradas: manter cadastro manual de Chat ID; vincular por nome; criar um bot por perfil em vez de por escola.
+- Status: substituida pela DEC-0040 por risco de tomada de conta baseada somente em documento.
+
+## DEC-0040
+
+- Data: 2026-07-24
+- Contexto: CPF/CNPJ e segredo inserido no caminho do webhook nao fornecem prova suficiente de identidade e podem aparecer em historicos ou logs.
+- Decisao: usar `/telegram/webhook/:tenantId` com o header oficial `X-Telegram-Bot-Api-Secret-Token`, segredo HMAC externo ao token e comparacao em tempo constante. Chats novos nao podem pesquisar nem vincular cadastro por documento; a secretaria valida a pessoa por canal autenticado e registra o Chat ID. Somente chats privados sao aceitos, Chat ID e unico por escola e `update_id`/estado curto ficam persistidos.
+- Impacto: remove segredo da URL, evita enumeracao, tomada de cadastro, uso acidental em grupos e repeticao entre replicas; mantem o atendimento dos chats ja vinculados. Polling e logs de debug permanecem desligados em producao.
+- Alternativas consideradas: manter documento como prova; segredo em query string; codigo temporario sem uma segunda etapa autenticada.
 - Status: aceita
 
 ## DEC-0031
@@ -385,4 +394,103 @@ Para cada decisao, registrar:
 - Decisao: o acesso ao `MSINFOR_CENTRAL_IA` pela Escola usa token temporário de 60 segundos e uso único, emitido após validar a chave master já ativa. A Central troca o token por sessão administrativa opaca e auditada, eliminando a segunda solicitação de senha sem compartilhar a credencial pela URL.
 - Impacto: modelos não possuem vínculo com tenant, empresa ou filial na Central. O contexto do cliente é aplicado somente quando o JSON é importado no Financeiro, que mantém sua própria cópia operacional.
 - Alternativas consideradas: armazenar o mostruário no banco da Escola; vincular o modelo central diretamente ao cliente; guardar somente a imagem sem o JSON; compartilhar uma única cópia viva entre clientes.
+- Status: aceita, com autenticacao/entrada local supersedidas pela DEC-0043
+
+## DEC-0042
+
+- Data: 2026-07-24
+- Contexto: a credencial master deterministica podia ser calculada pelo navegador e existiam respostas de tenant/filial capazes de carregar segredos operacionais, alem de artefatos locais sensiveis versionados.
+- Decisao: desativar o master legado em producao, permitir compatibilidade somente em desenvolvimento com flag explicita, falhar fechado em configuracao insegura, remover segredos de todas as respostas, aplicar Helmet/CORS allowlist/throttling e impedir versionamento/empacotamento de bancos, logs e scripts temporarios.
+- Impacto: as rotas master ficam deliberadamente indisponiveis em producao ate a Central fornecer autenticacao administrativa forte. A UI aprovada permanece intacta; respostas usam flags `has*` sem revelar valores.
+- Pendencias obrigatorias: substituir o legado por identidade administrativa com MFA; higienizar o historico Git em janela coordenada; rotacionar JWT, SMTP, Telegram, S3 e demais chaves; criptografar os segredos ainda persistidos na origem.
+- Alternativas consideradas: manter o algoritmo por compatibilidade; ocultar apenas no frontend; usar parametro criptografado na URL; reescrever o historico automaticamente nesta entrega.
+- Status: supersedida pela DEC-0043
+
+## DEC-0043
+
+- Data: 2026-07-24
+- Contexto: a compatibilidade local ainda mantinha o algoritmo master previsivel no codigo; SMTP, Telegram e S3 continuavam em texto puro no SQLite; e o stack VPS executava servidores de desenvolvimento por HTTP.
+- Decisao: remover integralmente algoritmo, flag e sessao master local; recusar login, tokens e rotas legadas; redirecionar a UI ao Central por URL limpa; cifrar segredos persistidos com AES-256-GCM `enc:v1` e chave externa de 32 bytes; migrar automaticamente depois de backup local criptografado; criar stack Docker de producao non-root/TLS/read-only; e preparar PostgreSQL/RLS em arvore paralela.
+- Impacto: não existe compatibilidade master local em nenhum ambiente. O identificador `MSINFOR` é aceito somente quando a API da Central valida a credencial, o vínculo e a seleção autorizada de empresa/filial. A ausencia de chave ou URLs seguras impede startup de producao. SQLite continua ponte local; RLS nao e executado automaticamente ate identidade Central, papel PostgreSQL e contexto transacional estarem prontos.
+- Seguranca operacional: o Financeiro nao publica porta no compose integrado; somente o gateway TLS e exposto. Segredos sao descriptografados apenas no consumidor interno e adulteracao GCM interrompe o uso.
+- Alternativas consideradas: preservar flag de desenvolvimento; esconder o algoritmo apenas no frontend; passar tenant/token por URL; descriptografar no middleware de leitura; ativar RLS antes de garantir a mesma conexao/transacao.
+- Status: aceita
+
+## DEC-0044
+
+- Data: 2026-07-24
+- Contexto: o navegador recebia autoridade financeira na URL do iframe e integrações técnicas ainda usavam chaves bearer estáticas sem assinatura de método, rota e corpo.
+- Decisao: publicar o frontend Financeiro na mesma origem em `/financeiro-app`; rotear sua API exclusivamente pelo BFF `/api/financeiro`; obter contexto de cookie de sessão revalidado; exigir Origin, Fetch Metadata e CSRF vinculado à sessão nas mutações; assinar Escola → Financeiro e callbacks Financeiro → Escola com chaves HMAC direcionais distintas, timestamp, nonce e hash do corpo; e migrar a leitura da Central para seu contrato HMAC de sete campos.
+- Operação: o runtime Docker usa cliente PostgreSQL e credencial sem owner; migrações pertencem ao target separado `migrator`, que executa apenas `prisma migrate deploy`.
+- Impacto: tenant, filial, usuário, papel e permissões não trafegam mais na URL; `x-api-key` e `x-msinfor-system-key` deixam de existir no tráfego; replay e adulteração falham fechados; mutações desconhecidas do gateway são negadas.
+- Limite atual: o cache de nonce do callback é local a uma instância; antes de múltiplas réplicas deve migrar para armazenamento atômico compartilhado com TTL.
+- Status: aceita
+
+## DEC-0045
+
+- Data: 2026-07-24
+- Contexto: a Escola precisava deixar de autenticar senhas no próprio banco sem
+  transformar tenant, URL ou alias informado pelo navegador em autoridade, e um
+  JWT válido precisava poder ser revogado imediatamente.
+- Decisão: autenticar por contrato HMAC no MSINFOR Central; mapear o tenant
+  global para o local exclusivamente por `Tenant.centralTenantId`; exigir alias
+  de banco e papel exatos; vincular `EmailCredential` à conta central somente no
+  servidor; e emitir JWT com `jti` respaldado por uma `auth_sessions` ativa.
+- Decisão operacional: manter fallback de senha local apenas em desenvolvimento
+  com flag explicitamente falsa; em produção bloquear recuperação/troca de
+  senha local, auditar o papel PostgreSQL de runtime, separar rigorosamente as
+  credenciais de migrator/runtime e exigir número explícito de proxies
+  confiáveis.
+- Impacto: nenhuma URL seleciona banco; logout, limite de sessões, troca de
+  senha local e vínculo central podem invalidar tokens imediatamente; erro de
+  alias, tenant, papel, sessão ou configuração falha fechado.
+- Alternativas consideradas: parâmetro de tenant cifrado na URL; confiar no
+  tenant do navegador; JWT sem estado até expirar; senha duplicada em cada banco;
+  runtime PostgreSQL com credencial owner.
+- Status: aceita
+
+## DEC-0046
+
+- Data: 2026-07-24
+- Contexto: o JWT revogável ainda era devolvido no JSON do login, persistido
+  no navegador e aceito por Bearer, permitindo reutilização fora do navegador e
+  criando uma exceção de CSRF para mutações.
+- Decisão: manter o JWT exclusivamente no cookie de sessão HttpOnly,
+  `SameSite=Strict` e `Secure` em produção; não devolver token no login; recusar
+  Bearer tanto na estratégia quanto no middleware de tenant; exigir CSRF em
+  toda mutação autenticada; e persistir no navegador apenas metadados não
+  secretos usados pela interface.
+- Impacto: as telas continuam compartilhadas entre clientes e preservam o
+  mesmo layout, mas nenhuma delas monta `Authorization`, decodifica JWT ou
+  armazena credencial reutilizável. O Financeiro continua acessível somente
+  pela mesma origem e pelo BFF da Escola.
+- Alternativas consideradas: manter Bearer apenas em desenvolvimento; esconder
+  o token somente no frontend; aceitar Bearer sem CSRF; usar token na URL.
+- Status: aceita
+
+## DEC-0047
+
+- Data: 2026-07-29
+- Contexto: empresa e filial ainda possuíam dados cadastrais e configuracoes
+  duplicados na Escola, criando risco de divergencia com a nova manutencao
+  centralizada.
+- Decisao: tornar o `MSINFOR_CENTRAL_IA` a fonte oficial exclusiva de CNPJ,
+  endereco, contatos, logotipo, S3, SMTP, recibo, Telegram e parametros
+  financeiros/comerciais. A Escola consulta os contratos tecnicos HMAC e
+  conserva localmente apenas `Tenant.centralTenantId`, projecao minima de
+  `branchCode`/status e vinculos operacionais. A prioridade efetiva e
+  `BRANCH > TENANT > SYSTEM > GLOBAL`; indisponibilidade ou resposta divergente
+  falha fechada sem fallback local/ambiente.
+- Migracao: o bootstrap e `creation-only`, simula por padrao e importa primeiro
+  somente filiais ainda ausentes sob janela/allowlist da Central. Filiais e
+  configuracoes existentes nao sao alteradas, e o utilitario nunca registra
+  segredos. Colunas legadas permanecem
+  temporariamente para migracao sem perda, mas deixam de ser lidas ou gravadas.
+- Impacto: rotas locais de manutencao, confirmacao cadastral de filial e callback
+  do Financeiro que alterava parametros na Escola respondem `410 Gone`. Login,
+  comunicacoes, Telegram, branding e contexto financeiro usam a Central. O
+  override SMTP historico de `series_classes` tambem deixa de ser consultado;
+  suas colunas permanecem apenas como legado preservado.
+- Alternativas consideradas: sincronizacao bidirecional; fallback por coluna
+  local; acesso direto ao banco Central; exclusao imediata das colunas legadas.
 - Status: aceita

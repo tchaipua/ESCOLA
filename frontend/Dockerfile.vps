@@ -1,3 +1,4 @@
+# LEGADO DE DESENVOLVIMENTO LOCAL. Use Dockerfile.prod em produção.
 FROM node:20-bookworm
 
 WORKDIR /app/frontend

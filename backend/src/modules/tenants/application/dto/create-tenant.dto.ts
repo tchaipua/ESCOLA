@@ -9,6 +9,7 @@ import {
   Max,
   IsBoolean,
   IsNumber,
+  Matches,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
@@ -88,6 +89,7 @@ export class CreateTenantDto {
   @IsOptional() @IsString() storageCustomEndpoint?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) storageCapacityGb?: number;
   @IsOptional() @IsString() storageImagesFolderName?: string;
+  @IsOptional() @IsString() storageDescription?: string;
 
   @ApiProperty({ description: "Nome do primeiro Administrador" })
   @IsString()
@@ -99,9 +101,13 @@ export class CreateTenantDto {
   @IsNotEmpty()
   adminEmail!: string;
 
-  @ApiPropertyOptional({ description: "Senha do Administrador" })
+  @ApiProperty({ description: "Senha forte do Administrador" })
   @IsString()
-  @MinLength(6, { message: "A senha do admin deve ter no mínimo 6 caracteres" })
-  @IsOptional()
-  adminPassword?: string;
+  @IsNotEmpty({ message: "Senha do administrador é obrigatória" })
+  @MinLength(12, { message: "A senha do admin deve ter no mínimo 12 caracteres" })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/, {
+    message:
+      "A senha do admin deve conter maiúscula, minúscula, número e símbolo",
+  })
+  adminPassword!: string;
 }

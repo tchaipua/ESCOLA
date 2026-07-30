@@ -13,6 +13,7 @@ import {
   normalizeCnpj,
 } from "../../../../common/validation/cnpj";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
 
 type SharedProfileKind = "TEACHER" | "STUDENT" | "GUARDIAN";
 type SharedEmailAccountKind =
@@ -247,6 +248,42 @@ export class SharedProfilesService {
       : this.prisma;
   }
 
+  private async revokeAuthSessionsForEmail(
+    email: string,
+    canceledBy?: string | null,
+  ) {
+    const targets = await this.loadPasswordSyncTargetsByEmail(email);
+    const clauses = [
+      ...targets.users.map((target: { id: string }) => ({
+        modelType: "user",
+        userId: target.id,
+      })),
+      ...targets.teachers.map((target: { id: string }) => ({
+        modelType: "teacher",
+        userId: target.id,
+      })),
+      ...targets.students.map((target: { id: string }) => ({
+        modelType: "student",
+        userId: target.id,
+      })),
+      ...targets.guardians.map((target: { id: string }) => ({
+        modelType: "guardian",
+        userId: target.id,
+      })),
+    ];
+    if (!clauses.length) return;
+    await this.getCrossTenantPrisma().authSession.updateMany({
+      where: {
+        canceledAt: null,
+        OR: clauses,
+      },
+      data: {
+        canceledAt: new Date(),
+        canceledBy: canceledBy || "CREDENTIAL_CHANGED",
+      },
+    });
+  }
+
   async findEmailCredential(email?: string | null) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return null;
@@ -266,6 +303,14 @@ export class SharedProfilesService {
   ) {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return null;
+    if (
+      options?.passwordHash !== undefined &&
+      isCentralIdentityEnabled()
+    ) {
+      throw new BadRequestException(
+        "A senha desta conta é administrada pelo MSINFOR Central.",
+      );
+    }
 
     const existing = await this.findEmailCredential(normalizedEmail);
     const now = new Date();
@@ -288,6 +333,14 @@ export class SharedProfilesService {
     };
 
     if (options?.passwordHash !== undefined) {
+      if (
+        existing.centralIdentityAccountId ||
+        isCentralIdentityEnabled()
+      ) {
+        throw new BadRequestException(
+          "A senha desta conta é administrada pelo MSINFOR Central.",
+        );
+      }
       data.passwordHash = options.passwordHash || null;
     }
 
@@ -300,10 +353,20 @@ export class SharedProfilesService {
       }
     }
 
-    return this.prisma.emailCredential.update({
+    const updated = await this.prisma.emailCredential.update({
       where: { id: existing.id },
       data,
     });
+    if (
+      options?.passwordHash !== undefined &&
+      existing.passwordHash !== (options.passwordHash || null)
+    ) {
+      await this.revokeAuthSessionsForEmail(
+        normalizedEmail,
+        options?.userId,
+      );
+    }
+    return updated;
   }
 
   async getOrCreateEmailCredentialFromLegacy(
@@ -338,10 +401,77 @@ export class SharedProfilesService {
     passwordHash?: string | null,
     userId?: string | null,
   ) {
+    if (isCentralIdentityEnabled()) {
+      throw new BadRequestException(
+        "A senha desta conta é administrada pelo MSINFOR Central.",
+      );
+    }
     return this.ensureEmailCredential(email, {
       passwordHash: passwordHash || null,
       userId,
     });
+  }
+
+  async bindCentralIdentity(
+    email: string,
+    centralIdentityAccountId: string,
+    userId?: string | null,
+  ) {
+    const normalizedEmail = this.normalizeEmail(email);
+    const normalizedAccountId = String(centralIdentityAccountId || "")
+      .trim()
+      .toLowerCase();
+    if (
+      !normalizedEmail ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+        normalizedAccountId,
+      )
+    ) {
+      throw new BadRequestException(
+        "Mapeamento de identidade central inválido.",
+      );
+    }
+
+    const existing = await this.ensureEmailCredential(normalizedEmail, {
+      verified: true,
+      userId,
+    });
+    if (!existing) {
+      throw new BadRequestException(
+        "Não foi possível mapear a identidade central.",
+      );
+    }
+    if (
+      existing.centralIdentityAccountId &&
+      existing.centralIdentityAccountId.toLowerCase() !== normalizedAccountId
+    ) {
+      throw new BadRequestException(
+        "A conta local já possui outra identidade central.",
+      );
+    }
+
+    try {
+      const updated = await this.prisma.emailCredential.update({
+        where: { id: existing.id },
+        data: {
+          centralIdentityAccountId: normalizedAccountId,
+          passwordHash: null,
+          resetPasswordToken: null,
+          resetPasswordExpires: null,
+          verificationToken: null,
+          verificationExpires: null,
+          emailVerified: true,
+          verifiedAt: existing.verifiedAt || new Date(),
+          updatedBy: userId || undefined,
+        },
+      });
+      await this.revokeAuthSessionsForEmail(normalizedEmail, userId);
+      return updated;
+    } catch {
+      throw new BadRequestException(
+        "Não foi possível mapear a identidade central.",
+      );
+    }
   }
 
   async storeEmailCredentialResetToken(
@@ -350,10 +480,20 @@ export class SharedProfilesService {
     expiresAt: Date,
     userId?: string | null,
   ) {
+    if (isCentralIdentityEnabled()) {
+      throw new BadRequestException(
+        "A recuperação de senha é feita no MSINFOR Central.",
+      );
+    }
     const credential = await this.getOrCreateEmailCredentialFromLegacy(email, {
       userId,
     });
     if (!credential) return null;
+    if (credential.centralIdentityAccountId) {
+      throw new BadRequestException(
+        "A recuperação de senha desta conta é feita no MSINFOR Central.",
+      );
+    }
 
     return this.prisma.emailCredential.update({
       where: { id: credential.id },
@@ -381,6 +521,7 @@ export class SharedProfilesService {
       where: {
         resetPasswordToken: tokenHash,
         resetPasswordExpires: { gt: new Date() },
+        centralIdentityAccountId: null,
         canceledAt: null,
       },
     });

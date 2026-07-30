@@ -5,44 +5,25 @@ import {
   Post,
   Put,
   Req,
-  UnauthorizedException,
+  GoneException,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
-import { buildMasterPass } from "../../../../common/auth/master-auth";
 import { Public } from "../../../../common/decorators/public.decorator";
 import { UpdateGlobalSettingsDto } from "../../application/dto/update-global-settings.dto";
 import { GlobalSettingsService } from "../../application/services/global-settings.service";
+import { Throttle } from "@nestjs/throttler";
 
 @ApiTags("Configurações Globais")
+@Throttle({ default: { limit: 6, ttl: 60_000 } })
 @Controller("global-settings")
 export class GlobalSettingsController {
   constructor(private readonly globalSettingsService: GlobalSettingsService) {}
 
-  private assertMasterPass(req: Request) {
-    const incoming = String(req.headers["x-msinfor-master-pass"] || "").trim();
-    if (!incoming) {
-      throw new UnauthorizedException(
-        "Acesso negado: cabeçalho master ausente.",
-      );
-    }
-    const now = new Date();
-    const prevMinute = new Date(now.getTime() - 60_000);
-    const nextMinute = new Date(now.getTime() + 60_000);
-    const validNow = buildMasterPass(now);
-    const validPrev = buildMasterPass(prevMinute);
-    const validNext = buildMasterPass(nextMinute);
-
-    if (
-      incoming !== validNow &&
-      incoming !== validPrev &&
-      incoming !== validNext
-    ) {
-      throw new UnauthorizedException(
-        "Acesso negado: chave master inválida ou expirada.",
-      );
-    }
-    return incoming;
+  private assertMasterPass(_req: Request): never {
+    throw new GoneException(
+      "Rota administrativa legada desativada. Use o MSINFOR Central.",
+    );
   }
 
   @Public()

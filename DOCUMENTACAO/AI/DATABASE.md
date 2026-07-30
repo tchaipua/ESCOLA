@@ -17,47 +17,36 @@ Documentar o modelo atual de dados com foco nas regras obrigatorias do projeto.
 
 ### `tenant_branches`
 
-Tabela de filiais operacionais por escola.
+Projecao minima das filiais oficiais cadastradas no `MSINFOR_CENTRAL_IA`.
 
 Campos principais:
 
 - `tenantId`
 - `branchCode`
-- `name`
-- dados proprios da filial: logotipo, documento/CNPJ, contatos e endereco completo
-- configuracao SMTP propria da filial, opcional, com os mesmos campos SMTP da empresa
-- configuracao Telegram propria da filial, opcional, com token e usuario do bot
-- configuracao de arquivos/storage propria da filial, opcional, compativel com S3/Contabo
-- parametros operacionais de estoque por filial:
-  - `stockControlMode`
-  - `stockIntegerQuantityMode`
-  - `stockLotControlMode`
-  - `stockExpirationControlMode`
-  - `stockGridControlMode`
-  - `stockNegativeControlMode`
-- parâmetros comerciais sincronizados com o Financeiro:
-  - `allowSaleUnitPriceEdit`
-  - `allowSaleItemDiscount`
-  - `groupSameProduct`
-- `isActive`
+- `name` tecnico (`FILIAL N`), sem autoridade cadastral
+- `isActive` e cancelamento logico, sincronizados a partir do status central
+- colunas de auditoria
 
 Regras:
 
-- a primeira filial criada automaticamente usa `branchCode = 1`
 - `branchCode = 0` representa cadastro comum/visivel para todas as filiais
-- ao cadastrar uma nova escola/empresa, a primeira filial operacional e criada automaticamente
-- dados operacionais como logotipo, CNPJ, endereco e contatos devem ficar na filial, deixando a empresa/tenant com parametros gerais compartilhados
-- se a filial possuir configuracao SMTP preenchida, ela tem prioridade sobre o SMTP da empresa; se nao possuir, o envio continua usando o SMTP da empresa ou variaveis de ambiente
-- se a filial possuir configuracao Telegram preenchida, ela tem prioridade sobre o Telegram da empresa; se nao possuir, o envio continua usando o Telegram da empresa ou variaveis de ambiente
-- se a filial possuir configuracao de storage preenchida, ela tem prioridade sobre o storage da empresa; se nao possuir, leitura/gravação de arquivos deve usar o storage da empresa
-- parametros de estoque da filial aceitam `NO`, `YES` ou `BY_PRODUCT`; quando estiver `BY_PRODUCT`, a regra efetiva deve ser buscada no cadastro do produto
+- a criacao e a manutencao de filial ocorrem exclusivamente na Central
+- a Escola cria/atualiza somente a projecao minima ao consultar a lista central
+- CNPJ, logotipo, endereco, contatos, S3, SMTP, Telegram e parametros
+  financeiros/comerciais presentes em colunas legadas nao sao fonte de leitura
+  nem de gravacao; permanecem temporariamente apenas para migracao sem perda
+- cada criacao ou mudanca de status da projecao gera auditoria append-only sem
+  segredos
 - se a escola possuir apenas uma filial ativa, o cadastro deve ser transparente para o usuario e gravado automaticamente na filial existente
 - se a escola possuir mais de uma filial ativa, cadastros operacionais devem permitir escolher uma filial especifica ou comum a todas
 - consultas de uma filial enxergam os registros da filial atual e os registros comuns (`0`)
 
 ### `finance_source_parameter_audit_events`
 
-Trilha append-only das alterações feitas na interface do Financeiro e confirmadas na Escola. Registra tenant, filial, entidade, parâmetros não sensíveis, ator e data; nenhuma credencial é armazenada nessa auditoria.
+Trilha append-only que inclui a criacao/sincronizacao da projecao minima de
+filiais recebida da Central. Registra tenant, codigo, status, ator e data; dados
+cadastrais e credenciais nunca sao armazenados nessa auditoria. O callback
+legado do Financeiro que alterava parametros locais esta desativado.
 
 ### `user_branch_accesses`
 
@@ -266,16 +255,21 @@ Cancelamento logico continua obrigatorio.
 
 - `tenants` e `tenant_branches` guardam `telegramEnabled`, `telegramBotToken` e `telegramBotUsername`.
 - `people` guarda `telegramChatId`, `telegramUsername`, `telegramOptInAt` e `telegramOptOutAt`.
+- `telegram_processed_updates` deduplica `update_id` por escola entre reinicios e replicas.
+- `telegram_pending_actions` guarda por 15 minutos o estado curto da conversa, sem depender da memoria de uma replica.
 - `lesson_events` e `lesson_assessments` possuem `notifyByTelegram`.
 - `notifications` registra `telegramSentAt`, `telegramStatus` e `telegramError`.
 - o envio so pode ocorrer para aluno/responsavel com `telegramChatId`, `telegramOptInAt` preenchido e `telegramOptOutAt` vazio.
-- o webhook do Telegram vincula automaticamente `people` por CPF/CNPJ; os envios para alunos/responsaveis/professores usam o `personId` para ler os dados de Telegram da pessoa central.
+- o webhook do Telegram nao vincula automaticamente por CPF/CNPJ: a secretaria valida a identidade fora do chat e registra o Chat ID; os envios para alunos/responsaveis/professores usam o `personId` para ler os dados de Telegram da pessoa central.
+- `people(tenantId, telegramChatId)` e unico quando o Chat ID esta preenchido.
 
 ## Notificacoes por e-mail
 
-- `tenants` e `tenant_branches` guardam configuracao SMTP.
-- `series_classes` tambem pode guardar SMTP especifico da turma por `smtpEnabled`, `smtpHost`, `smtpPort`, `smtpTimeout`, `smtpAuthenticate`, `smtpSecure`, `smtpAuthType`, `smtpEmail`, `smtpPassword`, `smtpSenderName` e `smtpReplyTo`.
-- a resolucao usa turma primeiro, depois filial, depois escola, depois variaveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_TIMEOUT`, `SMTP_AUTHENTICATE`, `SMTP_SECURE`, `SMTP_EMAIL` e `SMTP_PASSWORD`.
+- `tenants`, `tenant_branches` e `series_classes` ainda possuem colunas SMTP
+  legadas, preservadas temporariamente para migracao sem perda.
+- o runtime nao le essas colunas nem variaveis `SMTP_*` para configuracao de
+  empresa/filial/turma; todo envio resolve exclusivamente o SMTP efetivo da API
+  do MSINFOR Central (`BRANCH > TENANT > SYSTEM > GLOBAL`).
 - `lesson_events` e `lesson_assessments` possuem `notifyByEmail`.
 - `notifications.emailedAt` registra quando a notificacao foi enviada por e-mail.
 
@@ -344,9 +338,8 @@ Regra atual:
 
 ## Excecao de purge fisico de tenant
 
-- O backend possui um fluxo master exclusivo para excluir fisicamente uma escola e todos os registros associados por `tenantId`
-- Esse fluxo existe somente para administracao de softhouse e nao deve ser reutilizado em modulos operacionais
-- O purge remove tambem os registros historicos daquele tenant e por isso exige confirmacao explicita do `tenantId`
+- A rota local historica existe apenas para responder `410 Gone`; nenhum segredo ou token a reativa.
+- Uma futura exclusao fisica pertence ao MSINFOR Central e exige identidade forte, MFA, auditoria e confirmacao explicita do `tenantId`.
 
 ## Observacao sobre legado
 
@@ -360,14 +353,30 @@ Regra atual:
 - Em 2026-06-29 os dados comuns duplicados dos perfis foram copiados para `people` quando faltavam e limpos dos perfis no banco de teste.
 - Em 2026-06-29 os campos comuns foram removidos fisicamente de `teachers`, `students` e `guardians` por migration. A fonte oficial passou a ser exclusivamente `people`.
 - Em 2026-06-29 os campos legados `name`, `password`, `resetPasswordToken` e `resetPasswordExpires` tambem foram removidos fisicamente de `teachers`, `students` e `guardians`.
-- O fluxo de Telegram valida CPF/CNPJ exclusivamente em `people`.
+- O fluxo de Telegram nao recebe CPF/CNPJ para criar vinculo; a identidade deve ser validada administrativamente.
 
 ## Configuracoes globais da softhouse
 
 - `global_settings` permanece no banco da Escola somente como registro legado de migração; novas leituras e mutações master usam a API do `MSINFOR_CENTRAL_IA`.
 - O banco independente central mantém `central_settings`, `central_setting_audit_events` e `system_clients`.
 - Valores de configuração são criptografados com AES-256-GCM; chaves dos sistemas são persistidas somente como hash.
-- Nenhuma entidade de negócio escolar ou dado de tenant é armazenado no banco central.
+- A Central mantém somente identidade, UUID/código do tenant e roteamento de
+  acesso por sistema/banco; dados acadêmicos e financeiros continuam fora do
+  banco central.
+
+## Vínculo de identidade e sessões
+
+- `tenants.centralTenantId`: UUID global único devolvido pela Central e usado
+  para localizar o tenant local.
+- `tenants.centralTenantCode`: código global único para operação e auditoria.
+- `email_credentials.centralIdentityAccountId`: vínculo único da credencial
+  legada com a conta central; depois do vínculo a senha e os tokens locais são
+  limpos.
+- `auth_sessions`: sessão revogável com `jti` aleatório, tenant, usuário, tipo
+  de conta, filial, provedor de identidade, validade e cancelamento.
+- Não há chave estrangeira de `auth_sessions.userId` porque o identificador pode
+  pertencer a `users`, `teachers`, `students` ou `guardians`; a validação
+  correspondente é obrigatória no guard de autenticação.
 
 ## Financeiro operacional
 
@@ -377,3 +386,20 @@ Regra oficial:
 
 - `students` e `classes` continuam definindo valor e pagador
 - titulos, parcelas e historico operacional de lancamentos ficam exclusivamente no projeto `Financeiro`
+
+## Segredos e artefatos locais
+
+- Banco SQLite, snapshots, backups, arquivos `.sqlite`, logs e scripts temporarios de token nao podem ser versionados nem entrar na imagem Docker.
+- Testes E2E devem criar seu banco temporario diretamente pelo schema Prisma e nunca depender de um snapshot `.db` versionado.
+- A remocao do worktree nao apaga versoes antigas do Git; a higienizacao do historico exige operacao coordenada e rotacao posterior de todas as credenciais potencialmente expostas.
+- SMTP, Telegram e S3 persistidos em `tenants`, `tenant_branches`, `series_classes` e no JSON legado de `global_settings` usam envelope `enc:v1` com AES-256-GCM.
+- `DATA_ENCRYPTION_KEY` deve representar exatamente 32 bytes; em producao sua ausencia ou formato invalido impede o startup.
+- A migracao de inicializacao valida ciphertext existente, cria backup local criptografado e converte somente valores em texto puro; a segunda execucao nao regrava dados.
+- Consumidores internos descriptografam apenas no momento de enviar e-mail, Telegram, storage ou sincronizacao backend a backend; DTOs e logs nunca recebem o valor.
+
+## PostgreSQL paralelo e RLS
+
+- SQLite em `backend/prisma/schema.prisma` continua como ponte de desenvolvimento/teste.
+- O schema PostgreSQL esta em `backend/prisma/postgresql/schema.prisma` e seu baseline fica fora de `backend/prisma/migrations`.
+- O SQL RLS manual descobre tabelas com `tenantId`, habilita `ENABLE/FORCE ROW LEVEL SECURITY` e aplica `USING`/`WITH CHECK`.
+- RLS nao entra no deploy automatico ate a identidade Central, o papel sem `BYPASSRLS` e o contexto por `set_config(..., true)` na mesma transacao estarem implementados e testados.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import {
   fetchTenantBranches,
@@ -11,9 +11,8 @@ import {
 import { clearStoredSession } from '@/app/lib/auth-storage';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
-const FINANCEIRO_FRONTEND_URL =
-  process.env.NEXT_PUBLIC_FINANCEIRO_FRONTEND_URL || 'http://localhost:3003';
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const FINANCEIRO_FRONTEND_URL = '/financeiro-app';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
 
 const SECTION_CONFIG = {
@@ -117,17 +116,6 @@ type EmbeddedFinanceHeaderContent = {
   eyebrow: string;
   title: string;
   description: string;
-};
-
-type BranchStockParameterMode = 'NO' | 'YES' | 'BY_PRODUCT';
-
-type BranchStockParameters = {
-  stockControlMode: BranchStockParameterMode;
-  stockIntegerQuantityMode: BranchStockParameterMode;
-  stockLotControlMode: BranchStockParameterMode;
-  stockExpirationControlMode: BranchStockParameterMode;
-  stockGridControlMode: BranchStockParameterMode;
-  stockNegativeControlMode: BranchStockParameterMode;
 };
 
 type FinanceBranding = {
@@ -270,105 +258,15 @@ const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderCo
   },
 };
 
-function normalizeDisplayText(value: string | null | undefined) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return null;
-
-  if (!/[ÃÂâ]/.test(trimmed)) {
-    return trimmed;
-  }
-
-  try {
-    return decodeURIComponent(escape(trimmed));
-  } catch {
-    return trimmed;
-  }
-}
-
-function normalizeStockParameterMode(value: unknown): BranchStockParameterMode {
-  const normalized = String(value || '')
-    .trim()
-    .toUpperCase();
-
-  return normalized === 'NO' || normalized === 'YES' || normalized === 'BY_PRODUCT'
-    ? normalized
-    : 'BY_PRODUCT';
-}
-
-function getBranchStockParameters(branch?: TenantBranchSummary | null): BranchStockParameters | null {
-  if (!branch) return null;
-
-  return {
-    stockControlMode: normalizeStockParameterMode(branch.stockControlMode),
-    stockIntegerQuantityMode: normalizeStockParameterMode(branch.stockIntegerQuantityMode),
-    stockLotControlMode: normalizeStockParameterMode(branch.stockLotControlMode),
-    stockExpirationControlMode: normalizeStockParameterMode(branch.stockExpirationControlMode),
-    stockGridControlMode: normalizeStockParameterMode(branch.stockGridControlMode),
-    stockNegativeControlMode: normalizeStockParameterMode(branch.stockNegativeControlMode),
-  };
-}
-
 function buildFinanceFrameUrl(
   baseUrl: string,
   path: string,
-  authContext: ReturnType<typeof getDashboardAuthContext>,
-  financeBranding?: FinanceBranding | null,
-  branchStockParameters?: BranchStockParameters | null,
 ) {
   const normalizedBaseUrl = baseUrl.endsWith('/')
     ? baseUrl.slice(0, -1)
     : baseUrl;
 
-  const params = new URLSearchParams({
-    embedded: '1',
-    sourceSystem: 'ESCOLA',
-  });
-
-  if (authContext.tenantId) {
-    params.set('sourceTenantId', authContext.tenantId.toUpperCase());
-  }
-
-  if (Number.isInteger(authContext.branchCode) && authContext.branchCode >= 0) {
-    params.set('sourceBranchCode', String(authContext.branchCode));
-  }
-
-  if (branchStockParameters) {
-    params.set('stockControlMode', branchStockParameters.stockControlMode);
-    params.set('stockIntegerQuantityMode', branchStockParameters.stockIntegerQuantityMode);
-    params.set('stockLotControlMode', branchStockParameters.stockLotControlMode);
-    params.set('stockExpirationControlMode', branchStockParameters.stockExpirationControlMode);
-    params.set('stockGridControlMode', branchStockParameters.stockGridControlMode);
-    params.set('stockNegativeControlMode', branchStockParameters.stockNegativeControlMode);
-  }
-
-  if (authContext.userId) {
-    params.set('cashierUserId', authContext.userId.toUpperCase());
-  }
-
-  if (authContext.name) {
-    params.set(
-      'cashierDisplayName',
-      String(normalizeDisplayText(authContext.name) || authContext.name).toUpperCase(),
-    );
-  }
-
-  if (authContext.role) {
-    params.set('userRole', authContext.role.toUpperCase());
-  }
-
-  if (authContext.permissions.length) {
-    params.set('permissions', authContext.permissions.join(',').toUpperCase());
-  }
-
-  if (financeBranding?.schoolName) {
-    params.set('companyName', financeBranding.schoolName.toUpperCase());
-  }
-
-  if (financeBranding?.logoUrl) {
-    params.set('logoUrl', financeBranding.logoUrl);
-  }
-
-  return `${normalizedBaseUrl}${path}?${params.toString()}`;
+  return `${normalizedBaseUrl}${path}?embedded=1`;
 }
 
 export function PrincipalFinanceiroSectionPageContent({
@@ -380,9 +278,8 @@ export function PrincipalFinanceiroSectionPageContent({
   const [section, setSection] = useState<string | null>(null);
   const [subpath, setSubpath] = useState<string[]>([]);
   const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
+  const financeiroFrameRef = useRef<HTMLIFrameElement>(null);
   const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
-  const [branchStockParameters, setBranchStockParameters] =
-    useState<BranchStockParameters | null>(null);
   const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
   const [isSourceSettingsSyncing, setIsSourceSettingsSyncing] = useState(false);
   const [sourceSettingsSyncCompleted, setSourceSettingsSyncCompleted] = useState(false);
@@ -431,7 +328,7 @@ export function PrincipalFinanceiroSectionPageContent({
     void fetch(`${API_BASE_URL}/tenants/current/sync-financeiro-integration-settings`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${authContext.token}`,
+
         'Content-Type': 'application/json',
       },
     })
@@ -455,23 +352,17 @@ export function PrincipalFinanceiroSectionPageContent({
     return buildFinanceFrameUrl(
       FINANCEIRO_FRONTEND_URL,
       `${sectionConfig.path}${nestedPath}`,
-      authContext,
-      financeBranding,
-      branchStockParameters,
     );
-  }, [authContext, branchStockParameters, financeBranding, section, sectionConfig, sourceSettingsSyncCompleted, subpath]);
+  }, [sectionConfig, sourceSettingsSyncCompleted, subpath]);
 
   useEffect(() => {
-    const financeiroOrigin = (() => {
-      try {
-        return new URL(FINANCEIRO_FRONTEND_URL).origin;
-      } catch {
-        return '*';
-      }
-    })();
+    const financeiroOrigin = window.location.origin;
 
     async function handleFinanceiroPasswordValidation(event: MessageEvent) {
-      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
 
       const payload = event.data;
       if (!payload || payload.type !== 'MSINFOR_CONFIRM_CASH_CANCELLATION_PASSWORD') {
@@ -490,7 +381,7 @@ export function PrincipalFinanceiroSectionPageContent({
             requestId,
             ...result,
           },
-          financeiroOrigin === '*' ? '*' : event.origin,
+          event.origin,
         );
       };
 
@@ -503,7 +394,7 @@ export function PrincipalFinanceiroSectionPageContent({
         const response = await fetch(`${API_BASE_URL}/auth/confirm-cash-cancellation-password`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${authContext.token}`,
+
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ password }),
@@ -546,16 +437,13 @@ export function PrincipalFinanceiroSectionPageContent({
   }, [authContext.token]);
 
   useEffect(() => {
-    const financeiroOrigin = (() => {
-      try {
-        return new URL(FINANCEIRO_FRONTEND_URL).origin;
-      } catch {
-        return '*';
-      }
-    })();
+    const financeiroOrigin = window.location.origin;
 
     async function handleFinancialCustomersSync(event: MessageEvent) {
-      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
 
       const payload = event.data;
       if (!payload || payload.type !== 'MSINFOR_SYNC_FINANCIAL_CUSTOMERS') return;
@@ -570,7 +458,7 @@ export function PrincipalFinanceiroSectionPageContent({
             requestId,
             ...result,
           },
-          financeiroOrigin === '*' ? '*' : event.origin,
+          event.origin,
         );
       };
 
@@ -585,7 +473,7 @@ export function PrincipalFinanceiroSectionPageContent({
           {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${authContext.token}`,
+
               'Content-Type': 'application/json',
             },
           },
@@ -616,16 +504,13 @@ export function PrincipalFinanceiroSectionPageContent({
   }, [authContext.token]);
 
   useEffect(() => {
-    const financeiroOrigin = (() => {
-      try {
-        return new URL(FINANCEIRO_FRONTEND_URL).origin;
-      } catch {
-        return '*';
-      }
-    })();
+    const financeiroOrigin = window.location.origin;
 
     function handleFinanceiroCashSessionClosedLogout(event: MessageEvent) {
-      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
 
       const payload = event.data;
       if (!payload || payload.type !== 'MSINFOR_CASH_SESSION_CLOSED_LOGOUT') {
@@ -641,16 +526,13 @@ export function PrincipalFinanceiroSectionPageContent({
   }, []);
 
   useEffect(() => {
-    const financeiroOrigin = (() => {
-      try {
-        return new URL(FINANCEIRO_FRONTEND_URL).origin;
-      } catch {
-        return '*';
-      }
-    })();
+    const financeiroOrigin = window.location.origin;
 
     async function handleFinanceiroPeopleSearch(event: MessageEvent) {
-      if (financeiroOrigin !== '*' && event.origin !== financeiroOrigin) return;
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
 
       const payload = event.data;
       if (!payload || payload.type !== 'MSINFOR_PEOPLE_SEARCH') {
@@ -669,7 +551,7 @@ export function PrincipalFinanceiroSectionPageContent({
             requestId,
             ...result,
           },
-          financeiroOrigin === '*' ? '*' : event.origin,
+          event.origin,
         );
       };
 
@@ -683,7 +565,7 @@ export function PrincipalFinanceiroSectionPageContent({
           `${API_BASE_URL}/shared-profiles/name-suggestions?name=${encodeURIComponent(search)}&limit=12`,
           {
             headers: {
-              Authorization: `Bearer ${authContext.token}`,
+
             },
           },
         );
@@ -726,7 +608,6 @@ export function PrincipalFinanceiroSectionPageContent({
     async function loadBranchStockParameters() {
       try {
         if (!authContext.token || !authContext.tenantId) {
-          if (isActive) setBranchStockParameters(null);
           return;
         }
 
@@ -742,12 +623,10 @@ export function PrincipalFinanceiroSectionPageContent({
 
         if (isActive) {
           setCurrentBranch(currentBranch);
-          setBranchStockParameters(getBranchStockParameters(currentBranch));
         }
       } catch {
         if (isActive) {
           setCurrentBranch(null);
-          setBranchStockParameters(null);
         }
       }
     }
@@ -764,9 +643,42 @@ export function PrincipalFinanceiroSectionPageContent({
     return () => window.clearTimeout(timer);
   }, [section]);
 
+  useEffect(() => {
+    if ((section !== 'vendas' && section !== 'vendas-2') || !loadedFrameSrc || !currentBranch) {
+      return;
+    }
+
+    const applySalesParameters = () => {
+      financeiroFrameRef.current?.contentWindow?.postMessage(
+        {
+          type: 'MSINFOR_APPLY_SALES_PARAMETERS',
+          parameters: {
+            allowSaleUnitPriceEdit: currentBranch.allowSaleUnitPriceEdit !== false,
+            allowSaleItemDiscount: currentBranch.allowSaleItemDiscount !== false,
+            groupSameProduct: currentBranch.groupSameProduct !== false,
+            allowProductImageEdit: currentBranch.allowProductImageEdit !== false,
+          },
+        },
+        window.location.origin,
+      );
+    };
+    const firstAttempt = window.setTimeout(applySalesParameters, 300);
+    const secondAttempt = window.setTimeout(applySalesParameters, 1000);
+
+    return () => {
+      window.clearTimeout(firstAttempt);
+      window.clearTimeout(secondAttempt);
+    };
+  }, [
+    currentBranch,
+    loadedFrameSrc,
+    section,
+  ]);
+
   const isFrameLoading =
     isSourceSettingsSyncing || Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
   const isCompactFinanceSection = section === 'parcelas';
+  const isS3ControlScreen = embeddedScreenId === 'PRINCIPAL_FINANCEIRO_MSINFOR_CONTROLE_S3';
   const isTightFinanceSection = false;
   const isCompactFinanceHeader = true;
   const financeHeaderPaddingClass = isTightFinanceSection
@@ -798,6 +710,12 @@ export function PrincipalFinanceiroSectionPageContent({
     const handleEmbeddedScreenContext = (
       event: MessageEvent<{ type?: string; screenId?: string }>,
     ) => {
+      if (
+        event.origin !== window.location.origin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) {
+        return;
+      }
       const data = event.data;
       if (!data || data.type !== 'MSINFOR_SCREEN_CONTEXT') {
         return;
@@ -964,11 +882,12 @@ export function PrincipalFinanceiroSectionPageContent({
               ) : null}
 
               <iframe
+                ref={financeiroFrameRef}
                 key={iframeSrc}
                 title={`Financeiro integrado - ${sectionConfig.label}`}
                 src={iframeSrc || undefined}
                 onLoad={() => setLoadedFrameSrc(iframeSrc)}
-                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'vendas' || section === 'vendas-2' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
+                className={`block ${isCompactFinanceSection ? 'h-full' : isS3ControlScreen ? 'h-[calc(100vh-14rem)]' : section === 'vendas' || section === 'vendas-2' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
               />
           </>
         </div>

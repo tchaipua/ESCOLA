@@ -12,6 +12,7 @@ const IGNORED_MODELS = [
   "TenantBranch",
   "GlobalSetting",
   "EmailCredential",
+  "AuthSession",
 ];
 const PUBLIC_MODELS = ["User", "Teacher", "Student", "Guardian"];
 const BRANCH_MODELS = [

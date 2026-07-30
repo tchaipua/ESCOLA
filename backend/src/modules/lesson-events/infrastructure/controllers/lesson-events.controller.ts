@@ -8,7 +8,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { LessonEventsService } from "../../application/services/lesson-events.service";
@@ -18,7 +18,6 @@ import { UpdateLessonEventDto } from "../../application/dto/update-lesson-event.
 import { FindMyTeacherAgendaDto } from "../../application/dto/find-my-teacher-agenda.dto";
 import { FindMyTeacherCalendarDto } from "../../application/dto/find-my-teacher-calendar.dto";
 
-@ApiBearerAuth()
 @ApiTags("Agenda Diária do Professor")
 @Roles("PROFESSOR")
 @Controller("lesson-events")

@@ -1,4 +1,18 @@
-import { BadGatewayException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import type { ICurrentUser } from "../../common/decorators/current-user.decorator";
+import { PrismaService } from "../../prisma/prisma.service";
+import {
+  FinanceiroInternalClient,
+} from "./financeiro-internal.client";
+import {
+  authorizeFinanceiroGatewayRequest,
+  expectedFinanceiroBinaryContentType,
+} from "./financeiro-gateway.policy";
+import { CentralTenantConfigurationService } from "../msinfor-central/central-tenant-configuration.service";
 
 export type FinanceiroBatchMetadata = {
   scope?: string;
@@ -152,6 +166,8 @@ export type FinanceiroSourceIntegrationSettingsPayload = {
   allowSaleUnitPriceEdit?: boolean;
   allowSaleItemDiscount?: boolean;
   groupSameProduct?: boolean;
+  allowProductImageEdit?: boolean;
+  requirePasswordToRemoveSaleItems?: boolean;
 };
 
 export type FinanceiroCustomerSyncResponse = {
@@ -339,193 +355,459 @@ export type FinanceiroSettleCashInstallmentResponse = {
   message: string;
 };
 
+const SOURCE_SYSTEM = "ESCOLA";
+const AUTHORITY_FIELDS = new Set([
+  "sourceSystem",
+  "sourceTenantId",
+  "tenantId",
+  "schoolId",
+  "sourceBranchCode",
+  "branchCode",
+  "sourceUserId",
+  "requestedBy",
+  "cashierUserId",
+  "cashierDisplayName",
+  "companyId",
+  "branchId",
+  "userRole",
+  "role",
+  "scopes",
+  "permissions",
+  "companyName",
+  "companyDocument",
+]);
+const AUTHORITY_FIELDS_LOWERCASE = new Set(
+  Array.from(AUTHORITY_FIELDS, (field) => field.toLowerCase()),
+);
+
+type FinanceiroRuntimeContext = Awaited<
+  ReturnType<FinanceiroService["buildRuntimeContext"]>
+>;
+
+function canonicalizeDeclaredContext(
+  value: unknown,
+  context: FinanceiroRuntimeContext,
+  visited = new WeakSet<object>(),
+): unknown {
+  if (!value || typeof value !== "object") return value;
+  if (visited.has(value)) {
+    throw new BadRequestException("Corpo circular não permitido.");
+  }
+  visited.add(value);
+  if (Array.isArray(value)) {
+    const result = value.map((item) =>
+      canonicalizeDeclaredContext(item, context, visited),
+    );
+    visited.delete(value);
+    return result;
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    if (!AUTHORITY_FIELDS_LOWERCASE.has(key.toLowerCase())) {
+      result[key] = canonicalizeDeclaredContext(
+        nestedValue,
+        context,
+        visited,
+      );
+      continue;
+    }
+    if (!AUTHORITY_FIELDS.has(key)) {
+      // Variações de caixa não fazem parte do contrato e são removidas.
+      continue;
+    }
+    switch (key) {
+      case "sourceSystem":
+        result[key] = SOURCE_SYSTEM;
+        break;
+      case "sourceTenantId":
+        result[key] = context.sourceTenantId;
+        break;
+      case "sourceBranchCode":
+      case "branchCode":
+        result[key] = context.sourceBranchCode;
+        break;
+      case "sourceUserId":
+      case "requestedBy":
+      case "cashierUserId":
+        result[key] = context.cashierUserId;
+        break;
+      case "cashierDisplayName":
+        result[key] = context.cashierDisplayName;
+        break;
+      case "companyName":
+        result[key] = context.companyName;
+        break;
+      case "companyDocument":
+        result[key] = context.companyDocument || undefined;
+        break;
+      case "companyId":
+      case "branchId":
+      case "tenantId":
+      case "schoolId":
+      case "userRole":
+      case "role":
+      case "scopes":
+      case "permissions":
+        // IDs internos e autorização são resolvidos pelo contexto HMAC.
+        break;
+    }
+  }
+  visited.delete(value);
+  return result;
+}
+
 @Injectable()
 export class FinanceiroService {
-  private getBaseUrl() {
-    return (
-      process.env.FINANCEIRO_API_URL?.trim() || "http://localhost:3002/api/v1"
-    ).replace(/\/+$/, "");
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly financeiroClient: FinanceiroInternalClient,
+    private readonly centralConfiguration: CentralTenantConfigurationService,
+  ) {}
+
+  async buildRuntimeContext(currentUser: ICurrentUser) {
+    const requestedBranchCode = Number(currentUser.branchCode);
+    const branchCode =
+      requestedBranchCode >= 1
+        ? requestedBranchCode
+        : (await this.centralConfiguration.listBranches(currentUser.tenantId))[0]
+            ?.branchCode;
+    if (!branchCode) {
+      throw new NotFoundException("Nenhuma filial ativa foi localizada.");
+    }
+    const central = await this.centralConfiguration.findConfiguration(
+      currentUser.tenantId,
+      branchCode,
+    );
+    const company = this.centralConfiguration.mergeCompany(
+      central.tenant.company,
+      central.branch?.company,
+    );
+    const commerce = central.effective.commerce;
+    return {
+      embedded: true,
+      sourceSystem: SOURCE_SYSTEM,
+      sourceTenantId: currentUser.tenantId.toUpperCase(),
+      sourceBranchCode: branchCode,
+      stockControlMode: commerce?.stockControlMode || "NO",
+      stockIntegerQuantityMode: commerce?.stockIntegerQuantityMode || "NO",
+      stockLotControlMode: commerce?.stockLotControlMode || "NO",
+      stockExpirationControlMode:
+        commerce?.stockExpirationControlMode || "NO",
+      stockGridControlMode: commerce?.stockGridControlMode || "NO",
+      stockNegativeControlMode: commerce?.stockNegativeControlMode || "NO",
+      companyName:
+        company.tradeName ||
+        company.legalName ||
+        central.tenant.displayName,
+      companyDocument: company.documentNumber || null,
+      logoUrl: company.logoReference || null,
+      cashierUserId: currentUser.userId,
+      cashierDisplayName:
+        currentUser.name || currentUser.email || currentUser.userId,
+      userRole: currentUser.role,
+      permissions: [...(currentUser.permissions || [])],
+    };
+  }
+
+  async proxyGatewayRequest(
+    currentUser: ICurrentUser,
+    input: {
+      method: string;
+      path: string;
+      searchParams: URLSearchParams;
+      body?: unknown;
+      bodyBytes?: Buffer;
+      contentType?: string;
+      idempotencyKey?: string;
+    },
+  ) {
+    authorizeFinanceiroGatewayRequest(
+      currentUser,
+      input.method,
+      input.path,
+    );
+    const context = await this.buildRuntimeContext(currentUser);
+    const searchParams = new URLSearchParams(input.searchParams);
+    const replacements: Record<string, string> = {
+      sourceSystem: SOURCE_SYSTEM,
+      sourceTenantId: context.sourceTenantId,
+      sourceBranchCode: String(context.sourceBranchCode),
+      branchCode: String(context.sourceBranchCode),
+      sourceUserId: context.cashierUserId,
+      requestedBy: context.cashierUserId,
+      cashierUserId: context.cashierUserId,
+      cashierDisplayName: context.cashierDisplayName,
+      companyName: context.companyName,
+      companyDocument: context.companyDocument || "",
+    };
+    const replacementByLowercase = new Map(
+      Object.entries(replacements).map(([key, value]) => [
+        key.toLowerCase(),
+        { key, value },
+      ]),
+    );
+    const blockedQueryNames = new Set([
+      ...Array.from(replacementByLowercase.keys()),
+      "companyid",
+      "branchid",
+      "tenantid",
+      "schoolid",
+      "userrole",
+      "role",
+      "permissions",
+      "scopes",
+    ]);
+    for (const key of Array.from(searchParams.keys())) {
+      const normalizedKey = key.toLowerCase();
+      if (!blockedQueryNames.has(normalizedKey)) continue;
+      searchParams.delete(key);
+    }
+    const gatewayPath = input.path.startsWith("/")
+      ? input.path
+      : `/${input.path}`;
+    const requiresBranchInQuery = [
+      "/s3-control",
+      "/supertef",
+      "/printing",
+    ].some(
+      (prefix) =>
+        gatewayPath === prefix || gatewayPath.startsWith(`${prefix}/`),
+    );
+    const protectedQueryReplacements = [
+      replacementByLowercase.get("sourcesystem")!,
+      replacementByLowercase.get("sourcetenantid")!,
+      ...(requiresBranchInQuery
+        ? [replacementByLowercase.get("sourcebranchcode")!]
+        : []),
+    ];
+    for (const replacement of protectedQueryReplacements) {
+      if (replacement.value) {
+        searchParams.set(replacement.key, replacement.value);
+      }
+    }
+
+    const query = searchParams.toString();
+    const path = `${input.path}${query ? `?${query}` : ""}`;
+    const headers: Record<string, string> = {};
+    if (input.idempotencyKey) {
+      headers["x-idempotency-key"] = input.idempotencyKey;
+    }
+    const expectedBinaryContentType =
+      expectedFinanceiroBinaryContentType(input.method, input.path);
+    const financeCurrentUser =
+      currentUser.branchCode === context.sourceBranchCode
+        ? currentUser
+        : { ...currentUser, branchCode: context.sourceBranchCode };
+    return this.financeiroClient.request({
+      method: input.method,
+      path,
+      currentUser: financeCurrentUser,
+      ...(input.bodyBytes
+        ? {
+            bodyBytes: input.bodyBytes,
+            contentType: input.contentType,
+          }
+        : input.body !== undefined
+          ? { json: canonicalizeDeclaredContext(input.body, context) }
+          : {}),
+      headers,
+      ...(expectedBinaryContentType
+        ? { expectedBinaryContentType }
+        : {}),
+    });
   }
 
   private async request<T>(
+    currentUser: ICurrentUser,
     path: string,
-    init?: RequestInit & { fallbackMessage?: string },
-  ): Promise<T> {
-    const fallbackMessage =
-      init?.fallbackMessage || "Não foi possível comunicar com o Financeiro.";
-
-    try {
-      const response = await fetch(`${this.getBaseUrl()}${path}`, {
-        ...init,
-        headers: {
-          ...(init?.body ? { "Content-Type": "application/json" } : {}),
-          ...(init?.headers || {}),
-        },
-      });
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new BadGatewayException(
-          payload?.message || payload?.error || fallbackMessage,
-        );
-      }
-
-      return payload as T;
-    } catch (error) {
-      if (error instanceof BadGatewayException) {
-        throw error;
-      }
-
-      throw new BadGatewayException(fallbackMessage);
-    }
-  }
-
-  async importReceivables(payload: FinanceiroImportPayload) {
-    return this.request<FinanceiroImportResponse>("/receivables/import", {
-      method: "POST",
-      body: JSON.stringify(payload),
-      fallbackMessage:
-        "Não foi possível gravar os lançamentos no sistema Financeiro.",
+    options: {
+      method?: string;
+      json?: unknown;
+      technicalScopes?: readonly "SOURCE_SETTINGS_SYNC"[];
+    } = {},
+  ) {
+    const context = await this.buildRuntimeContext(currentUser);
+    const financeCurrentUser =
+      currentUser.branchCode === context.sourceBranchCode
+        ? currentUser
+        : { ...currentUser, branchCode: context.sourceBranchCode };
+    return this.financeiroClient.request<T>({
+      path,
+      method: options.method,
+      currentUser: financeCurrentUser,
+      ...(options.json !== undefined
+        ? { json: canonicalizeDeclaredContext(options.json, context) }
+        : {}),
+      ...(options.technicalScopes
+        ? { technicalScopes: options.technicalScopes }
+        : {}),
     });
   }
 
-  async syncCustomers(payload: FinanceiroCustomerSyncPayload) {
-    return this.request<FinanceiroCustomerSyncResponse>("/customers/sync", {
+  async importReceivables(
+    currentUser: ICurrentUser,
+    payload: FinanceiroImportPayload,
+  ) {
+    return this.request<FinanceiroImportResponse>(
+      currentUser,
+      "/receivables/import",
+      {
       method: "POST",
-      body: JSON.stringify(payload),
-      fallbackMessage:
-        "Não foi possível sincronizar os clientes com o sistema Financeiro.",
-    });
+        json: payload,
+      },
+    );
+  }
+
+  async syncCustomers(
+    currentUser: ICurrentUser,
+    payload: FinanceiroCustomerSyncPayload,
+  ) {
+    return this.request<FinanceiroCustomerSyncResponse>(
+      currentUser,
+      "/customers/sync",
+      {
+      method: "POST",
+        json: payload,
+      },
+    );
   }
 
   async syncSourceIntegrationSettings(
+    currentUser: ICurrentUser,
     payload: FinanceiroSourceIntegrationSettingsPayload,
   ) {
     return this.request<{
-      companyId: string;
-      branchCode: number;
-      s3Configured: boolean;
-      smtpConfigured: boolean;
-      telegramConfigured: boolean;
-      synchronizedAt: string;
-    }>("/companies/sync-source-integration-settings", {
-      method: "POST",
-      headers: {
-        "x-api-key": String(
-          process.env.FINANCEIRO_INTEGRATION_API_KEY || "",
-        ).trim(),
+        companyId: string;
+        branchCode: number;
+        s3Configured: boolean;
+        smtpConfigured: boolean;
+        telegramConfigured: boolean;
+        synchronizedAt: string;
+      }>(
+      currentUser,
+      "/companies/sync-source-integration-settings",
+      {
+        method: "POST",
+        json: payload,
+        technicalScopes: ["SOURCE_SETTINGS_SYNC"],
       },
-      body: JSON.stringify(payload),
-      fallbackMessage:
-        "Não foi possível sincronizar as configurações da empresa e filial com o Financeiro.",
-    });
+    );
   }
 
-  async existingBusinessKeys(payload: {
-    sourceSystem: string;
-    sourceTenantId: string;
-    businessKeys: string[];
-  }) {
+  async existingBusinessKeys(
+    currentUser: ICurrentUser,
+    payload: {
+      sourceSystem: string;
+      sourceTenantId: string;
+      businessKeys: string[];
+    },
+  ) {
     return this.request<FinanceiroExistingBusinessKeysResponse>(
+      currentUser,
       "/receivables/existing-business-keys",
       {
         method: "POST",
-        body: JSON.stringify(payload),
-        fallbackMessage:
-          "Não foi possível validar duplicidades no sistema Financeiro.",
+        json: payload,
       },
     );
   }
 
-  async listReceivableBatches(filters: {
-    sourceSystem: string;
-    sourceTenantId: string;
-  }) {
-    const query = new URLSearchParams({
-      sourceSystem: filters.sourceSystem,
-      sourceTenantId: filters.sourceTenantId,
-    });
-
-    return this.request<FinanceiroBatchSummary[]>(
-      `/receivables/batches?${query.toString()}`,
-      {
-        fallbackMessage:
-          "Não foi possível carregar o histórico financeiro no sistema Financeiro.",
-      },
-    );
-  }
-
-  async getReceivableBatch(
-    batchId: string,
-    filters: {
+  async listReceivableBatches(
+    currentUser: ICurrentUser,
+    _filters: {
       sourceSystem: string;
       sourceTenantId: string;
     },
   ) {
     const query = new URLSearchParams({
-      sourceSystem: filters.sourceSystem,
-      sourceTenantId: filters.sourceTenantId,
+      sourceSystem: SOURCE_SYSTEM,
+      sourceTenantId: currentUser.tenantId.toUpperCase(),
+    });
+
+    return this.request<FinanceiroBatchSummary[]>(
+      currentUser,
+      `/receivables/batches?${query.toString()}`,
+    );
+  }
+
+  async getReceivableBatch(
+    currentUser: ICurrentUser,
+    batchId: string,
+    _filters: {
+      sourceSystem: string;
+      sourceTenantId: string;
+    },
+  ) {
+    const query = new URLSearchParams({
+      sourceSystem: SOURCE_SYSTEM,
+      sourceTenantId: currentUser.tenantId.toUpperCase(),
     });
 
     return this.request<FinanceiroBatchDetails>(
+      currentUser,
       `/receivables/batches/${batchId}?${query.toString()}`,
-      {
-        fallbackMessage:
-          "Não foi possível carregar os detalhes do lote financeiro.",
-      },
     );
   }
 
-  async getCurrentCashSession(filters: {
-    sourceSystem: string;
-    sourceTenantId: string;
-    cashierUserId: string;
-  }) {
+  async getCurrentCashSession(
+    currentUser: ICurrentUser,
+    _filters: {
+      sourceSystem: string;
+      sourceTenantId: string;
+      cashierUserId: string;
+    },
+  ) {
     const query = new URLSearchParams({
-      sourceSystem: filters.sourceSystem,
-      sourceTenantId: filters.sourceTenantId,
-      cashierUserId: filters.cashierUserId,
+      sourceSystem: SOURCE_SYSTEM,
+      sourceTenantId: currentUser.tenantId.toUpperCase(),
+      cashierUserId: currentUser.userId,
     });
 
     return this.request<FinanceiroCashSession | null>(
+      currentUser,
       `/cash-sessions/current?${query.toString()}`,
-      {
-        fallbackMessage:
-          "Não foi possível carregar o caixa atual no sistema Financeiro.",
-      },
     );
   }
 
-  async openCashSession(payload: FinanceiroOpenCashSessionPayload) {
-    return this.request<FinanceiroCashSession>("/cash-sessions/open", {
-      method: "POST",
-      body: JSON.stringify(payload),
-      fallbackMessage: "Não foi possível abrir o caixa no sistema Financeiro.",
-    });
+  async openCashSession(
+    currentUser: ICurrentUser,
+    payload: FinanceiroOpenCashSessionPayload,
+  ) {
+    return this.request<FinanceiroCashSession>(
+      currentUser,
+      "/cash-sessions/open",
+      { method: "POST", json: payload },
+    );
   }
 
   async closeCurrentCashSession(
+    currentUser: ICurrentUser,
     payload: FinanceiroCloseCurrentCashSessionPayload,
   ) {
-    return this.request<FinanceiroCashSession>("/cash-sessions/close-current", {
-      method: "POST",
-      body: JSON.stringify(payload),
-      fallbackMessage: "Não foi possível fechar o caixa no sistema Financeiro.",
-    });
+    return this.request<FinanceiroCashSession>(
+      currentUser,
+      "/cash-sessions/close-current",
+      { method: "POST", json: payload },
+    );
   }
 
-  async listOpenInstallments(filters: {
-    sourceSystem: string;
-    sourceTenantId: string;
-    status?: FinanceiroInstallmentFilterStatus;
-    studentName?: string;
-    payerName?: string;
-    search?: string;
-  }) {
+  async listOpenInstallments(
+    currentUser: ICurrentUser,
+    filters: {
+      sourceSystem: string;
+      sourceTenantId: string;
+      status?: FinanceiroInstallmentFilterStatus;
+      studentName?: string;
+      payerName?: string;
+      search?: string;
+    },
+  ) {
     const query = new URLSearchParams({
-      sourceSystem: filters.sourceSystem,
-      sourceTenantId: filters.sourceTenantId,
+      sourceSystem: SOURCE_SYSTEM,
+      sourceTenantId: currentUser.tenantId.toUpperCase(),
     });
 
     if (filters.status?.trim()) {
@@ -545,51 +827,51 @@ export class FinanceiroService {
     }
 
     return this.request<FinanceiroInstallment[]>(
+      currentUser,
       `/receivables/installments?${query.toString()}`,
-      {
-        fallbackMessage:
-          "Não foi possível carregar as parcelas no sistema Financeiro.",
-      },
     );
   }
 
-  async listInstallments(filters: {
-    sourceSystem: string;
-    sourceTenantId: string;
-    status?: FinanceiroInstallmentFilterStatus;
-    studentName?: string;
-    payerName?: string;
-    search?: string;
-  }) {
-    return this.listOpenInstallments(filters);
+  async listInstallments(
+    currentUser: ICurrentUser,
+    filters: {
+      sourceSystem: string;
+      sourceTenantId: string;
+      status?: FinanceiroInstallmentFilterStatus;
+      studentName?: string;
+      payerName?: string;
+      search?: string;
+    },
+  ) {
+    return this.listOpenInstallments(currentUser, filters);
   }
 
   async settleCashInstallment(
+    currentUser: ICurrentUser,
     installmentId: string,
     payload: FinanceiroSettleCashInstallmentPayload,
   ) {
     return this.request<FinanceiroSettleCashInstallmentResponse>(
+      currentUser,
       `/receivables/installments/${installmentId}/settle-cash`,
       {
         method: "POST",
-        body: JSON.stringify(payload),
-        fallbackMessage:
-          "Não foi possível registrar a baixa em dinheiro no sistema Financeiro.",
+        json: payload,
       },
     );
   }
 
   async updateInstallment(
+    currentUser: ICurrentUser,
     installmentId: string,
     payload: FinanceiroUpdateInstallmentPayload,
   ) {
     return this.request<FinanceiroInstallment>(
+      currentUser,
       `/receivables/installments/${installmentId}`,
       {
         method: "PATCH",
-        body: JSON.stringify(payload),
-        fallbackMessage:
-          "Não foi possível atualizar a parcela no sistema Financeiro.",
+        json: payload,
       },
     );
   }

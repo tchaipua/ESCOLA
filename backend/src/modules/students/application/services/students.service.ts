@@ -33,6 +33,7 @@ import {
   canViewStudentFinancialData,
   sanitizeStudentForViewer,
 } from "../../../../common/auth/entity-visibility";
+import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 
 @Injectable()
 export class StudentsService {
@@ -41,6 +42,7 @@ export class StudentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
+    private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
   ) {}
 
   private async normalizeLegacyTableDateTimes(
@@ -615,6 +617,18 @@ export class StudentsService {
       }
     }
 
+    if (sanitizedDto.email && hashedPassword) {
+      await this.centralIdentityProvisioning.synchronize({
+        tenantId: this.tenantId(),
+        login: sanitizedDto.email,
+        email: sanitizedDto.email,
+        displayName: sanitizedDto.name,
+        credential: String(sanitizedDto.password),
+        branchCodes: branchSelection.explicitBranchCodes,
+        roleCode: accessProfile || "ALUNO",
+      });
+    }
+
     const refreshedStudent = await this.findStudentEntity(createdStudent.id);
     return sanitizeStudentForViewer(
       this.mapStudentAccess(refreshedStudent),
@@ -736,6 +750,11 @@ export class StudentsService {
         canceledAt: null,
       },
       include: {
+        person: {
+          select: {
+            name: true,
+          },
+        },
         branchAccesses: {
           where: { canceledAt: null },
           orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -988,7 +1007,7 @@ export class StudentsService {
 
     return {
       student: sanitizeStudentForViewer(
-        this.mapStudentAccess(student),
+        this.mapStudentAccess(this.normalizeStudentDisplayName(student)),
         currentUser,
       ),
       currentEnrollment: currentEnrollment

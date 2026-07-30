@@ -7,7 +7,7 @@ import {
   Param,
   Delete,
 } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { SchedulesService } from "../../application/services/schedules.service";
 import { CreateScheduleDto } from "../../application/dto/create-schedule.dto";
 import { UpdateScheduleDto } from "../../application/dto/update-schedule.dto";
@@ -15,7 +15,6 @@ import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { SetRecordActiveDto } from "../../../../common/dto/set-record-active.dto";
 
-@ApiBearerAuth()
 @ApiTags("Horários Base")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("schedules")

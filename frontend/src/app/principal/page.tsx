@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
 type CurrentTenant = {
     id: string;
@@ -269,16 +270,16 @@ export default function DashboardPage() {
 
                 const ownEndpoint = getOwnEndpoint(role);
                 const tenantPromise = fetch(`${API_BASE_URL}/tenants/current`, {
-                    headers: { Authorization: `Bearer ${token}` },
+                    headers: { },
                 });
                 const ownPromise = ownEndpoint
                     ? fetch(`${API_BASE_URL}${ownEndpoint}`, {
-                        headers: { Authorization: `Bearer ${token}` },
+                        headers: { },
                     })
                     : Promise.resolve<Response | null>(null);
                 const schedulePromise = isPersonalRole(role)
                     ? fetch(`${API_BASE_URL}/class-schedule-items/me`, {
-                        headers: { Authorization: `Bearer ${token}` },
+                        headers: { },
                     })
                     : Promise.resolve<Response | null>(null);
 
@@ -293,7 +294,12 @@ export default function DashboardPage() {
                     throw new Error(tenantData?.message || 'Não foi possível carregar a escola logada.');
                 }
 
-                setTenant(tenantData);
+                const cachedBranding = readCachedTenantBranding(tenantData?.id);
+                setTenant({
+                    ...tenantData,
+                    name: tenantData?.name || cachedBranding?.schoolName || 'ESCOLA',
+                    logoUrl: tenantData?.logoUrl || cachedBranding?.logoUrl || null,
+                });
 
                 if (ownResponse) {
                     const ownData = await ownResponse.json().catch(() => null);
@@ -336,7 +342,7 @@ export default function DashboardPage() {
                 }
 
                 const response = await fetch(`${API_BASE_URL}/notifications/my/unread-summary`, {
-                    headers: { Authorization: `Bearer ${token}` },
+                    headers: { },
                 });
                 const data = await response.json().catch(() => null);
 

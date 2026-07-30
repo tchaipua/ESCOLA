@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Put } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   CurrentUser,
   type ICurrentUser,
@@ -7,7 +7,6 @@ import {
 import { UpsertUserPreferenceDto } from "../../application/dto/upsert-user-preference.dto";
 import { UserPreferencesService } from "../../application/services/user-preferences.service";
 
-@ApiBearerAuth()
 @ApiTags("Preferências do Usuário")
 @Controller("user-preferences")
 export class UserPreferencesController {

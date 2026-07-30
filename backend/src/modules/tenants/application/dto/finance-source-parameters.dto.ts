@@ -81,6 +81,14 @@ export class FinanceSourceParametersDto {
   @IsOptional()
   @IsBoolean()
   groupSameProduct?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowProductImageEdit?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  requirePasswordToRemoveSaleItems?: boolean;
 }
 
 export class ApplyFinanceSourceParametersDto {

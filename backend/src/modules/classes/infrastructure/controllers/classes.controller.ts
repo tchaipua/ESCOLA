@@ -7,7 +7,7 @@ import {
   Param,
   Delete,
 } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { ClassesService } from "../../application/services/classes.service";
 import { CreateClassDto } from "../../application/dto/create-class.dto";
 import { UpdateClassDto } from "../../application/dto/update-class.dto";
@@ -15,7 +15,6 @@ import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { SetRecordActiveDto } from "../../../../common/dto/set-record-active.dto";
 
-@ApiBearerAuth()
 @ApiTags("Turmas (Salas de Aula)")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("classes")

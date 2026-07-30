@@ -1562,6 +1562,63 @@ WHERE IS.id = :settlementId
   AND IS.canceledAt IS NULL
 LIMIT 1;`,
   },
+  {
+    screenId: 'PRINCIPAL_FINANCEIRO_MSINFOR_CONTROLE_S3',
+    match: 'exact',
+    originPath: 'msinfor/controle-s3/page.tsx',
+    description:
+      'Tela de consulta e manutencao dos arquivos do S3, usando a configuracao efetiva da empresa ou filial de origem.',
+    tables: [
+      's3_configurations (SC) - configuracao S3 ativa por empresa e filial',
+      'companies (CO) - empresa financeira vinculada ao sistema de origem',
+      's3_audit_events (SAE) - auditoria das operacoes com pastas e arquivos',
+    ],
+    relationships: [
+      's3_configurations.companyId = companies.id',
+      's3_audit_events.companyId = companies.id',
+      's3_audit_events.branchCode = s3_configurations.branchCode',
+    ],
+    metrics: [
+      'status, bucket, regiao e pasta base da configuracao efetiva',
+      'pastas, arquivos, tamanho utilizado e data de alteracao do objeto',
+      'operacoes de criacao, envio e exclusao registradas em auditoria',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'filial atual por sourceBranchCode',
+      'configuracao ativa e sem cancelamento logico',
+      'filtros por nome, extensao, data e pasta aplicados no proprio S3',
+    ],
+    order: 's3_configurations.updatedAt DESC; objetos retornados pelo S3 conforme a pasta selecionada',
+    endpoints: [
+      'GET /s3-control/configuration',
+      'GET /s3-control/objects',
+      'GET /s3-control/usage',
+      'GET /s3-control/search',
+    ],
+    sqlText: `SELECT
+  SC.id,
+  SC.branchCode,
+  SC.status,
+  SC.endpoint,
+  SC.region,
+  SC.bucket,
+  SC.basePrefix,
+  SC.imagesFolder,
+  SC.sourceScope,
+  SC.updatedAt,
+  CO.name AS companyName
+FROM s3_configurations SC
+INNER JOIN companies CO
+  ON CO.id = SC.companyId
+ AND CO.canceledAt IS NULL
+WHERE SC.canceledAt IS NULL
+  AND SC.status = 'ACTIVE'
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+  AND SC.branchCode = :sourceBranchCode
+ORDER BY SC.updatedAt DESC;`,
+  },
 ];
 
 export function buildFinanceiroScreenAuditMetadata(

@@ -181,14 +181,15 @@ export default function ScreenAuditModal({
               </button>
             </div>
           </div>
-          <div className="flex w-full flex-none justify-self-stretch flex-col gap-2 sm:w-32 sm:justify-self-end">
+          <div className="flex w-full flex-none justify-self-stretch flex-col gap-2 sm:w-32 sm:items-end sm:justify-self-end">
             <button
               type="button"
               onClick={onClose}
-              className="h-9 w-full rounded-xl border border-white/20 bg-white/10 text-[11px] font-black uppercase tracking-[0.14em] text-white transition hover:bg-white/20"
+              className="h-9 w-9 self-end rounded-full border border-red-300/60 bg-red-600 text-xl font-black leading-none text-white shadow-lg shadow-red-950/30 transition hover:bg-red-700"
               aria-label="Fechar auditoria SQL"
+              title="Fechar"
             >
-              Fechar
+              ×
             </button>
             {activeTab === 'sql' ? (
               <button

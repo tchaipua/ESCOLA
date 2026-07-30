@@ -7,7 +7,7 @@ import {
   Patch,
   Post,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { SeriesService } from "../../application/services/series.service";
@@ -15,7 +15,6 @@ import { CreateSeriesDto } from "../../application/dto/create-series.dto";
 import { UpdateSeriesDto } from "../../application/dto/update-series.dto";
 import { SetRecordActiveDto } from "../../../../common/dto/set-record-active.dto";
 
-@ApiBearerAuth()
 @ApiTags("Séries")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("series")

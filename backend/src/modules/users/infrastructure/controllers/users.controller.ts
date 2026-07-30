@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, UseGuards } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
+import { ApiTags } from "@nestjs/swagger";
 import { UsersService } from "../../application/services/users.service";
 import { JwtAuthGuard } from "../../../../common/guards/jwt-auth.guard";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
@@ -10,7 +10,6 @@ import {
 } from "../../../../common/decorators/current-user.decorator";
 
 @ApiTags("Users")
-@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("users")

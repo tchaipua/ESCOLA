@@ -32,6 +32,7 @@ import {
   syncRoleBranchAccesses,
   withRoleBranchAccessCodes,
 } from "../../../../common/tenant/role-branch-accesses";
+import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 
 @Injectable()
 export class GuardiansService {
@@ -39,6 +40,7 @@ export class GuardiansService {
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly studentsService: StudentsService,
+    private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
   ) {}
 
   private normalizeDocument(value?: string | null): string {
@@ -361,6 +363,18 @@ export class GuardiansService {
             { userId: getTenantContext()!.userId },
           );
         }
+      }
+
+      if (sanitizedDto.email && hashedPassword) {
+        await this.centralIdentityProvisioning.synchronize({
+          tenantId,
+          login: sanitizedDto.email,
+          email: sanitizedDto.email,
+          displayName: sanitizedDto.name,
+          credential: String(sanitizedDto.password),
+          branchCodes: branchSelection.explicitBranchCodes,
+          roleCode: accessProfile || "RESPONSAVEL",
+        });
       }
 
       const refreshedGuardian = await this.findGuardianEntity(

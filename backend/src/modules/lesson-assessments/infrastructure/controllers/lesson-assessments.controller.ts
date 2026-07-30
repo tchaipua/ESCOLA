@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Put, Query } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { LessonAssessmentsService } from "../../application/services/lesson-assessments.service";
@@ -7,7 +7,6 @@ import { UpsertLessonAssessmentDto } from "../../application/dto/upsert-lesson-a
 import { ListMyTeacherAssessmentsDto } from "../../application/dto/list-my-teacher-assessments.dto";
 import { ListTeacherGradeHistoryDto } from "../../application/dto/list-teacher-grade-history.dto";
 
-@ApiBearerAuth()
 @ApiTags("Avaliações da Aula")
 @Roles("PROFESSOR")
 @Controller("lesson-assessments")

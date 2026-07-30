@@ -8,7 +8,7 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 
 - Toda entidade de dominio tem `schoolId`.
 - Toda query filtra por `schoolId`.
-- Nao existe delete fisico em dados de negocio, exceto no endpoint master exclusivo de purge definitivo de tenant.
+- Nao existe delete fisico operacional; a rota local historica de purge permanece desativada.
 - Auditoria obrigatoria em mutacoes.
 - Texto em uppercase, exceto senha.
 - Login via `VIEWUSUARIOS`.
@@ -22,7 +22,7 @@ Garantir consistencia tecnica na geracao de codigo por humanos e IA.
 - Centralizar erros com filtro global.
 - Usar transacao para operacoes multi-tabela.
 - Repositories devem aplicar tenant scope implicitamente.
-- Purge fisico de tenant deve ficar isolado em fluxo master dedicado, com confirmacao reforcada e ordem explicita de exclusao por dependencia.
+- Um futuro purge somente pode partir do MSINFOR Central com identidade forte, MFA, auditoria, confirmacao reforcada e ordem explicita de exclusao.
 
 ## Frontend (Next.js + TypeScript)
 
@@ -83,9 +83,7 @@ Toda mutacao deve registrar:
 - quando fez (`*_at`)
 - antes/depois quando necessario em log de auditoria
 
-Excecao documentada:
-
-- no purge fisico definitivo de tenant, o proprio historico do tenant e removido junto com os dados; nesse caso a protecao obrigatoria passa a ser confirmacao reforcada, rota exclusiva e uso restrito ao MSINFOR ADMIN master
+Nao ha excecao de purge ativa na API da Escola.
 
 ## Padroes de codigo
 
@@ -110,3 +108,22 @@ Excecao documentada:
 - Auditoria e soft delete validados
 - Sem violacao de tenant
 - Documentacao de endpoint atualizada
+
+## Segredos e configuracao de ambiente
+
+- Nunca criar fallback de credencial em producao.
+- Nunca enviar senha, hash, token de integracao, chave privada ou segredo em DTO de resposta.
+- Para indicar configuracao existente, usar flag booleana `has*`; atualizacoes com campo secreto vazio devem preservar o valor atual, salvo operacao explicita de rotacao/remocao.
+- Segredos de runtime entram somente por variavel/secret manager e nunca por `NEXT_PUBLIC_*`.
+- Segredos SMTP, Telegram e S3 persistidos usam exclusivamente o envelope AES-256-GCM `enc:v1`; descriptografar somente no consumidor interno e nunca no mapper/DTO.
+- `DATA_ENCRYPTION_KEY` deve representar exatamente 32 bytes, nao pode ter fallback e deve vir de secret manager em producao.
+- Migracoes de segredo devem ser idempotentes, validar adulteracao e criar backup local criptografado antes da primeira escrita.
+- `.env`, bancos locais, snapshots, backups, logs e scripts temporarios de token devem permanecer ignorados pelo Git e pelo Docker.
+- Nao reintroduzir algoritmo, senha compartilhada local ou compatibilidade master. A única exceção é o usuário `MSINFOR`, autenticado exclusivamente pela API da Central, sem senha local e com empresa/filial autorizadas.
+- Dependencias de producao devem manter `npm audit --omit=dev` sem vulnerabilidades conhecidas antes do deploy.
+
+## PostgreSQL e RLS
+
+- SQLite permanece apenas como ponte local enquanto o schema PostgreSQL paralelo e validado.
+- SQL RLS deve ficar fora de `prisma/migrations` ate identidade Central e contexto transacional estarem prontos.
+- Quando ativado, cada transacao deve definir `app.tenant_id` na mesma conexao; o papel da aplicacao nao pode ser owner nem possuir `BYPASSRLS`.

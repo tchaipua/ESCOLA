@@ -1,20 +1,12 @@
-import { getStoredToken } from '@/app/lib/auth-storage';
+import {
+    getStoredSessionProfile,
+    getStoredToken,
+    type StoredSessionProfile,
+} from '@/app/lib/auth-storage';
 
 export const MASTER_ROLE = 'SOFTHOUSE_ADMIN';
 export const CASHIER_ONLY_HOME_ROUTE = '/principal/financeiro/vendas';
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
-
-export type DashboardTokenPayload = {
-    userId?: string;
-    role?: string;
-    permissions?: string[];
-    tenantId?: string;
-    branchCode?: number;
-    isMaster?: boolean;
-    cashierOnly?: boolean;
-    name?: string;
-    modelType?: string;
-};
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
 export type DashboardAuthContext = {
     token: string | null;
@@ -41,6 +33,10 @@ export type TenantBranchSummary = {
     stockExpirationControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
     stockGridControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
     stockNegativeControlMode?: 'NO' | 'YES' | 'BY_PRODUCT' | null;
+    allowSaleUnitPriceEdit?: boolean | null;
+    allowSaleItemDiscount?: boolean | null;
+    groupSameProduct?: boolean | null;
+    allowProductImageEdit?: boolean | null;
 };
 
 export type ViaCepAddress = {
@@ -127,41 +123,24 @@ const SHARED_PERSON_FORM_FIELDS = [
     'complement',
 ] as const;
 
-export function decodeDashboardToken(token: string): DashboardTokenPayload | null {
-    try {
-        const base64 = token.split('.')[1];
-        if (!base64) return null;
-
-        const normalized = base64.replace(/-/g, '+').replace(/_/g, '/');
-        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-        return JSON.parse(atob(padded)) as DashboardTokenPayload;
-    } catch {
-        return null;
-    }
-}
-
 export function getDashboardAuthContext(): DashboardAuthContext {
     const token = getStoredToken();
-    if (!token) {
+    const profile = getStoredSessionProfile();
+    if (!token || !profile) {
         return { token: null, userId: null, role: null, permissions: [], tenantId: null, branchCode: 1, name: null, modelType: null, cashierOnly: false };
     }
 
-    const payload = decodeDashboardToken(token);
-        return {
-            token,
-            userId: typeof payload?.userId === 'string' ? payload.userId : null,
-            role: typeof payload?.role === 'string' ? payload.role : null,
-            permissions: Array.isArray(payload?.permissions)
-                ? payload!.permissions.filter((permission): permission is string => typeof permission === 'string')
-                : [],
-            tenantId: typeof payload?.tenantId === 'string' ? payload.tenantId : null,
-            branchCode: typeof payload?.branchCode === 'number' && Number.isInteger(payload.branchCode) && payload.branchCode >= 0
-                ? payload.branchCode
-                : 1,
-            name: typeof payload?.name === 'string' ? payload.name : null,
-            modelType: typeof payload?.modelType === 'string' ? payload.modelType : null,
-            cashierOnly: payload?.cashierOnly === true,
-        };
+    return {
+        token,
+        userId: profile.userId,
+        role: profile.role,
+        permissions: profile.permissions,
+        tenantId: profile.tenantId,
+        branchCode: profile.branchCode,
+        name: profile.name,
+        modelType: profile.modelType,
+        cashierOnly: profile.cashierOnly,
+    };
 }
 
 export function isDashboardMasterRole(role: string | null) {
@@ -199,7 +178,7 @@ export function getHomeRouteForRole(role: string | null) {
     return '/principal';
 }
 
-export function getHomeRouteForSession(payload: DashboardTokenPayload | null, roleFallback?: string | null) {
+export function getHomeRouteForSession(payload: Partial<StoredSessionProfile> | null, roleFallback?: string | null) {
     if (payload?.cashierOnly === true) return CASHIER_ONLY_HOME_ROUTE;
     return getHomeRouteForRole(payload?.role || roleFallback || null);
 }
@@ -399,7 +378,7 @@ function scoreNameSimilarity(query: string, candidateName: string) {
 async function fetchNameSuggestionCandidates(token: string, endpoint: string, roleLabel: string): Promise<NameSuggestionCandidate[]> {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         headers: {
-            Authorization: `Bearer ${token}`,
+
         },
     });
 
@@ -485,7 +464,7 @@ export async function fetchSharedPersonProfileByCpf(cpf: string): Promise<Shared
 
     const response = await fetch(`${API_BASE_URL}/shared-profiles/cpf/${normalizedCpf}`, {
         headers: {
-            Authorization: `Bearer ${token}`,
+
         },
     });
 
@@ -512,7 +491,7 @@ export async function fetchSharedPersonProfileByEmail(email: string): Promise<Sh
 
     const response = await fetch(`${API_BASE_URL}/shared-profiles/email/${encodeURIComponent(normalizedEmail)}`, {
         headers: {
-            Authorization: `Bearer ${token}`,
+
         },
     });
 
@@ -539,7 +518,7 @@ export async function fetchEmailUsageByEmail(email: string): Promise<EmailUsageR
 
     const response = await fetch(`${API_BASE_URL}/shared-profiles/email-usage/${encodeURIComponent(normalizedEmail)}`, {
         headers: {
-            Authorization: `Bearer ${token}`,
+
         },
     });
 
@@ -567,14 +546,14 @@ export async function fetchSharedPersonNameSuggestions(name: string, limit = 8):
 
     let response = await fetch(`${API_BASE_URL}/shared-profiles/name-suggestions?name=${encodeURIComponent(normalizedName)}&limit=${limit}`, {
         headers: {
-            Authorization: `Bearer ${token}`,
+
         },
     });
 
     if (response.status === 404) {
         response = await fetch(`${API_BASE_URL}/shared-profiles/name-suggestions/${encodeURIComponent(normalizedName)}?limit=${limit}`, {
             headers: {
-                Authorization: `Bearer ${token}`,
+
             },
         });
     }
@@ -608,7 +587,7 @@ export async function fetchTenantBranches(): Promise<TenantBranchSummary[]> {
 
     const response = await fetch(`${API_BASE_URL}/tenants/current/branches`, {
         headers: {
-            Authorization: `Bearer ${token}`,
+
         },
     });
 

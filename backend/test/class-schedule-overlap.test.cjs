@@ -119,6 +119,20 @@ function createService(initialItems = []) {
   };
 
   const prisma = {
+    tenantBranch: {
+      findFirst: async () => ({ id: "branch-1" }),
+      findMany: async () => [
+        {
+          id: "branch-1",
+          tenantId: TENANT_ID,
+          branchCode: 1,
+          name: "FILIAL 1",
+          isActive: true,
+          canceledAt: null,
+        },
+      ],
+      create: async ({ data }) => ({ id: "branch-1", ...data }),
+    },
     schoolYear: {
       findFirst: async ({ where }) =>
         schoolYears.find(
@@ -189,11 +203,16 @@ function createService(initialItems = []) {
       },
       count: async () => 0,
     },
+    lessonCalendarItem: {
+      count: async () => 0,
+    },
     $transaction: async (callback) => callback(prisma),
   };
 
   return {
-    service: new ClassScheduleItemsService(prisma),
+    service: new ClassScheduleItemsService(prisma, {
+      refreshActiveCalendarsFromWeeklySource: async () => undefined,
+    }),
     state,
   };
 }

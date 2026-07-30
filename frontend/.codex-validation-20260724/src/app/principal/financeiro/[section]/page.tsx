@@ -1,0 +1,866 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import {
+  fetchTenantBranches,
+  getDashboardAuthContext,
+  hasAnyDashboardPermission,
+  type TenantBranchSummary,
+} from '@/app/lib/dashboard-crud-utils';
+import { clearStoredSession } from '@/app/lib/auth-storage';
+import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+
+const FINANCEIRO_FRONTEND_URL = '/financeiro-app';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
+
+const SECTION_CONFIG = {
+  resumo: {
+    label: 'Resumo geral',
+    path: '/resumo',
+  },
+  empresa: {
+    label: 'Empresa',
+    path: '/empresas',
+  },
+  bancos: {
+    label: 'Bancos',
+    path: '/bancos',
+  },
+  'bancos-e-boletos': {
+    label: 'Bancos e Boletos',
+    path: '/bancos-e-boletos',
+  },
+  'contas-a-pagar': {
+    label: 'Contas a Pagar',
+    path: '/contas-a-pagar',
+  },
+  'contas-a-receber': {
+    label: 'Contas a Receber',
+    path: '/contas-a-receber',
+  },
+  clientes: {
+    label: 'Clientes',
+    path: '/clientes',
+  },
+  creditos: {
+    label: 'Controle de Créditos',
+    path: '/recebiveis/creditos',
+  },
+  'recebimentos-por-cliente': {
+    label: 'Recebimentos por Cliente',
+    path: '/recebiveis/recebimentos-por-cliente',
+  },
+  'historico-cliente': {
+    label: 'Histórico Cliente',
+    path: '/recebiveis/historico-cliente',
+  },
+  'historico-baixas': {
+    label: 'Histórico Baixas',
+    path: '/recebiveis/historico-baixas',
+  },
+  estoque: {
+    label: 'Estoque',
+    path: '/estoque',
+  },
+  lotes: {
+    label: 'Lotes',
+    path: '/recebiveis/lotes',
+  },
+  retornos: {
+    label: 'Retorno Boletos Banco',
+    path: '/recebiveis/retornos',
+  },
+  parcelas: {
+    label: 'Parcelas',
+    path: '/recebiveis/parcelas',
+  },
+  caixa: {
+    label: 'Caixa',
+    path: '/caixa',
+  },
+  vendas: {
+    label: 'Vendas',
+    path: '/vendas',
+  },
+  'vendas-2': {
+    label: 'Vendas 2',
+    path: '/vendas-2',
+  },
+  'emissao-nfe': {
+    label: 'Emissão NF-e',
+    path: '/emissao-nfe',
+  },
+  'emissao-nfs': {
+    label: 'Emissão NFS (Serviço)',
+    path: '/emissao-nfs',
+  },
+  msinfor: {
+    label: 'MSINFOR',
+    path: '/msinfor',
+  },
+  'vendas-periodo': {
+    label: 'Vendas do Período',
+    path: '/vendas/periodo',
+  },
+  'devolucao-mercadorias': {
+    label: 'Devolução de Mercadorias',
+    path: '/vendas/devolucao-mercadorias',
+  },
+} as const;
+
+type SectionKey = keyof typeof SECTION_CONFIG;
+
+type EmbeddedFinanceHeaderContent = {
+  eyebrow: string;
+  title: string;
+  description: string;
+};
+
+type FinanceBranding = {
+  schoolName?: string | null;
+  logoUrl?: string | null;
+};
+
+const DEFAULT_EMBEDDED_FINANCE_HEADER: EmbeddedFinanceHeaderContent = {
+  eyebrow: 'Financeiro integrado',
+  title: 'Contas a Pagar',
+  description: 'Tela completa do Financeiro aberta dentro do sistema da Escola.',
+};
+
+const EMBEDDED_FINANCE_SCREEN_HEADER_MAP: Record<string, EmbeddedFinanceHeaderContent> = {
+  PRINCIPAL_FINANCEIRO_CLIENTES: {
+    eyebrow: 'Contas a Receber',
+    title: 'Clientes',
+    description:
+      'Consulte pagadores sincronizados da Escola e clientes vinculados aos títulos a receber.',
+  },
+  PRINCIPAL_FINANCEIRO_BANCOS_EXTRATO: {
+    eyebrow: 'Bancos',
+    title: 'Extrato bancário',
+    description:
+      'Controle os lançamentos reais da conta bancária, com créditos, débitos e saldo.',
+  },
+  PRINCIPAL_FINANCEIRO_BANCOS_MOVIMENTOS_ABERTOS: {
+    eyebrow: 'Bancos',
+    title: 'Movimentos em aberto',
+    description:
+      'Confira os movimentos financeiros que ainda precisam de conferência bancária.',
+  },
+  PRINCIPAL_FINANCEIRO_BANCOS_DDAS_ABERTOS: {
+    eyebrow: 'Bancos',
+    title: 'DDAs em aberto',
+    description:
+      'Consulte os boletos DDA em aberto da conta bancária selecionada.',
+  },
+  PRINCIPAL_FINANCEIRO_ESTOQUE_IMAGENS_PRODUTOS: {
+    eyebrow: 'Estoque',
+    title: 'Imagens Produtos',
+    description:
+      'Confira as imagens locais dos produtos e pesquise pelo código EAN quando necessário.',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_IMPORTACAO_NOTAS: {
+    eyebrow: 'Contas a Pagar',
+    title: 'IMPORTAÇÃO DE NOTAS',
+    description:
+      'Importe notas por XML manual ou consulte a SEFAZ com certificado fiscal A1.',
+  },
+  PRINCIPAL_FINANCEIRO_CONTAS_A_PAGAR_CERTIFICADOS_DIGITAIS: {
+    eyebrow: 'Contas a Pagar',
+    title: 'Certificados Digitais',
+    description:
+      'Cadastre e mantenha os certificados A1 usados na integração fiscal do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_CREDITOS: {
+    eyebrow: 'Contas a Receber',
+    title: 'Controle de Créditos',
+    description:
+      'Consulte créditos de clientes e lance novos créditos manuais no caixa aberto.',
+  },
+  PRINCIPAL_FINANCEIRO_RECEBIMENTOS_POR_CLIENTE: {
+    eyebrow: 'Contas a Receber',
+    title: 'Recebimentos por Cliente',
+    description:
+      'Consulte clientes com parcelas abertas e abra a baixa manual agrupada.',
+  },
+  PRINCIPAL_FINANCEIRO_HISTORICO_CLIENTE: {
+    eyebrow: 'Contas a Receber',
+    title: 'Histórico Cliente',
+    description:
+      'Consulte compras, parcelas, pagamentos e valores em atraso por cliente.',
+  },
+  PRINCIPAL_FINANCEIRO_HISTORICO_BAIXAS: {
+    eyebrow: 'Contas a Receber',
+    title: 'Histórico Baixas',
+    description:
+      'Consulte baixas realizadas, veja parcelas agrupadas e estorne lançamentos.',
+  },
+  PRINCIPAL_FINANCEIRO_VENDAS: {
+    eyebrow: 'Vendas',
+    title: 'Vendas de Produtos',
+    description:
+      'Venda produtos com baixa de estoque, pagamentos à vista e geração de contas a receber.',
+  },
+  PRINCIPAL_FINANCEIRO_VENDAS_2: {
+    eyebrow: 'Vendas',
+    title: 'Vendas 2',
+    description:
+      'Nova experiência de venda com as mesmas regras de estoque, pagamento e emissão fiscal.',
+  },
+  PRINCIPAL_FINANCEIRO_EMISSAO_NFE: {
+    eyebrow: 'Emissão fiscal manual',
+    title: 'Emissão NF-e',
+    description:
+      'Emita manualmente NF-e de produtos e escolha se a nota também criará parcelas no Contas a Receber.',
+  },
+  PRINCIPAL_FINANCEIRO_EMISSAO_NFS: {
+    eyebrow: 'Emissão fiscal manual',
+    title: 'Emissão NFS (Serviço)',
+    description:
+      'Emita manualmente NFS-e Nacional e escolha se a nota também criará parcelas no Contas a Receber.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR: {
+    eyebrow: 'Financeiro integrado',
+    title: 'MSINFOR',
+    description:
+      'Central de integrações e serviços compartilhados do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_SUPERTEF: {
+    eyebrow: 'MSINFOR',
+    title: 'SuperTEF',
+    description:
+      'Configuração e acompanhamento das operações de cartão do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_MODELOS_IMPRESSAO: {
+    eyebrow: 'MSINFOR',
+    title: 'Modelos e impressão local',
+    description:
+      'Configure recibos, etiquetas, impressoras e automações de impressão do Financeiro.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_CONFIGURACAO_RECIBOS: {
+    eyebrow: 'MSINFOR',
+    title: 'Configuração de recibos',
+    description:
+      'Escolha o editor visual ou a configuração de recibos preparada a partir de uma imagem.',
+  },
+  PRINCIPAL_FINANCEIRO_MSINFOR_CONFIGURA_RECIBOS_IMAGEM: {
+    eyebrow: 'MSINFOR',
+    title: 'Configura recibos por imagem',
+    description:
+      'Valide, visualize, importe, publique e exporte pacotes de recibos exclusivos por cliente.',
+  },
+  PRINCIPAL_FINANCEIRO_DEVOLUCAO_MERCADORIAS: {
+    eyebrow: 'Contas a Receber',
+    title: 'Devolução de Mercadorias',
+    description:
+      'Registre devoluções parciais ou totais de vendas, retornando estoque e gerando crédito para o cliente.',
+  },
+};
+
+function buildFinanceFrameUrl(
+  baseUrl: string,
+  path: string,
+) {
+  const normalizedBaseUrl = baseUrl.endsWith('/')
+    ? baseUrl.slice(0, -1)
+    : baseUrl;
+
+  return `${normalizedBaseUrl}${path}?embedded=1`;
+}
+
+export function PrincipalFinanceiroSectionPageContent({
+  params,
+}: {
+  params: Promise<{ section: string; subpath?: string[] }>;
+}) {
+  const [isMounted, setIsMounted] = useState(false);
+  const [section, setSection] = useState<string | null>(null);
+  const [subpath, setSubpath] = useState<string[]>([]);
+  const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
+  const financeiroFrameRef = useRef<HTMLIFrameElement>(null);
+  const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
+  const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
+  const [isSourceSettingsSyncing, setIsSourceSettingsSyncing] = useState(false);
+  const [sourceSettingsSyncCompleted, setSourceSettingsSyncCompleted] = useState(false);
+  const authContext = getDashboardAuthContext();
+  const canViewFinancial = hasAnyDashboardPermission(
+    authContext.role,
+    authContext.permissions,
+    ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES', 'VIEW_CASHIER', 'SETTLE_RECEIVABLES'],
+  );
+  const isAdminOnlySection = section === 'vendas-2' || section === 'msinfor';
+  const isFiscalEmissionSection =
+    section === 'emissao-nfe' || section === 'emissao-nfs';
+  const canManageFiscalEmission =
+    authContext.role === 'ADMIN' ||
+    authContext.permissions.includes('MANAGE_FINANCIAL');
+  const tenantBranding = readCachedTenantBranding(authContext.tenantId);
+  const financeBranding = useMemo(
+    () => ({
+      schoolName: tenantBranding?.schoolName || currentBranch?.name || null,
+      logoUrl: currentBranch?.logoUrl || tenantBranding?.logoUrl || null,
+    }),
+    [currentBranch?.logoUrl, currentBranch?.name, tenantBranding?.logoUrl, tenantBranding?.schoolName],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIsMounted(true), 0);
+    void params.then((value) => {
+      setSection(String(value.section || '').toLowerCase());
+      setSubpath(Array.isArray(value.subpath) ? value.subpath.map((item) => String(item || '').toLowerCase()) : []);
+    });
+    return () => window.clearTimeout(timer);
+  }, [params]);
+
+  const sectionConfig = useMemo(() => {
+    if (!section) return null;
+    return SECTION_CONFIG[section as SectionKey] || null;
+  }, [section]);
+
+  useEffect(() => {
+    if (!section || !authContext.token) return;
+
+    let active = true;
+    setIsSourceSettingsSyncing(true);
+    setSourceSettingsSyncCompleted(false);
+
+    void fetch(`${API_BASE_URL}/tenants/current/sync-financeiro-integration-settings`, {
+      method: 'POST',
+      headers: {
+
+        'Content-Type': 'application/json',
+      },
+    })
+      .catch(() => null)
+      .finally(() => {
+        if (!active) return;
+        setSourceSettingsSyncCompleted(true);
+        setIsSourceSettingsSyncing(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authContext.token, section]);
+
+  const iframeSrc = useMemo(() => {
+    if (!sectionConfig) return null;
+    if (!sourceSettingsSyncCompleted) return null;
+    const nestedPath = subpath.length ? `/${subpath.join('/')}` : '';
+
+    return buildFinanceFrameUrl(
+      FINANCEIRO_FRONTEND_URL,
+      `${sectionConfig.path}${nestedPath}`,
+    );
+  }, [sectionConfig, sourceSettingsSyncCompleted, subpath]);
+
+  useEffect(() => {
+    const financeiroOrigin = window.location.origin;
+
+    async function handleFinanceiroPasswordValidation(event: MessageEvent) {
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_CONFIRM_CASH_CANCELLATION_PASSWORD') {
+        return;
+      }
+
+      const requestId = String(payload.requestId || '');
+      const password = String(payload.password || '');
+      const sourceWindow = event.source as Window | null;
+
+      const postResult = (result: Record<string, unknown>) => {
+        if (!sourceWindow || typeof sourceWindow.postMessage !== 'function') return;
+        sourceWindow.postMessage(
+          {
+            type: 'MSINFOR_CONFIRM_CASH_CANCELLATION_PASSWORD_RESULT',
+            requestId,
+            ...result,
+          },
+          event.origin,
+        );
+      };
+
+      if (!requestId || !authContext.token) {
+        postResult({ ok: false, message: 'Sessão da Escola inválida.' });
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/confirm-cash-cancellation-password`, {
+          method: 'POST',
+          headers: {
+
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ password }),
+        });
+        const responsePayload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          postResult({
+            ok: false,
+            message: responsePayload?.message || 'Senha inválida.',
+          });
+          return;
+        }
+
+        postResult({
+          ok: true,
+          authorizedBy: responsePayload?.authorizedBy || 'OPERADOR',
+          authorizedUserId:
+            responsePayload?.supervisorUserId ||
+            responsePayload?.operatorUserId ||
+            authContext.userId ||
+            null,
+          authorizedUserName:
+            responsePayload?.supervisorName ||
+            responsePayload?.operatorName ||
+            authContext.name ||
+            null,
+          supervisorName: responsePayload?.supervisorName || null,
+        });
+      } catch {
+        postResult({
+          ok: false,
+          message: 'Não foi possível validar a senha agora.',
+        });
+      }
+    }
+
+    window.addEventListener('message', handleFinanceiroPasswordValidation);
+    return () => window.removeEventListener('message', handleFinanceiroPasswordValidation);
+  }, [authContext.token]);
+
+  useEffect(() => {
+    const financeiroOrigin = window.location.origin;
+
+    async function handleFinancialCustomersSync(event: MessageEvent) {
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_SYNC_FINANCIAL_CUSTOMERS') return;
+
+      const requestId = String(payload.requestId || '');
+      const sourceWindow = event.source as Window | null;
+      const postResult = (result: Record<string, unknown>) => {
+        if (!sourceWindow || typeof sourceWindow.postMessage !== 'function') return;
+        sourceWindow.postMessage(
+          {
+            type: 'MSINFOR_SYNC_FINANCIAL_CUSTOMERS_RESULT',
+            requestId,
+            ...result,
+          },
+          event.origin,
+        );
+      };
+
+      if (!requestId || !authContext.token) {
+        postResult({ ok: false, message: 'Sessão da Escola inválida.' });
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/student-financial-launches/sync-payers`,
+          {
+            method: 'POST',
+            headers: {
+
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+        const responsePayload = await response.json().catch(() => null);
+        if (!response.ok) {
+          postResult({
+            ok: false,
+            message:
+              responsePayload?.message ||
+              'Não foi possível sincronizar os clientes da Escola.',
+          });
+          return;
+        }
+
+        postResult({ ok: true, ...responsePayload });
+      } catch {
+        postResult({
+          ok: false,
+          message: 'Não foi possível sincronizar os clientes da Escola agora.',
+        });
+      }
+    }
+
+    window.addEventListener('message', handleFinancialCustomersSync);
+    return () =>
+      window.removeEventListener('message', handleFinancialCustomersSync);
+  }, [authContext.token]);
+
+  useEffect(() => {
+    const financeiroOrigin = window.location.origin;
+
+    function handleFinanceiroCashSessionClosedLogout(event: MessageEvent) {
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_CASH_SESSION_CLOSED_LOGOUT') {
+        return;
+      }
+
+      clearStoredSession();
+      window.location.assign('/');
+    }
+
+    window.addEventListener('message', handleFinanceiroCashSessionClosedLogout);
+    return () => window.removeEventListener('message', handleFinanceiroCashSessionClosedLogout);
+  }, []);
+
+  useEffect(() => {
+    const financeiroOrigin = window.location.origin;
+
+    async function handleFinanceiroPeopleSearch(event: MessageEvent) {
+      if (
+        event.origin !== financeiroOrigin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) return;
+
+      const payload = event.data;
+      if (!payload || payload.type !== 'MSINFOR_PEOPLE_SEARCH') {
+        return;
+      }
+
+      const requestId = String(payload.requestId || '');
+      const search = String(payload.search || '').trim();
+      const sourceWindow = event.source as Window | null;
+
+      const postResult = (result: Record<string, unknown>) => {
+        if (!sourceWindow || typeof sourceWindow.postMessage !== 'function') return;
+        sourceWindow.postMessage(
+          {
+            type: 'MSINFOR_PEOPLE_SEARCH_RESULT',
+            requestId,
+            ...result,
+          },
+          event.origin,
+        );
+      };
+
+      if (!requestId || !authContext.token || search.length < 2) {
+        postResult({ ok: false, results: [] });
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/shared-profiles/name-suggestions?name=${encodeURIComponent(search)}&limit=12`,
+          {
+            headers: {
+
+            },
+          },
+        );
+        const responsePayload = await response.json().catch(() => null);
+
+        if (!response.ok || !Array.isArray(responsePayload)) {
+          postResult({ ok: false, results: [] });
+          return;
+        }
+
+        postResult({
+          ok: true,
+          results: responsePayload.map((person: any, index: number) => ({
+            id: `${person.id || person.cpf || person.email || person.name || index}`,
+            registeredPersonId: person.id || null,
+            name: person.name || '',
+            document: person.cpf || person.cnpj || null,
+            email: person.email || null,
+            phone: person.phone || person.whatsapp || person.cellphone1 || person.cellphone2 || null,
+            addressLine1: [person.street, person.number, person.complement].filter(Boolean).join(', ') || null,
+            neighborhood: person.neighborhood || null,
+            city: person.city || null,
+            state: person.state || null,
+            postalCode: person.zipCode || null,
+            sourceType: Array.isArray(person.roles) ? person.roles.join(', ') : null,
+          })),
+        });
+      } catch {
+        postResult({ ok: false, results: [] });
+      }
+    }
+
+    window.addEventListener('message', handleFinanceiroPeopleSearch);
+    return () => window.removeEventListener('message', handleFinanceiroPeopleSearch);
+  }, [authContext.token]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadBranchStockParameters() {
+      try {
+        if (!authContext.token || !authContext.tenantId) {
+          return;
+        }
+
+        const branches = await fetchTenantBranches();
+        const activeBranches = branches.filter(
+          (branch) => branch && branch.isActive !== false && !branch.isShared,
+        );
+        const currentBranch =
+          activeBranches.find((branch) => branch.branchCode === authContext.branchCode) ||
+          activeBranches.find((branch) => branch.branchCode === 1) ||
+          activeBranches[0] ||
+          null;
+
+        if (isActive) {
+          setCurrentBranch(currentBranch);
+        }
+      } catch {
+        if (isActive) {
+          setCurrentBranch(null);
+        }
+      }
+    }
+
+    void loadBranchStockParameters();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authContext.branchCode, authContext.tenantId, authContext.token]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setEmbeddedScreenId(null), 0);
+    return () => window.clearTimeout(timer);
+  }, [section]);
+
+  const isFrameLoading =
+    isSourceSettingsSyncing || Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
+  const isCompactFinanceSection = section === 'parcelas';
+  const isTightFinanceSection = false;
+  const isCompactFinanceHeader = true;
+  const financeHeaderPaddingClass = isTightFinanceSection
+    ? 'px-4 py-3'
+    : isCompactFinanceHeader
+      ? 'px-4 py-5'
+      : 'px-6 py-6';
+  const financeHeaderButtonClass = isTightFinanceSection
+    ? 'h-8 w-8 rounded-lg'
+    : isCompactFinanceHeader
+      ? 'h-9 w-9 rounded-xl'
+      : 'h-11 w-11 rounded-2xl';
+  const financeHeaderLogoClass = isTightFinanceSection
+    ? 'h-12 w-12 rounded-xl'
+    : isCompactFinanceHeader
+      ? 'h-14 w-14 rounded-2xl'
+      : 'h-20 w-20 rounded-3xl';
+  const financeHeaderTitleClass = isTightFinanceSection
+    ? 'mt-0.5 text-xl'
+    : isCompactFinanceHeader
+      ? 'mt-1 text-2xl'
+      : 'mt-2 text-3xl';
+  const financeHeaderDescriptionClass = isTightFinanceSection
+    ? 'mt-0.5 text-[11px]'
+    : isCompactFinanceHeader
+      ? 'mt-1 text-xs'
+      : 'mt-2 text-sm';
+  useEffect(() => {
+    const handleEmbeddedScreenContext = (
+      event: MessageEvent<{ type?: string; screenId?: string }>,
+    ) => {
+      if (
+        event.origin !== window.location.origin ||
+        event.source !== financeiroFrameRef.current?.contentWindow
+      ) {
+        return;
+      }
+      const data = event.data;
+      if (!data || data.type !== 'MSINFOR_SCREEN_CONTEXT') {
+        return;
+      }
+
+      const normalizedScreenId = String(data.screenId || '')
+        .replace(/[^A-Z0-9_]/gi, '_')
+        .replace(/_+/g, '_')
+        .toUpperCase()
+        .slice(0, 120);
+
+      setEmbeddedScreenId(normalizedScreenId || null);
+    };
+
+    window.addEventListener('message', handleEmbeddedScreenContext);
+    return () => window.removeEventListener('message', handleEmbeddedScreenContext);
+  }, []);
+
+  const headerContent = useMemo(() => {
+    if (embeddedScreenId && EMBEDDED_FINANCE_SCREEN_HEADER_MAP[embeddedScreenId]) {
+      return EMBEDDED_FINANCE_SCREEN_HEADER_MAP[embeddedScreenId];
+    }
+
+    if (section !== 'contas-a-pagar') {
+      return {
+        eyebrow: 'Financeiro integrado',
+        title: sectionConfig?.label || 'Financeiro',
+        description: 'Tela completa do Financeiro aberta dentro do sistema da Escola.',
+      };
+    }
+
+    if (embeddedScreenId) {
+      return (
+        EMBEDDED_FINANCE_SCREEN_HEADER_MAP[embeddedScreenId] ||
+        {
+          ...DEFAULT_EMBEDDED_FINANCE_HEADER,
+          title: sectionConfig?.label || DEFAULT_EMBEDDED_FINANCE_HEADER.title,
+        }
+      );
+    }
+
+    return {
+      ...DEFAULT_EMBEDDED_FINANCE_HEADER,
+      title: sectionConfig?.label || DEFAULT_EMBEDDED_FINANCE_HEADER.title,
+    };
+  }, [embeddedScreenId, section, sectionConfig]);
+
+  if (!isMounted) {
+    return (
+      <div className="mx-auto flex min-h-[55vh] w-full max-w-3xl items-center justify-center">
+        <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Carregando</div>
+          <div className="mt-2 text-xl font-black text-slate-900">Aguarde...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    !canViewFinancial ||
+    (isAdminOnlySection && authContext.role !== 'ADMIN') ||
+    (isFiscalEmissionSection && !canManageFiscalEmission)
+  ) {
+    return (
+      <DashboardAccessDenied
+        title={
+          isAdminOnlySection || isFiscalEmissionSection
+            ? `${sectionConfig?.label || 'Área'} indisponível`
+            : 'Financeiro indisponível'
+        }
+        message={
+          isAdminOnlySection
+            ? 'Esta tela está disponível somente para usuários ADMIN.'
+            : isFiscalEmissionSection
+              ? 'A emissão fiscal exige perfil ADMIN ou permissão MANAGE_FINANCIAL.'
+            : 'Seu perfil não possui permissão para visualizar o portal financeiro integrado.'
+        }
+      />
+    );
+  }
+
+  if (!sectionConfig) {
+    return (
+      <div className="mx-auto flex min-h-[55vh] w-full max-w-3xl items-center justify-center">
+        <div className="w-full rounded-3xl border border-amber-200 bg-white p-8 text-center shadow-sm">
+          <div className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-600">Financeiro</div>
+          <div className="mt-2 text-xl font-black text-slate-900">Área não encontrada</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={isCompactFinanceSection ? 'flex h-full min-h-0 flex-col gap-3' : isTightFinanceSection ? 'space-y-1' : 'space-y-6'}>
+      <section className={`${cardClass} shrink-0 overflow-hidden`}>
+        <div className={`bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] text-white ${financeHeaderPaddingClass}`}>
+          <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between ${isCompactFinanceHeader ? 'gap-3' : 'gap-5'}`}>
+            <div className={`flex items-start ${isCompactFinanceHeader ? 'gap-3' : 'gap-4'}`}>
+              <div className={`flex flex-col pt-1 ${isCompactFinanceHeader ? 'gap-2' : 'gap-3'}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                  }}
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${financeHeaderButtonClass}`}
+                  title="Recolher menu lateral"
+                  aria-label="Recolher menu lateral"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                  }}
+                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${financeHeaderButtonClass}`}
+                  title="Abrir notificações"
+                  aria-label="Abrir notificações"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                </button>
+              </div>
+              <div className={`flex shrink-0 items-center justify-center overflow-hidden border border-white/20 bg-white/10 shadow-lg backdrop-blur-sm ${financeHeaderLogoClass}`}>
+                {financeBranding.logoUrl ? (
+                  <img
+                    src={financeBranding.logoUrl}
+                    alt={`Logo de ${financeBranding.schoolName || 'ESCOLA'}`}
+                    className={`h-full w-full object-contain ${isCompactFinanceHeader ? 'p-1.5' : 'p-2'}`}
+                  />
+                ) : (
+                  <span className="text-lg font-black uppercase tracking-[0.25em] text-white">
+                    {String(financeBranding.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div>
+                <div className={`${isCompactFinanceHeader ? 'text-[10px]' : 'text-xs'} font-black uppercase tracking-[0.24em] text-cyan-200`}>
+                  {headerContent.eyebrow}
+                </div>
+                <h1 className={`${financeHeaderTitleClass} font-black tracking-tight`}>{headerContent.title}</h1>
+                <p className={`${financeHeaderDescriptionClass} max-w-3xl font-medium text-blue-100/90`}>
+                  {headerContent.description}
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <section className={`${cardClass} ${isCompactFinanceSection ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'overflow-hidden'}`}>
+        <div className={`relative bg-slate-100 ${isCompactFinanceSection ? 'min-h-0 flex-1' : ''}`}>
+          <>
+              {isFrameLoading ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm">
+              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
+                Carregando {sectionConfig.label.toLowerCase()}...
+              </div>
+            </div>
+              ) : null}
+
+              <iframe
+                ref={financeiroFrameRef}
+                key={iframeSrc}
+                title={`Financeiro integrado - ${sectionConfig.label}`}
+                src={iframeSrc || undefined}
+                onLoad={() => setLoadedFrameSrc(iframeSrc)}
+                className={`block ${isCompactFinanceSection ? 'h-full' : section === 'vendas' || section === 'vendas-2' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
+              />
+          </>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default PrincipalFinanceiroSectionPageContent;

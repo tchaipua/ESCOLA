@@ -9,8 +9,22 @@ import { map } from "rxjs/operators";
 
 const SENSITIVE_KEYS = new Set([
   "password",
+  "passwordHash",
   "smtpPassword",
+  "emailSmtpPassword",
+  "telegramBotToken",
+  "storageProviderSecretAccessKey",
+  "s3SecretKey",
+  "clientSecret",
+  "integrationApiKey",
+  "systemKey",
   "resetPasswordToken",
+  "resetPasswordTokenHash",
+  "emailVerificationToken",
+  "emailVerificationTokenHash",
+  "access_token",
+  "accessToken",
+  "sessionToken",
 ]);
 
 @Injectable()
@@ -22,14 +36,20 @@ export class ExcludePasswordInterceptor implements NestInterceptor {
       return value.map((item) => this.sanitize(item));
     }
 
+    if (value instanceof Date) return value;
+
     if (typeof value === "object") {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype !== Object.prototype && prototype !== null) return value;
+
+      const sanitized: Record<string, unknown> = {};
       for (const key of Object.keys(value)) {
         if (SENSITIVE_KEYS.has(key)) {
-          delete value[key];
           continue;
         }
-        value[key] = this.sanitize(value[key]);
+        sanitized[key] = this.sanitize(value[key]);
       }
+      return sanitized;
     }
 
     return value;

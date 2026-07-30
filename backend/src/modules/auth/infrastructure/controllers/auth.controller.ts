@@ -1,6 +1,17 @@
-import { Controller, Post, Body, Get, Query } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
-import { AuthService } from "../../application/services/auth.service";
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Query,
+  Res,
+} from "@nestjs/common";
+import type { Response } from "express";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
+import {
+  AuthService,
+  readAuthSessionToken,
+} from "../../application/services/auth.service";
 import { LoginDto } from "../../application/dto/login.dto";
 import { RegisterDto } from "../../application/dto/register.dto";
 import { ForgotPasswordDto } from "../../application/dto/forgot-password.dto";
@@ -13,6 +24,11 @@ import {
   CurrentUser,
   ICurrentUser,
 } from "../../../../common/decorators/current-user.decorator";
+import { Throttle } from "@nestjs/throttler";
+import {
+  clearSessionCookies,
+  setSessionCookies,
+} from "../../../../common/security/financeiro-session";
 
 @ApiTags("Autenticação de Inquilinos")
 @Controller("auth")
@@ -20,13 +36,34 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  // O login com a Central pode exigir as etapas empresa e filial na mesma
+  // janela de tempo. O bloqueio por credencial inválida continua sendo feito
+  // pela Central; este limite protege apenas contra rajadas de requisições.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("login")
   @ApiOperation({ summary: "Login no ambiente do respectivo Inquilino" })
-  async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<unknown> {
+    const result = await this.authService.login(loginDto);
+    const sessionToken = readAuthSessionToken(result);
+    if (sessionToken) {
+      setSessionCookies(response, sessionToken, loginDto.rememberMe === true);
+    }
+    return result;
   }
 
-  @ApiBearerAuth()
+  @Post("logout")
+  async logout(
+    @CurrentUser() currentUser: ICurrentUser,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    await this.authService.logout(currentUser);
+    clearSessionCookies(response);
+    return { status: "SUCCESS" };
+  }
+
   @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
   @Permissions("MANAGE_USERS")
   @Post("register")
@@ -41,14 +78,13 @@ export class AuthController {
     return this.authService.register(registerDto, user);
   }
 
-  @ApiBearerAuth()
   @Get("me")
   @ApiOperation({ summary: "Re-valida dados do Usuário Atual em Sessão" })
   getProfile(@CurrentUser() user: ICurrentUser) {
     return user;
   }
 
-  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("confirm-password")
   @ApiOperation({ summary: "Confirma a senha do usuário logado" })
   async confirmPassword(
@@ -63,7 +99,7 @@ export class AuthController {
     );
   }
 
-  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("confirm-shared-password")
   @ApiOperation({
     summary:
@@ -81,17 +117,22 @@ export class AuthController {
     );
   }
 
-  @ApiBearerAuth()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post("confirm-administrator-password")
-  @ApiOperation({ summary: "Confirma a senha de um administrador da mesma empresa" })
+  @ApiOperation({
+    summary: "Confirma a senha de um administrador da mesma empresa",
+  })
   async confirmAdministratorPassword(
     @CurrentUser() user: ICurrentUser,
     @Body() payload: ConfirmPasswordDto,
   ) {
-    return this.authService.confirmAdministratorPassword(user.tenantId, payload.password);
+    return this.authService.confirmAdministratorPassword(
+      user,
+      payload.password,
+    );
   }
 
-  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("confirm-cash-cancellation-password")
   @ApiOperation({
     summary:
@@ -109,7 +150,6 @@ export class AuthController {
     );
   }
 
-  @ApiBearerAuth()
   @Post("change-shared-password")
   @ApiOperation({
     summary:
@@ -133,6 +173,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("forgot-password")
   @ApiOperation({ summary: "Solicitar recuperação de senha" })
   async forgotPassword(@Body() resetDto: ForgotPasswordDto) {
@@ -140,6 +181,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("reset-password")
   @ApiOperation({ summary: "Redefinir senha com token recebido no email" })
   async resetPassword(@Body() payload: ResetPasswordDto) {
@@ -147,6 +189,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get("verify-email")
   @ApiOperation({ summary: "Confirma o e-mail pelo token recebido no link" })
   async verifyEmail(@Query("token") token: string) {

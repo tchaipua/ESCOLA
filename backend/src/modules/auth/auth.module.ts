@@ -7,6 +7,7 @@ import { JwtStrategy } from "./application/strategies/jwt.strategy";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { SharedProfilesModule } from "../shared-profiles/shared-profiles.module";
 import { GlobalSettingsModule } from "../global-settings/global-settings.module";
+import { getJwtSecret } from "../../common/security/security-config";
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { GlobalSettingsModule } from "../global-settings/global-settings.module"
     GlobalSettingsModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || "super-secret-escolar-key-2026",
+      secret: getJwtSecret(),
       signOptions: { expiresIn: "1d" },
     }),
   ],

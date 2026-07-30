@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
@@ -16,17 +15,20 @@ import {
 } from "../../../../common/tenant/tenant.context";
 import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 import {
-  isValidCnpj,
-  normalizeCnpj,
-} from "../../../../common/validation/cnpj";
+  requireDataEncryptionKey,
+} from "../../../../common/security/secret-encryption";
+import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
 
 type TelegramUpdate = {
+  update_id?: number;
   message?: {
     text?: string;
     chat?: {
       id?: number | string;
+      type?: string;
     };
     from?: {
+      id?: number | string;
       username?: string;
       first_name?: string;
       last_name?: string;
@@ -38,9 +40,11 @@ type TelegramUpdate = {
     message?: {
       chat?: {
         id?: number | string;
+        type?: string;
       };
     };
     from?: {
+      id?: number | string;
       username?: string;
       first_name?: string;
       last_name?: string;
@@ -54,12 +58,6 @@ type TelegramConfiguration = {
   token: string;
   username: string | null;
   headerImageUrl: string | null;
-};
-
-type TelegramPersonMatch = {
-  id: string;
-  name: string;
-  telegramChatId: string | null;
 };
 
 type TelegramReplyMarkup = {
@@ -98,13 +96,16 @@ type PendingTelegramAction = {
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private pollingTimer: NodeJS.Timeout | null = null;
   private readonly updateOffsets = new Map<string, number>();
-  private readonly pendingActions = new Map<string, PendingTelegramAction>();
   private pollingInProgress = false;
+  private lastProcessedUpdateCleanupAt = 0;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly centralConfiguration: CentralTenantConfigurationService,
+  ) {}
 
   onModuleInit() {
-    if (process.env.TELEGRAM_POLLING_ENABLED === "false") {
+    if (process.env.TELEGRAM_POLLING_ENABLED !== "true") {
       return;
     }
 
@@ -128,27 +129,118 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return getTenantContext()?.userId || undefined;
   }
 
-  private onlyDigits(value?: string | null) {
-    return String(value || "").replace(/\D/g, "");
-  }
-
   private normalizeUsername(value?: string | null) {
     const text = String(value || "").trim().replace(/^@+/, "");
     return text ? `@${text.toUpperCase()}` : null;
   }
 
+  private isVerifiedPrivateChat(
+    chat: { id?: number | string; type?: string } | undefined,
+    sender: { id?: number | string } | undefined,
+  ) {
+    const chatId = String(chat?.id ?? "").trim();
+    const senderId = String(sender?.id ?? "").trim();
+    return (
+      chat?.type === "private" &&
+      Boolean(chatId) &&
+      Boolean(senderId) &&
+      chatId === senderId
+    );
+  }
+
+  private async setPendingAction(
+    tenantId: string,
+    chatId: string,
+    action: PendingTelegramAction,
+  ) {
+    const data = {
+      intent: action.intent,
+      studentId: action.studentId,
+      date: action.date || null,
+      endDate: action.endDate || null,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    };
+    await this.prisma.telegramPendingAction.upsert({
+      where: { tenantId_chatId: { tenantId, chatId } },
+      create: { tenantId, chatId, ...data },
+      update: data,
+    });
+  }
+
+  private async getPendingAction(tenantId: string, chatId: string) {
+    const pending = await this.prisma.telegramPendingAction.findUnique({
+      where: { tenantId_chatId: { tenantId, chatId } },
+      select: {
+        intent: true,
+        studentId: true,
+        date: true,
+        endDate: true,
+        expiresAt: true,
+      },
+    });
+    if (!pending) return null;
+    if (pending.expiresAt.getTime() <= Date.now()) {
+      await this.clearPendingAction(tenantId, chatId);
+      return null;
+    }
+    if (pending.intent !== "AULAS") {
+      await this.clearPendingAction(tenantId, chatId);
+      return null;
+    }
+    return {
+      intent: "AULAS" as const,
+      studentId: pending.studentId,
+      date: pending.date || undefined,
+      endDate: pending.endDate || undefined,
+    };
+  }
+
+  private async clearPendingAction(tenantId: string, chatId: string) {
+    await this.prisma.telegramPendingAction.deleteMany({
+      where: { tenantId, chatId },
+    });
+  }
+
   private appendDebugLog(event: string, payload: Record<string, unknown>) {
+    if (
+      process.env.NODE_ENV === "production" ||
+      process.env.TELEGRAM_DEBUG_LOG_ENABLED !== "true"
+    ) {
+      return;
+    }
     const logPath = path.resolve(process.cwd(), "telegram-debug.log");
     const entry = {
       at: new Date().toISOString(),
       event,
-      ...payload,
+      tenantId:
+        typeof payload.tenantId === "string" ? payload.tenantId : undefined,
+      status:
+        typeof payload.status === "number" ? payload.status : undefined,
     };
     fs.appendFile(logPath, `${JSON.stringify(entry)}\n`, () => undefined);
   }
 
-  private buildWebhookSecret(token: string) {
-    return crypto.createHash("sha256").update(token).digest("hex").slice(0, 40);
+  private buildWebhookSecret(tenantId: string, token: string) {
+    return crypto
+      .createHmac("sha256", requireDataEncryptionKey())
+      .update(`telegram-webhook:v1:${tenantId}\0${token}`, "utf8")
+      .digest("base64url");
+  }
+
+  private isValidWebhookSecret(
+    tenantId: string,
+    token: string,
+    providedSecret?: string,
+  ) {
+    const expected = Buffer.from(
+      this.buildWebhookSecret(tenantId, token),
+      "utf8",
+    );
+    const provided = Buffer.from(String(providedSecret || ""), "utf8");
+    return (
+      expected.length === provided.length &&
+      crypto.timingSafeEqual(expected, provided)
+    );
   }
 
   private getPublicApiBaseUrl() {
@@ -229,71 +321,46 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private isValidCpf(cpf: string) {
-    if (!/^\d{11}$/.test(cpf) || /^(\d)\1+$/.test(cpf)) return false;
-    const calcDigit = (size: number) => {
-      let sum = 0;
-      for (let index = 0; index < size; index += 1) {
-        sum += Number(cpf[index]) * (size + 1 - index);
-      }
-      const rest = (sum * 10) % 11;
-      return rest === 10 ? 0 : rest;
-    };
-    return calcDigit(9) === Number(cpf[9]) && calcDigit(10) === Number(cpf[10]);
-  }
-
   private async getTenantTelegramConfiguration(
     tenantId: string,
+    includeHeaderImage = true,
   ): Promise<TelegramConfiguration | null> {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: { id: tenantId, canceledAt: null },
-      select: {
-        id: true,
-        name: true,
-        telegramEnabled: true,
-        telegramBotToken: true,
-        telegramBotUsername: true,
-      },
-    });
-
-    if (!tenant) return null;
-
-    const envToken = process.env.TELEGRAM_BOT_TOKEN?.trim() || null;
-    const token = tenant.telegramBotToken?.trim() || envToken;
-    if (!token || (!tenant.telegramEnabled && !envToken)) {
-      return null;
-    }
-
+    const context = getTenantContext();
+    const branchCode =
+      context?.tenantId === tenantId &&
+      Number(context.branchCode) >= DEFAULT_BRANCH_CODE
+        ? Number(context.branchCode)
+        : DEFAULT_BRANCH_CODE;
+    const central = await this.centralConfiguration.findConfiguration(
+      tenantId,
+      branchCode,
+    );
+    const telegram = central.effective.telegram;
+    if (!telegram?.enabled || !telegram.botToken) return null;
+    const company = this.centralConfiguration.mergeCompany(
+      central.tenant.company,
+      central.branch?.company,
+    );
     return {
-      tenantId: tenant.id,
-      tenantName: tenant.name,
-      token,
-      username:
-        tenant.telegramBotUsername?.trim() ||
-        process.env.TELEGRAM_BOT_USERNAME ||
-        null,
-      headerImageUrl: await this.findTelegramHeaderImageUrl(tenant.id),
+      tenantId,
+      tenantName:
+        company.tradeName ||
+        company.legalName ||
+        central.tenant.displayName,
+      token: telegram.botToken,
+      username: telegram.botUsername?.trim() || null,
+      headerImageUrl: includeHeaderImage
+        ? telegram.headerImageUrl || null
+        : null,
     };
   }
 
   private async findTelegramHeaderImageUrl(tenantId: string) {
-    const rows = await this.prisma.$queryRawUnsafe<
-      Array<{ telegramHeaderImageUrl: string | null }>
-    >(
-      `
-        SELECT telegramHeaderImageUrl
-        FROM tenant_branches
-        WHERE tenantId = ?
-          AND canceledAt IS NULL
-          AND telegramHeaderImageUrl IS NOT NULL
-          AND telegramHeaderImageUrl <> ''
-        ORDER BY branchCode ASC
-        LIMIT 1
-      `,
+    const central = await this.centralConfiguration.findConfiguration(
       tenantId,
+      DEFAULT_BRANCH_CODE,
     );
-
-    return rows[0]?.telegramHeaderImageUrl || null;
+    return central.effective.telegram?.headerImageUrl || null;
   }
 
   private async sendTelegramMessage(
@@ -433,66 +500,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         data: roleData,
       }),
     ]);
-  }
-
-  private async findPersonByDocument(
-    tenantId: string,
-    documentValue: string,
-    isCpf: boolean,
-  ): Promise<TelegramPersonMatch | null> {
-    if (isCpf) {
-      const personByDigits = await this.prisma.person.findFirst({
-        where: { tenantId, cpfDigits: documentValue, canceledAt: null },
-        select: {
-          id: true,
-          name: true,
-          telegramChatId: true,
-        },
-      });
-      if (personByDigits) return personByDigits;
-
-      const personByMaskedCpf = (
-        await this.prisma.person.findMany({
-          where: { tenantId, cpf: { not: null }, canceledAt: null },
-          select: {
-            id: true,
-            name: true,
-            cpf: true,
-            telegramChatId: true,
-          },
-        })
-      ).find((candidate) => this.onlyDigits(candidate.cpf) === documentValue);
-      if (personByMaskedCpf) {
-        return {
-          id: personByMaskedCpf.id,
-          name: personByMaskedCpf.name,
-          telegramChatId: personByMaskedCpf.telegramChatId,
-        };
-      }
-    } else {
-      const personByCnpj = (
-        await this.prisma.person.findMany({
-          where: { tenantId, cnpj: { not: null }, canceledAt: null },
-          select: {
-            id: true,
-            name: true,
-            cnpj: true,
-            telegramChatId: true,
-          },
-        })
-      ).find(
-        (candidate) => normalizeCnpj(candidate.cnpj) === documentValue,
-      );
-      if (personByCnpj) {
-        return {
-          id: personByCnpj.id,
-          name: personByCnpj.name,
-          telegramChatId: personByCnpj.telegramChatId,
-        };
-      }
-    }
-
-    return null;
   }
 
   private formatScore(score?: number | null) {
@@ -1226,7 +1233,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (params.intent === "AULAS" && params.date) {
-      this.pendingActions.set(`${params.tenantId}:${params.chatId}`, {
+      await this.setPendingAction(params.tenantId, params.chatId, {
         intent: "AULAS",
         studentId: "",
         date: params.date,
@@ -1270,8 +1277,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException("Telegram não configurado para esta escola.");
     }
 
-    const secret = this.buildWebhookSecret(configuration.token);
-    const webhookUrl = `${this.getPublicApiBaseUrl()}/telegram/webhook/${tenantId}/${secret}`;
+    const secretToken = this.buildWebhookSecret(
+      tenantId,
+      configuration.token,
+    );
+    const webhookUrl = `${this.getPublicApiBaseUrl()}/telegram/webhook/${encodeURIComponent(tenantId)}`;
     const response = await this.telegramFetch(
       `https://api.telegram.org/bot${configuration.token}/setWebhook`,
       {
@@ -1279,6 +1289,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: webhookUrl,
+          secret_token: secretToken,
           allowed_updates: ["message", "callback_query"],
         }),
       },
@@ -1333,6 +1344,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const chatId = String(update.callback_query.message?.chat?.id || "").trim();
       const data = String(update.callback_query.data || "").trim();
 
+      if (
+        !this.isVerifiedPrivateChat(
+          update.callback_query.message?.chat,
+          update.callback_query.from,
+        )
+      ) {
+        this.appendDebugLog("REJECTED_NON_PRIVATE_CALLBACK", { tenantId });
+        return { ok: true, ignored: true };
+      }
+
       if (callbackId) {
         await this.answerCallbackQuery(configuration, callbackId);
       }
@@ -1369,9 +1390,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (intent === "AULAS" && !date) {
-          const pendingPeriod = this.pendingActions.get(`${tenantId}:${chatId}`);
+          const pendingPeriod = await this.getPendingAction(tenantId, chatId);
           if (pendingPeriod?.intent === "AULAS" && pendingPeriod.date) {
-            this.pendingActions.delete(`${tenantId}:${chatId}`);
+            await this.clearPendingAction(tenantId, chatId);
             const reportText = await this.buildStudentReportText({
               tenantId,
               studentId,
@@ -1389,7 +1410,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             return { ok: true, action: "SENT_STUDENT_CLASSES_PERIOD", studentId };
           }
 
-          this.pendingActions.set(`${tenantId}:${chatId}`, {
+          await this.setPendingAction(tenantId, chatId, {
             intent: "AULAS",
             studentId,
           });
@@ -1426,7 +1447,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const text = String(update.message?.text || "").trim();
     const telegramUsername = this.normalizeUsername(update.message?.from?.username);
 
-    if (!chatId || !text) {
+    if (
+      !chatId ||
+      !text ||
+      !this.isVerifiedPrivateChat(update.message?.chat, update.message?.from)
+    ) {
       this.appendDebugLog("IGNORED_UPDATE", { tenantId, update });
       return { ok: true, ignored: true };
     }
@@ -1476,12 +1501,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (existingPerson) {
-      const pendingAction = this.pendingActions.get(`${tenantId}:${chatId}`);
+      const pendingAction = await this.getPendingAction(tenantId, chatId);
       if (pendingAction?.intent === "AULAS") {
         const normalizedDates = this.parseBrazilianDatePeriod(text);
 
         if (normalizedDates) {
-          this.pendingActions.delete(`${tenantId}:${chatId}`);
+          await this.clearPendingAction(tenantId, chatId);
           const reportText = await this.buildStudentReportText({
             tenantId,
             studentId: pendingAction.studentId,
@@ -1535,106 +1560,81 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.sendTelegramMessage(
         configuration,
         chatId,
-        "Olá. Para liberar suas notificações, informe seu CPF ou CNPJ. CPF usa somente números; CNPJ pode usar letras e números.",
+        `Olá. Por segurança, este bot não aceita CPF, CNPJ nem outros dados pessoais para criar vínculos. Solicite à secretaria da escola a validação do seu acesso e informe este código de atendimento: ${chatId}.`,
       );
-      return { ok: true, action: "ASK_DOCUMENT" };
+      return { ok: true, action: "ADMIN_VERIFICATION_REQUIRED" };
     }
-
-    const normalizedText = String(text || "").trim().toUpperCase();
-    const cpfDigits = this.onlyDigits(text);
-    const cnpj = normalizeCnpj(text);
-    const isCpf = !/[A-Z]/.test(normalizedText) && cpfDigits.length === 11;
-    const isCnpj = cnpj.length === 14;
-
-    if (!isCpf && !isCnpj) {
-      await this.sendTelegramMessage(
-        configuration,
-        chatId,
-        "Não consegui identificar o documento. Envie um CPF numérico ou um CNPJ com letras e números.",
-      );
-      return { ok: true, action: "INVALID_DOCUMENT_LENGTH" };
-    }
-
-    if (
-      (isCpf && !this.isValidCpf(cpfDigits)) ||
-      (isCnpj && !isValidCnpj(cnpj))
-    ) {
-      await this.sendTelegramMessage(
-        configuration,
-        chatId,
-        "CPF/CNPJ inválido. Confira os dados e envie novamente.",
-      );
-      return { ok: true, action: "INVALID_DOCUMENT" };
-    }
-
-    const person = await this.findPersonByDocument(
-      tenantId,
-      isCpf ? cpfDigits : cnpj,
-      isCpf,
-    );
-
-    if (!person) {
-      await this.sendTelegramMessage(
-        configuration,
-        chatId,
-        "CPF/CNPJ não localizado no cadastro da escola. Procure a secretaria para conferir seus dados.",
-      );
-      return { ok: true, action: "DOCUMENT_NOT_FOUND" };
-    }
-
-    if (person.telegramChatId && person.telegramChatId !== chatId) {
-      await this.sendTelegramMessage(
-        configuration,
-        chatId,
-        "Este cadastro já possui um Telegram vinculado. Procure a secretaria para alterar o vínculo.",
-      );
-      return { ok: true, action: "DOCUMENT_ALREADY_LINKED" };
-    }
-
-    const now = new Date();
-    await this.prisma.person.update({
-      where: { id: person.id },
-      data: {
-        telegramChatId: chatId,
-        telegramUsername,
-        telegramOptInAt: now,
-        telegramOptOutAt: null,
-        updatedBy: person.id,
-      },
-    });
-    await this.syncPersonTelegramToRoles({
-      tenantId,
-      personId: person.id,
-      telegramChatId: chatId,
-      telegramUsername,
-      telegramOptInAt: now,
-      telegramOptOutAt: null,
-    });
 
     await this.sendTelegramMessage(
       configuration,
       chatId,
-      `Pronto, ${person.name}. Seu Telegram foi vinculado e está liberado para receber notificações da escola.`,
+      `Este Telegram ainda não está vinculado. Por segurança, não envie CPF, CNPJ, senha ou outros dados pessoais por aqui. Solicite à secretaria da escola a validação do seu acesso e informe este código de atendimento: ${chatId}.`,
     );
+    return { ok: true, action: "ADMIN_VERIFICATION_REQUIRED" };
+  }
 
-    this.appendDebugLog("LINKED_PERSON", {
-      tenantId,
-      chatId,
-      personId: person.id,
-    });
+  private async processUpdateOnce(
+    tenantId: string,
+    configuration: TelegramConfiguration,
+    update: TelegramUpdate,
+  ) {
+    if (
+      !Number.isSafeInteger(update.update_id) ||
+      Number(update.update_id) < 0
+    ) {
+      this.appendDebugLog("REJECTED_INVALID_UPDATE_ID", { tenantId });
+      return { ok: true, ignored: true };
+    }
 
-    return { ok: true, action: "LINKED", personId: person.id };
+    const updateId = String(update.update_id);
+    try {
+      await this.prisma.telegramProcessedUpdate.create({
+        data: { tenantId, updateId },
+      });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        return { ok: true, duplicate: true };
+      }
+      throw error;
+    }
+
+    try {
+      const result = await this.processUpdate(
+        tenantId,
+        configuration,
+        update,
+      );
+      const now = Date.now();
+      if (now - this.lastProcessedUpdateCleanupAt >= 6 * 60 * 60 * 1000) {
+        this.lastProcessedUpdateCleanupAt = now;
+        await this.prisma.telegramProcessedUpdate
+          .deleteMany({
+            where: {
+              processedAt: {
+                lt: new Date(now - 30 * 24 * 60 * 60 * 1000),
+              },
+            },
+          })
+          .catch(() => undefined);
+      }
+      return result;
+    } catch (error) {
+      await this.prisma.telegramProcessedUpdate
+        .deleteMany({ where: { tenantId, updateId } })
+        .catch(() => undefined);
+      throw error;
+    }
   }
 
   private runWithTelegramTenantContext<T>(
     tenantId: string,
     operation: () => Promise<T>,
   ) {
-    const currentContext = getTenantContext();
-    if (currentContext?.tenantId === tenantId) {
-      return operation();
-    }
-
     return tenantContext.run(
       {
         tenantId,
@@ -1648,6 +1648,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   async pollAllTenantUpdates() {
+    if (process.env.TELEGRAM_POLLING_ENABLED !== "true") {
+      return { ok: false, disabled: true };
+    }
     if (this.pollingInProgress) {
       return { ok: true, skipped: true };
     }
@@ -1657,12 +1660,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const tenants = await this.prisma.tenant.findMany({
         where: {
           canceledAt: null,
-          OR: [
-            { telegramEnabled: true, telegramBotToken: { not: null } },
-            process.env.TELEGRAM_BOT_TOKEN
-              ? { telegramBotToken: null }
-              : { id: "__NO_ENV_TELEGRAM_TOKEN__" },
-          ],
         },
         select: { id: true },
       });
@@ -1679,6 +1676,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.pollingInProgress = false;
     }
+  }
+
+  async pollCurrentTenantUpdates() {
+    if (process.env.TELEGRAM_POLLING_ENABLED !== "true") {
+      return { ok: false, disabled: true };
+    }
+    const tenantId = this.tenantId();
+    if (!tenantId) {
+      throw new BadRequestException("Tenant não identificado.");
+    }
+    return this.runWithTelegramTenantContext(tenantId, () =>
+      this.pollTenantUpdates(tenantId),
+    );
   }
 
   async pollTenantUpdates(tenantId: string) {
@@ -1722,25 +1732,42 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (typeof update.update_id === "number") {
         this.updateOffsets.set(tenantId, update.update_id + 1);
       }
-      await this.processUpdate(tenantId, configuration, update);
+      await this.processUpdateOnce(tenantId, configuration, update);
       processed += 1;
     }
 
     return { tenantId, processed };
   }
 
-  async handleWebhook(tenantId: string, secret: string, update: TelegramUpdate) {
-    const configuration = await this.getTenantTelegramConfiguration(tenantId);
-    if (!configuration) {
-      throw new NotFoundException("Telegram não configurado.");
-    }
-
-    if (secret !== this.buildWebhookSecret(configuration.token)) {
+  async handleWebhook(
+    tenantId: string,
+    secretToken: string | undefined,
+    update: TelegramUpdate,
+  ) {
+    const credentials = await this.getTenantTelegramConfiguration(
+      tenantId,
+      false,
+    );
+    if (!credentials) {
       throw new ForbiddenException("Webhook inválido.");
     }
 
+    if (
+      !this.isValidWebhookSecret(
+        tenantId,
+        credentials.token,
+        secretToken,
+      )
+    ) {
+      throw new ForbiddenException("Webhook inválido.");
+    }
+
+    const configuration = {
+      ...credentials,
+      headerImageUrl: await this.findTelegramHeaderImageUrl(tenantId),
+    };
     return this.runWithTelegramTenantContext(tenantId, () =>
-      this.processUpdate(tenantId, configuration, update),
+      this.processUpdateOnce(tenantId, configuration, update),
     );
   }
 }

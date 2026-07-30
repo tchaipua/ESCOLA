@@ -1,11 +1,41 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { MSINFOR_MASTER_SESSION_KEY, getRememberPreference, getStoredToken, setStoredToken } from '@/app/lib/auth-storage';
-import { decodeDashboardToken, getHomeRouteForRole, getHomeRouteForSession } from '@/app/lib/dashboard-crud-utils';
+import {
+  getRememberPreference,
+  getStoredSessionProfile,
+  getStoredToken,
+  setStoredSessionProfile,
+  type StoredSessionProfile,
+} from '@/app/lib/auth-storage';
+import { getHomeRouteForRole, getHomeRouteForSession } from '@/app/lib/dashboard-crud-utils';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+const DEFAULT_CENTRAL_URL = 'http://localhost:3200';
+
+function getCentralUrl(): string | null {
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL || DEFAULT_CENTRAL_URL;
+
+  try {
+    const target = new URL(configuredUrl);
+    const isLocalDevelopmentTarget =
+      process.env.NODE_ENV !== 'production' &&
+      target.protocol === 'http:' &&
+      ['localhost', '127.0.0.1'].includes(target.hostname);
+    if (target.protocol !== 'https:' && !isLocalDevelopmentTarget) {
+      throw new Error('Protocolo não permitido.');
+    }
+    target.username = '';
+    target.password = '';
+    target.search = '';
+    target.hash = 'caller=ESCOLA';
+    return target.toString();
+  } catch {
+    return process.env.NODE_ENV === 'production' ? null : DEFAULT_CENTRAL_URL;
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,6 +52,13 @@ export default function LoginPage() {
 
     if (rawMessage === 'Unauthorized') {
       return 'Seu acesso não foi autorizado no momento. Faça login novamente e tente outra vez.';
+    }
+
+    if (
+      rawMessage.includes('ThrottlerException') ||
+      rawMessage.toLowerCase().includes('too many requests')
+    ) {
+      return 'Foram feitas muitas tentativas em pouco tempo. Aguarde um minuto e tente novamente.';
     }
 
     if (
@@ -105,31 +142,28 @@ export default function LoginPage() {
       arrow: 'group-hover:text-indigo-700',
     };
   };
-  const buildMasterPass = (date: Date) => {
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const hr = date.getHours();
-    const min = date.getMinutes();
-
-    return `S${day + hr}${month + min}`;
-  };
-  const isValidMasterPass = (input: string, date: Date) => {
-    const normalizedInput = input.trim().toUpperCase();
-    const expectedPassword = buildMasterPass(date).toUpperCase();
-    const expectedNumber = Number.parseInt(expectedPassword.slice(1), 10);
-
-    if (normalizedInput === expectedPassword) return true;
-    if (!Number.isFinite(expectedNumber)) return false;
-
-    return normalizedInput === `S${expectedNumber + 1}`;
-  };
-  const [email, setEmail] = useState('tchaipua@gmail.com');
-  const [password, setPassword] = useState('Mabelu2011');
+  const [email, setEmail] = useState(() =>
+    process.env.NODE_ENV === 'development'
+      ? process.env.NEXT_PUBLIC_MSINFOR_LOCAL_TEST_LOGIN || ''
+      : '',
+  );
+  const [password, setPassword] = useState(() =>
+    process.env.NODE_ENV === 'development'
+      ? process.env.NEXT_PUBLIC_MSINFOR_LOCAL_TEST_PASSWORD || ''
+      : '',
+  );
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorStatus, setErrorStatus] = useState<{ message: string; detail?: string } | null>(null);
   const [successStatus, setSuccessStatus] = useState<{ message: string; devResetLink?: string; devVerificationLink?: string } | null>(null);
-  const [multipleSchools, setMultipleSchools] = useState<{ id: string; name: string; logoUrl?: string | null }[] | null>(null);
+  const [multipleSchools, setMultipleSchools] = useState<Array<{
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+    documentNumber?: string;
+    city?: string;
+  }> | null>(null);
+  const [masterCompanySearch, setMasterCompanySearch] = useState('');
   const [multipleAccessOptions, setMultipleAccessOptions] = useState<Array<{
     accountId: string;
     accountType: string;
@@ -155,11 +189,6 @@ export default function LoginPage() {
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [isMasterAccessModalOpen, setIsMasterAccessModalOpen] = useState(false);
-  const [masterAccessPassword, setMasterAccessPassword] = useState('');
-  const [isMasterAccessPasswordVisible, setIsMasterAccessPasswordVisible] = useState(false);
-  const [masterAccessError, setMasterAccessError] = useState(false);
-  const isMasterLoginFlow = email.trim().toUpperCase() === 'MSINFOR';
   const [teacherAccessMode, setTeacherAccessMode] = useState<'AUTO' | 'PRINCIPAL' | 'PWA'>('AUTO');
   const [isProfessorDeviceModalOpen, setIsProfessorDeviceModalOpen] = useState(false);
   const [professorAccessSchoolName, setProfessorAccessSchoolName] = useState('SISTEMA ESCOLAR');
@@ -169,8 +198,9 @@ export default function LoginPage() {
   useEffect(() => {
     setRememberMe(getRememberPreference());
     const storedToken = getStoredToken();
-    if (storedToken) {
-      router.replace(getHomeRouteForSession(decodeDashboardToken(storedToken)));
+    const storedProfile = getStoredSessionProfile();
+    if (storedToken && storedProfile) {
+      router.replace(getHomeRouteForSession(storedProfile));
     }
   }, [router]);
 
@@ -185,6 +215,7 @@ export default function LoginPage() {
   const handleIntermediateAuthStatus = (data: any) => {
     if (data.status === 'MULTIPLE_TENANTS') {
       setMultipleSchools(data.tenants);
+      setMasterCompanySearch('');
       return true;
     }
 
@@ -215,10 +246,13 @@ export default function LoginPage() {
     return false;
   };
 
-  const resolveHomeRoute = (role: string | null, mode: 'AUTO' | 'PRINCIPAL' | 'PWA', token?: string) => {
-    const payload = token ? decodeDashboardToken(token) : null;
-    if (payload?.cashierOnly === true) {
-      return getHomeRouteForSession(payload, role);
+  const resolveHomeRoute = (
+    role: string | null,
+    mode: 'AUTO' | 'PRINCIPAL' | 'PWA',
+    profile?: Partial<StoredSessionProfile> | null,
+  ) => {
+    if (profile?.cashierOnly === true) {
+      return getHomeRouteForSession(profile, role);
     }
 
     if (role === 'PROFESSOR') {
@@ -228,6 +262,20 @@ export default function LoginPage() {
 
     return getHomeRouteForRole(role);
   };
+
+  const isMasterLogin = email.trim().toUpperCase() === 'MSINFOR';
+  const visibleMasterCompanies = useMemo(() => {
+    const term = masterCompanySearch.trim().toLowerCase();
+    const termDigits = term.replace(/\D/g, '');
+    if (!term) return multipleSchools || [];
+    return (multipleSchools || []).filter((company) => {
+      const documentDigits = String(company.documentNumber || '').replace(/\D/g, '');
+      return [company.name, company.city, company.documentNumber]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term)) ||
+        Boolean(termDigits && documentDigits.includes(termDigits));
+    });
+  }, [masterCompanySearch, multipleSchools]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -240,10 +288,12 @@ export default function LoginPage() {
 
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: normalizedUser,
-          password
+          password,
+          rememberMe,
         }),
       });
 
@@ -257,8 +307,8 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredToken(data.access_token, rememberMe);
-      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode, data.access_token));
+      setStoredSessionProfile(data.user, rememberMe);
+      router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
 
     } catch (err: any) {
       const errorMsg = normalizeLoginErrorMessage(err.message || 'Erro de conexão com o servidor.');
@@ -279,13 +329,15 @@ export default function LoginPage() {
     setMultipleBranchOptions(null);
     try {
       const normalizedUser = email.trim().toUpperCase();
-      const passwordToSend = normalizedUser === 'MSINFOR' ? buildMasterPass(new Date()) : password;
+      const passwordToSend = password;
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: normalizedUser,
           password: passwordToSend,
+          rememberMe,
           tenantId // Agora mandamos o desempate pro backend!
         }),
       });
@@ -298,8 +350,8 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredToken(data.access_token, rememberMe);
-      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode, data.access_token));
+      setStoredSessionProfile(data.user, rememberMe);
+      router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar escola') });
     } finally {
@@ -319,10 +371,12 @@ export default function LoginPage() {
       const normalizedUser = email.trim().toUpperCase();
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: normalizedUser,
           password,
+          rememberMe,
           tenantId: option.tenant.id,
           accountId: option.accountId,
           accountType: option.accountType,
@@ -339,8 +393,7 @@ export default function LoginPage() {
         return;
       }
 
-      const resolvedRole = data?.user?.role || decodeDashboardToken(data.access_token)?.role || option.role || null;
-      const resolvedToken = data.access_token;
+      const resolvedRole = data?.user?.role || option.role || null;
 
       if (resolvedRole === 'PROFESSOR') {
         const professorAccount = multipleAccessOptions?.find(
@@ -350,16 +403,16 @@ export default function LoginPage() {
         setProfessorAccessSchoolName(professorAccount?.tenant?.name || 'SISTEMA ESCOLAR');
         setProfessorAccessSchoolLogoUrl(professorAccount?.tenant?.logoUrl || null);
         setPendingProfessorRouteRole(resolvedRole);
-        setStoredToken(resolvedToken, rememberMe);
+        setStoredSessionProfile(data.user, rememberMe);
         setMultipleAccessOptions(null);
         setTeacherAccessMode('AUTO');
         setIsProfessorDeviceModalOpen(true);
         return;
       }
 
-      setStoredToken(resolvedToken, rememberMe);
+      setStoredSessionProfile(data.user, rememberMe);
       setMultipleAccessOptions(null);
-      router.push(resolveHomeRoute(resolvedRole, teacherAccessMode, resolvedToken));
+      router.push(resolveHomeRoute(resolvedRole, teacherAccessMode, data.user));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar o tipo de acesso.') });
     } finally {
@@ -374,13 +427,14 @@ export default function LoginPage() {
 
     try {
       const normalizedUser = email.trim().toUpperCase();
-      const passwordToSend = normalizedUser === 'MSINFOR' ? buildMasterPass(new Date()) : password;
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: normalizedUser,
-          password: passwordToSend,
+          password,
+          rememberMe,
           tenantId: multipleBranchOptions.tenant.id,
           accountId: multipleBranchOptions.account?.accountId,
           accountType: multipleBranchOptions.account?.accountType,
@@ -398,9 +452,9 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredToken(data.access_token, rememberMe);
+      setStoredSessionProfile(data.user, rememberMe);
       setMultipleBranchOptions(null);
-      router.push(resolveHomeRoute(data?.user?.role || decodeDashboardToken(data.access_token)?.role || null, teacherAccessMode, data.access_token));
+      router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar a filial.') });
     } finally {
@@ -449,37 +503,15 @@ export default function LoginPage() {
     setForgotEmail('');
   };
 
-  const handleOpenMasterAccessModal = () => {
-    setMasterAccessPassword('');
-    setIsMasterAccessPasswordVisible(false);
-    setMasterAccessError(false);
-    setIsMasterAccessModalOpen(true);
-  };
-
-  const handleCloseMasterAccessModal = () => {
-    setIsMasterAccessModalOpen(false);
-    setMasterAccessPassword('');
-    setIsMasterAccessPasswordVisible(false);
-    setMasterAccessError(false);
-  };
-
-  const handleMasterAccessLogin = (event: React.FormEvent) => {
-    event.preventDefault();
-
-    const now = new Date();
-    const prevMinute = new Date(now.getTime() - 60_000);
-    const nextMinute = new Date(now.getTime() + 60_000);
-    if (
-      isValidMasterPass(masterAccessPassword, prevMinute) ||
-      isValidMasterPass(masterAccessPassword, now) ||
-      isValidMasterPass(masterAccessPassword, nextMinute)
-    ) {
-      window.sessionStorage.setItem(MSINFOR_MASTER_SESSION_KEY, 'true');
-      router.push('/msinfor-admin');
+  const handleOpenCentral = () => {
+    const centralUrl = getCentralUrl();
+    if (!centralUrl) {
+      setErrorStatus({
+        message: 'A URL HTTPS do MSINFOR Central não foi configurada.',
+      });
       return;
     }
-
-    setMasterAccessError(true);
+    window.location.assign(centralUrl);
   };
 
   const handleChooseTeacherDevice = (mode: 'PRINCIPAL' | 'PWA') => {
@@ -494,8 +526,8 @@ export default function LoginPage() {
 
       {/* PAINEL ESQUERDO: Intocado conforme o mestre pediu (Mantendo o luxo corporativo) */}
       <div className="hidden lg:flex w-1/2 relative overflow-hidden bg-slate-950 flex-col justify-between p-12 shadow-[10px_0_30px_rgba(0,0,0,0.5)] z-10">
-        <div className="absolute -top-1/4 -left-1/4 w-full h-full bg-blue-600/20 blur-[150px] mix-blend-screen rounded-full animate-pulse" />
-        <div className="absolute -bottom-1/4 -right-1/4 w-full h-full bg-indigo-600/10 blur-[150px] mix-blend-screen rounded-full animate-pulse" style={{ animationDelay: '1.5s' }} />
+        <div className="absolute -top-1/4 -left-1/4 w-full h-full bg-blue-600/20 blur-[150px] mix-blend-screen rounded-full" />
+        <div className="absolute -bottom-1/4 -right-1/4 w-full h-full bg-indigo-600/10 blur-[150px] mix-blend-screen rounded-full" />
 
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150 mix-blend-overlay"></div>
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
@@ -505,10 +537,10 @@ export default function LoginPage() {
           {/* Logo */}
           <button
             type="button"
-            onClick={handleOpenMasterAccessModal}
+            onClick={handleOpenCentral}
             className="shrink-0 bg-white p-2 text-center rounded-full shadow-2xl shadow-blue-500/30 overflow-hidden ring-4 ring-white/10 transition-transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300"
-            aria-label="Abrir acesso exclusivo MSINFOR"
-            title="Acesso exclusivo MSINFOR"
+            aria-label="Abrir MSINFOR Central"
+            title="Abrir MSINFOR Central"
           >
             <img src="/logo-msinfor.jpg" alt="Logo MSINFOR Sistemas" className="w-36 h-36 lg:w-40 lg:h-40 object-contain block" />
           </button>
@@ -666,102 +698,6 @@ export default function LoginPage() {
       </div>
 
       {/* MODAL MÁGICO DE ERRO NO CENTRO DA TELA (POP-UP / TOAST) */}
-      {isMasterAccessModalOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#071526]/80 p-4 backdrop-blur-md">
-          <div className="relative flex w-full max-w-sm flex-col items-center">
-            <div className="mb-8">
-              <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="h-32 w-32 rounded-full border-4 border-indigo-500/30 shadow-[0_0_48px_rgba(99,102,241,0.45)]" />
-            </div>
-
-            <div className="relative w-full overflow-hidden rounded-2xl border border-white/10 bg-[#112240] p-8 shadow-2xl">
-              <div className="absolute left-0 top-0 h-1 w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
-
-              <h2 className="mb-8 text-center text-xl font-bold tracking-[0.15em] text-white">ACESSO EXCLUSIVO MSINFOR</h2>
-
-              <form onSubmit={handleMasterAccessLogin}>
-                <div className="relative mb-6">
-                  <input
-                    type={isMasterAccessPasswordVisible ? 'text' : 'password'}
-                    placeholder="Chave de Acesso Admin"
-                    value={masterAccessPassword}
-                    onChange={(event) => setMasterAccessPassword(event.target.value)}
-                    className="w-full rounded-xl border border-slate-700/50 bg-[#0a192f] px-12 py-3.5 text-center font-mono text-lg tracking-widest text-slate-200 shadow-inner outline-none transition-all placeholder:text-sm placeholder:text-slate-600 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setIsMasterAccessPasswordVisible((current) => !current)}
-                    className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-white/5 hover:text-white"
-                    aria-label={isMasterAccessPasswordVisible ? 'Ocultar chave master' : 'Mostrar chave master'}
-                    title={isMasterAccessPasswordVisible ? 'Ocultar chave master' : 'Mostrar chave master'}
-                  >
-                    {isMasterAccessPasswordVisible ? (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.77 9.77 0 0112 4.8c5.05 0 9.27 3.11 10.5 7.2a10.76 10.76 0 01-4.04 5.45M6.1 6.1A10.75 10.75 0 001.5 12c.64 2.13 2.1 3.99 4.1 5.3" />
-                      </svg>
-                    ) : (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M1.5 12S5.5 4.8 12 4.8 22.5 12 22.5 12 18.5 19.2 12 19.2 1.5 12 1.5 12z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-
-                <button type="submit" className="w-full rounded-xl bg-indigo-600 py-3.5 text-sm font-bold tracking-widest text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-500 active:scale-95">
-                  ACESSAR
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCloseMasterAccessModal}
-                  className="mt-4 w-full rounded-xl border border-slate-700/60 bg-[#0a192f] py-3 text-sm font-bold text-slate-200 transition hover:border-slate-500 hover:bg-slate-900"
-                >
-                  Voltar ao login principal
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {masterAccessError && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-red-50 p-6 text-center shadow-2xl">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white shadow-sm">
-              <img src="/logo-msinfor.jpg" alt="Logo MSINFOR" className="h-full w-full object-cover" />
-            </div>
-
-            <h3 className="mt-4 text-xl font-black text-[#13233b]">Acesso Negado</h3>
-            <p className="mt-3 text-sm font-black uppercase tracking-[0.18em] text-[#42547a]">
-              Senha master invalida
-            </p>
-
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-center shadow-inner">
-              <p className="font-mono text-sm font-black tracking-[0.18em] text-red-600">
-                Intruso Detectado.
-              </p>
-              <div className="my-3 h-px bg-red-200" />
-              <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-red-600">
-                CÓDIGO DE REFERÊNCIA: S(D+H)(M+M)
-              </p>
-            </div>
-
-            <p className="mt-5 text-xs font-medium text-blue-500">Confira a chave de acesso e tente novamente.</p>
-
-            <button
-              type="button"
-              onClick={() => setMasterAccessError(false)}
-              className="mt-6 w-full rounded-xl bg-[#15243c] py-3 text-base font-black text-white shadow-sm transition hover:bg-[#0f1b2e]"
-            >
-              Dispensar Aviso
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* MODAL MÁGICO DE ERRO NO CENTRO DA TELA (POP-UP / TOAST) */}
       {errorStatus && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -869,47 +805,96 @@ export default function LoginPage() {
       {/* MODAL MÁGICO DE MÚLTIPLAS ESCOLAS (DESEMPATE) */}
       {multipleSchools && (
         <div data-system-message-ignore className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className={`bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200 ${isMasterLogin ? 'max-w-5xl' : 'max-w-md'}`}>
             <div className="bg-[#2272c7] p-6 text-center">
               <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
                 <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
               </div>
-              <h2 className="text-xl font-bold text-white mb-1">{isMasterLoginFlow ? 'Escolas Cadastradas' : 'Múltiplos Vínculos'}</h2>
+              <h2 className="text-xl font-bold text-white mb-1">{isMasterLogin ? 'Empresas disponíveis' : 'Múltiplos Vínculos'}</h2>
               <p className="text-blue-100 text-sm font-medium opacity-90">
-                {isMasterLoginFlow
-                  ? 'Selecione a escola que deseja acessar com o usuário master.'
+                {isMasterLogin
+                  ? 'Selecione a empresa que deseja acessar com o usuário MSINFOR.'
                   : 'Seu e-mail está associado a mais de uma instituição. Selecione onde deseja entrar:'}
               </p>
             </div>
 
             <div className="p-6">
-              <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
-                {multipleSchools.map((school) => (
-                  <button
-                    key={school.id}
-                    onClick={() => handleSelectSchool(school.id)}
-                    className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all group active:scale-95"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-blue-700 shadow-sm group-hover:bg-[#2272c7] group-hover:text-white transition-colors">
-                        {school.logoUrl ? (
-                          <img src={school.logoUrl} alt={`Logo de ${school.name}`} className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="font-bold">{school.name.substring(0, 2).toUpperCase()}</span>
+              {isMasterLogin ? (
+                <div className="space-y-4">
+                  <input
+                    value={masterCompanySearch}
+                    onChange={(event) => setMasterCompanySearch(event.target.value)}
+                    placeholder="Pesquisar por empresa ou CNPJ"
+                    autoFocus
+                    className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2272c7] focus:bg-white focus:ring-2 focus:ring-blue-100"
+                  />
+                  <div className="max-h-[48vh] overflow-auto rounded-2xl border border-slate-200">
+                    <table className="w-full min-w-[680px] text-left text-sm">
+                      <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-5 py-4">Empresa</th>
+                          <th className="px-5 py-4">CNPJ</th>
+                          <th className="px-5 py-4">Cidade</th>
+                          <th className="px-5 py-4 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {visibleMasterCompanies.map((company) => (
+                          <tr key={company.id} className="bg-white transition hover:bg-blue-50/70">
+                            <td className="px-5 py-4 font-bold text-slate-800">{company.name}</td>
+                            <td className="px-5 py-4 text-slate-600">{company.documentNumber || 'Não informado'}</td>
+                            <td className="px-5 py-4 text-slate-600">{company.city || 'Não informada'}</td>
+                            <td className="px-5 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectSchool(company.id)}
+                                className="rounded-xl bg-[#2272c7] px-4 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-[#185b9e]"
+                              >
+                                Selecionar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        {!visibleMasterCompanies.length && (
+                          <tr>
+                            <td colSpan={4} className="px-5 py-10 text-center font-semibold text-slate-500">
+                              Nenhuma empresa encontrada.
+                            </td>
+                          </tr>
                         )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
+                  {multipleSchools.map((school) => (
+                    <button
+                      key={school.id}
+                      onClick={() => handleSelectSchool(school.id)}
+                      className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all group active:scale-95"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-blue-100 text-blue-700 shadow-sm group-hover:bg-[#2272c7] group-hover:text-white transition-colors">
+                          {school.logoUrl ? (
+                            <img src={school.logoUrl} alt={`Logo de ${school.name}`} className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="font-bold">{school.name.substring(0, 2).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <span className="font-bold text-slate-700 group-hover:text-[#2272c7] text-left leading-tight">
+                          {school.name}
+                        </span>
                       </div>
-                      <span className="font-bold text-slate-700 group-hover:text-[#2272c7] text-left leading-tight">
-                        {school.name}
-                      </span>
-                    </div>
-                    <svg className="w-5 h-5 text-slate-300 group-hover:text-[#2272c7] transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                ))}
-              </div>
+                      <svg className="w-5 h-5 text-slate-300 group-hover:text-[#2272c7] transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-6 pt-4 border-t border-slate-100">
                 <button

@@ -4,6 +4,10 @@ const path = require('path');
 const frontendDir = __dirname;
 const workspaceDir = path.resolve(frontendDir, '..');
 const backendDir = path.join(workspaceDir, 'backend');
+const backendPort = Number(process.env.TCHA_E2E_BACKEND_PORT || 3001);
+const frontendPort = Number(process.env.TCHA_E2E_FRONTEND_PORT || 3000);
+const backendUrl = `http://127.0.0.1:${backendPort}`;
+const frontendUrl = `http://127.0.0.1:${frontendPort}`;
 
 module.exports = defineConfig({
   testDir: './tests/e2e/specs',
@@ -13,7 +17,7 @@ module.exports = defineConfig({
   workers: 1,
   reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:3000',
+    baseURL: frontendUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -21,26 +25,28 @@ module.exports = defineConfig({
   },
   webServer: [
     {
-      command: 'npm run start',
+      command: 'npx nest start',
       cwd: backendDir,
       env: {
         ...process.env,
         DATABASE_URL: 'file:./tmp-e2e.db',
-        FRONTEND_URL: 'http://127.0.0.1:3000',
-        PORT: '3001',
+        FRONTEND_URL: frontendUrl,
+        NODE_ENV: 'development',
+        PORT: String(backendPort),
       },
-      url: 'http://127.0.0.1:3001/api/docs',
+      url: `${backendUrl}/api/docs`,
       timeout: 120_000,
       reuseExistingServer: false,
     },
     {
-      command: 'npm run start -- --hostname 127.0.0.1 --port 3000',
+      command: 'node .next/standalone/server.js',
       cwd: frontendDir,
       env: {
         ...process.env,
-        PORT: '3000',
+        HOSTNAME: '127.0.0.1',
+        PORT: String(frontendPort),
       },
-      url: 'http://127.0.0.1:3000',
+      url: frontendUrl,
       timeout: 120_000,
       reuseExistingServer: false,
     },

@@ -11,97 +11,18 @@ import {
 } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 
-const FINANCEIRO_FRONTEND_URL =
-  process.env.NEXT_PUBLIC_FINANCEIRO_FRONTEND_URL || 'http://localhost:3003';
-
-type BranchStockParameterMode = 'NO' | 'YES' | 'BY_PRODUCT';
-
-type BranchStockParameters = {
-  stockControlMode: BranchStockParameterMode;
-  stockIntegerQuantityMode: BranchStockParameterMode;
-  stockLotControlMode: BranchStockParameterMode;
-  stockExpirationControlMode: BranchStockParameterMode;
-  stockGridControlMode: BranchStockParameterMode;
-  stockNegativeControlMode: BranchStockParameterMode;
-};
-
-function normalizeDisplayText(value: string | null | undefined) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return null;
-
-  if (!/[\u00c3\u00c2\u00e2]/.test(trimmed)) return trimmed;
-
-  try {
-    return decodeURIComponent(escape(trimmed));
-  } catch {
-    return trimmed;
-  }
-}
-
-function normalizeStockParameterMode(value: unknown): BranchStockParameterMode {
-  const normalized = String(value || '').trim().toUpperCase();
-
-  return normalized === 'NO' || normalized === 'YES' || normalized === 'BY_PRODUCT'
-    ? normalized
-    : 'BY_PRODUCT';
-}
-
-function getBranchStockParameters(branch?: TenantBranchSummary | null): BranchStockParameters | null {
-  if (!branch) return null;
-
-  return {
-    stockControlMode: normalizeStockParameterMode(branch.stockControlMode),
-    stockIntegerQuantityMode: normalizeStockParameterMode(branch.stockIntegerQuantityMode),
-    stockLotControlMode: normalizeStockParameterMode(branch.stockLotControlMode),
-    stockExpirationControlMode: normalizeStockParameterMode(branch.stockExpirationControlMode),
-    stockGridControlMode: normalizeStockParameterMode(branch.stockGridControlMode),
-    stockNegativeControlMode: normalizeStockParameterMode(branch.stockNegativeControlMode),
-  };
-}
+const FINANCEIRO_FRONTEND_URL = '/financeiro-app';
 
 function buildFinanceiroHomeFrameUrl(
   baseUrl: string,
-  authContext: ReturnType<typeof getDashboardAuthContext>,
-  schoolName?: string | null,
-  logoUrl?: string | null,
-  branchStockParameters?: BranchStockParameters | null,
 ) {
   const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  const params = new URLSearchParams({ embedded: '1', sourceSystem: 'ESCOLA' });
-
-  if (authContext.tenantId) params.set('sourceTenantId', authContext.tenantId.toUpperCase());
-  if (Number.isInteger(authContext.branchCode) && authContext.branchCode >= 0) {
-    params.set('sourceBranchCode', String(authContext.branchCode));
-  }
-  if (branchStockParameters) {
-    params.set('stockControlMode', branchStockParameters.stockControlMode);
-    params.set('stockIntegerQuantityMode', branchStockParameters.stockIntegerQuantityMode);
-    params.set('stockLotControlMode', branchStockParameters.stockLotControlMode);
-    params.set('stockExpirationControlMode', branchStockParameters.stockExpirationControlMode);
-    params.set('stockGridControlMode', branchStockParameters.stockGridControlMode);
-    params.set('stockNegativeControlMode', branchStockParameters.stockNegativeControlMode);
-  }
-  if (authContext.userId) params.set('cashierUserId', authContext.userId.toUpperCase());
-  if (authContext.name) {
-    params.set(
-      'cashierDisplayName',
-      String(normalizeDisplayText(authContext.name) || authContext.name).toUpperCase(),
-    );
-  }
-  if (authContext.role) params.set('userRole', authContext.role.toUpperCase());
-  if (authContext.permissions.length) {
-    params.set('permissions', authContext.permissions.join(',').toUpperCase());
-  }
-  if (schoolName) params.set('companyName', schoolName.toUpperCase());
-  if (logoUrl) params.set('logoUrl', logoUrl);
-
-  return `${normalizedBaseUrl}/?${params.toString()}`;
+  return `${normalizedBaseUrl}/?embedded=1`;
 }
 
 export default function PrincipalFinanceiroPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
-  const [branchStockParameters, setBranchStockParameters] = useState<BranchStockParameters | null>(null);
   const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
@@ -126,7 +47,6 @@ export default function PrincipalFinanceiroPage() {
         if (!authContext.token || !authContext.tenantId) {
           if (isActive) {
             setCurrentBranch(null);
-            setBranchStockParameters(null);
           }
           return;
         }
@@ -143,12 +63,10 @@ export default function PrincipalFinanceiroPage() {
 
         if (isActive) {
           setCurrentBranch(nextBranch);
-          setBranchStockParameters(getBranchStockParameters(nextBranch));
         }
       } catch {
         if (isActive) {
           setCurrentBranch(null);
-          setBranchStockParameters(null);
         }
       }
     }
@@ -160,15 +78,8 @@ export default function PrincipalFinanceiroPage() {
   }, [authContext.branchCode, authContext.tenantId, authContext.token]);
 
   const iframeSrc = useMemo(
-    () =>
-      buildFinanceiroHomeFrameUrl(
-        FINANCEIRO_FRONTEND_URL,
-        authContext,
-        schoolName,
-        logoUrl,
-        branchStockParameters,
-      ),
-    [authContext, branchStockParameters, logoUrl, schoolName],
+    () => buildFinanceiroHomeFrameUrl(FINANCEIRO_FRONTEND_URL),
+    [],
   );
   const isFrameLoading = loadedFrameSrc !== iframeSrc;
 
@@ -243,7 +154,7 @@ export default function PrincipalFinanceiroPage() {
           title="Financeiro - tela central"
           src={iframeSrc}
           onLoad={() => setLoadedFrameSrc(iframeSrc)}
-          className="block h-[calc(100vh-12.5rem)] w-full bg-white"
+          className="block h-full w-full bg-white"
         />
       </section>
     </div>

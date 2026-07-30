@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  GoneException,
   Injectable,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import * as nodemailer from "nodemailer";
@@ -196,28 +198,20 @@ export class GlobalSettingsService {
 
   async findSettings() {
     const central = await this.centralSettings.findEffective();
-    if (central) return this.mergeSettings(central as Partial<GlobalSettingsValue>);
-
-    const record = await this.prisma.globalSetting.findUnique({
-      where: { settingKey: GLOBAL_SETTINGS_KEY },
-    });
-
-    if (!record || record.canceledAt) {
-      return DEFAULT_GENERAL_SETTINGS;
+    if (!central) {
+      throw new ServiceUnavailableException(
+        "Configurações globais não disponibilizadas pelo MSINFOR Central.",
+      );
     }
-
-    try {
-      const parsed = JSON.parse(
-        record.settingValue,
-      ) as Partial<GlobalSettingsValue>;
-      return this.mergeSettings(parsed);
-    } catch {
-      return DEFAULT_GENERAL_SETTINGS;
-    }
+    return this.mergeSettings(central as Partial<GlobalSettingsValue>);
   }
 
   async saveSettings(payload: UpdateGlobalSettingsDto, masterPass: string) {
-    return this.centralSettings.save(payload, masterPass);
+    void payload;
+    void masterPass;
+    throw new GoneException(
+      "Operação administrativa legada desativada. Use o MSINFOR Central.",
+    );
     /* CACHE LEGADO LOCAL MANTIDO APENAS PARA MIGRACAO/FALLBACK DE LEITURA.
     const settings = this.mergeSettings(payload);
     const serialized = JSON.stringify(settings);
@@ -256,11 +250,18 @@ export class GlobalSettingsService {
   }
 
   async findSettingsForAdmin(masterPass: string) {
-    return this.centralSettings.findAdmin(masterPass);
+    void masterPass;
+    throw new GoneException(
+      "Operação administrativa legada desativada. Use o MSINFOR Central.",
+    );
   }
 
   async testS3Connection(payload: UpdateGlobalSettingsDto, masterPass: string) {
-    return this.centralSettings.test("s3", payload, masterPass);
+    void payload;
+    void masterPass;
+    throw new GoneException(
+      "Operação administrativa legada desativada. Use o MSINFOR Central.",
+    );
     /* TESTE LOCAL LEGADO DESATIVADO APOS CENTRALIZACAO.
     const savedSettings = await this.findSettings();
     const settings = this.mergeSettings({
@@ -337,7 +338,11 @@ export class GlobalSettingsService {
   }
 
   async testEmailConnection(payload: UpdateGlobalSettingsDto, masterPass: string) {
-    return this.centralSettings.test("email", payload, masterPass);
+    void payload;
+    void masterPass;
+    throw new GoneException(
+      "Operação administrativa legada desativada. Use o MSINFOR Central.",
+    );
     /* TESTE LOCAL LEGADO DESATIVADO APOS CENTRALIZACAO.
     const savedSettings = await this.findSettings();
     const settings = this.mergeSettings({

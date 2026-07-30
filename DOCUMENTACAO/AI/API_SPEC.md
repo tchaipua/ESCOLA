@@ -4,43 +4,66 @@
 
 - Base URL: `/api/v1`
 - Formato: JSON
-- Autenticacao: `Authorization: Bearer <access_token>`
-- Tenant: derivado do token e validado no backend
-- Filial: `branchCode` e derivado do token e pode ser informado em mutacoes de cadastros operacionais; `0` indica cadastro comum a todas as filiais
-- Soft delete: cancelamento logico, nao remocao fisica, exceto no endpoint master exclusivo de purge definitivo de tenant
+- Autenticacao: cookie de sessao `HttpOnly`, `SameSite=Strict` e `Secure` em producao
+- Transporte proibido: JWT em `Authorization`, `localStorage`, `sessionStorage`, corpo ou URL
+- Tenant: derivado da sessao validada no backend
+- Filial: `branchCode` e derivado da sessao e pode ser informado em mutacoes de cadastros operacionais; `0` indica cadastro comum a todas as filiais
+- Soft delete: cancelamento logico; a rota local historica de purge esta desativada
 - Textos em uppercase, exceto senha
 
 ## Tenants
 
+As rotas administrativas historicas de tenant que nao usam `/current` estao
+desativadas e respondem `410 Gone`, independentemente de cabecalho, senha ou
+ambiente. O onboarding e a administracao de softhouse devem partir do MSINFOR
+Central quando o novo contrato autenticado estiver concluido.
+
 ### GET `/tenants/current/branches`
 
-- Autenticacao: JWT da escola logada
-- Uso: lista filiais ativas da escola atual
-- Regra: se nao houver filial cadastrada, o backend cria a primeira filial com `branchCode = 1`
+- Autenticacao: cookie de sessao HttpOnly da Escola
+- Uso: lista filiais ativas recebidas da API do MSINFOR Central
+- Regra: a Escola atualiza somente a projecao local minima de `branchCode` e status, com auditoria; nome, marca e demais dados retornados continuam pertencendo a Central
+- Falha: indisponibilidade ou resposta divergente da Central interrompe a operacao, sem fallback local
 
 ### POST `/tenants/current/branches`
 
-- Autenticacao: JWT da escola logada
-- Uso: cria uma filial operacional para a escola atual
-- Body:
+- Status: desativado (`410 Gone`)
+- Uso: a manutencao de filial ocorre exclusivamente no MSINFOR Central
 
-```json
-{
-  "branchCode": 2,
-  "name": "FILIAL CENTRO"
-}
-```
+### GET `/tenants/current`
+
+- Autenticacao: cookie de sessao HttpOnly da Escola
+- Uso: retorna a identificacao e a marca efetivas da empresa/filial da sessao
+- Fonte: contrato HMAC da Central, resolvido por `Tenant.centralTenantId`
+- Segurança: nao retorna credenciais S3, senha SMTP ou token Telegram
+
+### GET central `/api/v1/control-plane/technical/tenants/:tenantId/configuration`
+
+- Acesso: HMAC tecnico `ESCOLA`; aceita `branchCode` opcional
+- Uso: retorna empresa, filial e configuracao efetiva com prioridade `BRANCH > TENANT > SYSTEM > GLOBAL`
+- Regra: UUID, filial, status e formato da resposta sao validados pela Escola; divergencia falha fechada
+
+### GET central `/api/v1/control-plane/technical/tenants/:tenantId/branches`
+
+- Acesso: HMAC tecnico `ESCOLA`
+- Uso: lista as filiais ativas oficiais para login, selecao e isolamento local
+
+### POST central `/api/v1/control-plane/technical/tenants/:tenantId/configuration/bootstrap`
+
+- Uso exclusivo: migracao inicial, `creation-only`, com `branchCode` opcional
+- Conflito (`409`) significa que o escopo ja possui configuracao e nunca deve ser sobrescrito
+- O utilitario local roda em simulacao por padrao e usa `--apply` somente em janela coordenada; antes das configuracoes, chama a importacao protegida de filiais ausentes. Essa importacao e `create-only`, nao renomeia nem muda status existente, e o runtime nunca a chama. Payloads e segredos nunca sao registrados
 
 ### GET `/tenants/:id/branches`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: lista filiais de uma escola a partir da tela MSINFOR ADMIN
+- Status: legado desativado (`410 Gone`)
+- Uso historico: listava filiais de uma escola a partir da tela local
 - Regra: garante a existencia da primeira filial com `branchCode = 1`
 
 ### POST `/tenants/:id/branches`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: cria filial para uma escola a partir da tela MSINFOR ADMIN
+- Status: legado desativado (`410 Gone`)
+- Uso historico: criava filial pela administracao local
 - Body aceita `branchCode`, `name`, `logoUrl`, documento/CNPJ, contatos, endereco completo, SMTP proprio da filial, storage proprio da filial e parametros operacionais de estoque da filial
 - SMTP da filial e opcional; quando informado, tem prioridade sobre o SMTP da empresa nos envios daquela filial. Quando vazio, o sistema usa o SMTP da empresa ou variaveis de ambiente.
 - Telegram da filial e opcional; quando informado, tem prioridade sobre o Telegram da empresa nos envios daquela filial. Quando vazio, o sistema usa o Telegram da empresa ou variaveis de ambiente.
@@ -68,6 +91,7 @@
   - `storageRegion`
   - `storageEndpoint`
   - `storageCustomEndpoint`
+  - `storageDescription`
 - Parametros de estoque aceitam `NO`, `YES` ou `BY_PRODUCT`:
   - `stockControlMode`
   - `stockIntegerQuantityMode`
@@ -78,21 +102,21 @@
 
 ### PUT `/tenants/:id/branches/:branchId`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: atualiza dados cadastrais e parametros operacionais da filial
+- Status: legado desativado (`410 Gone`)
+- Uso historico: atualizava dados cadastrais e parametros da filial
 - Restricao: `branchCode` nao pode repetir dentro da mesma escola
 
 ### GET `/tenants/:id/access-users`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: lista usuarios administrativos da escola e as filiais liberadas para cada usuario
+- Status: legado desativado (`410 Gone`)
+- Uso historico: listava usuarios administrativos e filiais liberadas
 - Resposta inclui `branches`, `branchAccessCodes` e `branchAccesses`
 - Regra: usuario com papel `ADMIN` deve ser interpretado como acesso a todas as filiais ativas, mesmo sem registros em `user_branch_accesses`
 
 ### POST `/tenants/:id/access-users`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: cria usuario administrativo da escola
+- Status: legado desativado (`410 Gone`)
+- Uso historico: criava usuario administrativo da escola
 - Body aceita `name`, `email`, `password`, `role`, perfis/permissoes, `branchAccessCodes` e `cashierOnly`
 - Regra: `branchAccessCodes` e obrigatorio para usuario nao-admin quando a escola possui mais de uma filial ativa
 - Regra: para `role = ADMIN`, o backend ignora `branchAccessCodes` e libera todas as filiais
@@ -100,8 +124,8 @@
 
 ### PUT `/tenants/:id/access-users/:userId`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: atualiza usuario administrativo e suas filiais liberadas
+- Status: legado desativado (`410 Gone`)
+- Uso historico: atualizava usuario administrativo e filiais liberadas
 - Body aceita `branchAccessCodes` e `cashierOnly`
 - Regra: omitir `branchAccessCodes` preserva os acessos atuais; enviar a lista substitui os vinculos ativos
 - Regra: para `role = ADMIN`, os vinculos ativos sao cancelados logicamente e o acesso continua liberado para todas as filiais
@@ -118,15 +142,15 @@
 
 ### DELETE `/tenants/:id`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: cancela logicamente uma escola e suas dependencias
+- Status: legado desativado (`410 Gone`)
+- Uso historico: cancelava logicamente uma escola e suas dependencias
 - Resultado: aplica `canceledAt` e `canceledBy`, preservando historico
 
 ### POST `/tenants/:id/purge`
 
-- Autenticacao: cabecalho `x-msinfor-master-pass`
-- Uso: exclui fisicamente uma escola e todos os registros associados ao `tenantId`
-- Restricao: uso exclusivo da tela MSINFOR ADMIN
+- Status: legado desativado (`410 Gone`)
+- Uso historico: excluia fisicamente uma escola e registros do `tenantId`
+- Restricao futura: somente MSINFOR Central com identidade forte, MFA, auditoria e confirmacao reforcada
 - Risco: operacao irreversivel
 
 Body:
@@ -157,10 +181,22 @@ Resposta resumida:
 
 ### POST `/auth/login`
 
-- Regra de escopo: este e um dos poucos fluxos com busca cross-tenant autorizada por e-mail
-- Comportamento: o backend deve pesquisar o e-mail informado em todas as escolas para descobrir em quais tenants e perfis ele existe
-- Restricao: depois da escolha da escola/perfil, o restante da sessao volta ao isolamento normal por `tenantId`
-- Credencial: a senha valida passa a ser a da tabela global `email_credentials`, independente da escola logada
+- Produção: a credencial é validada exclusivamente pelo MSINFOR Central por
+  HMAC backend a backend em
+  `/identity/technical/authenticate-and-resolve`.
+- Descoberta: a primeira chamada não envia tenant. Em
+  `MULTIPLE_TENANTS`, o `tenantId` escolhido pelo navegador é o UUID global
+  devolvido pela Central, nunca o UUID ou alias do banco local.
+- Resolução local: o backend exige `databaseAlias = MSINFOR_DATABASE_ALIAS`,
+  localiza `Tenant.centralTenantId` e exige coincidência exata entre papel
+  central e papel local.
+- Sessão: o sucesso cria `auth_sessions`, inclui um `jti` aleatório no JWT e
+  grava o JWT exclusivamente em cookie `HttpOnly`, `SameSite=Strict` e
+  `Secure` em produção. O JWT nunca integra o JSON da resposta.
+- Desenvolvimento: senha local só é aceita quando
+  `MSINFOR_CENTRAL_IDENTITY_ENABLED=false` estiver explicitamente definido.
+- Restrição: depois da escolha da escola/perfil, todo acesso volta ao isolamento
+  normal pelo `tenantId` local reconstruído no servidor.
 
 Body atual:
 
@@ -168,10 +204,11 @@ Body atual:
 {
   "email": "USUARIO_OU_EMAIL",
   "password": "SENHA",
-  "tenantId": "opcional-quando-ha-mais-de-uma-escola",
+  "tenantId": "uuid-global-opcional-quando-ha-mais-de-uma-escola",
   "accountId": "opcional-quando-ha-mais-de-um-papel",
   "accountType": "user|teacher|student|guardian",
-  "branchCode": "opcional-quando-ha-mais-de-uma-filial"
+  "branchCode": "opcional-quando-ha-mais-de-uma-filial",
+  "rememberMe": false
 }
 ```
 
@@ -182,7 +219,6 @@ Respostas possiveis:
 ```json
 {
   "status": "SUCCESS",
-  "access_token": "jwt",
   "user": {
     "id": "uuid",
     "tenantId": "uuid",
@@ -244,8 +280,26 @@ Respostas possiveis:
 }
 ```
 
-- Regra: usuarios `ADMIN` e acesso master recebem todas as filiais ativas para escolha
+- Regra: usuarios `ADMIN` recebem todas as filiais ativas para escolha
 - Regra: usuarios nao-admin recebem somente as filiais presentes em `user_branch_accesses`
+
+### POST `/auth/logout`
+
+- Autenticação: exclusivamente pelo cookie de sessão HttpOnly.
+- CSRF: obrigatório com `Origin`, `Sec-Fetch-Site: same-origin` e
+  `x-msinfor-csrf` vinculado ao cookie.
+- Uso: grava `canceledAt` na `auth_sessions` correspondente ao `jti` atual e
+  remove os cookies de autenticação e CSRF.
+- Efeito: o JWT deixa de ser aceito imediatamente, mesmo antes de `exp`.
+
+### Sessões revogáveis
+
+- Toda requisição autenticada valida `jti`, tenant, usuário, tipo de conta,
+  filial, expiração e cancelamento contra `auth_sessions`.
+- `AUTH_SESSION_MAX_PER_ACCOUNT` limita sessões simultâneas; as mais antigas são
+  canceladas ao exceder o limite.
+- Troca de senha ou vínculo de identidade central revoga todas as sessões dos
+  perfis que compartilham o e-mail.
 
 ### E-mail pendente de confirmacao
 
@@ -271,21 +325,21 @@ Respostas possiveis:
 
 ### POST `/auth/forgot-password`
 
-- aceita `email`
-- Regra de escopo: a busca do e-mail acontece em todas as escolas
-- Regra de credencial: o token de redefinicao passa a ser controlado em `email_credentials`
-- Regra principal: como a senha agora e global por e-mail, o fluxo nao deve exigir escolha de escola para recuperar acesso
-- Envio: usa as configuracoes gerais da softhouse
+- Produção com identidade central: recusado; recuperação de credencial pertence
+  ao MSINFOR Central.
+- Desenvolvimento com identidade central desabilitada explicitamente: aceita
+  `email` e usa a credencial local compartilhada.
 
 ### POST `/auth/reset-password`
 
-- redefine a senha por token
-- atualiza a credencial global em `email_credentials`
-- respeita trilha de auditoria
+- Produção com identidade central: recusado; redefinição pertence ao MSINFOR
+  Central.
+- Desenvolvimento local explícito: redefine a credencial local por token e
+  respeita a trilha de auditoria.
 
 ### POST `/auth/confirm-password`
 
-- Autenticação: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Body:
 
 ```json
@@ -307,7 +361,7 @@ Respostas possiveis:
 
 ### POST `/auth/confirm-shared-password`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Body:
 
 ```json
@@ -329,7 +383,7 @@ Respostas possiveis:
 
 ### POST `/auth/confirm-cash-cancellation-password`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao `HttpOnly` e token CSRF
 - Body:
 
 ```json
@@ -352,7 +406,7 @@ Respostas possiveis:
 
 ### POST `/auth/change-shared-password`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao `HttpOnly` e token CSRF
 - Body:
 
 ```json
@@ -362,12 +416,10 @@ Respostas possiveis:
 }
 ```
 
-- Uso: altera a senha compartilhada do e-mail exibido na tela `PRINCIPAL_MENU_ALTERAR_SENHA_EMAIL_GERAL`
-- Regra de escopo: este fluxo pode pesquisar e atualizar registros em todas as escolas, exclusivamente para manter senha unica por e-mail
-- Regra principal:
-  - a senha atual deve ser validada pela credencial global do e-mail
-  - a nova senha deve ser gravada na tabela global `email_credentials`
-  - um e-mail deve possuir apenas uma senha valida no ecossistema
+- Produção com identidade central ou conta já vinculada: recusado; alteração de
+  senha pertence ao MSINFOR Central.
+- Desenvolvimento local explícito: altera a credencial compartilhada e revoga
+  todas as sessões dos perfis ligados ao mesmo e-mail.
 
 ## People
 
@@ -506,7 +558,7 @@ Continuam existindo e agora atuam como area operacional especializada:
 
 ### POST/PATCH `/school-years`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao `HttpOnly` e token CSRF
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Permissao: `MANAGE_SCHOOL_YEARS`
 - Uso: cria ou atualiza ano letivo na tela `PRINCIPAL_CONFIGURA_ANO_LETIVO`.
@@ -535,7 +587,7 @@ Body resumido:
 
 ### GET `/school-years/import-holidays`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Permissao: `VIEW_SCHOOL_YEARS`
 - Uso: consulta feriados nacionais na BrasilAPI para preencher a aba de feriados da tela `PRINCIPAL_CONFIGURA_ANO_LETIVO`.
@@ -570,7 +622,7 @@ Resposta resumida:
 
 ### GET `/school-years/holidays`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Permissao: `VIEW_SCHOOL_YEARS`
 - Uso: lista os feriados cadastrados para o ano letivo na escola/filial atual.
@@ -584,7 +636,7 @@ Query string:
 
 ### PUT `/school-years/holidays`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Permissao: `MANAGE_SCHOOL_YEARS`
 - Uso: salva a lista de feriados da aba `Feriados` para o ano letivo.
@@ -659,7 +711,7 @@ Body de intervalo:
 
 ### GET `/students/me/pwa-summary`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfil esperado: `ALUNO`
 - Uso: entrega o resumo do PWA do aluno com cadastro proprio, turma atual, historico de frequencia, frequencia por materia, notas, medias por materia e timestamp de sincronizacao.
 
@@ -702,7 +754,7 @@ Resposta resumida:
 
 ### GET `/guardians/me/pwa-summary`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfil esperado: `RESPONSAVEL`
 - Uso: entrega o resumo do PWA do responsavel com seus alunos vinculados, dados academicos consolidados por aluno, frequencia, notas, medias e timestamp de sincronizacao.
 
@@ -743,7 +795,7 @@ Resposta resumida:
 
 ### POST `/lesson-events/admin`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Permissao: `MANAGE_LESSON_CALENDARS`
 - Uso: permite lancar `PROVA` ou `TRABALHO` em nome do professor a partir da tela `PRINCIPAL_GRADE_ANUAL`.
@@ -762,12 +814,12 @@ Resposta resumida:
 }
 ```
 
-- Regra: notificar por Telegram exige bot configurado na escola/filial ou em `TELEGRAM_BOT_TOKEN`, alem de `telegramChatId` com opt-in ativo no aluno/responsavel.
-- Regra: notificar por e-mail exige SMTP configurado na escola/filial ou nas variaveis `SMTP_HOST`, `SMTP_PORT` e `SMTP_EMAIL`; quando enviado, a notificacao registra `emailedAt`.
+- Regra: notificar por Telegram exige configuracao efetiva recebida do MSINFOR Central, alem de `telegramChatId` com opt-in ativo no aluno/responsavel.
+- Regra: notificar por e-mail exige SMTP efetivo recebido do MSINFOR Central; nao existe fallback para colunas locais ou variaveis de ambiente. Quando enviado, a notificacao registra `emailedAt`.
 
 ### POST `/communications`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Uso: envia comunicado interno, por e-mail e/ou por Telegram conforme permissao do perfil.
 - Body resumido:
 
@@ -786,7 +838,7 @@ Resposta resumida:
 
 ### POST `/notifications/my/read-batch`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Uso: sincroniza em lote notificacoes marcadas como lidas no modo offline do PWA.
 
 Body:
@@ -809,7 +861,7 @@ Resposta resumida:
 
 ### GET `/notification-settings/users`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Uso: lista as pessoas do tenant atual com status de e-mail validado e dados de Telegram para envio de notificacoes.
 - Escopo: sempre restrito ao `tenantId` da sessao.
@@ -840,7 +892,7 @@ Resposta resumida:
 
 ### POST `/notification-settings/users/send-email-confirmation`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Uso: envia um link de confirmacao para validar se o e-mail informado esta correto.
 - Regra: a confirmacao reutiliza `email_credentials`; ao clicar no link recebido, o e-mail passa a ser marcado como validado globalmente.
@@ -855,7 +907,7 @@ Body:
 
 ### PATCH `/notification-settings/users/:personId`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Uso: atualiza e-mail e dados de Telegram da pessoa central sem precisar abrir o cadastro original.
 - Regra: a gravacao acontece em `people`; os papeis vinculados por `personId` apenas consomem esses dados.
@@ -876,33 +928,37 @@ Body:
 
 ### POST `/telegram/configure-webhook`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
-- Uso: configura no Telegram o webhook da escola logada usando o token salvo no cadastro da escola.
+- Uso: configura no Telegram o webhook da escola logada usando o token efetivo fornecido somente ao backend pelo MSINFOR Central.
 - Regra: a URL publica da API deve estar em `BACKEND_PUBLIC_URL`, `PUBLIC_API_URL` ou `API_PUBLIC_URL`; em ambiente local a URL gerada com `localhost` serve apenas para conferencia, pois o Telegram nao consegue chamar a maquina local.
 
 ### GET `/telegram/webhook-status`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
 - Uso: consulta no Telegram qual webhook esta configurado e quantas mensagens estao pendentes.
 
 ### POST `/telegram/poll-updates`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Perfis: `ADMIN`, `SECRETARIA`, `COORDENACAO`
-- Uso: busca manualmente mensagens pendentes do Telegram via `getUpdates`.
+- Uso: busca manualmente somente as mensagens da escola presente na sessao via `getUpdates`.
 - Regra: usado principalmente em ambiente local/testes, quando o Telegram nao consegue chamar um webhook em `localhost`.
 
-### POST `/telegram/webhook/:tenantId/:secret`
+### POST `/telegram/webhook/:tenantId`
 
 - Rota publica chamada pelo Telegram.
 - `tenantId`: escola que recebera a mensagem.
-- `secret`: hash derivado do token do bot configurado para impedir postagens externas indevidas.
+- Origem autenticada pelo header `X-Telegram-Bot-Api-Secret-Token`, comparado em tempo constante; o segredo nunca aparece na URL.
 - Fluxo:
-  - se a pessoa enviar `oi`, `ola` ou `/start`, o bot pede CPF/CNPJ;
-  - se enviar CPF/CNPJ valido e existente em `people`, grava `telegramChatId`, `telegramUsername`, `telegramOptInAt` e limpa `telegramOptOutAt`;
-  - a gravacao fica em `people` e os papeis vinculados consomem esses dados via `personId`;
+  - aceita somente conversa privada com `from.id` igual a `chat.id`;
+  - `update_id` e deduplicado de forma persistente por escola;
+  - um chat ainda nao vinculado recebe seu codigo tecnico e deve procurar a secretaria;
+  - CPF/CNPJ, senha ou outro dado pessoal nunca cria vinculo pelo chat;
+  - a secretaria valida a identidade por canal autenticado antes de gravar `telegramChatId`;
+  - o mesmo Chat ID nao pode ser vinculado a duas pessoas da mesma escola;
+  - pessoas ja vinculadas continuam consumindo os dados via `personId`;
   - se enviar `sair`, `parar`, `cancelar` ou `stop`, o bot registra opt-out.
 
 ## Regras de payload importantes
@@ -916,10 +972,12 @@ Body:
 
 ### POST/PATCH `/series-classes`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
-- Uso: cria/atualiza o vinculo serie x turma e pode cadastrar SMTP especifico da turma.
-- Regra: quando `smtpEnabled = true`, o envio de e-mail da agenda escolar tenta usar primeiro a configuracao desta turma; se nao houver configuracao completa, cai para filial, escola e ambiente.
-- Regra: em edicao, senha SMTP vazia nao apaga a senha ja gravada.
+- Autenticacao: cookie de sessao HttpOnly da Escola
+- Uso: cria/atualiza o vinculo serie x turma. Os campos SMTP antigos continuam
+  aceitos apenas para preservar dados legados durante a transicao.
+- Regra: nenhum envio consulta ou prioriza SMTP de `series_classes`; o SMTP de
+  runtime vem exclusivamente da configuracao efetiva do MSINFOR Central.
+- Regra: os dados SMTP legados nao sao apagados nem expostos por esta mudanca.
 
 Campos SMTP opcionais:
 
@@ -950,25 +1008,25 @@ Observacao estrutural obrigatoria:
 
 ### GET `/financial-cashier/current-session`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `VIEW_CASHIER`
 - Uso: consulta o caixa aberto do usuario logado no `Financeiro`
 
 ### POST `/financial-cashier/open-session`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `VIEW_CASHIER`
 - Uso: abre caixa para o usuario logado na escola atual
 
 ### POST `/financial-cashier/close-session`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `CLOSE_CASHIER`
 - Uso: fecha o caixa aberto do usuario logado
 
 ### GET `/financial-cashier/installments`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `VIEW_CASHIER`
 - Uso: lista parcelas do `Financeiro` para a escola atual
 - Query string opcional:
@@ -978,20 +1036,20 @@ Observacao estrutural obrigatoria:
 
 ### GET `/financial-cashier/open-installments`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `VIEW_CASHIER`
 - Uso: alias legado para listar apenas parcelas em aberto no `Financeiro`
 
 ### POST `/financial-cashier/installments/:installmentId/settle-cash`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `SETTLE_RECEIVABLES`
 - Uso: registra baixa em dinheiro no `Financeiro`
 - Regra obrigatoria: o usuario precisa ter caixa aberto na escola atual
 
 ### POST `/student-financial-launches/sync-payers`
 
-- Autenticacao: `Authorization: Bearer <access_token>`
+- Autenticacao: cookie de sessao HttpOnly da Escola
 - Permissao: `VIEW_FINANCIAL`
 - Uso: sincroniza no `Financeiro` todos os alunos ou responsáveis atualmente definidos como pagadores na filial
 - Regra: o pagador aparece no cadastro de clientes do `Financeiro` mesmo sem título ou parcela
@@ -999,37 +1057,64 @@ Observacao estrutural obrigatoria:
 
 ### POST `/tenants/current/sync-financeiro-integration-settings`
 
-- Autenticação: `Authorization: Bearer <access_token>`;
-- Uso: sincroniza com o Financeiro a empresa e todas as filiais ativas, incluindo identidade, parâmetros financeiros/comerciais e configurações efetivas de S3, SMTP e Telegram;
+- Autenticacao: cookie de sessao HttpOnly da Escola;
+- Uso: sincroniza com o Financeiro somente a filial ativa da sessão validada, incluindo identidade, parâmetros financeiros/comerciais e configurações efetivas de S3, SMTP e Telegram;
 - Regra: uma configuração completa da filial tem prioridade; caso contrário, é usada a configuração da empresa;
-- Transporte: backend a backend, autenticado por `x-api-key` compartilhada nos ambientes;
+- Transporte: backend a backend com HMAC `v1`; somente esta rota recebe o escopo técnico isolado `SOURCE_SETTINGS_SYNC`;
 - Segurança: senha SMTP, token Telegram e credenciais S3 nunca são retornados ao frontend nem registrados em log.
 
 ### PATCH `/integrations/financeiro/company-branch-parameters`
 
-- Autenticação técnica: `x-api-key`, validada por `FINANCEIRO_INTEGRATION_API_KEY`;
-- Uso: recebe do Financeiro alterações permitidas de parâmetros da empresa ou filial;
-- Empresa: juros, carências e multa;
-- Filial: modos de estoque e parâmetros comerciais da venda;
-- Regra: empresa, filial e código precisam existir e estar ativos na Escola; o endpoint nunca cria cadastro;
-- Auditoria: grava evento append-only em `finance_source_parameter_audit_events`;
-- Segurança: a atualização é executada no contexto explícito do tenant e da filial.
+- Status: legado desativado (`410 Gone`), mesmo após autenticacao HMAC;
+- Regra: o Financeiro nao altera mais parametros no banco da Escola; a fonte oficial e o MSINFOR Central.
+
+### BFF same-origin `/api/financeiro/*`
+
+- Sessão: cookie da Escola `HttpOnly`, `Secure` em produção e `SameSite=Strict`;
+- Contexto: `GET /api/financeiro/context` é produzido pela Escola a partir da sessão revalidada;
+- Mutações: exigem `Origin` permitido, `Sec-Fetch-Site: same-origin` e `x-msinfor-csrf` vinculado criptograficamente à sessão;
+- Autorização: leitura recebe `FINANCE_ACCESS`; mutações allowlisted recebem `MANAGE_FINANCIAL`; somente `ADMIN`/`SOFTHOUSE_ADMIN` recebe `FINANCE_ADMIN`; rotas mutáveis desconhecidas falham fechadas;
+- Downloads permitidos, com limite de 10 MiB: DANFE/XML de NF-e e DANFSe/XML de NFS-e;
+- Proibido: encaminhar `Authorization`, cookies, `x-api-key`, autoridade de tenant/filial, papel ou permissões do navegador ao Financeiro.
 
 ## Configuracoes globais MSINFOR Central
 
 ### GET/PUT `/global-settings`
 
-- Acesso: chave master no header `x-msinfor-master-pass`.
-- Implementação: a API da Escola atua como fachada e encaminha a operação ao `MSINFOR_CENTRAL_IA`.
-- Segurança: respostas administrativas nunca retornam `s3SecretKey` ou `emailSmtpPassword`; informam apenas se o segredo está configurado.
+- Status: fachada administrativa legada desativada (`410 Gone`).
+- A administracao ocorre diretamente no `MSINFOR_CENTRAL_IA`; a Escola conserva apenas a leitura backend a backend de configuracao efetiva.
 
 ### POST `/global-settings/test-s3` e `/global-settings/test-email`
 
-- Acesso: chave master.
-- Regra: o teste é executado pelo backend central, preservando segredos fora do navegador e dos bancos consumidores.
+- Status: fachadas legadas desativadas (`410 Gone`).
+- Testes administrativos devem ser iniciados no backend Central.
 
 ### GET central `/api/v1/global-settings/effective`
 
-- Acesso técnico: `x-msinfor-system-id` e `x-msinfor-system-key`.
+- Acesso técnico: HMAC canônico `v1` com system id, método, caminho/query RFC 3986, timestamp, nonce de 32 caracteres e SHA-256 do corpo exato.
+- O cabeçalho legado `x-msinfor-system-key` não é enviado nem aceito.
 - Uso: retorna a configuração efetiva completa somente ao backend consumidor.
 - Prioridade preparada: `BRANCH > TENANT > SYSTEM > GLOBAL`.
+- Falha: nao existe fallback local nem tolerancia a cache vencido.
+
+## Autenticacao administrativa e respostas (2026-07-24)
+
+### Rotas administrativas legadas da Escola
+
+- O algoritmo deterministico e a compatibilidade de desenvolvimento foram removidos.
+- Tokens master antigos e rotas administrativas locais são sempre recusados. `MSINFOR` é aceito apenas pela autenticação HMAC da Central, sem senha local e após seleção autorizada de empresa/filial.
+- A UI redireciona ao MSINFOR Central com URL limpa, sem senha, token, query string ou hash.
+
+### Respostas de tenant/filial/login
+
+- Campos proibidos: `smtpPassword`, `telegramBotToken`, `storageProviderSecretAccessKey`, hashes de senha, tokens de verificacao/recuperacao e qualquer token de sessao.
+- Indicadores permitidos: `hasSmtpPassword`, `hasTelegramBotToken` e `hasStorageProviderSecretAccessKey`.
+- O login nunca devolve `access_token`, JWT ou outra credencial reutilizavel;
+  apenas o cookie HttpOnly autentica chamadas posteriores.
+
+### Limites de requisicao
+
+- Login e confirmacoes de senha possuem limites especificos por janela.
+- Recuperacao e redefinicao de senha possuem limites mais restritos.
+- Rotas administrativas legadas falham antes de qualquer operacao de negocio.
+- Quando excedido, o backend responde `429 Too Many Requests`.

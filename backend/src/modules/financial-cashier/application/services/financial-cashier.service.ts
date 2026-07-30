@@ -166,7 +166,7 @@ export class FinancialCashierService {
   }
 
   async getCurrentSession(currentUser: ICurrentUser) {
-    return this.financeiroService.getCurrentCashSession({
+    return this.financeiroService.getCurrentCashSession(currentUser, {
       ...this.financeFilters(currentUser),
       cashierUserId: currentUser.userId,
     });
@@ -175,7 +175,7 @@ export class FinancialCashierService {
   async openSession(currentUser: ICurrentUser, payload: OpenCashSessionDto) {
     const operator = await this.resolveOperatorIdentity(currentUser);
 
-    return this.financeiroService.openCashSession({
+    return this.financeiroService.openCashSession(currentUser, {
       requestedBy: currentUser.userId,
       ...this.financeFilters(currentUser),
       cashierUserId: operator.userId,
@@ -186,7 +186,7 @@ export class FinancialCashierService {
   }
 
   async closeSession(currentUser: ICurrentUser, payload: CloseCashSessionDto) {
-    return this.financeiroService.closeCurrentCashSession({
+    return this.financeiroService.closeCurrentCashSession(currentUser, {
       requestedBy: currentUser.userId,
       ...this.financeFilters(currentUser),
       cashierUserId: currentUser.userId,
@@ -200,7 +200,7 @@ export class FinancialCashierService {
     currentUser: ICurrentUser,
     query: ListCashierInstallmentsDto,
   ) {
-    return this.financeiroService.listInstallments({
+    return this.financeiroService.listInstallments(currentUser, {
       ...this.financeFilters(currentUser),
       status: query.status,
       studentName: query.studentName,
@@ -226,17 +226,21 @@ export class FinancialCashierService {
   ) {
     const operator = await this.resolveOperatorIdentity(currentUser);
 
-    return this.financeiroService.settleCashInstallment(installmentId, {
-      requestedBy: currentUser.userId,
-      ...this.financeFilters(currentUser),
-      cashierUserId: operator.userId,
-      cashierDisplayName: operator.displayName,
-      receivedAt: payload.receivedAt,
-      discountAmount: payload.discountAmount,
-      interestAmount: payload.interestAmount,
-      penaltyAmount: payload.penaltyAmount,
-      notes: payload.notes,
-    });
+    return this.financeiroService.settleCashInstallment(
+      currentUser,
+      installmentId,
+      {
+        requestedBy: currentUser.userId,
+        ...this.financeFilters(currentUser),
+        cashierUserId: operator.userId,
+        cashierDisplayName: operator.displayName,
+        receivedAt: payload.receivedAt,
+        discountAmount: payload.discountAmount,
+        interestAmount: payload.interestAmount,
+        penaltyAmount: payload.penaltyAmount,
+        notes: payload.notes,
+      },
+    );
   }
 
   async updateInstallment(
@@ -244,7 +248,7 @@ export class FinancialCashierService {
     installmentId: string,
     payload: UpdateCashierInstallmentDto,
   ) {
-    const installments = await this.financeiroService.listInstallments({
+    const installments = await this.financeiroService.listInstallments(currentUser, {
       ...this.financeFilters(currentUser),
       status: "ALL",
     });
@@ -254,6 +258,7 @@ export class FinancialCashierService {
     );
 
     const updatedInstallment = await this.financeiroService.updateInstallment(
+      currentUser,
       installmentId,
       {
         requestedBy: currentUser.userId,

@@ -12,8 +12,10 @@ generator client {
 // ==========================================
 
 model Tenant {
-  id   String @id @default(uuid())
-  name String
+  id                String  @id @default(uuid())
+  name              String
+  centralTenantId   String? @unique
+  centralTenantCode String? @unique
 
   // (DF) DADOS FINANCEIROS
   interestRate                   Float?
@@ -43,6 +45,7 @@ model Tenant {
   storageCustomEndpoint          String?
   storageCapacityGb              Float?
   storageImagesFolderName        String?
+  storageDescription             String?
 
   // Auditoria Obrigatória
   createdAt  DateTime  @default(now())
@@ -82,6 +85,8 @@ model Tenant {
   userPreferences             UserPreference[]
   branches                    TenantBranch[]
   financeSourceParameterAuditEvents FinanceSourceParameterAuditEvent[]
+  telegramProcessedUpdates          TelegramProcessedUpdate[]
+  telegramPendingActions            TelegramPendingAction[]
   userBranchAccesses          UserBranchAccess[]
   teacherBranchAccesses       TeacherBranchAccess[]
   studentBranchAccesses       StudentBranchAccess[]
@@ -127,6 +132,8 @@ model TenantBranch {
   allowSaleUnitPriceEdit         Boolean   @default(true)
   allowSaleItemDiscount          Boolean   @default(true)
   groupSameProduct               Boolean   @default(true)
+  allowProductImageEdit          Boolean   @default(true)
+  requirePasswordToRemoveSaleItems Boolean @default(false)
   smtpHost                       String?
   smtpPort                       Int?
   smtpTimeout                    Int?
@@ -150,6 +157,7 @@ model TenantBranch {
   storageCustomEndpoint          String?
   storageCapacityGb              Float?
   storageImagesFolderName        String?
+  storageDescription             String?
   isActive                       Boolean   @default(true)
   createdAt                      DateTime  @default(now())
   createdBy                      String?
@@ -183,6 +191,36 @@ model FinanceSourceParameterAuditEvent {
 
   @@index([tenantId, branchCode, occurredAt])
   @@map("finance_source_parameter_audit_events")
+}
+
+model TelegramProcessedUpdate {
+  id          String   @id @default(uuid())
+  tenantId    String
+  updateId    String
+  processedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, updateId])
+  @@index([processedAt])
+  @@map("telegram_processed_updates")
+}
+
+model TelegramPendingAction {
+  tenantId  String
+  chatId    String
+  intent    String
+  studentId String
+  date      String?
+  endDate   String?
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, chatId])
+  @@index([expiresAt])
+  @@map("telegram_pending_actions")
 }
 
 model UserPreference {
@@ -223,9 +261,10 @@ model GlobalSetting {
 }
 
 model EmailCredential {
-  id                   String    @id @default(uuid())
-  email                String    @unique
-  passwordHash         String?
+  id                       String    @id @default(uuid())
+  email                    String    @unique
+  centralIdentityAccountId String?   @unique
+  passwordHash             String?
   emailVerified        Boolean   @default(false)
   verifiedAt           DateTime?
   verificationToken    String?
@@ -241,6 +280,24 @@ model EmailCredential {
   canceledBy String?
 
   @@map("email_credentials")
+}
+
+model AuthSession {
+  id               String   @id @default(uuid())
+  jti              String   @unique
+  tenantId         String
+  userId           String
+  modelType        String
+  branchCode       Int
+  identityProvider String
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  canceledAt       DateTime?
+  canceledBy       String?
+
+  @@index([tenantId, userId, modelType, canceledAt, expiresAt])
+  @@index([expiresAt, canceledAt])
+  @@map("auth_sessions")
 }
 
 model User {
@@ -418,6 +475,7 @@ model Person {
 
   @@unique([tenantId, cpfDigits])
   @@unique([tenantId, cnpjNormalized])
+  @@unique([tenantId, telegramChatId])
   @@index([tenantId])
   @@map("people")
 }

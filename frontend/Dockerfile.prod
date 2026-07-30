@@ -1,0 +1,42 @@
+FROM node:20-bookworm-slim AS dependencies
+
+WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm ci
+
+FROM node:20-bookworm-slim AS build
+
+WORKDIR /app
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY frontend/ ./
+ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
+ARG NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL
+ARG MSINFOR_BUILD_ALLOW_LOOPBACK_HTTP=false
+ARG ESCOLA_BACKEND_INTERNAL_URL=http://backend:3001
+ARG FINANCEIRO_FRONTEND_INTERNAL_URL=http://financeiro-frontend:3003
+ARG FINANCEIRO_FRONTEND_INTERNAL_BASE_PATH=/financeiro-app
+RUN node -e "const api=String(process.env.NEXT_PUBLIC_API_BASE_URL||''); const relative=/^\/[A-Za-z0-9][A-Za-z0-9/_-]*$/.test(api)&&!api.includes('//')&&!api.split('/').includes('..'); let secureAbsolute=false; try { const url=new URL(api); secureAbsolute=url.protocol==='https:'&&!url.username&&!url.password&&!url.search&&!url.hash; } catch {} if(!relative&&!secureAbsolute) throw new Error('NEXT_PUBLIC_API_BASE_URL deve ser HTTPS absoluto ou caminho same-origin seguro'); const central=String(process.env.NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL||''); const allowLoopback=String(process.env.MSINFOR_BUILD_ALLOW_LOOPBACK_HTTP||'').toLowerCase()==='true'; let centralUrl; try { centralUrl=new URL(central); } catch { throw new Error('NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL deve ser URL válida'); } const clean=!centralUrl.username&&!centralUrl.password&&!centralUrl.search&&!centralUrl.hash; const secure=centralUrl.protocol==='https:'&&clean; const loopback=allowLoopback&&centralUrl.protocol==='http:'&&['localhost','127.0.0.1'].includes(centralUrl.hostname)&&clean; if(!secure&&!loopback) throw new Error('Central deve usar HTTPS; HTTP só é aceito em loopback com opt-in de build');"
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL=$NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL \
+    MSINFOR_BUILD_ALLOW_LOOPBACK_HTTP=$MSINFOR_BUILD_ALLOW_LOOPBACK_HTTP \
+    ESCOLA_BACKEND_INTERNAL_URL=$ESCOLA_BACKEND_INTERNAL_URL \
+    FINANCEIRO_FRONTEND_INTERNAL_URL=$FINANCEIRO_FRONTEND_INTERNAL_URL \
+    FINANCEIRO_FRONTEND_INTERNAL_BASE_PATH=$FINANCEIRO_FRONTEND_INTERNAL_BASE_PATH
+RUN npm run build
+
+FROM node:20-bookworm-slim AS production
+
+ENV NODE_ENV=production \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+WORKDIR /app
+
+RUN groupadd --gid 10001 escola \
+    && useradd --uid 10001 --gid escola --no-create-home --shell /usr/sbin/nologin escola
+COPY --from=build --chown=10001:10001 /app/public ./public
+COPY --from=build --chown=10001:10001 /app/.next/standalone ./
+COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
+
+USER 10001:10001
+EXPOSE 3000
+CMD ["node", "server.js"]

@@ -387,6 +387,74 @@ async function testDispatchAttendanceNotificationsKeepsEachStudentSeparatedForSh
   assert.deepEqual(sharedStudentIds, ["student-1", "student-2"]);
 }
 
+async function testSmtpResolutionUsesOnlyCentralConfiguration() {
+  let localSeriesClassQueries = 0;
+  const centralCalls = [];
+  const prisma = {
+    seriesClass: {
+      findFirst: async () => {
+        localSeriesClassQueries += 1;
+        throw new Error("SMTP local da turma não pode ser consultado.");
+      },
+    },
+  };
+  const centralConfiguration = {
+    findConfiguration: async (tenantId, branchCode) => {
+      centralCalls.push({ tenantId, branchCode });
+      return {
+        tenant: {
+          id: "central-tenant-1",
+          displayName: "ESCOLA CENTRAL",
+          company: { legalName: "ESCOLA CENTRAL", tradeName: "" },
+        },
+        branch: {
+          id: "central-branch-2",
+          company: { legalName: "", tradeName: "FILIAL CENTRAL" },
+        },
+        effective: {
+          smtp: {
+            host: "smtp.central.example.test",
+            port: 587,
+            timeout: 30,
+            authenticate: true,
+            secure: false,
+            authType: "LOGIN",
+            username: "mailer@central.example.test",
+            password: "test-only-secret",
+            fromName: "MSINFOR CENTRAL",
+            fromEmail: "mailer@central.example.test",
+            replyTo: "reply@central.example.test",
+          },
+        },
+      };
+    },
+    mergeCompany: (tenantCompany, branchCompany) => ({
+      ...tenantCompany,
+      ...branchCompany,
+    }),
+  };
+  const service = new NotificationsService(prisma, centralConfiguration);
+
+  const result = await tenantContext.run(
+    {
+      tenantId: "tenant-local-1",
+      branchCode: 2,
+      userId: "teacher-1",
+      role: "PROFESSOR",
+    },
+    async () => service.getTenantSmtpConfiguration(),
+  );
+
+  assert.equal(localSeriesClassQueries, 0);
+  assert.deepEqual(centralCalls, [
+    { tenantId: "tenant-local-1", branchCode: 2 },
+  ]);
+  assert.equal(result.id, "central-branch-2");
+  assert.equal(result.smtpHost, "smtp.central.example.test");
+  assert.equal(result.smtpEmail, "mailer@central.example.test");
+  assert.equal(result.smtpPassword, "test-only-secret");
+}
+
 async function main() {
   const tests = [
     {
@@ -404,6 +472,10 @@ async function main() {
     {
       name: "dispatchAttendanceNotifications keeps each student separated for shared guardian",
       fn: testDispatchAttendanceNotificationsKeepsEachStudentSeparatedForSharedGuardian,
+    },
+    {
+      name: "SMTP resolution uses only MSINFOR Central configuration",
+      fn: testSmtpResolutionUsesOnlyCentralConfiguration,
     },
   ];
 

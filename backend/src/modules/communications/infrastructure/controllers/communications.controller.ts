@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import {
   CurrentUser,
   type ICurrentUser,
@@ -7,7 +7,6 @@ import {
 import { CreateCommunicationCampaignDto } from "../../application/dto/create-communication-campaign.dto";
 import { CommunicationsService } from "../../application/services/communications.service";
 
-@ApiBearerAuth()
 @ApiTags("Central de Comunicações")
 @Controller("communications")
 export class CommunicationsController {

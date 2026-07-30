@@ -128,6 +128,8 @@ export function mapTenantBranchSummary(branch: {
   allowSaleUnitPriceEdit?: boolean | null;
   allowSaleItemDiscount?: boolean | null;
   groupSameProduct?: boolean | null;
+  allowProductImageEdit?: boolean | null;
+  requirePasswordToRemoveSaleItems?: boolean | null;
   smtpHost?: string | null;
   smtpPort?: number | null;
   smtpTimeout?: number | null;
@@ -151,6 +153,7 @@ export function mapTenantBranchSummary(branch: {
   storageCustomEndpoint?: string | null;
   storageCapacityGb?: number | null;
   storageImagesFolderName?: string | null;
+  storageDescription?: string | null;
   isActive: boolean;
   createdAt?: Date;
   updatedAt?: Date;
@@ -182,17 +185,17 @@ export function mapTenantBranchSummary(branch: {
     neighborhood: branch.neighborhood,
     complement: branch.complement,
     stockControlMode: branch.stockControlMode || "BY_PRODUCT",
-    stockIntegerQuantityMode:
-      branch.stockIntegerQuantityMode || "BY_PRODUCT",
+    stockIntegerQuantityMode: branch.stockIntegerQuantityMode || "BY_PRODUCT",
     stockLotControlMode: branch.stockLotControlMode || "BY_PRODUCT",
     stockExpirationControlMode:
       branch.stockExpirationControlMode || "BY_PRODUCT",
     stockGridControlMode: branch.stockGridControlMode || "BY_PRODUCT",
-    stockNegativeControlMode:
-      branch.stockNegativeControlMode || "BY_PRODUCT",
+    stockNegativeControlMode: branch.stockNegativeControlMode || "BY_PRODUCT",
     allowSaleUnitPriceEdit: branch.allowSaleUnitPriceEdit !== false,
     allowSaleItemDiscount: branch.allowSaleItemDiscount !== false,
     groupSameProduct: branch.groupSameProduct !== false,
+    allowProductImageEdit: branch.allowProductImageEdit !== false,
+    requirePasswordToRemoveSaleItems: branch.requirePasswordToRemoveSaleItems === true,
     smtpHost: branch.smtpHost,
     smtpPort: branch.smtpPort,
     smtpTimeout: branch.smtpTimeout,
@@ -200,13 +203,15 @@ export function mapTenantBranchSummary(branch: {
     smtpSecure: branch.smtpSecure,
     smtpAuthType: branch.smtpAuthType,
     smtpEmail: branch.smtpEmail,
-    smtpPassword: branch.smtpPassword,
+    hasSmtpPassword: Boolean(branch.smtpPassword),
     telegramEnabled: branch.telegramEnabled,
-    telegramBotToken: branch.telegramBotToken,
+    hasTelegramBotToken: Boolean(branch.telegramBotToken),
     telegramBotUsername: branch.telegramBotUsername,
     telegramHeaderImageUrl: branch.telegramHeaderImageUrl,
     storageProviderAccessKeyId: branch.storageProviderAccessKeyId,
-    storageProviderSecretAccessKey: branch.storageProviderSecretAccessKey,
+    hasStorageProviderSecretAccessKey: Boolean(
+      branch.storageProviderSecretAccessKey,
+    ),
     storageBucketName: branch.storageBucketName,
     storageFolderName: branch.storageFolderName,
     storageDefaultAcl: branch.storageDefaultAcl,
@@ -216,6 +221,7 @@ export function mapTenantBranchSummary(branch: {
     storageCustomEndpoint: branch.storageCustomEndpoint,
     storageCapacityGb: branch.storageCapacityGb,
     storageImagesFolderName: branch.storageImagesFolderName,
+    storageDescription: branch.storageDescription,
     isActive: branch.isActive,
     isShared: branch.branchCode === SHARED_BRANCH_CODE,
     createdAt: branch.createdAt,

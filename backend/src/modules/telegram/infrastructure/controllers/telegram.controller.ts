@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Public } from "../../../../common/decorators/public.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
@@ -10,14 +10,18 @@ export class TelegramController {
   constructor(private readonly telegramService: TelegramService) {}
 
   @Public()
-  @Post("webhook/:tenantId/:secret")
+  @Post("webhook/:tenantId")
   @ApiOperation({ summary: "Recebe updates do webhook do Telegram" })
   handleWebhook(
     @Param("tenantId") tenantId: string,
-    @Param("secret") secret: string,
+    @Headers("x-telegram-bot-api-secret-token") secretToken: string | undefined,
     @Body() body: unknown,
   ) {
-    return this.telegramService.handleWebhook(tenantId, secret, body as never);
+    return this.telegramService.handleWebhook(
+      tenantId,
+      secretToken,
+      body as never,
+    );
   }
 
   @ApiBearerAuth()
@@ -41,6 +45,6 @@ export class TelegramController {
   @Post("poll-updates")
   @ApiOperation({ summary: "Busca mensagens pendentes do Telegram por polling" })
   pollUpdates() {
-    return this.telegramService.pollAllTenantUpdates();
+    return this.telegramService.pollCurrentTenantUpdates();
   }
 }

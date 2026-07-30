@@ -5,15 +5,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { clearStoredSession, getStoredToken } from '@/app/lib/auth-storage';
 import { CASHIER_ONLY_HOME_ROUTE, getDashboardAuthContext, hasAllDashboardPermissions, hasAnyDashboardPermission, hasDashboardPermission } from '@/app/lib/dashboard-crud-utils';
-import { cacheTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { cacheTenantBranding, readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS } from '@/app/components/principal-program-header';
 import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
 import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
-import SalesScreenParametersModal, { type SalesScreenParameters } from '@/app/components/sales-screen-parameters-modal';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
-const FINANCEIRO_API_BASE_URL = process.env.NEXT_PUBLIC_FINANCEIRO_API_URL || 'http://localhost:3002/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+
+type SalesScreenParameters = {
+    allowSaleUnitPriceEdit: boolean;
+    allowSaleItemDiscount: boolean;
+    groupSameProduct: boolean;
+    allowProductImageEdit: boolean;
+    requirePasswordToRemoveSaleItems: boolean;
+};
+const FINANCEIRO_API_BASE_URL = '/api/financeiro';
 
 type CurrentTenant = {
     id: string;
@@ -153,6 +160,8 @@ type EmbeddedScreenContextMessage = {
         allowSaleUnitPriceEdit?: boolean;
         allowSaleItemDiscount?: boolean;
         groupSameProduct?: boolean;
+        allowProductImageEdit?: boolean;
+        requirePasswordToRemoveSaleItems?: boolean;
     };
 };
 
@@ -294,6 +303,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         allowSaleUnitPriceEdit: true,
         allowSaleItemDiscount: true,
         groupSameProduct: true,
+        allowProductImageEdit: true,
+        requirePasswordToRemoveSaleItems: false,
     });
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -430,6 +441,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     allowSaleUnitPriceEdit: data.parameters.allowSaleUnitPriceEdit !== false,
                     allowSaleItemDiscount: data.parameters.allowSaleItemDiscount !== false,
                     groupSameProduct: data.parameters.groupSameProduct !== false,
+                    allowProductImageEdit: data.parameters.allowProductImageEdit !== false,
+                    requirePasswordToRemoveSaleItems: data.parameters.requirePasswordToRemoveSaleItems === true,
                 });
                 return;
             }
@@ -533,7 +546,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 const response = await fetch(`${API_BASE_URL}/auth/me`, {
                     headers: {
-                        Authorization: `Bearer ${token}`,
+
                     },
                 });
 
@@ -564,7 +577,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 const response = await fetch(`${API_BASE_URL}/tenants/current`, {
                     headers: {
-                        Authorization: `Bearer ${token}`,
+
                     },
                 });
 
@@ -578,11 +591,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     throw new Error(data?.message || 'Não foi possível carregar a escola logada.');
                 }
 
-                setCurrentTenant(data);
+                const cachedBranding = readCachedTenantBranding(data.id);
+                const currentTenant = {
+                    ...data,
+                    name: data.name || cachedBranding?.schoolName || 'ESCOLA',
+                    logoUrl: data.logoUrl || cachedBranding?.logoUrl || null,
+                };
+                setCurrentTenant(currentTenant);
                 cacheTenantBranding({
-                    tenantId: data.id,
-                    schoolName: data.name,
-                    logoUrl: data.logoUrl || null,
+                    tenantId: currentTenant.id,
+                    schoolName: currentTenant.name,
+                    logoUrl: currentTenant.logoUrl,
                 });
             } catch {
                 setCurrentTenant(null);
@@ -603,7 +622,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 const response = await fetch(`${API_BASE_URL}/tenants/current/branches`, {
                     headers: {
-                        Authorization: `Bearer ${token}`,
+
                     },
                 });
 
@@ -648,7 +667,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                 const response = await fetch(`${API_BASE_URL}/notifications/my/unread-summary`, {
                     headers: {
-                        Authorization: `Bearer ${token}`,
+
                     },
                 });
 
@@ -831,7 +850,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const handleOpenSalesScreenParameters = () => {
         setUserMenuOpen(false);
-        setIsSalesScreenParametersOpen(true);
+        const financeFrameTitle = pathname === '/principal/financeiro/vendas-2'
+            ? 'Financeiro integrado - Vendas 2'
+            : 'Financeiro integrado - Vendas';
+        document.querySelector<HTMLIFrameElement>(`iframe[title="${financeFrameTitle}"]`)
+            ?.contentWindow?.postMessage({ type: 'MSINFOR_OPEN_SALES_PARAMETERS' }, window.location.origin);
     };
 
     const handleSaveSalesScreenParameters = (parameters: SalesScreenParameters) => {
@@ -879,7 +902,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         allowSaleUnitPriceEdit: savedBranch?.allowSaleUnitPriceEdit !== false,
                         allowSaleItemDiscount: savedBranch?.allowSaleItemDiscount !== false,
                         groupSameProduct: savedBranch?.groupSameProduct !== false,
+                        allowProductImageEdit: savedBranch?.allowProductImageEdit !== false,
+                        requirePasswordToRemoveSaleItems: savedBranch?.requirePasswordToRemoveSaleItems === true,
                     });
+                    const financeFrameTitle = pathname === '/principal/financeiro/vendas-2'
+                        ? 'Financeiro integrado - Vendas 2'
+                        : 'Financeiro integrado - Vendas';
+                    const financeFrame = document.querySelector<HTMLIFrameElement>(
+                        `iframe[title="${financeFrameTitle}"]`,
+                    );
+                    financeFrame?.contentWindow?.postMessage(
+                        {
+                            type: 'MSINFOR_APPLY_SALES_PARAMETERS',
+                            parameters: savedBranch,
+                        },
+                        window.location.origin,
+                    );
                     resolve();
                 } catch (error) {
                     reject(error instanceof Error ? error : new Error('NÃO FOI POSSÍVEL SALVAR OS PARÂMETROS NO FINANCEIRO.'));
@@ -931,7 +969,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
+
                 },
                 body: JSON.stringify({
                     password: normalizedCurrentPassword,
@@ -964,7 +1002,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
+
                 },
                 body: JSON.stringify({
                     currentPassword: normalizedCurrentPassword,
@@ -2570,16 +2608,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         />
                     </div>
                 </div>
-            ) : null}
-
-            {isSalesScreenParametersOpen ? (
-                <SalesScreenParametersModal
-                    isOpen
-                    tenantId={currentTenant?.id || getDashboardAuthContext().tenantId}
-                    initialParameters={salesScreenParameters}
-                    onClose={() => setIsSalesScreenParametersOpen(false)}
-                    onSave={handleSaveSalesScreenParameters}
-                />
             ) : null}
 
             {changePasswordAlertType && (changePasswordError || changePasswordStatus) ? (

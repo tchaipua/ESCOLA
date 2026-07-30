@@ -7,13 +7,12 @@ import {
   Param,
   Delete,
 } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { EnrollmentsService } from "../../application/services/enrollments.service";
 import { CreateEnrollmentDto } from "../../application/dto/create-enrollment.dto";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 
-@ApiBearerAuth()
 @ApiTags("Matrículas Mestre (Vínculo Pleno)")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("enrollments")

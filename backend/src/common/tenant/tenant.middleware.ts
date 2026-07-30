@@ -1,16 +1,21 @@
 import { Injectable, NestMiddleware } from "@nestjs/common";
 import { Request, Response, NextFunction } from "express";
 import { tenantContext } from "./tenant.context";
-import { MASTER_TENANT_ID } from "../auth/master-auth";
 import { DEFAULT_BRANCH_CODE, normalizeBranchCode } from "./branch.constants";
+import {
+  getSessionCookieName,
+  readCookieValue,
+} from "../security/financeiro-session";
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
-    const authHeader = req.headers.authorization;
+    const token = readCookieValue(
+      req.headers.cookie,
+      getSessionCookieName(),
+    );
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
+    if (token) {
 
       try {
         // Extrai o Payload puro (Sem validação criptográfica, pois o
@@ -28,24 +33,6 @@ export class TenantMiddleware implements NestMiddleware {
         );
 
         const decoded = JSON.parse(jsonPayload);
-
-        if (decoded?.isMaster) {
-          const contextData = {
-            userId: decoded.userId || decoded.sub,
-            tenantId:
-              typeof decoded.tenantId === "string" && decoded.tenantId.trim()
-                ? decoded.tenantId
-                : MASTER_TENANT_ID,
-            branchCode: normalizeBranchCode(
-              decoded.branchCode,
-              DEFAULT_BRANCH_CODE,
-            ),
-            role: decoded.role,
-            isMaster: true,
-          };
-
-          return tenantContext.run(contextData, () => next());
-        }
 
         if (decoded && decoded.tenantId) {
           const contextData = {

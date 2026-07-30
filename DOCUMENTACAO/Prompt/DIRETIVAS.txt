@@ -177,9 +177,9 @@ DIRETRIZES DO SISTEMA
 
 	1.002 Quero uma tela onde mostra todas as escolas cadastradas num grid com uma opção de buscar pelo nome da escola, tem um botão onde inclui uma nova escola
 
-	1.003 Quando incluir uma escola nova já incluir dois usuário do sistema (US)
-		  1° - ADMIN   e a senha Admin001   (com o A em Maiúsculo mesmo)
-		  2° - MSINFOR e a senha Mabelu2011 (com o M em Maiúsculo mesmo)
+	1.003 REGRA SUPERSEDIDA POR SEGURANÇA EM 2026-07-24:
+		  incluir somente o ADMIN com senha forte individual informada no onboarding;
+		  não criar usuário MSINFOR local nem qualquer senha padrão/compartilhada.
 
 
 2° Gerencimento da escola, vai ser um sistema web, onde a escola vai poder cadastar (lembrando que uma não escola não consegue ver essas informações de outra escola)

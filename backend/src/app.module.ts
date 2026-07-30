@@ -1,5 +1,6 @@
 import { Module, MiddlewareConsumer, NestModule } from "@nestjs/common";
 import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { UsersModule } from "./modules/users/users.module";
@@ -31,15 +32,27 @@ import { StudentFinancialLaunchesModule } from "./modules/student-financial-laun
 import { FinancialCashierModule } from "./modules/financial-cashier/financial-cashier.module";
 import { FinanceiroModule } from "./integrations/financeiro/financeiro.module";
 import { TelegramModule } from "./modules/telegram/telegram.module";
+import { MsInforCentralModule } from "./integrations/msinfor-central/msinfor-central.module";
 
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
 import { ExcludePasswordInterceptor } from "./common/interceptors/exclude-password.interceptor";
 import { TenantMiddleware } from "./common/tenant/tenant.middleware";
+import { isProductionEnvironment } from "./common/security/security-config";
+import { HealthController } from "./common/health/health.controller";
+import { CookieCsrfGuard } from "./common/guards/cookie-csrf.guard";
 
 @Module({
+  controllers: [HealthController],
   imports: [
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60_000,
+        limit: isProductionEnvironment() ? 3_000 : 10_000,
+      },
+    ]),
     PrismaModule,
+    MsInforCentralModule,
     AuthModule,
     UsersModule,
     TenantsModule,
@@ -74,7 +87,15 @@ import { TenantMiddleware } from "./common/tenant/tenant.middleware";
   providers: [
     {
       provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CookieCsrfGuard,
     },
     {
       provide: APP_GUARD,

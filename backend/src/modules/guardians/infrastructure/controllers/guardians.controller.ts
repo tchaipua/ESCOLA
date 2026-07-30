@@ -7,7 +7,7 @@ import {
   Param,
   Delete,
 } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { GuardiansService } from "../../application/services/guardians.service";
 import { CreateGuardianDto } from "../../application/dto/create-guardian.dto";
 import { UpdateGuardianDto } from "../../application/dto/update-guardian.dto";
@@ -20,7 +20,6 @@ import {
 } from "../../../../common/decorators/current-user.decorator";
 import { SetRecordActiveDto } from "../../../../common/dto/set-record-active.dto";
 
-@ApiBearerAuth()
 @ApiTags("Responsáveis (Pais / Mães / Etc)")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("guardians")

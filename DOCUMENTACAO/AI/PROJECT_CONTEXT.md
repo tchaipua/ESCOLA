@@ -37,7 +37,7 @@ Regra de responsabilidade:
 
 - Modelo multi-tenant obrigatorio por `schoolId`
 - Isolamento total de dados entre escolas
-- Sem delete fisico, somente cancelamento logico (`canceledAt`), exceto no purge fisico irreversivel de tenant acionado pelo MSINFOR ADMIN master
+- Sem delete fisico operacional; a rota local de purge administrativo esta desativada e qualquer fluxo futuro pertence ao MSINFOR Central
 - Auditoria total em inclusao, alteracao e cancelamento
 - Todos os textos em UPPERCASE (exceto senha)
 - Login validado por `VIEWUSUARIOS`
@@ -102,10 +102,8 @@ Objetivo:
 - Cadastro de escolas com EC + DB
 - Campo de logotipo da escola
 - Listagem com busca por nome
-- Purge fisico definitivo de escola e dependencias apenas no fluxo master com confirmacao reforcada
-- Criacao automatica de dois usuarios iniciais por escola:
-  - `ADMIN` / `Admin001`
-  - `MSINFOR` / `Mabelu2011`
+- Purge fisico local desativado; futura operacao exige identidade forte e confirmacao reforcada no MSINFOR Central
+- Criacao do administrador inicial com senha informada no onboarding seguro
 
 ## Modulo 2 - Escola
 
@@ -170,3 +168,27 @@ Funcionalidades complementares:
 - Microservicos separados no primeiro release (iniciar como monolito modular)
 - BI e analytics avancado
 - App mobile nativo (usar PWA)
+
+## Seguranca consolidada (2026-07-24)
+
+- O algoritmo de senha master foi removido de backend, frontend, scripts e testes; nao existe compatibilidade local.
+- Tokens master antigos e rotas administrativas locais falham fechados; o usuário `MSINFOR` é aceito somente pela identidade HMAC da Central, sem credencial local e com empresa/filial autorizadas. `/msinfor-admin` continua redirecionando para o Central sem credencial na URL ou no storage.
+- Em produção, todo login comum também é validado pelo MSINFOR Central via
+  HMAC backend a backend. O tenant global é ligado ao banco local por
+  `centralTenantId`; alias, tenant e papel nunca vêm de parâmetro de URL
+  confiável.
+- JWTs possuem `jti`, ficam exclusivamente no cookie HttpOnly e só são aceitos
+  enquanto a linha correspondente em `auth_sessions` estiver ativa. Bearer,
+  tokens no storage e token no corpo do login são recusados. Logout e eventos
+  de credencial revogam a sessão imediatamente.
+- `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, banco, URLs HTTPS e chaves HMAC direcionais do Financeiro/Central sao validados no startup de producao.
+- Mutações autenticadas por cookie exigem CSRF assinado, `Origin` permitido e
+  Fetch Metadata de mesma origem; o frontend usa `/api/v1` sem endereço externo
+  embutido.
+- SMTP, Telegram e S3 locais sao cifrados com AES-256-GCM versionado e migrados automaticamente, de forma idempotente, apos backup local criptografado.
+- Respostas nunca incluem senha SMTP, token Telegram, segredo S3 ou tokens de verificacao. Somente flags `has*` podem indicar configuracao existente.
+- SQLite continua como ponte local; o schema e baseline PostgreSQL estao preparados em paralelo, com RLS deliberadamente fora do deploy automatico.
+- Em PostgreSQL, migrator e runtime usam credenciais diferentes. O runtime
+  verifica no startup que sua role não é owner, superuser, criadora de banco ou
+  role, `BYPASSRLS`, `REPLICATION` nem possui DDL no banco/schema.
+- O Financeiro é servido pela mesma origem da Escola; iframe contém somente estado de apresentação e toda API passa pelo BFF autenticado.

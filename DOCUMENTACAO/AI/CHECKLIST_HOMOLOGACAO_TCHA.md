@@ -20,7 +20,7 @@ Garantir uma homologacao funcional e visual da escola `TCHA`, cobrindo web admin
 
 ## Usuarios de homologacao
 
-- Admin web: `ADMIN.TCHA@MSINFOR.COM` / `Admin001`
+- Admin web de teste: `ADMIN.TCHA@MSINFOR.COM` / `TchaAdmin#2026`
 - Professor PWA: `PROF001.TCHA@MSINFOR.COM` / `Prof1234`
 - Aluno PWA: `ALUNO001.TCHA@MSINFOR.COM` / `Aluno1234`
 - Responsavel PWA: `RESP001.TCHA@MSINFOR.COM` / `Resp1234`

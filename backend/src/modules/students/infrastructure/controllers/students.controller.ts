@@ -7,7 +7,7 @@ import {
   Param,
   Delete,
 } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { StudentsService } from "../../application/services/students.service";
 import { CreateStudentDto } from "../../application/dto/create-student.dto";
 import { UpdateStudentDto } from "../../application/dto/update-student.dto";
@@ -20,7 +20,6 @@ import {
   type ICurrentUser,
 } from "../../../../common/decorators/current-user.decorator";
 
-@ApiBearerAuth()
 @ApiTags("Alunos (Estudantes)")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("students")

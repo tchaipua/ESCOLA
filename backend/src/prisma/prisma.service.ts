@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { tenantMiddleware } from "./prisma.middleware";
+import { secretEncryptionMiddleware } from "./secret-encryption.middleware";
 
 @Injectable()
 export class PrismaService
@@ -10,7 +11,9 @@ export class PrismaService
   private readonly unscopedClient = new PrismaClient();
 
   async onModuleInit() {
+    this.$use(secretEncryptionMiddleware());
     this.$use(tenantMiddleware()); // Ativação da filtragem do Client local
+    this.unscopedClient.$use(secretEncryptionMiddleware());
     await Promise.all([this.$connect(), this.unscopedClient.$connect()]);
   }
 

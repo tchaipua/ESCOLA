@@ -6,9 +6,10 @@ import {
   Put,
   Param,
   Req,
-  UnauthorizedException,
+  GoneException,
   Query,
   Delete,
+  UseGuards,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { Request } from "express";
@@ -17,44 +18,36 @@ import { CreateTenantDto } from "../../application/dto/create-tenant.dto";
 import { PurgeTenantDto } from "../../application/dto/purge-tenant.dto";
 import { UpdateTenantDto } from "../../application/dto/update-tenant.dto";
 import { Public } from "../../../../common/decorators/public.decorator";
-import { buildMasterPass } from "../../../../common/auth/master-auth";
 import {
   CurrentUser,
   ICurrentUser,
 } from "../../../../common/decorators/current-user.decorator";
+import { Throttle } from "@nestjs/throttler";
+import { CentralOperationalSummaryGuard } from "../../../../common/guards/central-operational-summary.guard";
 
 @ApiTags("Inquilinos (Onboarding)")
 @Controller("tenants")
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
-  private assertMasterPass(req: Request) {
-    const incoming = String(req.headers["x-msinfor-master-pass"] || "").trim();
-    if (!incoming) {
-      throw new UnauthorizedException(
-        "Acesso negado: cabeçalho master ausente.",
-      );
-    }
-
-    const now = new Date();
-    const prevMinute = new Date(now.getTime() - 60_000);
-    const nextMinute = new Date(now.getTime() + 60_000);
-    const validNow = buildMasterPass(now);
-    const validPrev = buildMasterPass(prevMinute);
-    const validNext = buildMasterPass(nextMinute);
-
-    if (
-      incoming !== validNow &&
-      incoming !== validPrev &&
-      incoming !== validNext
-    ) {
-      throw new UnauthorizedException(
-        "Acesso negado: chave master inválida ou expirada.",
-      );
-    }
+  private assertMasterPass(_req: Request): never {
+    throw new GoneException(
+      "Rota administrativa legada desativada. Use o MSINFOR Central.",
+    );
   }
 
   @Public()
+  @Get("technical/central/operational-summary")
+  @UseGuards(CentralOperationalSummaryGuard)
+  async centralOperationalSummary(
+    @Query("tenantId") tenantId: string,
+    @Query("branchCode") branchCode?: string,
+  ) {
+    return this.tenantsService.findCentralOperationalSummary(tenantId, branchCode);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post()
   @ApiOperation({
     summary: "Cadastra uma nova Escola e seu primeiro Administrador",
@@ -65,6 +58,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Get("email-usage")
   @ApiOperation({
     summary: "Consulta onde um email está sendo usado no ecossistema MSINFOR",
@@ -75,6 +69,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Put("email-usage")
   @ApiOperation({
     summary:
@@ -90,6 +85,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Get(":id/access-users")
   @ApiOperation({
     summary: "Lista os usuários de acesso administrativo da escola",
@@ -100,6 +96,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Get(":id/shared-profiles/cpf/:cpf")
   @ApiOperation({
     summary: "Consulta dados compartilhados de CPF para uma escola específica",
@@ -114,6 +111,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post(":id/access-users")
   @ApiOperation({
     summary: "Cria um novo usuário de acesso administrativo na escola",
@@ -157,6 +155,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Put(":id/access-users/:userId")
   @ApiOperation({
     summary: "Atualiza um usuário de acesso administrativo da escola",
@@ -201,6 +200,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Delete(":id/access-users/:userId")
   @ApiOperation({
     summary: "Desativa um usuário de acesso administrativo da escola",
@@ -215,6 +215,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Get()
   @ApiOperation({
     summary: "Lista todas as Escolas (Tenants) cadastradas no motor MSINFOR",
@@ -229,7 +230,10 @@ export class TenantsController {
     summary: "Retorna os dados da escola vinculada ao usuário autenticado",
   })
   async findCurrent(@CurrentUser() currentUser: ICurrentUser) {
-    return this.tenantsService.findCurrent(currentUser.tenantId);
+    return this.tenantsService.findCurrent(
+      currentUser.tenantId,
+      currentUser.branchCode,
+    );
   }
 
 
@@ -305,23 +309,26 @@ export class TenantsController {
       storageCustomEndpoint?: string;
       storageCapacityGb?: number | string;
       storageImagesFolderName?: string;
+      storageDescription?: string;
     },
   ) {
-    return this.tenantsService.createCurrentBranch(
-      currentUser.tenantId,
-      payload,
-      currentUser,
+    throw new GoneException(
+      "Cadastro de filiais centralizado no MSINFOR Central.",
     );
   }
 
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get("branches/verify-email")
-  @ApiOperation({ summary: "Confirma o e-mail de uma filial" })
+  @ApiOperation({ summary: "Rota legada de confirmação de filial desativada" })
   async verifyBranchEmail(@Query("token") token: string) {
-    return this.tenantsService.verifyBranchEmail(token);
+    throw new GoneException(
+      "A validação cadastral da filial é realizada no MSINFOR Central.",
+    );
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Get(":id/branches")
   @ApiOperation({
     summary: "Lista as filiais de uma escola pelo painel MSINFOR ADMIN",
@@ -332,6 +339,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post(":id/branches")
   @ApiOperation({
     summary: "Cria uma filial de uma escola pelo painel MSINFOR ADMIN",
@@ -384,6 +392,7 @@ export class TenantsController {
       storageCustomEndpoint?: string;
       storageCapacityGb?: number | string;
       storageImagesFolderName?: string;
+      storageDescription?: string;
     },
   ) {
     this.assertMasterPass(req);
@@ -391,6 +400,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Put(":id/branches/:branchId")
   @ApiOperation({
     summary: "Atualiza uma filial de uma escola pelo painel MSINFOR ADMIN",
@@ -432,6 +442,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post(":id/branches/:branchId/send-email-confirmation")
   @ApiOperation({ summary: "Envia a confirmação de e-mail para uma filial" })
   async sendBranchEmailConfirmationByTenant(
@@ -444,6 +455,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Put(":id")
   @ApiOperation({
     summary: "Atualiza os dados de uma Escola e de seu Administrador principal",
@@ -458,6 +470,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Delete(":id")
   @ApiOperation({
     summary: "Cancela uma escola (soft delete) e dependências",
@@ -468,6 +481,7 @@ export class TenantsController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post(":id/purge")
   @ApiOperation({
     summary:

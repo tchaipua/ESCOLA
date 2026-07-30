@@ -38,6 +38,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Audit backend production dependencies
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit frontend production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build backend
         working-directory: backend
         run: npm run build
@@ -49,6 +57,27 @@ jobs:
       - name: Validate attendance notifications
         working-directory: backend
         run: npm run test:attendance-notifications
+
+      - name: Validate security containment
+        working-directory: backend
+        run: node test/security-containment.test.cjs
+
+      - name: Validate Central identity and Financeiro contracts
+        working-directory: backend
+        run: |
+          node test/central-identity-session-security.test.cjs
+          node test/financeiro-hmac-contract.test.cjs
+
+      - name: Validate Telegram security and PostgreSQL grants
+        working-directory: backend
+        run: |
+          node test/telegram-webhook-security.test.cjs
+          node test/postgresql-runtime-grants.test.cjs
+          npm run prisma:postgres:validate
+
+      - name: Validate cookie-only frontend authentication
+        working-directory: frontend
+        run: npm run test:cookie-auth
 
       - name: Install Playwright browser
         working-directory: frontend

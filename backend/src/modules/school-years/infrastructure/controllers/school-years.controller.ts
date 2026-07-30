@@ -9,7 +9,7 @@ import {
   Param,
   Delete,
 } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { SchoolYearsService } from "../../application/services/school-years.service";
 import { CreateSchoolYearDto } from "../../application/dto/create-school-year.dto";
 import { UpdateSchoolYearDto } from "../../application/dto/update-school-year.dto";
@@ -19,7 +19,6 @@ import { SyncSchoolHolidaysDto } from "../../application/dto/sync-school-holiday
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 
-@ApiBearerAuth() // Impõe cadeado de token na documentação SWAGGER automaticamente
 @ApiTags("Anos Letivos (Temporadas / Semestres)")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("school-years")

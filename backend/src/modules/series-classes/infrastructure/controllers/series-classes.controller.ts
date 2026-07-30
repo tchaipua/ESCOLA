@@ -7,7 +7,7 @@ import {
   Patch,
   Post,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import {
@@ -19,7 +19,6 @@ import { SeriesClassesService } from "../../application/services/series-classes.
 import { CreateSeriesClassDto } from "../../application/dto/create-series-class.dto";
 import { UpdateSeriesClassDto } from "../../application/dto/update-series-class.dto";
 
-@ApiBearerAuth()
 @ApiTags("Série x Turma")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("series-classes")

@@ -2,12 +2,12 @@ import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { GlobalSettingsService } from "./application/services/global-settings.service";
 import { GlobalSettingsController } from "./infrastructure/controllers/global-settings.controller";
-import { MsInforCentralSettingsClient } from "../../integrations/msinfor-central/msinfor-central-settings.client";
+import { MsInforCentralModule } from "../../integrations/msinfor-central/msinfor-central.module";
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, MsInforCentralModule],
   controllers: [GlobalSettingsController],
-  providers: [GlobalSettingsService, MsInforCentralSettingsClient],
-  exports: [GlobalSettingsService],
+  providers: [GlobalSettingsService],
+  exports: [GlobalSettingsService, MsInforCentralModule],
 })
 export class GlobalSettingsModule {}

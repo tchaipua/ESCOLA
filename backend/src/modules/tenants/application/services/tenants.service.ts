@@ -44,6 +44,8 @@ import {
   isValidCnpj,
   normalizeCnpj,
 } from "../../../../common/validation/cnpj";
+import { decryptOptionalSecret } from "../../../../common/security/secret-encryption";
+import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
 
 type EmailUsageEntityType =
   | "ADMIN_USER"
@@ -97,6 +99,8 @@ type TenantBranchPayload = {
   allowSaleUnitPriceEdit?: boolean | null;
   allowSaleItemDiscount?: boolean | null;
   groupSameProduct?: boolean | null;
+  allowProductImageEdit?: boolean | null;
+  requirePasswordToRemoveSaleItems?: boolean | null;
   smtpHost?: string | null;
   smtpPort?: number | string | null;
   smtpTimeout?: number | string | null;
@@ -120,6 +124,7 @@ type TenantBranchPayload = {
   storageCustomEndpoint?: string | null;
   storageCapacityGb?: number | string | null;
   storageImagesFolderName?: string | null;
+  storageDescription?: string | null;
 };
 
 type SmtpConfiguration = {
@@ -170,7 +175,39 @@ export class TenantsService {
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly financeiroService: FinanceiroService,
     private readonly globalSettingsService: GlobalSettingsService,
+    private readonly centralConfiguration: CentralTenantConfigurationService,
   ) {}
+
+  async findCentralOperationalSummary(centralTenantId: string, branchCodeRaw?: string) {
+    const unscopedPrisma = this.prisma.getUnscopedClient();
+    const tenant = await unscopedPrisma.tenant.findFirst({
+      where: { centralTenantId: String(centralTenantId || "").trim(), canceledAt: null },
+      select: {
+        id: true,
+        centralTenantId: true,
+        branches: {
+          where: { canceledAt: null },
+          orderBy: { branchCode: "asc" },
+          select: { branchCode: true },
+        },
+      },
+    });
+    if (!tenant) throw new NotFoundException("Empresa não encontrada no sistema Escola.");
+    const requestedBranchCode = branchCodeRaw === undefined ? null : Number(branchCodeRaw);
+    if (requestedBranchCode !== null && (!Number.isInteger(requestedBranchCode) || requestedBranchCode < 1)) throw new BadRequestException("Filial inválida para consulta.");
+    const branch = requestedBranchCode === null ? null : tenant.branches.find((item) => item.branchCode === requestedBranchCode) || null;
+    if (requestedBranchCode !== null && !branch) throw new NotFoundException("Filial não encontrada no sistema Escola.");
+    return {
+      systemCode: "ESCOLA",
+      tenant: {
+        centralTenantId: tenant.centralTenantId,
+        branchCode: branch?.branchCode || null,
+      },
+      ownership: "MSINFOR_CENTRAL",
+      message:
+        "DADOS CADASTRAIS E CONFIGURAÇÕES SÃO MANTIDOS EXCLUSIVAMENTE NO MSINFOR CENTRAL.",
+    };
+  }
 
   private readonly masterAuditUser = "MSINFOR_MASTER";
 
@@ -345,6 +382,18 @@ export class TenantsService {
       : tenantSmtp?.smtpHost && tenantSmtp.smtpPort && tenantSmtp.smtpEmail
         ? tenantSmtp
         : this.buildEnvSmtpConfiguration(tenant?.name || "ESCOLA");
+    const smtpPassword =
+      smtp === branchSmtp
+        ? decryptOptionalSecret(
+            smtp?.smtpPassword,
+            "TenantBranch.smtpPassword",
+          )
+        : smtp === tenantSmtp
+          ? decryptOptionalSecret(
+              smtp?.smtpPassword,
+              "Tenant.smtpPassword",
+            )
+          : smtp?.smtpPassword;
 
     if (!smtp?.smtpHost || !smtp.smtpPort || !smtp.smtpEmail) {
       throw new BadRequestException(
@@ -352,7 +401,7 @@ export class TenantsService {
       );
     }
 
-    if (smtp.smtpAuthenticate && !smtp.smtpPassword) {
+    if (smtp.smtpAuthenticate && !smtpPassword) {
       throw new BadRequestException(
         "Esta escola possui SMTP incompleto. Revise usuário e senha de envio.",
       );
@@ -366,7 +415,7 @@ export class TenantsService {
       secure: smtp.smtpSecure || false,
       connectionTimeout: (smtp.smtpTimeout || 60) * 1000,
       auth: smtp.smtpAuthenticate
-        ? { user: smtp.smtpEmail, pass: smtp.smtpPassword || "" }
+        ? { user: smtp.smtpEmail, pass: smtpPassword || "" }
         : undefined,
     });
 
@@ -454,6 +503,14 @@ export class TenantsService {
       payload.groupSameProduct === null
         ? {}
         : { groupSameProduct: Boolean(payload.groupSameProduct) }),
+      ...(payload.allowProductImageEdit === undefined ||
+      payload.allowProductImageEdit === null
+        ? {}
+        : { allowProductImageEdit: Boolean(payload.allowProductImageEdit) }),
+      ...(payload.requirePasswordToRemoveSaleItems === undefined ||
+      payload.requirePasswordToRemoveSaleItems === null
+        ? {}
+        : { requirePasswordToRemoveSaleItems: Boolean(payload.requirePasswordToRemoveSaleItems) }),
       ...this.buildTenantBranchSmtpData(payload),
       ...this.buildTenantBranchTelegramData(payload),
       ...this.buildTenantBranchStorageData(payload),
@@ -576,6 +633,7 @@ export class TenantsService {
     storageCustomEndpoint?: string | null;
     storageCapacityGb?: number | string | null;
     storageImagesFolderName?: string | null;
+    storageDescription?: string | null;
   }) {
     const storageDefaultExpiration = this.parseOptionalInt(
       payload.storageDefaultExpiration,
@@ -616,6 +674,8 @@ export class TenantsService {
       storageCapacityGb: storageCapacityGb ?? null,
       storageImagesFolderName:
         String(payload.storageImagesFolderName || "").trim() || null,
+      storageDescription:
+        String(payload.storageDescription || "").trim().toUpperCase() || null,
     };
   }
 
@@ -882,14 +942,16 @@ export class TenantsService {
     const normalizedAdminPassword = String(
       createTenantDto.adminPassword || "",
     ).trim();
-    let hashedPassword: string | null = null;
-    if (normalizedAdminPassword) {
-      const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(normalizedAdminPassword, salt);
+    if (!normalizedAdminPassword) {
+      throw new BadRequestException(
+        "Senha forte do administrador é obrigatória.",
+      );
     }
-    const adminPasswordHash =
-      hashedPassword ||
-      (await bcrypt.hash("Admin001", await bcrypt.genSalt(10)));
+    const hashedPassword = await bcrypt.hash(
+      normalizedAdminPassword,
+      await bcrypt.genSalt(12),
+    );
+    const adminPasswordHash = hashedPassword;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const newTenant = await tx.tenant.create({
@@ -948,18 +1010,11 @@ export class TenantsService {
     });
 
     await this.runAsMasterTenantContext(result.admin.tenantId, async () => {
-      if (hashedPassword) {
-        await this.sharedProfilesService.updateEmailCredentialPassword(
-          result.admin.email,
-          hashedPassword,
-          this.masterAuditUser,
-        );
-      } else {
-        await this.sharedProfilesService.ensureEmailCredential(
-          result.admin.email,
-          { userId: this.masterAuditUser },
-        );
-      }
+      await this.sharedProfilesService.updateEmailCredentialPassword(
+        result.admin.email,
+        hashedPassword,
+        this.masterAuditUser,
+      );
 
       await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
         result.admin.tenantId,
@@ -990,13 +1045,25 @@ export class TenantsService {
       orderBy: { createdAt: "desc" },
     });
 
-    return tenants.map(({ smtpPassword: _smtpPassword, branches, ...tenant }) => {
+    return tenants.map((record) => {
+      const {
+        smtpPassword,
+        telegramBotToken,
+        storageProviderSecretAccessKey,
+        branches,
+        ...tenant
+      } = record;
       const defaultBranch = branches[0]
         ? mapTenantBranchSummary(branches[0])
         : null;
 
       return {
         ...tenant,
+        hasSmtpPassword: Boolean(smtpPassword),
+        hasTelegramBotToken: Boolean(telegramBotToken),
+        hasStorageProviderSecretAccessKey: Boolean(
+          storageProviderSecretAccessKey,
+        ),
         logoUrl: defaultBranch?.logoUrl ?? null,
         document: defaultBranch?.document ?? null,
         defaultBranch,
@@ -1004,44 +1071,50 @@ export class TenantsService {
     });
   }
 
-  async findCurrent(tenantId: string) {
-    await ensureDefaultTenantBranch(this.prisma, tenantId);
-
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        id: tenantId,
-        canceledAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        branches: {
-          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
-          take: 1,
-        },
-      },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException(
-        "Escola não encontrada para o usuário logado.",
-      );
-    }
-
-    const defaultBranch = tenant.branches[0]
-      ? mapTenantBranchSummary(tenant.branches[0])
+  async findCurrent(tenantId: string, branchCode?: number) {
+    const configuration = await this.centralConfiguration.findConfiguration(
+      tenantId,
+      branchCode && branchCode >= DEFAULT_BRANCH_CODE
+        ? branchCode
+        : undefined,
+    );
+    const company = this.centralConfiguration.mergeCompany(
+      configuration.tenant.company,
+      configuration.branch?.company,
+    );
+    const displayName =
+      configuration.branch?.displayName ||
+      company.tradeName ||
+      company.legalName ||
+      configuration.tenant.displayName;
+    const defaultBranch = configuration.branch
+      ? {
+          id: configuration.branch.id,
+          branchCode: configuration.branch.branchCode,
+          name: configuration.branch.displayName,
+          logoUrl: company.logoReference || null,
+          document: company.documentNumber || null,
+          email: company.contacts.email || null,
+          phone: company.contacts.phone || company.contacts.mobile || null,
+          whatsapp: company.contacts.whatsapp || company.contacts.mobile || null,
+          city: company.address.city || null,
+          state: company.address.state || null,
+          isActive: true,
+          isShared: false,
+        }
       : null;
 
     return {
-      id: tenant.id,
-      name: tenant.name,
-      logoUrl: defaultBranch?.logoUrl ?? null,
-      document: defaultBranch?.document ?? null,
-      email: defaultBranch?.email ?? null,
-      phone: defaultBranch?.phone ?? null,
-      whatsapp: defaultBranch?.whatsapp ?? null,
-      city: defaultBranch?.city ?? null,
-      state: defaultBranch?.state ?? null,
+      id: tenantId,
+      centralTenantId: configuration.tenant.id,
+      name: displayName,
+      logoUrl: company.logoReference || null,
+      document: company.documentNumber || null,
+      email: company.contacts.email || null,
+      phone: company.contacts.phone || company.contacts.mobile || null,
+      whatsapp: company.contacts.whatsapp || company.contacts.mobile || null,
+      city: company.address.city || null,
+      state: company.address.state || null,
       defaultBranch,
     };
   }
@@ -1176,6 +1249,8 @@ export class TenantsService {
       "allowSaleUnitPriceEdit",
       "allowSaleItemDiscount",
       "groupSameProduct",
+      "allowProductImageEdit",
+      "requirePasswordToRemoveSaleItems",
     ] as const;
     for (const key of booleanKeys) {
       if (payload.parameters[key] !== undefined) {
@@ -1208,6 +1283,8 @@ export class TenantsService {
           allowSaleUnitPriceEdit: true,
           allowSaleItemDiscount: true,
           groupSameProduct: true,
+          allowProductImageEdit: true,
+          requirePasswordToRemoveSaleItems: true,
         },
       });
 
@@ -1239,6 +1316,153 @@ export class TenantsService {
   }
 
   async syncCurrentFinanceiroIntegrationSettings(
+    currentUser: ICurrentUser,
+  ) {
+    const branches = await this.centralConfiguration.listBranches(
+      currentUser.tenantId,
+    );
+    const branch = branches.find(
+      (candidate) => candidate.branchCode === currentUser.branchCode,
+    );
+    if (!branch) {
+      throw new NotFoundException(
+        "A filial ativa da sessão não foi encontrada no MSINFOR Central.",
+      );
+    }
+    const configuration =
+      await this.centralConfiguration.findConfiguration(
+        currentUser.tenantId,
+        branch.branchCode,
+      );
+    const company = this.centralConfiguration.mergeCompany(
+      configuration.tenant.company,
+      configuration.branch?.company,
+    );
+    const s3 = configuration.effective.s3;
+    const smtp = configuration.effective.smtp;
+    const telegram = configuration.effective.telegram;
+    const financial = configuration.effective.financial;
+    const commerce = configuration.effective.commerce;
+    const mapSourceScope = (
+      value: "BRANCH" | "TENANT" | "SYSTEM" | "GLOBAL" | null,
+    ): "BRANCH" | "COMPANY" | "SOFTHOUSE" =>
+      value === "BRANCH"
+        ? "BRANCH"
+        : value === "TENANT"
+          ? "COMPANY"
+          : "SOFTHOUSE";
+    const synchronized =
+      await this.financeiroService.syncSourceIntegrationSettings(
+        currentUser,
+        {
+          requestedBy: currentUser.userId,
+          sourceSystem: "ESCOLA",
+          sourceTenantId: currentUser.tenantId,
+          sourceBranchCode: branch.branchCode,
+          activeBranchCodes: branches.map((item) => item.branchCode),
+          companyName:
+            configuration.tenant.company.tradeName ||
+            configuration.tenant.company.legalName ||
+            configuration.tenant.displayName,
+          companyDocument:
+            configuration.tenant.company.documentNumber || undefined,
+          branchName: branch.displayName,
+          branchLegalName: company.legalName || branch.displayName,
+          branchTradeName: company.tradeName || branch.displayName,
+          branchDocument: company.documentNumber || undefined,
+          branchStreet: company.address.street || undefined,
+          branchNumber: company.address.number || undefined,
+          branchComplement: company.address.complement || undefined,
+          branchNeighborhood: company.address.district || undefined,
+          branchCity: company.address.city || undefined,
+          branchState: company.address.state || undefined,
+          branchPostalCode: company.address.postalCode || undefined,
+          branchPhone:
+            company.contacts.phone ||
+            company.contacts.mobile ||
+            company.contacts.whatsapp ||
+            undefined,
+          branchEmail: company.contacts.email || undefined,
+          interestRate: financial?.interestRate,
+          interestGracePeriod: financial?.interestGracePeriod,
+          penaltyRate: financial?.penaltyRate,
+          penaltyValue: financial?.penaltyValue,
+          penaltyGracePeriod: financial?.penaltyGracePeriod,
+          stockControlMode: commerce?.stockControlMode as
+            | "NO"
+            | "YES"
+            | "BY_PRODUCT"
+            | undefined,
+          stockIntegerQuantityMode: commerce?.stockIntegerQuantityMode as
+            | "NO"
+            | "YES"
+            | "BY_PRODUCT"
+            | undefined,
+          stockLotControlMode: commerce?.stockLotControlMode as
+            | "NO"
+            | "YES"
+            | "BY_PRODUCT"
+            | undefined,
+          stockExpirationControlMode: commerce?.stockExpirationControlMode as
+            | "NO"
+            | "YES"
+            | "BY_PRODUCT"
+            | undefined,
+          stockGridControlMode: commerce?.stockGridControlMode as
+            | "NO"
+            | "YES"
+            | "BY_PRODUCT"
+            | undefined,
+          stockNegativeControlMode: commerce?.stockNegativeControlMode as
+            | "NO"
+            | "YES"
+            | "BY_PRODUCT"
+            | undefined,
+          allowSaleUnitPriceEdit: commerce?.allowSaleUnitPriceEdit,
+          allowSaleItemDiscount: commerce?.allowSaleItemDiscount,
+          groupSameProduct: commerce?.groupSameProduct,
+          allowProductImageEdit: commerce?.allowProductImageEdit,
+          requirePasswordToRemoveSaleItems:
+            commerce?.requirePasswordToRemoveSaleItems,
+          s3Endpoint:
+            s3?.customEndpoint || s3?.endpoint || undefined,
+          s3Region: s3?.region || undefined,
+          s3Bucket: s3?.bucket || undefined,
+          s3BasePrefix: s3?.basePath || undefined,
+          s3AccessKey: s3?.accessKeyId || undefined,
+          s3SecretKey: s3?.secretAccessKey || undefined,
+          s3ForcePathStyle: s3?.forcePathStyle,
+          s3CapacityGb: s3?.capacityGb ?? undefined,
+          s3ImagesFolderName: s3?.imagesFolderName || undefined,
+          storageDefaultAcl: s3?.defaultAcl || undefined,
+          storageDefaultExpiration: s3?.defaultExpiration ?? undefined,
+          storageSourceScope: mapSourceScope(configuration.sources.s3),
+          smtpHost: smtp?.host || undefined,
+          smtpPort: smtp?.port,
+          smtpTimeout: smtp?.timeout,
+          smtpAuthenticate: smtp?.authenticate,
+          smtpSecure: smtp?.secure,
+          smtpAuthType: smtp?.authType || undefined,
+          smtpEmail: smtp?.username || smtp?.fromEmail || undefined,
+          smtpPassword: smtp?.password || undefined,
+          smtpSourceScope: mapSourceScope(configuration.sources.smtp),
+          telegramEnabled: telegram?.enabled,
+          telegramBotToken: telegram?.botToken || undefined,
+          telegramBotUsername: telegram?.botUsername || undefined,
+          telegramSourceScope:
+            configuration.sources.telegram === "BRANCH"
+              ? "BRANCH"
+              : "COMPANY",
+        },
+      );
+
+    return {
+      synchronizedBranchCount: 1,
+      branches: [synchronized],
+    };
+  }
+
+  private async syncCurrentFinanceiroIntegrationSettingsLegacy(
     currentUser: ICurrentUser,
   ) {
     const tenant = await this.prisma.tenant.findFirst({
@@ -1309,7 +1533,15 @@ export class TenantsService {
     );
     const synchronizedBranches = [];
     const activeBranchCodes = tenant.branches.map((branch) => branch.branchCode);
-    for (const branch of tenant.branches) {
+    const sessionBranch = tenant.branches.find(
+      (branch) => branch.branchCode === currentUser.branchCode,
+    );
+    if (!sessionBranch) {
+      throw new NotFoundException(
+        "A filial ativa da sessão não foi encontrada.",
+      );
+    }
+    for (const branch of [sessionBranch]) {
       const branchHasStorage = Boolean(
         branch.storageProviderAccessKeyId &&
           branch.storageProviderSecretAccessKey &&
@@ -1356,9 +1588,43 @@ export class TenantsService {
       const branchHasTelegram = Boolean(branch.telegramBotToken);
       const telegram = branchHasTelegram ? branch : tenant;
       const telegramSourceScope = branchHasTelegram ? "BRANCH" : "COMPANY";
+      const storageSecret =
+        storageSourceScope === "BRANCH"
+          ? decryptOptionalSecret(
+              storage.storageProviderSecretAccessKey,
+              "TenantBranch.storageProviderSecretAccessKey",
+            )
+          : storageSourceScope === "COMPANY"
+            ? decryptOptionalSecret(
+                storage.storageProviderSecretAccessKey,
+                "Tenant.storageProviderSecretAccessKey",
+              )
+            : storage.storageProviderSecretAccessKey;
+      const smtpSecret =
+        smtpSourceScope === "BRANCH"
+          ? decryptOptionalSecret(
+              smtp.smtpPassword,
+              "TenantBranch.smtpPassword",
+            )
+          : smtpSourceScope === "COMPANY"
+            ? decryptOptionalSecret(
+                smtp.smtpPassword,
+                "Tenant.smtpPassword",
+              )
+            : smtp.smtpPassword;
+      const telegramSecret =
+        telegramSourceScope === "BRANCH"
+          ? decryptOptionalSecret(
+              telegram.telegramBotToken,
+              "TenantBranch.telegramBotToken",
+            )
+          : decryptOptionalSecret(
+              telegram.telegramBotToken,
+              "Tenant.telegramBotToken",
+            );
 
       synchronizedBranches.push(
-        await this.financeiroService.syncSourceIntegrationSettings({
+        await this.financeiroService.syncSourceIntegrationSettings(currentUser, {
           requestedBy: currentUser.userId,
           sourceSystem: "ESCOLA",
           sourceTenantId: tenant.id,
@@ -1408,12 +1674,14 @@ export class TenantsService {
           allowSaleUnitPriceEdit: branch.allowSaleUnitPriceEdit !== false,
           allowSaleItemDiscount: branch.allowSaleItemDiscount !== false,
           groupSameProduct: branch.groupSameProduct !== false,
+          allowProductImageEdit: branch.allowProductImageEdit !== false,
+          requirePasswordToRemoveSaleItems: branch.requirePasswordToRemoveSaleItems === true,
           s3Endpoint: softHouseHasStorage || branchHasStorage || companyHasStorage ? storageEndpoint || undefined : undefined,
           s3Region: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageRegion || undefined : undefined,
           s3Bucket: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageBucketName || undefined : undefined,
           s3BasePrefix: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageFolderName || undefined : undefined,
           s3AccessKey: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageProviderAccessKeyId || undefined : undefined,
-          s3SecretKey: softHouseHasStorage || branchHasStorage || companyHasStorage ? storage.storageProviderSecretAccessKey || undefined : undefined,
+          s3SecretKey: softHouseHasStorage || branchHasStorage || companyHasStorage ? storageSecret || undefined : undefined,
           s3ForcePathStyle: Boolean(storageEndpoint),
           s3CapacityGb: storage.storageCapacityGb ?? undefined,
           s3ImagesFolderName: storage.storageImagesFolderName || undefined,
@@ -1428,10 +1696,10 @@ export class TenantsService {
           smtpSecure: smtp.smtpSecure ?? undefined,
           smtpAuthType: smtp.smtpAuthType || undefined,
           smtpEmail: smtp.smtpEmail || undefined,
-          smtpPassword: smtp.smtpPassword || undefined,
+          smtpPassword: smtpSecret || undefined,
           smtpSourceScope,
           telegramEnabled: telegram.telegramEnabled ?? undefined,
-          telegramBotToken: telegram.telegramBotToken || undefined,
+          telegramBotToken: telegramSecret || undefined,
           telegramBotUsername: telegram.telegramBotUsername || undefined,
           telegramSourceScope,
         }),
@@ -1445,8 +1713,42 @@ export class TenantsService {
   }
 
   async listCurrentBranches(tenantId: string) {
-    const branches = await listTenantBranches(this.prisma, tenantId);
-    return branches.map(mapTenantBranchSummary);
+    const branches = await this.centralConfiguration.listBranches(tenantId);
+    return Promise.all(
+      branches.map(async (branch) => {
+        const configuration =
+          await this.centralConfiguration.findConfiguration(
+            tenantId,
+            branch.branchCode,
+          );
+        const company = this.centralConfiguration.mergeCompany(
+          configuration.tenant.company,
+          configuration.branch?.company,
+        );
+        const commerce = configuration.effective.commerce;
+        return {
+          id: branch.id,
+          branchCode: branch.branchCode,
+          name: branch.displayName,
+          logoUrl: company.logoReference || null,
+          isActive: true,
+          isShared: false,
+          stockControlMode: commerce?.stockControlMode || "NO",
+          stockIntegerQuantityMode:
+            commerce?.stockIntegerQuantityMode || "NO",
+          stockLotControlMode: commerce?.stockLotControlMode || "NO",
+          stockExpirationControlMode:
+            commerce?.stockExpirationControlMode || "NO",
+          stockGridControlMode: commerce?.stockGridControlMode || "NO",
+          stockNegativeControlMode: commerce?.stockNegativeControlMode || "NO",
+          allowSaleUnitPriceEdit:
+            commerce?.allowSaleUnitPriceEdit === true,
+          allowSaleItemDiscount: commerce?.allowSaleItemDiscount === true,
+          groupSameProduct: commerce?.groupSameProduct === true,
+          allowProductImageEdit: commerce?.allowProductImageEdit === true,
+        };
+      }),
+    );
   }
 
   private async assertActiveTenant(tenantId: string) {
@@ -3116,6 +3418,13 @@ export class TenantsService {
     ) {
       updateTenantDto.storageProviderSecretAccessKey =
         tenant.storageProviderSecretAccessKey;
+    }
+
+    if (
+      !String(updateTenantDto.telegramBotToken || "").trim() &&
+      tenant.telegramBotToken
+    ) {
+      updateTenantDto.telegramBotToken = tenant.telegramBotToken;
     }
 
     this.validateAndNormalizeSmtp(updateTenantDto);

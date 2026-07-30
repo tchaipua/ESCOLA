@@ -66,6 +66,10 @@ Entregas desejadas:
 
 ## Fase 4 - Financeiro e comunicacao ampliados
 
+- [x] Consumir identidade, marca, S3, SMTP, Telegram e parametros efetivos de
+  empresa/filial exclusivamente do MSINFOR Central, com falha fechada e sem
+  alterar os layouts aprovados.
+
 Objetivo: evoluir o modulo administrativo sem regredir o nucleo academico.
 
 Entregas desejadas:
@@ -96,6 +100,10 @@ Entregas desejadas:
 
 ## Proxima consolidacao recomendada
 
+- concluir no Central a identidade administrativa forte com MFA; a Escola ja removeu integralmente o master local
+- executar higienizacao coordenada do historico e rotacao completa das credenciais expostas
+- mover `DATA_ENCRYPTION_KEY` e demais segredos de runtime para secret manager; os campos persistidos ja usam AES-256-GCM
+- validar o schema PostgreSQL paralelo e o SQL RLS em ambiente isolado antes de qualquer ativacao
 - ampliar testes automatizados do backend para `Person`, `shared-profiles` e login multi-papel
 - criar deep links entre `Pessoas` e modulos operacionais
 - evoluir a UX do professor para marcacao de provas com o mesmo nivel ja entregue em notas e calendario

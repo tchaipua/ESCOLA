@@ -1,12 +1,11 @@
 import { Controller, Post, Body, Param, Delete, Patch } from "@nestjs/common";
-import { ApiTags, ApiBearerAuth, ApiOperation } from "@nestjs/swagger";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { TeacherSubjectsService } from "../../application/services/teacher-subjects.service";
 import { AssignSubjectDto } from "../../application/dto/assign-subject.dto";
 import { UpdateTeacherSubjectDto } from "../../application/dto/update-teacher-subject.dto";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 
-@ApiBearerAuth()
 @ApiTags("Professores (Equip Docente)")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("teachers")

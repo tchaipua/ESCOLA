@@ -16,6 +16,15 @@ A arquitetura da `Escola` continua preparada para evolucao futura, mas a entrega
 
 O `Financeiro` nao deve ser tratado como apenas uma pasta interna da `Escola`. Ele e um projeto separado em `C:\Sistemas\IA\Financeiro`, com API propria e painel proprio. A `Escola` consome o `Financeiro` por integracao, mantendo a regra escolar de origem na `Escola` e a operacao financeira pesada no `Financeiro`.
 
+O `MSINFOR_CENTRAL_IA` e a fonte oficial exclusiva dos dados cadastrais e das
+configuracoes de empresa/filial. CNPJ, endereco, contatos, logotipo, S3, SMTP,
+Telegram, recibos, parametros financeiros e comerciais sao consultados pela
+Escola somente por API HMAC. O banco escolar conserva apenas o UUID global do
+tenant, os codigos de filial necessarios ao isolamento operacional e os
+vinculos de acesso. Indisponibilidade, resposta divergente ou configuracao
+incompleta da Central falha fechada; nao existe fallback para colunas locais ou
+variaveis de ambiente.
+
 ## Estrutura real do repositorio
 
 - `backend/`
@@ -58,7 +67,21 @@ O `Financeiro` nao deve ser tratado como apenas uma pasta interna da `Escola`. E
 - `communications`
 - `users`
 - `global-settings`
+- `integrations/msinfor-central`
 - `user-preferences`
+
+### Dados mestres de empresa e filial
+
+- `Tenant.centralTenantId` vincula a escola local ao UUID global;
+- `tenant_branches` funciona como projecao minima de `branchCode` e status para
+  as chaves estrangeiras e o isolamento do dado academico;
+- a lista, o nome, a marca e a configuracao efetiva de cada filial sao sempre
+  obtidos da Central;
+- a resolucao efetiva segue `BRANCH > TENANT > SYSTEM > GLOBAL`;
+- somente o backend recebe segredos efetivos, e nunca os devolve ao navegador,
+  ao log ou a auditoria;
+- as rotas locais historicas de manutencao e o callback do Financeiro que
+  gravava parametros na Escola respondem `410 Gone`.
 
 ## Modelo de identidade
 
@@ -126,6 +149,24 @@ O login continua tenant-aware e role-aware:
 - pode exigir escolha de como entrar (`MULTIPLE_ACCOUNTS`)
 - usa o mesmo usuario e senha quando a pessoa compartilha credencial entre papeis
 
+Em produção, a identidade é centralizada:
+
+- a Escola envia a credencial somente por chamada backend a backend HMAC para
+  `MSINFOR_CENTRAL_IA`; o navegador nunca escolhe banco, alias ou tenant local;
+- a Central devolve o tenant global autorizado, a conta e o papel; a Escola
+  aceita o resultado somente quando o alias corresponde exatamente a
+  `MSINFOR_DATABASE_ALIAS` e existe vínculo local por `Tenant.centralTenantId`;
+- papel central e papel local precisam coincidir; qualquer divergência falha
+  fechada;
+- a compatibilidade de senha local existe somente em desenvolvimento quando
+  `MSINFOR_CENTRAL_IDENTITY_ENABLED=false` é definido explicitamente.
+
+Cada login concluído cria uma linha em `auth_sessions` e um `jti` aleatório no
+JWT mantido exclusivamente no cookie HttpOnly. O guard valida a sessão no banco
+em todas as requisições e rejeita o transporte Bearer. Logout, troca de
+senha, vínculo de identidade central, expiração e limite de sessões revogam a
+sessão sem aguardar a expiração do token.
+
 ### RBAC
 
 - perfis pre-definidos por papel
@@ -158,6 +199,9 @@ Exemplos atuais:
 - desenvolvimento local com SQLite via Prisma
 - schema versionado em `backend/prisma/schema.prisma`
 - client Prisma gerado a partir do schema atual
+- schema PostgreSQL paralelo em `backend/prisma/postgresql/schema.prisma`
+- baseline PostgreSQL isolado da cadeia de deploy atual
+- RLS preparado em `backend/prisma/postgresql/manual-rls`, sem execucao automatica ate existir identidade Central e `set_config('app.tenant_id', ..., true)` na mesma transacao
 
 ### Regras obrigatorias
 
@@ -180,8 +224,9 @@ Convencao local atual:
 
 - backend do `Financeiro`: `localhost:3002`
 - frontend do `Financeiro`: `localhost:3003`
-- autenticacao tecnica entre sistemas: `x-api-key`
-- escopo financeiro resolvido por `sourceSystem`, `sourceTenantId` e, quando aplicavel, `sourceBranchCode`
+- navegador acessa apenas a origem da Escola em `/financeiro-app` e `/api/financeiro`
+- backend da Escola chama o Financeiro com HMAC-SHA-256 canônico `v1`, timestamp, nonce de uso único, hash do corpo e escopos assinados
+- tenant, filial, usuário e autorização vêm exclusivamente da sessão validada; não são aceitos da URL do iframe
 
 Responsabilidades:
 
@@ -191,15 +236,15 @@ Responsabilidades:
 Configurações corporativas compartilhadas:
 
 - parâmetros globais da softhouse pertencem ao projeto independente `C:\Sistemas\IA\MSINFOR_CENTRAL_IA` e são consumidos exclusivamente por API backend a backend;
-- cada sistema usa `MSINFOR_CENTRAL_SYSTEM_ID` e uma chave técnica exclusiva, sem conexão direta com o banco central;
+- cada sistema usa `MSINFOR_CENTRAL_SYSTEM_ID` e uma chave HMAC técnica exclusiva, sem conexão direta com o banco central;
 - os backends mantêm cache válido por 60 segundos e podem usar a última cópia por até 15 minutos quando a Central estiver temporariamente indisponível;
 - S3, SMTP, Telegram e futuras integrações permanecem cadastrados na empresa/filial da Escola;
 - configuração completa da filial tem prioridade; quando ausente, a Escola resolve o fallback da empresa;
-- o resultado efetivo é enviado diretamente entre backends, autenticado por `x-api-key`;
+- o resultado efetivo é enviado diretamente entre backends, autenticado pelo contrato HMAC canônico `v1`;
 - senhas, tokens e credenciais nunca passam pelo frontend e são armazenados criptografados no Financeiro.
 - empresa e filial são cadastradas somente na Escola; o Financeiro mantém um espelho sincronizado e não oferece inclusão manual;
-- alterações permitidas de parâmetros no Financeiro retornam primeiro à Escola por `PATCH /integrations/financeiro/company-branch-parameters` e só depois atualizam o espelho financeiro;
-- outros sistemas chamadores devem implementar o mesmo contrato de retorno, com URL e chave próprias por `sourceSystem`.
+- alterações permitidas de parâmetros no Financeiro retornam primeiro à Escola por `PATCH /integrations/financeiro/company-branch-parameters`, com chave HMAC direcional própria e proteção contra replay, e só depois atualizam o espelho financeiro;
+- `FINANCEIRO_HMAC_ESCOLA_SECRET` autentica Escola → Financeiro e `SOURCE_SYSTEM_ESCOLA_HMAC_SECRET` autentica Financeiro → Escola; as chaves nunca podem ser iguais.
 
 Regra obrigatoria: alteracoes financeiras operacionais devem ser avaliadas no repositorio `C:\Sistemas\IA\Financeiro`; a `Escola` deve manter apenas integracao, contexto e telas hospedeiras quando aplicavel.
 
@@ -211,3 +256,36 @@ A estrategia atual e:
 2. deixar papeis operacionais separados
 3. manter CPF, contato, e-mail, Telegram e endereco somente em `people`
 4. preservar historico, tenant e auditoria em todas as mutacoes
+
+## Barreira de seguranca de borda
+
+- `Helmet` aplica cabecalhos HTTP de seguranca; a documentacao Swagger fica desabilitada por padrao em producao.
+- CORS usa allowlist configurada por `CORS_ALLOWED_ORIGINS`/`FRONTEND_URL`; wildcard e origem HTTP fazem o startup falhar em producao.
+- O navegador usa a mesma origem para `/api/v1`; requisições mutáveis autenticadas
+  por cookie exigem `Origin` permitido, `Sec-Fetch-Site: same-origin` e o
+  double-submit assinado `x-msinfor-csrf`.
+- O throttling global protege a API e limites menores protegem login, recuperacao/confirmacao de senha e rotas administrativas legadas.
+- O JWT existe somente dentro do cookie HttpOnly, nao possui fallback por
+  `Authorization` e exige segredo com no minimo 32 bytes.
+- O algoritmo master e sua compatibilidade local foram removidos; tokens e rotas legadas sao recusados. O usuário `MSINFOR` é autenticado exclusivamente pela API da Central, sem senha local e com empresa/filial autorizadas.
+- A sanitizacao de resposta e feita em duas camadas: mapeamentos publicos nao carregam segredos e um interceptor remove campos sensiveis residuais de forma recursiva.
+- Segredos SMTP, Telegram e S3 usam AES-256-GCM com IV aleatorio, tag de autenticacao e contexto por campo; adulteracao falha fechada.
+- O startup migra texto puro de forma idempotente somente com chave valida e grava antes um backup local criptografado.
+
+## Contêineres de producao
+
+- `docker-compose.prod.yml` publica somente o gateway TLS.
+- Backend, frontend e Financeiro comunicam-se por redes separadas; o Financeiro nao possui `ports`.
+- Imagens usam build multi-stage e usuário sem privilégio.
+- O target `migrator` contém a CLI Prisma e executa somente `migrate deploy` com a credencial owner; o runtime recebe o cliente PostgreSQL já gerado, inicia diretamente o Node e não executa migração ou `db push`.
+- O migrator recebe exclusivamente `MIGRATION_DATABASE_URL_FILE`; o runtime
+  recebe exclusivamente `DATABASE_URL_FILE` e recusa qualquer credencial de
+  migração.
+- Antes de iniciar, o runtime audita `current_user` contra
+  `ESCOLA_DATABASE_RUNTIME_ROLE` e recusa owner, superuser, `CREATEDB`,
+  `CREATEROLE`, `BYPASSRLS`, `REPLICATION` ou permissão de criação no banco e
+  schema.
+- `TRUST_PROXY_HOPS` é obrigatório em produção e deve representar exatamente a
+  quantidade de proxies confiáveis entre o cliente e a aplicação.
+- Containers usam filesystem somente leitura, `cap_drop: ALL`, `no-new-privileges`, `tmpfs` e healthchecks.
+- `docker-compose.vps.yml` e os `Dockerfile.vps` foram preservados apenas como legado de desenvolvimento e nao podem ser usados em producao.

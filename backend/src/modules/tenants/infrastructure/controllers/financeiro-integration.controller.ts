@@ -1,13 +1,18 @@
 import {
   Body,
   Controller,
+  GoneException,
   Patch,
   Req,
-  UnauthorizedException,
+  UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { Public } from "../../../../common/decorators/public.decorator";
+import {
+  FinanceiroCallbackAuthGuard,
+  type FinanceiroCallbackContext,
+} from "../../../../integrations/financeiro/financeiro-callback-auth.guard";
 import { ApplyFinanceSourceParametersDto } from "../../application/dto/finance-source-parameters.dto";
 import { TenantsService } from "../../application/services/tenants.service";
 
@@ -16,30 +21,22 @@ import { TenantsService } from "../../application/services/tenants.service";
 export class FinanceiroIntegrationController {
   constructor(private readonly tenantsService: TenantsService) {}
 
-  private assertIntegrationApiKey(request: Request) {
-    const expected = String(
-      process.env.FINANCEIRO_INTEGRATION_API_KEY || "",
-    ).trim();
-    const incoming = String(request.headers["x-api-key"] || "").trim();
-
-    if (!expected || !incoming || incoming !== expected) {
-      throw new UnauthorizedException(
-        "Integração financeira não autorizada.",
-      );
-    }
-  }
-
   @Public()
+  @UseGuards(FinanceiroCallbackAuthGuard)
   @Patch("company-branch-parameters")
   @ApiOperation({
     summary:
-      "Grava na origem oficial parâmetros alterados pelo sistema Financeiro",
+      "Rota legada desativada; parâmetros pertencem ao MSINFOR Central",
   })
   applyCompanyBranchParameters(
-    @Req() request: Request,
+    @Req()
+    request: Request & {
+      financeiroCallback?: FinanceiroCallbackContext;
+    },
     @Body() payload: ApplyFinanceSourceParametersDto,
   ) {
-    this.assertIntegrationApiKey(request);
-    return this.tenantsService.applyFinanceSourceParameters(payload);
+    throw new GoneException(
+      "Parâmetros de empresa e filial são mantidos exclusivamente no MSINFOR Central.",
+    );
   }
 }

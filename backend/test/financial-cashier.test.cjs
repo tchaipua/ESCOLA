@@ -43,27 +43,27 @@ function createService() {
   };
 
   const financeiroService = {
-    getCurrentCashSession: async (payload) => {
+    getCurrentCashSession: async (_currentUser, payload) => {
       calls.getCurrentCashSession.push(payload);
       return { id: "cash-1", status: "OPEN" };
     },
-    openCashSession: async (payload) => {
+    openCashSession: async (_currentUser, payload) => {
       calls.openCashSession.push(payload);
       return { id: "cash-1", status: "OPEN", cashierDisplayName: payload.cashierDisplayName };
     },
-    closeCurrentCashSession: async (payload) => {
+    closeCurrentCashSession: async (_currentUser, payload) => {
       calls.closeCurrentCashSession.push(payload);
       return { id: "cash-1", status: "CLOSED" };
     },
-    listInstallments: async (payload) => {
+    listInstallments: async (_currentUser, payload) => {
       calls.listInstallments.push(payload);
       return [{ id: "inst-1", sourceInstallmentKey: "KEY-1", status: payload.status || "OPEN" }];
     },
-    listOpenInstallments: async (payload) => {
+    listOpenInstallments: async (_currentUser, payload) => {
       calls.listOpenInstallments.push(payload);
       return [{ id: "inst-1", sourceInstallmentKey: "KEY-1" }];
     },
-    settleCashInstallment: async (installmentId, payload) => {
+    settleCashInstallment: async (_currentUser, installmentId, payload) => {
       calls.settleCashInstallment.push({ installmentId, payload });
       return { installmentId, status: "PAID", paymentMethod: "CASH" };
     },

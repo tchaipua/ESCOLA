@@ -7,6 +7,7 @@ import {
   FinanceiroImportPayload,
   FinanceiroService,
 } from "../../../../integrations/financeiro/financeiro.service";
+import type { ICurrentUser } from "../../../../common/decorators/current-user.decorator";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { CreateStudentFinancialLaunchDto } from "../dto/create-student-financial-launch.dto";
@@ -453,8 +454,9 @@ export class StudentFinancialLaunchesService {
     };
   }
 
-  private async loadHistory() {
+  private async loadHistory(currentUser: ICurrentUser) {
     const batches = await this.financeiroService.listReceivableBatches(
+      currentUser,
       this.financeFilters(),
     );
 
@@ -528,39 +530,12 @@ export class StudentFinancialLaunchesService {
     };
   }
 
-  private async findTenantIdentity() {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: {
-        id: this.tenantId(),
-        canceledAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        branches: {
-          where: { branchCode: DEFAULT_BRANCH_CODE, canceledAt: null },
-          select: {
-            document: true,
-            cnpj: true,
-            cpf: true,
-          },
-          take: 1,
-        },
-      },
-    });
-
-    if (!tenant) {
-      throw new BadRequestException("Escola inválida para o lançamento.");
-    }
-
+  private async findTenantIdentity(currentUser: ICurrentUser) {
+    const context = await this.financeiroService.buildRuntimeContext(currentUser);
     return {
-      id: tenant.id,
-      name: tenant.name,
-      document:
-        tenant.branches[0]?.document ||
-        tenant.branches[0]?.cnpj ||
-        tenant.branches[0]?.cpf ||
-        null,
+      id: this.tenantId(),
+      name: context.companyName,
+      document: context.companyDocument,
     };
   }
 
@@ -659,7 +634,7 @@ export class StudentFinancialLaunchesService {
     };
   }
 
-  async details(batchId: string) {
+  async details(currentUser: ICurrentUser, batchId: string) {
     const normalizedBatchId = String(batchId || "").trim();
     if (!normalizedBatchId) {
       throw new BadRequestException("Lote de lançamento inválido.");
@@ -667,6 +642,7 @@ export class StudentFinancialLaunchesService {
 
     try {
       const financeBatch = await this.financeiroService.getReceivableBatch(
+        currentUser,
         normalizedBatchId,
         this.financeFilters(),
       );
@@ -683,7 +659,7 @@ export class StudentFinancialLaunchesService {
     }
   }
 
-  async bootstrap() {
+  async bootstrap(currentUser: ICurrentUser) {
     const [activeSchoolYear, series, seriesClasses, history] =
       await Promise.all([
         this.activeSchoolYear(),
@@ -721,7 +697,7 @@ export class StudentFinancialLaunchesService {
             },
           },
         }),
-        this.loadHistory(),
+        this.loadHistory(currentUser),
       ]);
 
     return {
@@ -757,9 +733,9 @@ export class StudentFinancialLaunchesService {
     };
   }
 
-  async syncPayers() {
+  async syncPayers(currentUser: ICurrentUser) {
     const [tenant, students] = await Promise.all([
-      this.findTenantIdentity(),
+      this.findTenantIdentity(currentUser),
       this.prisma.student.findMany({
         where: {
           tenantId: this.tenantId(),
@@ -835,7 +811,7 @@ export class StudentFinancialLaunchesService {
       });
     });
 
-    const result = await this.financeiroService.syncCustomers({
+    const result = await this.financeiroService.syncCustomers(currentUser, {
       requestedBy: this.userId(),
       companyName: tenant.name,
       companyDocument: tenant.document || undefined,
@@ -851,7 +827,10 @@ export class StudentFinancialLaunchesService {
     };
   }
 
-  async create(payload: CreateStudentFinancialLaunchDto) {
+  async create(
+    currentUser: ICurrentUser,
+    payload: CreateStudentFinancialLaunchDto,
+  ) {
     const scope = this.normalizeScope(payload.scope);
     const launchType = this.normalizeLaunchType(payload.launchType);
     const referenceMonth = this.parseReferenceMonth(payload.referenceMonth);
@@ -890,7 +869,7 @@ export class StudentFinancialLaunchesService {
       activeSchoolYear,
     ] = await Promise.all([
       this.resolveTarget(scope, payload),
-      this.findTenantIdentity(),
+      this.findTenantIdentity(currentUser),
       this.activeSchoolYear(),
     ]);
 
@@ -966,7 +945,7 @@ export class StudentFinancialLaunchesService {
 
     const existingBusinessKeys = new Set(
       (
-        await this.financeiroService.existingBusinessKeys({
+        await this.financeiroService.existingBusinessKeys(currentUser, {
           ...this.financeFilters(),
           businessKeys: [...businessKeyMap.values()],
         })
@@ -1141,7 +1120,7 @@ export class StudentFinancialLaunchesService {
       ),
     );
 
-    const importResult = await this.financeiroService.importReceivables({
+    const importResult = await this.financeiroService.importReceivables(currentUser, {
       requestedBy: this.userId(),
       companyName: tenant.name,
       companyDocument: tenant.document || undefined,
@@ -1167,6 +1146,7 @@ export class StudentFinancialLaunchesService {
 
     const historyBatch = this.mapFinanceBatchToHistoryItem(
       await this.financeiroService.getReceivableBatch(
+        currentUser,
         importResult.batchId,
         this.financeFilters(),
       ),

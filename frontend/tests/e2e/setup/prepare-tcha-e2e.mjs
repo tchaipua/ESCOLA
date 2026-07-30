@@ -9,9 +9,9 @@ const backendDir = path.join(workspaceDir, 'backend');
 const backendPrismaDir = path.join(backendDir, 'prisma');
 const artifactsDir = path.join(frontendDir, 'tests', 'e2e', '.artifacts');
 const outputPath = path.join(artifactsDir, 'tcha-e2e-state.json');
-const templateDatabasePath = path.join(backendPrismaDir, 'tmp-test.db');
 const tempDatabaseBasename = 'tmp-e2e.db';
 const tempDatabaseUrl = `file:./${tempDatabaseBasename}`;
+const frontendPort = Number(process.env.TCHA_E2E_FRONTEND_PORT || 3000);
 
 function resolveCommand(command) {
   return process.platform === 'win32' ? `${command}.cmd` : command;
@@ -81,25 +81,17 @@ removeIfExists(`${databasePath}-journal`);
 removeIfExists(`${databasePath}-wal`);
 removeIfExists(`${databasePath}-shm`);
 removeIfExists(outputPath);
-
-if (!fs.existsSync(templateDatabasePath)) {
-  throw new Error(
-    `[TCHA E2E PREP] Base de template não encontrada em ${templateDatabasePath}.`,
-  );
-}
-
-fs.copyFileSync(templateDatabasePath, databasePath);
+fs.closeSync(fs.openSync(databasePath, 'wx'));
 
 const backendEnv = {
   ...process.env,
   DATABASE_URL: tempDatabaseUrl,
-  FRONTEND_URL: 'http://127.0.0.1:3000',
+  FRONTEND_URL: `http://127.0.0.1:${frontendPort}`,
+  NODE_ENV: 'development',
   PORT: '3001',
 };
 
-console.log('[TCHA E2E PREP] Base limpa copiada para tmp-e2e.db...');
-
-console.log('[TCHA E2E PREP] Sincronizando schema Prisma na base temporária...');
+console.log('[TCHA E2E PREP] Criando base temporária limpa a partir do schema Prisma...');
 runCommand(
   'npx',
   ['prisma', 'db', 'push', '--skip-generate'],
@@ -134,7 +126,7 @@ const state = {
   tenantName: smokeSummary.tenantName || 'TCHA',
   admin: {
     email: 'ADMIN.TCHA@MSINFOR.COM',
-    password: 'Admin001',
+    password: 'TchaAdmin#2026',
   },
   teacher: {
     email: smokeSummary.simulatedUsers?.teacher || 'PROF001.TCHA@MSINFOR.COM',

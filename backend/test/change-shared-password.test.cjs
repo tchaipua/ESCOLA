@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const bcrypt = require("bcrypt");
 
+process.env.MSINFOR_CENTRAL_IDENTITY_ENABLED = "false";
+
 const {
   AuthService,
 } = require("../dist/src/modules/auth/application/services/auth.service.js");
@@ -301,20 +303,19 @@ async function testGetOrCreateEmailCredentialFromLegacyCreatesVerifiedCredential
             password: "HASH-OLD",
             updatedAt: new Date("2026-03-01T10:00:00.000Z"),
           },
+          {
+            id: "person-2",
+            email: "PROF@ESCOLA.COM",
+            password: "HASH-NEW",
+            updatedAt: new Date("2026-03-02T10:00:00.000Z"),
+          },
         ],
       },
       user: {
         findMany: async () => [],
       },
       teacher: {
-        findMany: async () => [
-          {
-            id: "teacher-1",
-            email: "PROF@ESCOLA.COM",
-            password: "HASH-NEW",
-            updatedAt: new Date("2026-03-02T10:00:00.000Z"),
-          },
-        ],
+        findMany: async () => [],
       },
       student: {
         findMany: async () => [],

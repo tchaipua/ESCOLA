@@ -137,3 +137,14 @@ Preencha este arquivo quando for trazer um projeto iniciado no Gemini para conti
 - O que já foi feito nesta sessão: li todos os documentos oficiais de `DOCUMENTACAO/AI`, registrei o handoff e preparei o ambiente para receber novas tarefas. Ainda não executei builds ou testes.
 - Pendências/itens urgentes: aguardar direcionamento do próximo requisito funcional, evitar alterações de layout não solicitadas, preservar logs e arquivos no `tmp/` e não tocar nos ajustes já em andamento de dashboards e PWA.
 - Observação: manter as regras imutáveis (multi-tenant por `schoolId`, soft delete em `canceledAt`, auditoria, textos em uppercase exceto senha, login via `VIEWUSUARIOS`) e lembrar de documentar contexto, regra aplicada, arquivos afetados e riscos/pontos pendentes ao finalizar qualquer pequena entrega.
+
+## 13) Handoff Codex - contencao de seguranca (jul 24 2026)
+
+- Contexto: auditoria local identificou autenticacao master deterministica utilizavel pelo navegador, exposicao potencial de segredos em respostas de tenant/filial e artefatos sensiveis versionados.
+- Entregue na Fase 2: algoritmo, flag e sessao master removidos; login/tokens/rotas legadas falham fechados; UI local redireciona ao Central por URL limpa sem token/senha em URL ou storage.
+- Segredos: SMTP, Telegram e S3 usam AES-256-GCM `enc:v1`; `DATA_ENCRYPTION_KEY` de 32 bytes e obrigatoria em producao; startup valida adulteracao e migra texto puro de forma idempotente depois de backup criptografado.
+- Deploy: `Dockerfile.prod` multi-stage/non-root e `docker-compose.prod.yml` com gateway TLS, `start:prod`, read-only, `cap_drop: ALL`, healthchecks, redes separadas e Financeiro sem porta publica. Arquivos `.vps` permanecem apenas como legado de desenvolvimento.
+- Banco: SQLite continua ponte local. Schema e baseline PostgreSQL ficam em `backend/prisma/postgresql`; SQL RLS permanece em `manual-rls` e nao entra no deploy ate identidade Central e contexto transacional estarem prontos.
+- Testes legados: `change-shared-password` foi alinhado ao modelo `Person`; `class-schedule-overlap` recebeu os mocks deterministas de filial/calendario, sem relaxar regras.
+- Validacao: audits completos/producao zerados; backend com 14 testes de seguranca e 32 de negocio/legado; smokes em banco limpo e Playwright standalone 5/5.
+- Pendencias externas: concluir MFA/sessao administrativa no Central; coordenar rewrite do historico Git e rotacao de todas as credenciais potencialmente expostas; validar imagens/Nginx em host Docker e PostgreSQL/RLS em ambiente isolado.

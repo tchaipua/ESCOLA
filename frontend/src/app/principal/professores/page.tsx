@@ -42,7 +42,7 @@ import {
 } from '@/app/lib/dashboard-crud-utils';
 import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRole, PERMISSION_OPTIONS, type AccessProfileCode } from '@/app/lib/access-profiles';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
@@ -131,6 +131,7 @@ type TeacherFormState = {
     cellphone1: string;
     cellphone2: string;
     email: string;
+    password: string;
     telegramChatId: string;
     telegramUsername: string;
     telegramOptInEnabled: boolean;
@@ -956,7 +957,7 @@ export default function ProfessoresPage() {
         branchCode: 1,
         branchAccessCodes: [1],
         name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
-        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
         telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
         zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
         accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
@@ -986,18 +987,15 @@ export default function ProfessoresPage() {
             const [teachersResponse, subjectsResponse, teacherSubjectsResponse, branchesData] = await Promise.all([
                 fetch(`${API_BASE_URL}/teachers`, {
                     headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                        }
                 }),
                 fetch(`${API_BASE_URL}/subjects?activeOnly=1`, {
                     headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                        }
                 }),
                 fetch(`${API_BASE_URL}/teacher-subjects`, {
                     headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                        }
                 }),
                 fetchTenantBranches().catch(() => []),
             ]);
@@ -1177,7 +1175,7 @@ export default function ProfessoresPage() {
             branchCode: currentBranchCode,
             branchAccessCodes: [currentBranchCode],
             name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
-            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
             telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
             zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
             accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
@@ -1252,6 +1250,7 @@ export default function ProfessoresPage() {
             cellphone1: prof.cellphone1 ? limitNumericDigits(prof.cellphone1, 11) : '',
             cellphone2: prof.cellphone2 ? limitNumericDigits(prof.cellphone2, 11) : '',
             email: prof.email || '',
+            password: '',
             telegramChatId: prof.telegramChatId || '',
             telegramUsername: prof.telegramUsername || '',
             telegramOptInEnabled: Boolean(prof.telegramOptInAt && !prof.telegramOptOutAt),
@@ -1809,7 +1808,7 @@ export default function ProfessoresPage() {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
+
                 },
                 body: JSON.stringify({ active: willActivate }),
             });
@@ -1879,8 +1878,7 @@ export default function ProfessoresPage() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                    },
                 body: JSON.stringify(payload)
             });
 
@@ -1916,8 +1914,7 @@ export default function ProfessoresPage() {
             const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+                    }
             });
 
             const data = await response.json().catch(() => null);
@@ -1977,8 +1974,7 @@ export default function ProfessoresPage() {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                    },
                 body: JSON.stringify({
                     hourlyRate: parsedHourlyRate === null ? null : parsedHourlyRate,
                     effectiveFrom,
@@ -2080,6 +2076,9 @@ export default function ProfessoresPage() {
             if (!payload.birthDate) {
                 delete payload.birthDate;
             }
+            if (!payload.password) {
+                delete payload.password;
+            }
 
             if (payload.cpf) payload.cpf = formatCpf(String(payload.cpf));
             if (payload.cnpj) payload.cnpj = formatCnpj(String(payload.cnpj));
@@ -2093,8 +2092,7 @@ export default function ProfessoresPage() {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                    },
                 body: JSON.stringify(payload)
             });
 
@@ -3027,6 +3025,18 @@ export default function ProfessoresPage() {
                                                     onBlur={() => void handleTeacherEmailBlur()}
                                                     className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
                                                     placeholder="Apenas para acessar o portal"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Senha de acesso PWA</label>
+                                                <input
+                                                    type="password"
+                                                    value={formData.password}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, password: e.target.value }))}
+                                                    minLength={4}
+                                                    autoComplete="new-password"
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder={editingTeacherId ? 'Preencha somente para trocar a senha' : 'Defina a senha do professor'}
                                                 />
                                             </div>
                                             <div>

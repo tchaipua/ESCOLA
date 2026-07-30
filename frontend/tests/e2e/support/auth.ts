@@ -4,7 +4,13 @@ export async function login(page: Page, email: string, password: string) {
   await page.goto('/');
   await page.getByPlaceholder('Usuário').fill(email);
   await page.getByPlaceholder('Senha').fill(password);
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes('/api/v1/auth/login'),
+  );
   await page.getByRole('button', { name: 'ACESSAR' }).click();
+  return loginResponse;
 }
 
 export async function expectRolePage(page: Page, route: string) {

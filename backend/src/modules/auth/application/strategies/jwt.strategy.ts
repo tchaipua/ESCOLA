@@ -5,25 +5,34 @@ import { PrismaService } from "../../../../prisma/prisma.service";
 import { deserializePermissions } from "../../../../common/auth/user-permissions";
 import { resolveAccountPermissions } from "../../../../common/auth/access-profiles";
 import {
-  MASTER_PERMISSIONS,
-  MASTER_ROLE,
-  MASTER_TENANT_ID,
-  MASTER_USER_ID,
-} from "../../../../common/auth/master-auth";
-import {
   DEFAULT_BRANCH_CODE,
   getVisibleBranchCodes,
   normalizeBranchCode,
   SHARED_BRANCH_CODE,
 } from "../../../../common/tenant/branch.constants";
+import { getJwtSecret } from "../../../../common/security/security-config";
+import {
+  getSessionCookieName,
+  readCookieValue,
+} from "../../../../common/security/financeiro-session";
+
+export function extractSessionCookieJwt(request: any) {
+  const sessionCookie = readCookieValue(
+    request?.headers?.cookie,
+    getSessionCookieName(),
+  );
+  if (!sessionCookie) return null;
+  request.msinforAuthTransport = "cookie";
+  return sessionCookie;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly prisma: PrismaService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([extractSessionCookieJwt]),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || "super-secret-escolar-key-2026",
+      secretOrKey: getJwtSecret(),
     });
   }
 
@@ -36,38 +45,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ).getUnscopedClient?.() || this.prisma;
 
     if (
-      payload?.isMaster &&
-      payload.userId === MASTER_USER_ID &&
-      payload.role === MASTER_ROLE
+      payload?.isMaster ||
+      payload?.modelType === "master" ||
+      payload?.userId === "MSINFOR-MASTER"
     ) {
-      return {
-        userId: MASTER_USER_ID,
-        tenantId:
-          typeof payload.tenantId === "string" && payload.tenantId.trim()
-            ? payload.tenantId
-            : MASTER_TENANT_ID,
-        branchCode: normalizeBranchCode(
-          payload.branchCode,
-          DEFAULT_BRANCH_CODE,
-        ),
-        role: MASTER_ROLE,
-        permissions: Array.isArray(payload.permissions)
-          ? payload.permissions
-          : MASTER_PERMISSIONS,
-        branchAccessCodes: Array.isArray(payload.branchAccessCodes)
-          ? payload.branchAccessCodes
-          : [],
-        canAccessAllBranches: true,
-        email:
-          typeof payload.email === "string" && payload.email.trim()
-            ? payload.email
-            : "MSINFOR",
-        modelType: "master",
-        isMaster: true,
-      };
+      throw new UnauthorizedException(
+        "Sessão administrativa legada não é aceita.",
+      );
     }
 
-    if (!payload.userId || !payload.tenantId || !payload.role) {
+    if (
+      !payload.userId ||
+      !payload.tenantId ||
+      !payload.role ||
+      !["user", "teacher", "student", "guardian"].includes(
+        payload.modelType,
+      ) ||
+      !/^[A-Za-z0-9_-]{43}$/.test(String(payload.jti || ""))
+    ) {
       throw new UnauthorizedException(
         "Formato do Token JWT inválido ou adulterado",
       );
@@ -78,7 +73,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       DEFAULT_BRANCH_CODE,
     );
 
-    const [user, teacher, student, guardian] = await Promise.all([
+    const [authSession, user, teacher, student, guardian] = await Promise.all([
+      prismaClient.authSession.findFirst({
+        where: {
+          jti: payload.jti,
+          tenantId: payload.tenantId,
+          userId: payload.userId,
+          modelType: payload.modelType,
+          branchCode: requestedBranchCode,
+          canceledAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: {
+          jti: true,
+          identityProvider: true,
+        },
+      }),
       prismaClient.user.findFirst({
         where: {
           id: payload.userId,
@@ -89,6 +99,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           id: true,
           tenantId: true,
           branchCode: true,
+          name: true,
           role: true,
           accessProfile: true,
           complementaryProfiles: true,
@@ -114,7 +125,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           branchCode: true,
           accessProfile: true,
           permissions: true,
-          person: { select: { email: true } },
+          person: { select: { name: true, email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -134,7 +145,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           branchCode: true,
           accessProfile: true,
           permissions: true,
-          person: { select: { email: true } },
+          person: { select: { name: true, email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -154,7 +165,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           branchCode: true,
           accessProfile: true,
           permissions: true,
-          person: { select: { email: true } },
+          person: { select: { name: true, email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -163,6 +174,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         },
       }),
     ]);
+
+    if (!authSession) {
+      throw new UnauthorizedException(
+        "Sessão expirada, revogada ou inexistente.",
+      );
+    }
 
     const account = user || teacher || student || guardian;
     const modelType = user
@@ -177,6 +194,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!account) {
       throw new UnauthorizedException("Acesso negado: Perfil inexistente");
+    }
+    if (modelType !== payload.modelType) {
+      throw new UnauthorizedException(
+        "Tipo de conta da sessão não corresponde ao cadastro.",
+      );
     }
 
     const canAccessAllBranches = Boolean(
@@ -234,11 +256,25 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
     }
 
+    const validatedRole = user
+      ? user.role
+      : teacher
+        ? "PROFESSOR"
+        : student
+          ? "ALUNO"
+          : "RESPONSAVEL";
+    const validatedName = user
+      ? user.name
+      : "person" in account
+        ? account.person?.name
+        : null;
+
     return {
       userId: payload.userId,
       tenantId: payload.tenantId,
       branchCode: requestedBranchCode,
-      role: payload.role,
+      role: validatedRole,
+      name: validatedName || null,
       email:
         user && typeof user.email === "string" && user.email.trim()
           ? user.email
@@ -270,6 +306,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       branchAccessCodes,
       canAccessAllBranches,
       isMaster: false,
+      sessionJti: authSession.jti,
+      identityProvider:
+        authSession.identityProvider === "MSINFOR_CENTRAL"
+          ? "MSINFOR_CENTRAL"
+          : "LOCAL",
     };
   }
 }

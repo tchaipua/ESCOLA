@@ -7,7 +7,7 @@ import {
   Patch,
   Post,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Permissions } from "../../../../common/decorators/permissions.decorator";
 import { Roles } from "../../../../common/decorators/roles.decorator";
 import {
@@ -19,7 +19,6 @@ import { CreateClassScheduleItemDto } from "../../application/dto/create-class-s
 import { UpdateClassScheduleItemDto } from "../../application/dto/update-class-schedule-item.dto";
 import { ClassScheduleItemsService } from "../../application/services/class-schedule-items.service";
 
-@ApiBearerAuth()
 @ApiTags("Grade Horária Planejada")
 @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
 @Controller("class-schedule-items")

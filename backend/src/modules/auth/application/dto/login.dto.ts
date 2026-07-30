@@ -1,28 +1,32 @@
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 
 export class LoginDto {
-  @ApiProperty({ description: "Email do usuário ou login master" })
+  @ApiProperty({ description: "E-mail ou identificador do usuário" })
   @IsString()
   @IsNotEmpty({ message: "O usuário é obrigatório" })
   email!: string;
 
-  @ApiProperty({ description: "Senha super secreta" })
+  @ApiProperty({ description: "Senha do usuário" })
   @IsString()
   @IsNotEmpty({ message: "A senha é obrigatória" })
   password!: string;
 
   @ApiProperty({
-    description: "ID do Inquilino (SaaS) - Opcional para Admin Master",
+    description:
+      "ID do inquilino, usado quando o usuário possui vínculo com mais de uma empresa",
+    required: false,
   })
-  @IsString()
+  @IsUUID()
   @IsOptional()
   tenantId?: string;
 
@@ -52,4 +56,13 @@ export class LoginDto {
   @IsString()
   @IsOptional()
   accountType?: string;
+
+  @ApiProperty({
+    description: "Mantém o cookie de sessão após fechar o navegador",
+    required: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  rememberMe?: boolean;
 }

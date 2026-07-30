@@ -1,0 +1,3374 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { getStoredToken } from '@/app/lib/auth-storage';
+import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
+import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
+import GridExportModal from '@/app/components/grid-export-modal';
+import GridRecordPopover from '@/app/components/grid-record-popover';
+import GridRowActionIconButton from '@/app/components/grid-row-action-icon-button';
+import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
+import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
+import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
+import PrincipalProgramHeader from '@/app/components/principal-program-header';
+import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
+import GridStatusFilter, { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
+import {
+    fetchAddressByCep,
+    fetchEmailUsageByEmail,
+    fetchSharedPersonNameSuggestions,
+    fetchSharedPersonProfileByCpf,
+    fetchSharedPersonProfileByEmail,
+    fetchTenantBranches,
+    formatCepInput,
+    formatCnpj,
+    formatCnpjInput,
+    formatCpf,
+    formatCpfInput,
+    formatPhone,
+    formatPhoneInput,
+    getAllowedDashboardFields,
+    getDashboardAuthContext,
+    hasAllDashboardPermissions,
+    hasDashboardPermission,
+    isValidCnpj,
+    mergeSharedPersonIntoForm,
+    normalizeCnpj,
+    normalizeDocumentDigits,
+    type EmailUsageRecord,
+    type SharedNameSuggestion,
+    type TenantBranchSummary,
+} from '@/app/lib/dashboard-crud-utils';
+import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRole, PERMISSION_OPTIONS, type AccessProfileCode } from '@/app/lib/access-profiles';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
+import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { showErrorMessage, showSuccessMessage } from '@/app/components/system-message-provider';
+import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
+const PROFESSORES_SCREEN_ID = 'PRINCIPAL_PROFESSORES';
+const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
+const PROFESSORES_DETAIL_COPY_SCREEN_ID = 'PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO';
+const PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_EMAIL_USAGE_MODAL';
+const PROFESSORES_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_PROFESSORES_POPUP_CPF_CONFLICT';
+const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
+
+type SubjectRecord = {
+    id: string;
+    name: string;
+    canceledAt?: string | null;
+};
+
+type TeacherSubjectAssignment = {
+    id: string;
+    subjectId: string;
+    hourlyRate?: number | null;
+    rateHistories?: Array<{
+        id: string;
+        hourlyRate?: number | null;
+        effectiveFrom: string;
+        effectiveTo?: string | null;
+    }>;
+    subject?: {
+        id: string;
+        name: string;
+    } | null;
+};
+
+type TeacherRecord = {
+    id: string;
+    branchCode?: number | null;
+    branchAccessCodes?: number[] | null;
+    name: string;
+    canceledAt?: string | null;
+    email?: string | null;
+    telegramChatId?: string | null;
+    telegramUsername?: string | null;
+    telegramOptInAt?: string | null;
+    telegramOptOutAt?: string | null;
+    cpf?: string | null;
+    phone?: string | null;
+    whatsapp?: string | null;
+    rg?: string | null;
+    cnpj?: string | null;
+    nickname?: string | null;
+    corporateName?: string | null;
+    birthDate?: string | null;
+    cellphone1?: string | null;
+    cellphone2?: string | null;
+    zipCode?: string | null;
+    street?: string | null;
+    number?: string | null;
+    city?: string | null;
+    state?: string | null;
+    neighborhood?: string | null;
+    complement?: string | null;
+    accessProfile?: AccessProfileCode | null;
+    permissions?: string[];
+    teacherSubjects?: TeacherSubjectAssignment[];
+};
+
+type DisciplineBadgeTone = {
+    chip: string;
+    dot: string;
+};
+
+type TeacherFormState = {
+    branchCode: number;
+    branchAccessCodes: number[];
+    name: string;
+    rg: string;
+    cpf: string;
+    cnpj: string;
+    nickname: string;
+    corporateName: string;
+    birthDate: string;
+    phone: string;
+    whatsapp: string;
+    cellphone1: string;
+    cellphone2: string;
+    email: string;
+    telegramChatId: string;
+    telegramUsername: string;
+    telegramOptInEnabled: boolean;
+    zipCode: string;
+    street: string;
+    number: string;
+    city: string;
+    state: string;
+    neighborhood: string;
+    complement: string;
+    accessProfile: AccessProfileCode;
+    permissions: string[];
+};
+
+type ExistingCpfAlert = {
+    name: string;
+    roles: string[];
+};
+
+type EmailUsageAlert = {
+    email: string;
+    usages: EmailUsageRecord[];
+    currentTenantId: string | null;
+    currentTenantName: string;
+};
+
+function buildTeacherSubjectAssignmentsMap(rawData: unknown): Record<string, TeacherSubjectAssignment[]> {
+    if (!Array.isArray(rawData)) {
+        return {};
+    }
+
+    return rawData.reduce<Record<string, TeacherSubjectAssignment[]>>((accumulator, entry) => {
+        if (!entry || typeof entry !== 'object') return accumulator;
+
+        const entryRecord = entry as Record<string, unknown>;
+        const teacherId = typeof entryRecord.teacherId === 'string'
+            ? entryRecord.teacherId
+            : null;
+        const assignmentId = typeof entryRecord.id === 'string'
+            ? entryRecord.id
+            : null;
+        const subjectId = typeof entryRecord.subjectId === 'string'
+            ? entryRecord.subjectId
+            : null;
+
+        if (!teacherId || !assignmentId || !subjectId) return accumulator;
+
+        const subjectData = entryRecord.subject;
+        const subjectRecord =
+            subjectData && typeof subjectData === 'object'
+                ? (subjectData as Record<string, unknown>)
+                : null;
+        const normalizedSubject: SubjectRecord | null = subjectData && typeof subjectData === 'object'
+            ? {
+                id: typeof subjectRecord?.id === 'string'
+                    ? subjectRecord.id
+                    : subjectId,
+                name: typeof subjectRecord?.name === 'string'
+                    ? subjectRecord.name
+                    : 'DISCIPLINA',
+                canceledAt: typeof subjectRecord?.canceledAt === 'string'
+                    ? subjectRecord.canceledAt
+                    : undefined,
+            }
+            : null;
+
+        const normalizedAssignment: TeacherSubjectAssignment = {
+            id: assignmentId,
+            subjectId,
+            hourlyRate: typeof entryRecord.hourlyRate === 'number'
+                ? entryRecord.hourlyRate
+                : null,
+            subject: normalizedSubject,
+        };
+
+        if (!accumulator[teacherId]) {
+            accumulator[teacherId] = [];
+        }
+
+        accumulator[teacherId].push(normalizedAssignment);
+        return accumulator;
+    }, {});
+}
+
+const DEFAULT_TEACHER_PROFILE = getDefaultAccessProfileForRole('PROFESSOR');
+
+type TeacherColumnKey =
+    | 'name'
+    | 'nickname'
+    | 'corporateName'
+    | 'birthDate'
+    | 'cpf'
+    | 'rg'
+    | 'cnpj'
+    | 'contact'
+    | 'email'
+    | 'phone'
+    | 'whatsapp'
+    | 'cellphone1'
+    | 'cellphone2'
+    | 'zipCode'
+    | 'street'
+    | 'number'
+    | 'neighborhood'
+    | 'complement'
+    | 'city'
+    | 'state'
+    | 'cityState'
+    | 'address'
+    | 'pwaStatus'
+    | 'accessProfile';
+
+type TeacherExportColumnKey =
+    | Exclude<TeacherColumnKey, 'subjectsCount'>
+    | 'recordStatus'
+    | 'nickname'
+    | 'corporateName'
+    | 'cnpj'
+    | 'email'
+    | 'cellphone1'
+    | 'cellphone2'
+    | 'zipCode'
+    | 'street'
+    | 'number'
+    | 'neighborhood'
+    | 'complement'
+    | 'city'
+    | 'state'
+    | 'permissions';
+
+type TeacherGridColumnDefinition = GridColumnDefinition<TeacherRecord, TeacherColumnKey> & {
+    align?: 'left' | 'center' | 'right';
+    visibleByDefault?: boolean;
+};
+
+type TeacherColumnFilters = Record<TeacherColumnKey, string>;
+
+const TEACHER_COLUMNS: TeacherGridColumnDefinition[] = [
+    { key: 'name', label: 'Nome oficial', getValue: (row) => row.name || '---', visibleByDefault: true },
+    { key: 'nickname', label: 'Apelido', getValue: (row) => row.nickname || '---', visibleByDefault: false },
+    { key: 'corporateName', label: 'Nome empresarial', getValue: (row) => row.corporateName || '---', visibleByDefault: false },
+    { key: 'birthDate', label: 'Nascimento', getValue: (row) => row.birthDate ? new Date(row.birthDate).toLocaleDateString() : '---', visibleByDefault: false },
+    { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: false },
+    { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
+    { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
+    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.email || row.phone || row.whatsapp || '---', visibleByDefault: false },
+    { key: 'email', label: 'E-mail de login', getValue: (row) => row.email || '---', visibleByDefault: false },
+    { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
+    { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
+    { key: 'cellphone1', label: 'Telefone 1', getValue: (row) => row.cellphone1 || '---', visibleByDefault: false },
+    { key: 'cellphone2', label: 'Telefone 2', getValue: (row) => row.cellphone2 || '---', visibleByDefault: false },
+    { key: 'zipCode', label: 'CEP', getValue: (row) => row.zipCode || '---', visibleByDefault: false },
+    { key: 'street', label: 'Logradouro', getValue: (row) => row.street || '---', visibleByDefault: false },
+    { key: 'number', label: 'Número', getValue: (row) => row.number || '---', visibleByDefault: false },
+    { key: 'neighborhood', label: 'Bairro', getValue: (row) => row.neighborhood || '---', visibleByDefault: false },
+    { key: 'complement', label: 'Complemento', getValue: (row) => row.complement || '---', visibleByDefault: false },
+    { key: 'city', label: 'Cidade', getValue: (row) => row.city || '---', visibleByDefault: false },
+    { key: 'state', label: 'UF', getValue: (row) => row.state || '---', visibleByDefault: false },
+    { key: 'cityState', label: 'Cidade / UF', getValue: (row) => [row.city, row.state].filter(Boolean).join(' / ') || '---', visibleByDefault: false },
+    { key: 'address', label: 'Endereço', getValue: (row) => [row.street, row.number, row.neighborhood].filter(Boolean).join(', ') || '---', visibleByDefault: false },
+    { key: 'pwaStatus', label: 'Status PWA', getValue: (row) => row.email ? 'APP LIBERADO' : 'SEM ACESSO', getSortValue: (row) => row.email ? 1 : 0, align: 'center', visibleByDefault: false },
+    { key: 'accessProfile', label: 'Perfil', getValue: (row) => row.accessProfile ? row.accessProfile.replaceAll('_', ' ') : 'PADRÃO', visibleByDefault: false },
+];
+
+const PERMISSION_LABEL_MAP = PERMISSION_OPTIONS.reduce<Record<string, string>>((accumulator, option) => {
+    accumulator[option.value] = option.label;
+    return accumulator;
+}, {});
+
+function formatTeacherDate(value?: string | null) {
+    return value ? new Date(value).toLocaleDateString() : '---';
+}
+
+function formatTeacherAddress(row: TeacherRecord) {
+    return [row.street, row.number, row.neighborhood].filter(Boolean).join(', ') || '---';
+}
+
+function formatTeacherPermissions(row: TeacherRecord) {
+    const permissionLabels = row.permissions
+        ?.map((permission) => PERMISSION_LABEL_MAP[permission] || permission)
+        .filter(Boolean) || [];
+    return permissionLabels.length ? permissionLabels.join(', ') : '---';
+}
+
+function formatTeacherSubjects(row: TeacherRecord) {
+    const subjects = row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
+        .filter(Boolean) || [];
+    return subjects.length ? subjects.join(' | ') : null;
+}
+
+const DISCIPLINE_BADGE_TONES: DisciplineBadgeTone[] = [
+    { chip: 'bg-emerald-100 text-emerald-800 border-emerald-200', dot: 'bg-emerald-500' },
+    { chip: 'bg-sky-100 text-sky-800 border-sky-200', dot: 'bg-sky-500' },
+    { chip: 'bg-amber-100 text-amber-800 border-amber-200', dot: 'bg-amber-500' },
+    { chip: 'bg-violet-100 text-violet-800 border-violet-200', dot: 'bg-violet-500' },
+    { chip: 'bg-rose-100 text-rose-800 border-rose-200', dot: 'bg-rose-500' },
+    { chip: 'bg-cyan-100 text-cyan-800 border-cyan-200', dot: 'bg-cyan-500' },
+    { chip: 'bg-orange-100 text-orange-800 border-orange-200', dot: 'bg-orange-500' },
+    { chip: 'bg-lime-100 text-lime-800 border-lime-200', dot: 'bg-lime-500' },
+];
+
+function getTeacherSubjectNames(row: TeacherRecord) {
+    return row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
+        .filter(Boolean) || [];
+}
+
+function getTeacherSubjectBadges(row: TeacherRecord) {
+    const subjects = row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name || 'DISCIPLINA')
+        .filter(Boolean);
+    if (!subjects || subjects.length === 0) return [];
+    return subjects.map((subject) => subject.toUpperCase());
+}
+
+function getTeacherSubjects(row: TeacherRecord) {
+    return row.teacherSubjects
+        ?.map((assignment) => assignment.subject?.name)
+        .filter((name): name is string => Boolean(name)) || [];
+}
+
+function buildDisciplineToneMap(disciplineNames: string[]) {
+    return disciplineNames.reduce<Record<string, DisciplineBadgeTone>>((accumulator, disciplineName, index) => {
+        const normalized = normalizeTeacherSubjectName(disciplineName);
+        if (!normalized || accumulator[normalized]) {
+            return accumulator;
+        }
+
+        accumulator[normalized] = DISCIPLINE_BADGE_TONES[index % DISCIPLINE_BADGE_TONES.length];
+        return accumulator;
+    }, {});
+}
+
+function normalizeTeacherSubjectName(value?: string | null) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
+}
+
+function normalizeTeacherGridFilterValue(value?: string | number | null) {
+    return String(value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
+}
+
+function normalizeTeacherGridDigits(value?: string | number | null) {
+    return String(value ?? '').replace(/\D/g, '');
+}
+
+function matchesTeacherGridTextFilter(values: Array<string | number | null | undefined>, filterValue: string) {
+    const normalizedFilter = normalizeTeacherGridFilterValue(filterValue);
+    const filterDigits = normalizeTeacherGridDigits(filterValue);
+
+    if (!normalizedFilter) {
+        return true;
+    }
+
+    return values.some((value) => {
+        const normalizedValue = normalizeTeacherGridFilterValue(value);
+
+        if (normalizedValue.includes(normalizedFilter)) {
+            return true;
+        }
+
+        return Boolean(filterDigits && normalizeTeacherGridDigits(value).includes(filterDigits));
+    });
+}
+
+function getTeacherColumnFilterValues(row: TeacherRecord, columnKey: TeacherColumnKey) {
+    const column = TEACHER_COLUMNS.find((item) => item.key === columnKey);
+    const baseValue = column?.getValue(row) || '';
+
+    if (columnKey === 'name') {
+        return [row.name, row.nickname, formatTeacherSubjects(row) || '', baseValue];
+    }
+
+    if (columnKey === 'contact') {
+        return [row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+    }
+
+    if (columnKey === 'address') {
+        return [row.street, row.number, row.neighborhood, row.complement, row.city, row.state, row.zipCode, baseValue];
+    }
+
+    if (columnKey === 'cityState') {
+        return [row.city, row.state, baseValue];
+    }
+
+    return [baseValue];
+}
+
+function formatTeacherRateHistoryLabel(effectiveFrom?: string | null, effectiveTo?: string | null) {
+    const start = effectiveFrom ? new Date(effectiveFrom).toLocaleDateString() : 'SEM INÍCIO';
+    const end = effectiveTo ? new Date(effectiveTo).toLocaleDateString() : 'ATUAL';
+    return `${start} a ${end}`;
+}
+
+function toDateInputValue(value?: string | null) {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().split('T')[0];
+}
+
+function formatTeacherRateHistoryValue(value?: number | null) {
+    return typeof value === 'number'
+        ? `R$ ${value.toFixed(2).replace('.', ',')}`
+        : 'SEM VALOR';
+}
+
+const TEACHER_EXPORT_COLUMNS: GridColumnDefinition<TeacherRecord, TeacherExportColumnKey>[] = buildExportColumnsFromGridColumns<TeacherRecord, TeacherColumnKey, 'recordStatus' | 'permissions'>(
+    TEACHER_COLUMNS,
+    [
+        { key: 'recordStatus', label: 'Status do cadastro', getValue: (row) => row.canceledAt ? 'INATIVO' : 'ATIVO' },
+        { key: 'permissions', label: 'Permissões específicas', getValue: (row) => formatTeacherPermissions(row) },
+    ],
+);
+
+const ALL_TEACHER_COLUMN_KEYS = TEACHER_COLUMNS.map((column) => column.key);
+const DEFAULT_VISIBLE_TEACHER_COLUMNS = TEACHER_COLUMNS.filter((column) => column.visibleByDefault).map((column) => column.key);
+const EMPTY_TEACHER_COLUMN_FILTERS = ALL_TEACHER_COLUMN_KEYS.reduce<TeacherColumnFilters>((accumulator, key) => {
+    accumulator[key] = '';
+    return accumulator;
+}, {} as TeacherColumnFilters);
+
+function getTeacherGridConfigStorageKey(tenantId: string | null) {
+    return `dashboard:professores:grid-config:nome-oficial:${tenantId || 'default'}`;
+}
+
+function getTeacherExportConfigStorageKey(tenantId: string | null) {
+    return `dashboard:professores:export-config:${tenantId || 'default'}`;
+}
+
+function decodeTokenUserId(token: string) {
+    try {
+        const base64 = token.split('.')[1];
+        if (!base64) return null;
+
+        const normalized = base64.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+        return (JSON.parse(atob(padded)) as { userId?: string }).userId || null;
+    } catch {
+        return null;
+    }
+}
+
+function getTeacherLegacyExportConfigStorageKeys(tenantId: string | null) {
+    if (typeof window === 'undefined') {
+        return [];
+    }
+
+    const token = getStoredToken();
+    const userId = token ? decodeTokenUserId(token) : null;
+    if (!userId) {
+        return [];
+    }
+
+    const normalizedTenantId = tenantId || 'default';
+    return [
+        `grid-export:/dashboard/professores:${normalizedTenantId}:${userId}:exportar-professores`,
+        `grid-export:/dashboard:${normalizedTenantId}:${userId}:exportar-professores`,
+    ];
+}
+
+function normalizeTeacherColumnOrder(order?: string[]) {
+    const validKeys = order?.filter((item): item is TeacherColumnKey => ALL_TEACHER_COLUMN_KEYS.includes(item as TeacherColumnKey)) || [];
+    const missingKeys = ALL_TEACHER_COLUMN_KEYS.filter((key) => !validKeys.includes(key));
+    return [...validKeys, ...missingKeys];
+}
+
+function normalizeHiddenTeacherColumns(hidden?: string[]) {
+    return hidden?.filter((item): item is TeacherColumnKey => ALL_TEACHER_COLUMN_KEYS.includes(item as TeacherColumnKey)) || [];
+}
+
+function readTeacherGridConfig(tenantId: string | null) {
+    if (typeof window === 'undefined') {
+        return {
+            order: normalizeTeacherColumnOrder(DEFAULT_VISIBLE_TEACHER_COLUMNS),
+            hidden: ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)),
+        };
+    }
+
+    try {
+        const rawValue = window.localStorage.getItem(getTeacherGridConfigStorageKey(tenantId));
+        if (!rawValue) {
+            return {
+                order: normalizeTeacherColumnOrder(DEFAULT_VISIBLE_TEACHER_COLUMNS),
+                hidden: ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)),
+            };
+        }
+
+        const parsed = JSON.parse(rawValue) as { order?: string[]; hidden?: string[] };
+        return {
+            order: normalizeTeacherColumnOrder(parsed.order),
+            hidden: normalizeHiddenTeacherColumns(parsed.hidden),
+        };
+    } catch {
+        return {
+            order: normalizeTeacherColumnOrder(DEFAULT_VISIBLE_TEACHER_COLUMNS),
+            hidden: ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)),
+        };
+    }
+}
+
+async function loadTeacherGridConfig(tenantId: string | null) {
+    const localConfig = readTeacherGridConfig(tenantId);
+
+    try {
+        const remoteConfig = await fetchUserPreference<{ order?: string[]; hidden?: string[] }>(getTeacherGridConfigStorageKey(tenantId));
+        if (!remoteConfig) {
+            return localConfig;
+        }
+
+        const normalized = {
+            order: normalizeTeacherColumnOrder(remoteConfig.order),
+            hidden: normalizeHiddenTeacherColumns(remoteConfig.hidden),
+        };
+
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem(getTeacherGridConfigStorageKey(tenantId), JSON.stringify(normalized));
+        }
+
+        return normalized;
+    } catch {
+        return localConfig;
+    }
+}
+
+function writeTeacherGridConfig(tenantId: string | null, order: TeacherColumnKey[], hidden: TeacherColumnKey[]) {
+    if (typeof window === 'undefined') return;
+    const payload = {
+        order: normalizeTeacherColumnOrder(order),
+        hidden: normalizeHiddenTeacherColumns(hidden),
+    };
+    window.localStorage.setItem(getTeacherGridConfigStorageKey(tenantId), JSON.stringify(payload));
+    void saveUserPreference(getTeacherGridConfigStorageKey(tenantId), payload).catch(() => undefined);
+}
+
+function normalizeSystemRoleLabel(role: string) {
+    const key = String(role || '').toUpperCase().trim();
+    if (!key) return null;
+    if (key === 'TEACHER' || key === 'PROFESSOR') return 'PROFESSOR';
+    if (key === 'STUDENT' || key === 'ALUNO') return 'ALUNO';
+    if (key === 'GUARDIAN' || key === 'RESPONSAVEL') return 'RESPONSAVEL';
+    if (['ADMIN', 'ADMINISTRADOR', 'SCHOOL_ADMIN', 'TENANT_ADMIN', 'ADMIN_ESCOLA'].includes(key)) return 'ADMINISTRADOR';
+    if (key === 'SECRETARIA') return 'SECRETARIA';
+    if (key === 'COORDENACAO') return 'COORDENACAO';
+    if (key === 'USUARIO_ESCOLA' || key === 'USER') return 'ADMINISTRATIVO';
+    return key.replaceAll('_', ' ');
+}
+
+function buildSystemRoleBadges(roles?: string[]) {
+    const normalizedRoles = (roles || [])
+        .map((role) => normalizeSystemRoleLabel(role))
+        .filter((role): role is string => Boolean(role));
+
+    if (!normalizedRoles.includes('PROFESSOR')) {
+        normalizedRoles.unshift('PROFESSOR');
+    }
+
+    return Array.from(new Set(normalizedRoles));
+}
+
+function buildDetectedRoleBadges(roles?: string[]) {
+    return Array.from(new Set((roles || [])
+        .map((role) => normalizeSystemRoleLabel(role))
+        .filter((role): role is string => Boolean(role))));
+}
+
+const DEFAULT_SORT: GridSortState<TeacherColumnKey> = {
+    column: 'name',
+    direction: 'asc',
+};
+
+type ProfessoresAuditParams = {
+    schoolId: string | null;
+    schoolName?: string | null;
+    searchTerm: string;
+    statusFilter: GridStatusFilterValue;
+    subjectFilter: string;
+    sortColumn: TeacherColumnKey;
+    sortDirection: GridSortState<TeacherColumnKey>['direction'];
+    rowsCount: number;
+};
+
+function toSqlLiteral(value: string) {
+    return `'${String(value || '').replace(/'/g, "''")}'`;
+}
+
+function buildProfessoresAuditSql({
+    schoolId,
+    searchTerm,
+    statusFilter,
+    subjectFilter,
+    sortColumn,
+    sortDirection,
+}: ProfessoresAuditParams) {
+    const currentSearchTerm = searchTerm.trim().toUpperCase();
+    const currentStatusFilter = String(statusFilter || 'ACTIVE').toUpperCase();
+    const currentSubjectFilter = subjectFilter.trim().toUpperCase() || 'ALL';
+    const schoolLiteral = schoolId ? toSqlLiteral(schoolId) : ':schoolId';
+    const searchLiteral = toSqlLiteral(currentSearchTerm);
+    const statusLiteral = toSqlLiteral(currentStatusFilter);
+    const subjectLiteral = toSqlLiteral(currentSubjectFilter);
+    const orderColumnByGridColumn: Record<TeacherColumnKey, string> = {
+        name: 'T.name',
+        nickname: 'T.nickname',
+        corporateName: 'T.corporateName',
+        birthDate: 'T.birthDate',
+        cpf: 'T.cpf',
+        rg: 'T.rg',
+        cnpj: 'T.cnpj',
+        contact: 'T.name',
+        email: 'T.email',
+        phone: 'T.phone',
+        whatsapp: 'T.whatsapp',
+        cellphone1: 'T.cellphone1',
+        cellphone2: 'T.cellphone2',
+        zipCode: 'T.zipCode',
+        street: 'T.street',
+        number: 'T.number',
+        neighborhood: 'T.neighborhood',
+        complement: 'T.complement',
+        city: 'T.city',
+        state: 'T.state',
+        cityState: 'T.city',
+        address: 'T.street',
+        accessProfile: 'T.accessProfile',
+        pwaStatus: 'T.email',
+    };
+    const orderColumn = orderColumnByGridColumn[sortColumn] || 'T.name';
+    const orderDirection = sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    return `-- PARAMETROS ATUAIS DO GRID
+-- :schoolId = ${schoolId ? schoolLiteral : 'NAO IDENTIFICADO'}
+-- :searchTerm = ${searchLiteral}
+-- :statusFilter = ${statusLiteral}
+-- :subjectFilter = ${subjectLiteral}
+
+SELECT DISTINCT T.*
+FROM teachers T
+LEFT JOIN teacher_subjects TS
+  ON TS.teacherId = T.id
+ AND TS.tenantId = T.tenantId
+ AND TS.canceledAt IS NULL
+LEFT JOIN subjects S
+  ON S.id = TS.subjectId
+ AND S.tenantId = TS.tenantId
+ AND S.canceledAt IS NULL
+WHERE T.tenantId = ${schoolLiteral}
+  AND (
+    ${searchLiteral} = ''
+    OR UPPER(COALESCE(T.name, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.email, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.cpf, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.phone, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+    OR UPPER(COALESCE(T.whatsapp, '')) LIKE '%' || UPPER(${searchLiteral}) || '%'
+  )
+  AND (
+    ${statusLiteral} = 'ALL'
+    OR (${statusLiteral} = 'ACTIVE' AND T.canceledAt IS NULL)
+    OR (${statusLiteral} = 'INACTIVE' AND T.canceledAt IS NOT NULL)
+  )
+  AND (
+    ${subjectLiteral} = 'ALL'
+    OR UPPER(COALESCE(S.name, '')) = UPPER(${subjectLiteral})
+  )
+ORDER BY T.canceledAt ASC, ${orderColumn} ${orderDirection};`;
+}
+
+function buildProfessoresAuditText(params: ProfessoresAuditParams) {
+    const currentSchoolId = params.schoolId || 'NAO IDENTIFICADO';
+    const currentSchoolLabel = params.schoolName ? `${currentSchoolId} (${params.schoolName})` : currentSchoolId;
+    const currentSearchTerm = params.searchTerm.trim().toUpperCase();
+    const currentStatusFilter = String(params.statusFilter || 'ACTIVE').toUpperCase();
+    const currentSubjectFilter = params.subjectFilter.trim().toUpperCase() || 'ALL';
+    const sqlText = buildProfessoresAuditSql(params);
+
+    return `--- LOGICA DA TELA ---
+Tela de grid/listagem administrativa para manutenção do papel de professor.
+
+TABELAS PRINCIPAIS:
+- teachers (T) - cadastro operacional de professores
+- subjects (S) - cadastro de disciplinas da escola
+- teacher_subjects (TS) - vinculo entre professor e disciplina
+
+RELACIONAMENTOS:
+- teachers.id = teacher_subjects.teacherId
+- subjects.id = teacher_subjects.subjectId
+
+FILTROS APLICADOS AGORA:
+- escola/tenant atual (:schoolId): ${currentSchoolLabel}
+- busca digitada (:searchTerm): ${currentSearchTerm || 'VAZIO'}
+- status selecionado (:statusFilter): ${currentStatusFilter}
+- disciplina selecionada (:subjectFilter): ${currentSubjectFilter}
+- registros exibidos apos os filtros: ${params.rowsCount}
+- ordenacao atual: ${params.sortColumn} ${params.sortDirection.toUpperCase()}
+
+SQL EQUIVALENTE DOS FILTROS DA TELA:
+${sqlText}
+
+OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
+- T.tenantId e a coluna usada para isolar os dados da empresa / escola
+- :schoolId acima ja esta preenchido com o tenantId real da escola logada
+- os demais parametros acima refletem os filtros visiveis aplicados no grid`;
+}
+
+export default function ProfessoresPage() {
+    const [professores, setProfessores] = useState<TeacherRecord[]>([]);
+    const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [errorStatus, setErrorStatus] = useState<string | null>(null);
+    const [successStatus, setSuccessStatus] = useState<string | null>(null);
+    const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
+    const [activeTab, setActiveTab] = useState(1);
+    const [saveError, setSaveErrorState] = useState<string | null>(null);
+    const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
+    const [currentRole, setCurrentRole] = useState<string | null>(null);
+    const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
+    const [currentBranchCode, setCurrentBranchCode] = useState(1);
+    const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
+    const setSaveError = (message: string | null) => {
+        setSaveErrorState(null);
+        if (message) showErrorMessage(message);
+    };
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedSubjectFilter, setSelectedSubjectFilter] = useState('ALL');
+    const [selectedTeacherForSubjects, setSelectedTeacherForSubjects] = useState<TeacherRecord | null>(null);
+    const [selectedSubjectIdForTeacher, setSelectedSubjectIdForTeacher] = useState('');
+    const [hourlyRateForTeacher, setHourlyRateForTeacher] = useState('');
+    const [effectiveFromForTeacher, setEffectiveFromForTeacher] = useState('');
+    const [isAssigningSubject, setIsAssigningSubject] = useState(false);
+    const [removingAssignmentKey, setRemovingAssignmentKey] = useState<string | null>(null);
+    const [updatingAssignmentKey, setUpdatingAssignmentKey] = useState<string | null>(null);
+    const [editingHourlyRateBySubject, setEditingHourlyRateBySubject] = useState<Record<string, string>>({});
+    const [editingEffectiveFromBySubject, setEditingEffectiveFromBySubject] = useState<Record<string, string>>({});
+    const [sortState, setSortState] = useState<GridSortState<TeacherColumnKey>>(DEFAULT_SORT);
+    const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isGridConfigOpen, setIsGridConfigOpen] = useState(false);
+    const [isGridConfigReady, setIsGridConfigReady] = useState(false);
+    const [exportFormat, setExportFormat] = useState<'excel' | 'csv' | 'pdf' | 'json' | 'txt'>('excel');
+    const [exportColumns, setExportColumns] = useState<Record<TeacherExportColumnKey, boolean>>(buildDefaultExportColumns(TEACHER_EXPORT_COLUMNS));
+    const [statusFilter, setStatusFilter] = useState<GridStatusFilterValue>('ACTIVE');
+    const [teacherColumnFilters, setTeacherColumnFilters] = useState<TeacherColumnFilters>(EMPTY_TEACHER_COLUMN_FILTERS);
+    const [teacherColumnFilterDrafts, setTeacherColumnFilterDrafts] = useState<TeacherColumnFilters>(EMPTY_TEACHER_COLUMN_FILTERS);
+    const [activeTeacherFilterColumn, setActiveTeacherFilterColumn] = useState<TeacherColumnKey | null>(null);
+    const [teacherPageSize, setTeacherPageSize] = useState(10);
+    const [teacherPage, setTeacherPage] = useState(1);
+    const [selectedTeacherGridRowId, setSelectedTeacherGridRowId] = useState<string | null>(null);
+    const [columnOrder, setColumnOrder] = useState<TeacherColumnKey[]>(normalizeTeacherColumnOrder(DEFAULT_VISIBLE_TEACHER_COLUMNS));
+    const [hiddenColumns, setHiddenColumns] = useState<TeacherColumnKey[]>(
+        ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)),
+    );
+    const [personSystemRoles, setPersonSystemRoles] = useState<string[]>(['PROFESSOR']);
+    const [nameSuggestions, setNameSuggestions] = useState<SharedNameSuggestion[]>([]);
+    const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+    const [isLoadingNameSuggestions, setIsLoadingNameSuggestions] = useState(false);
+    const [nameSuggestionError, setNameSuggestionError] = useState<string | null>(null);
+    const [debouncedTeacherNameQuery, setDebouncedTeacherNameQuery] = useState('');
+    const [existingCpfAlert, setExistingCpfAlert] = useState<ExistingCpfAlert | null>(null);
+    const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
+    const [originalTeacherEmail, setOriginalTeacherEmail] = useState('');
+    const [originalTeacherCpf, setOriginalTeacherCpf] = useState('');
+    const [teacherCpfConflictAlert, setTeacherCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
+    const [teacherCpfConflictRoles, setTeacherCpfConflictRoles] = useState<string[]>([]);
+    const [teacherStatusToggleTarget, setTeacherStatusToggleTarget] = useState<TeacherRecord | null>(null);
+    const [teacherStatusToggleAction, setTeacherStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
+    const [isProcessingTeacherToggle, setIsProcessingTeacherToggle] = useState(false);
+
+    const canViewTeachers = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']);
+    const canManageTeachers = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_TEACHERS');
+    const canManageTeacherSubjects = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SUBJECTS');
+    const canViewTeacherSubjects = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SUBJECTS');
+    const teacherFieldAccess = getAllowedDashboardFields(currentRole, currentPermissions, {
+        contact: 'VIEW_TEACHER_CONTACT_DATA',
+        academic: 'VIEW_TEACHER_ACADEMIC_DATA',
+        financial: 'VIEW_TEACHER_FINANCIAL_DATA',
+        sensitive: 'VIEW_TEACHER_SENSITIVE_DATA',
+        access: 'VIEW_TEACHER_ACCESS_DATA',
+    });
+    const availableTeacherColumns = useMemo(
+        () => TEACHER_COLUMNS.filter((column) => column.key === 'name'),
+        [],
+    );
+    const availableTeacherExportColumns = useMemo(
+        () => TEACHER_EXPORT_COLUMNS.filter((column) => {
+            if (['cpf', 'rg', 'cnpj'].includes(column.key) && !teacherFieldAccess.sensitive) return false;
+            if (['phone', 'whatsapp', 'cellphone1', 'cellphone2', 'zipCode', 'street', 'number', 'neighborhood', 'complement', 'city', 'state', 'address'].includes(column.key) && !teacherFieldAccess.contact) return false;
+            if (['email', 'accessProfile', 'pwaStatus', 'permissions'].includes(column.key) && !teacherFieldAccess.access) return false;
+            if (column.key === 'contact' && !teacherFieldAccess.contact && !teacherFieldAccess.access) return false;
+            return true;
+        }),
+        [teacherFieldAccess.access, teacherFieldAccess.contact, teacherFieldAccess.sensitive],
+    );
+    const orderedTeacherColumns = useMemo(
+        () => columnOrder.map((key) => availableTeacherColumns.find((column) => column.key === key)).filter((column): column is TeacherGridColumnDefinition => !!column),
+        [availableTeacherColumns, columnOrder],
+    );
+    const teacherExportLegacyStorageKeys = useMemo(
+        () => getTeacherLegacyExportConfigStorageKeys(currentTenantId),
+        [currentTenantId],
+    );
+    const visibleTeacherColumns = useMemo(
+        () => orderedTeacherColumns.filter((column) => !hiddenColumns.includes(column.key)),
+        [hiddenColumns, orderedTeacherColumns],
+    );
+    const todayDateInput = useMemo(() => new Date().toISOString().split('T')[0], []);
+    const currentTenantBranding = useMemo(
+        () => readCachedTenantBranding(currentTenantId),
+        [currentTenantId],
+    );
+    const disciplineOptions = useMemo(() => {
+        const items = new Map<string, string>();
+        professores.forEach((prof) => {
+            getTeacherSubjects(prof).forEach((subjectName) => {
+                const normalized = normalizeTeacherSubjectName(subjectName);
+                if (!normalized || items.has(normalized)) return;
+                items.set(normalized, subjectName);
+            });
+        });
+
+        return Array.from(items.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((left, right) => left.label.localeCompare(right.label, 'pt-BR'));
+    }, [professores]);
+    const disciplineToneMap = useMemo(
+        () => buildDisciplineToneMap(disciplineOptions.map((discipline) => discipline.label)),
+        [disciplineOptions],
+    );
+    const filteredProfessores = useMemo(() => professores.filter((prof) => {
+        const term = searchTerm.trim().toUpperCase();
+        const matchesSearch = !term || [prof.name, prof.email, prof.cpf, prof.phone, prof.whatsapp]
+            .some((value) => String(value || '').toUpperCase().includes(term));
+        const isActive = !prof.canceledAt;
+        const matchesStatus =
+            statusFilter === 'ALL'
+                ? true
+                : statusFilter === 'ACTIVE'
+                    ? isActive
+                    : !isActive;
+        const matchesSubject =
+            selectedSubjectFilter === 'ALL'
+                ? true
+                : getTeacherSubjects(prof).some((subjectName) => normalizeTeacherSubjectName(subjectName) === selectedSubjectFilter);
+        const matchesColumnFilters = ALL_TEACHER_COLUMN_KEYS.every((columnKey) =>
+            matchesTeacherGridTextFilter(
+                getTeacherColumnFilterValues(prof, columnKey),
+                teacherColumnFilters[columnKey],
+            ),
+        );
+
+        return matchesSearch && matchesStatus && matchesSubject && matchesColumnFilters;
+    }), [professores, searchTerm, selectedSubjectFilter, statusFilter, teacherColumnFilters]);
+    const sortedFilteredProfessores = useMemo(
+        () => sortGridRows(filteredProfessores, TEACHER_COLUMNS, sortState),
+        [filteredProfessores, sortState],
+    );
+    const teacherTotalPages = Math.max(1, Math.ceil(sortedFilteredProfessores.length / teacherPageSize));
+    const currentTeacherPage = Math.min(teacherPage, teacherTotalPages);
+    const paginatedProfessores = useMemo(() => {
+        const startIndex = (currentTeacherPage - 1) * teacherPageSize;
+        return sortedFilteredProfessores.slice(startIndex, startIndex + teacherPageSize);
+    }, [currentTeacherPage, sortedFilteredProfessores, teacherPageSize]);
+    const displayedTeachersCount = sortedFilteredProfessores.length;
+    const hasTeacherGridFilters = useMemo(
+        () =>
+            searchTerm.trim() !== ''
+            || selectedSubjectFilter !== 'ALL'
+            || statusFilter !== 'ACTIVE'
+            || Object.values(teacherColumnFilters).some((value) => value.trim() !== '')
+            || sortState.column !== DEFAULT_SORT.column
+            || sortState.direction !== DEFAULT_SORT.direction,
+        [searchTerm, selectedSubjectFilter, sortState.column, sortState.direction, statusFilter, teacherColumnFilters],
+    );
+    const professoresAuditContext = useMemo(() => {
+        const subjectFilterLabel = selectedSubjectFilter === 'ALL'
+            ? 'ALL'
+            : disciplineOptions.find((discipline) => discipline.value === selectedSubjectFilter)?.label || selectedSubjectFilter;
+        const auditParams: ProfessoresAuditParams = {
+            schoolId: currentTenantId,
+            schoolName: currentTenantBranding?.schoolName,
+            searchTerm,
+            statusFilter,
+            subjectFilter: subjectFilterLabel,
+            sortColumn: sortState.column,
+            sortDirection: sortState.direction,
+            rowsCount: displayedTeachersCount,
+        };
+
+        return {
+            auditText: buildProfessoresAuditText(auditParams),
+            sqlText: buildProfessoresAuditSql(auditParams),
+        };
+    }, [currentTenantBranding?.schoolName, currentTenantId, disciplineOptions, displayedTeachersCount, searchTerm, selectedSubjectFilter, sortState.column, sortState.direction, statusFilter]);
+
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('MSINFOR_SCREEN_AUDIT_CONTEXT', {
+            detail: {
+                screenId: PROFESSORES_SCREEN_ID,
+                auditText: professoresAuditContext.auditText,
+                sqlText: professoresAuditContext.sqlText,
+            },
+        }));
+    }, [professoresAuditContext]);
+
+    useEffect(() => {
+        setTeacherPage(1);
+    }, [searchTerm, selectedSubjectFilter, sortState, statusFilter, teacherColumnFilters, teacherPageSize]);
+
+    useEffect(() => {
+        setTeacherPage((current) => Math.min(Math.max(current, 1), teacherTotalPages));
+    }, [teacherTotalPages]);
+
+    // States do Formulário
+    const [formData, setFormData] = useState<TeacherFormState>({
+        branchCode: 1,
+        branchAccessCodes: [1],
+        name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
+        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+        telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
+        zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
+        accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
+    });
+
+    const ensureResponse = async (response: Response, fallback: string) => {
+        if (response.status === 401) {
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+        if (!response.ok) {
+            const errData = await response.json().catch(() => null);
+            throw new Error(errData?.message || fallback);
+        }
+    };
+
+    const fetchProfessores = async () => {
+        try {
+            setIsLoading(true);
+            const { token, role, permissions, tenantId, branchCode } = getDashboardAuthContext();
+            if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
+
+            setCurrentRole(role);
+            setCurrentPermissions(permissions);
+            setCurrentTenantId(tenantId);
+            setCurrentBranchCode(branchCode);
+
+            const [teachersResponse, subjectsResponse, teacherSubjectsResponse, branchesData] = await Promise.all([
+                fetch(`${API_BASE_URL}/teachers`, {
+                    headers: {
+                        }
+                }),
+                fetch(`${API_BASE_URL}/subjects?activeOnly=1`, {
+                    headers: {
+                        }
+                }),
+                fetch(`${API_BASE_URL}/teacher-subjects`, {
+                    headers: {
+                        }
+                }),
+                fetchTenantBranches().catch(() => []),
+            ]);
+
+            await ensureResponse(teachersResponse, 'Falha ao buscar professores');
+            await ensureResponse(subjectsResponse, 'Falha ao buscar disciplinas');
+
+            if (!teacherSubjectsResponse.ok) {
+                console.warn(
+                    'Falha ao buscar vínculos professor x matéria',
+                    teacherSubjectsResponse.status,
+                    teacherSubjectsResponse.statusText,
+                );
+            }
+
+            const [teachersData, subjectsData] = await Promise.all([
+                teachersResponse.json(),
+                subjectsResponse.json(),
+            ]);
+
+            let teacherSubjectsData: unknown[] = [];
+            if (teacherSubjectsResponse.ok) {
+                teacherSubjectsData = await teacherSubjectsResponse.json();
+            }
+            setTenantBranches(Array.isArray(branchesData) ? branchesData : []);
+
+            const teacherSubjectAssignmentsMap = buildTeacherSubjectAssignmentsMap(teacherSubjectsData);
+            const teachersWithSubjects = (teachersData as TeacherRecord[]).map((teacher) => ({
+                ...teacher,
+                teacherSubjects:
+                    Array.isArray(teacher.teacherSubjects) && teacher.teacherSubjects.length > 0
+                        ? teacher.teacherSubjects
+                        : teacherSubjectAssignmentsMap[teacher.id] ?? [],
+            }));
+
+            setProfessores(teachersWithSubjects);
+            setSubjects(
+                Array.isArray(subjectsData)
+                    ? subjectsData.filter((subject: SubjectRecord) => !subject.canceledAt)
+                    : [],
+            );
+            setSelectedTeacherForSubjects((current) => {
+                if (!current) return null;
+                return teachersWithSubjects.find((teacher) => teacher.id === current.id) || null;
+            });
+        } catch (err: any) {
+            console.error(err);
+            setErrorStatus(err.message || 'Não foi possível carregar os professores. Verifique se o backend está rodando.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchProfessores();
+    }, []);
+
+    const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
+        const normalizedCpf = String(cpf || '').replace(/\D/g, '');
+        const normalizedEmail = String(email || '').trim().toUpperCase();
+
+        try {
+            const [cpfProfile, emailProfile] = await Promise.all([
+                normalizedCpf.length === 11 ? fetchSharedPersonProfileByCpf(normalizedCpf) : Promise.resolve(null),
+                normalizedEmail.includes('@') ? fetchSharedPersonProfileByEmail(normalizedEmail) : Promise.resolve(null),
+            ]);
+            setPersonSystemRoles(buildSystemRoleBadges([...(cpfProfile?.roles || []), ...(emailProfile?.roles || [])]));
+        } catch {
+            setPersonSystemRoles(['PROFESSOR']);
+        }
+    };
+
+    useEffect(() => {
+        if (!currentTenantId) return;
+        let isMounted = true;
+        setIsGridConfigReady(false);
+        void loadTeacherGridConfig(currentTenantId).then((config) => {
+            if (!isMounted) return;
+            setColumnOrder(config.order);
+            setHiddenColumns(config.hidden);
+            setIsGridConfigReady(true);
+        });
+        return () => {
+            isMounted = false;
+        };
+    }, [currentTenantId]);
+
+    useEffect(() => {
+        if (!currentTenantId) return;
+        if (!isGridConfigReady) return;
+        writeTeacherGridConfig(currentTenantId, columnOrder, hiddenColumns);
+    }, [columnOrder, currentTenantId, hiddenColumns, isGridConfigReady]);
+
+    useEffect(() => {
+        if (!errorStatus && !successStatus) return;
+        const timer = setTimeout(() => {
+            setErrorStatus(null);
+            setSuccessStatus(null);
+        }, 5000);
+
+        return () => clearTimeout(timer);
+    }, [errorStatus, successStatus]);
+
+    useEffect(() => {
+        if (!isModalOpen || !!editingTeacherId) {
+            setDebouncedTeacherNameQuery('');
+            setNameSuggestionError(null);
+            return;
+        }
+
+        const nameQuery = String(formData.name || '').trim();
+        if (nameQuery.length < 2) {
+            setDebouncedTeacherNameQuery('');
+            setNameSuggestions([]);
+            setShowNameSuggestions(false);
+            setIsLoadingNameSuggestions(false);
+            setNameSuggestionError(null);
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setDebouncedTeacherNameQuery(nameQuery);
+        }, 260);
+
+        return () => window.clearTimeout(timer);
+    }, [editingTeacherId, formData.name, isModalOpen]);
+
+    useEffect(() => {
+        if (!isModalOpen || !!editingTeacherId || !debouncedTeacherNameQuery) return;
+
+        let isActive = true;
+        setIsLoadingNameSuggestions(true);
+        setShowNameSuggestions(true);
+        setNameSuggestionError(null);
+
+        void fetchSharedPersonNameSuggestions(debouncedTeacherNameQuery, 8)
+            .then((remoteSuggestions) => {
+                if (!isActive) return;
+                setNameSuggestions(remoteSuggestions);
+            })
+            .catch((error: unknown) => {
+                if (!isActive) return;
+                setNameSuggestions([]);
+                setNameSuggestionError(error instanceof Error ? error.message : 'Não foi possível carregar sugestões agora.');
+            })
+            .finally(() => {
+                if (!isActive) return;
+                setIsLoadingNameSuggestions(false);
+            });
+
+        return () => {
+            isActive = false;
+        };
+    }, [debouncedTeacherNameQuery, editingTeacherId, isModalOpen]);
+
+    if (!isLoading && !canViewTeachers) {
+        return (
+            <DashboardAccessDenied
+                title="Acesso restrito aos professores"
+                message="Seu perfil não possui permissão para consultar a equipe docente e as disciplinas vinculadas desta escola."
+            />
+        );
+    }
+
+    const openModal = () => {
+        setEditingTeacherId(null);
+        setOriginalTeacherEmail('');
+        setOriginalTeacherCpf('');
+        setActiveTab(1);
+        setSelectedTeacherForSubjects(null);
+        setSelectedSubjectIdForTeacher('');
+        setHourlyRateForTeacher('');
+        setEffectiveFromForTeacher(todayDateInput);
+        setEditingHourlyRateBySubject({});
+        setEditingEffectiveFromBySubject({});
+        setFormData({
+            branchCode: currentBranchCode,
+            branchAccessCodes: [currentBranchCode],
+            name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
+            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+            telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
+            zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
+            accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
+        });
+        setPersonSystemRoles(['PROFESSOR']);
+        setNameSuggestions([]);
+        setShowNameSuggestions(false);
+        setNameSuggestionError(null);
+        setExistingCpfAlert(null);
+        setEmailUsageAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
+        setIsModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setEditingTeacherId(null);
+        setOriginalTeacherEmail('');
+        setOriginalTeacherCpf('');
+        setSelectedTeacherForSubjects(null);
+        setSelectedSubjectIdForTeacher('');
+        setHourlyRateForTeacher('');
+        setEffectiveFromForTeacher(todayDateInput);
+        setEditingHourlyRateBySubject({});
+        setEditingEffectiveFromBySubject({});
+        setPersonSystemRoles(['PROFESSOR']);
+        setNameSuggestions([]);
+        setShowNameSuggestions(false);
+        setNameSuggestionError(null);
+        setExistingCpfAlert(null);
+        setEmailUsageAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
+    };
+
+    const handleEdit = (prof: TeacherRecord) => {
+        setEditingTeacherId(prof.id);
+        setOriginalTeacherEmail(String(prof.email || '').trim().toUpperCase());
+        setOriginalTeacherCpf(prof.cpf ? limitNumericDigits(prof.cpf, 11) : '');
+        setActiveTab(1);
+        setSelectedTeacherForSubjects(prof);
+        setSelectedSubjectIdForTeacher('');
+        setHourlyRateForTeacher('');
+        setEffectiveFromForTeacher(todayDateInput);
+        setEditingHourlyRateBySubject(
+            (prof.teacherSubjects || []).reduce<Record<string, string>>((accumulator, assignment) => {
+                accumulator[assignment.subjectId] = typeof assignment.hourlyRate === 'number'
+                    ? assignment.hourlyRate.toFixed(2).replace('.', ',')
+                    : '';
+                return accumulator;
+            }, {}),
+        );
+        setEditingEffectiveFromBySubject(
+            (prof.teacherSubjects || []).reduce<Record<string, string>>((accumulator, assignment) => {
+                accumulator[assignment.subjectId] = getAssignmentEffectiveFrom(assignment);
+                return accumulator;
+            }, {}),
+        );
+        setFormData({
+            branchCode: typeof prof.branchCode === 'number' ? prof.branchCode : currentBranchCode,
+            branchAccessCodes: resolveBranchAccessSelection(prof, currentBranchCode),
+            name: prof.name || '',
+            rg: prof.rg || '',
+            cpf: prof.cpf ? limitNumericDigits(prof.cpf, 11) : '',
+            cnpj: prof.cnpj ? normalizeCnpj(prof.cnpj) : '',
+            nickname: prof.nickname || '',
+            corporateName: prof.corporateName || '',
+            birthDate: prof.birthDate ? new Date(prof.birthDate).toISOString().split('T')[0] : '',
+            phone: prof.phone ? limitNumericDigits(prof.phone, 11) : '',
+            whatsapp: prof.whatsapp ? limitNumericDigits(prof.whatsapp, 11) : '',
+            cellphone1: prof.cellphone1 ? limitNumericDigits(prof.cellphone1, 11) : '',
+            cellphone2: prof.cellphone2 ? limitNumericDigits(prof.cellphone2, 11) : '',
+            email: prof.email || '',
+            telegramChatId: prof.telegramChatId || '',
+            telegramUsername: prof.telegramUsername || '',
+            telegramOptInEnabled: Boolean(prof.telegramOptInAt && !prof.telegramOptOutAt),
+            zipCode: prof.zipCode ? limitNumericDigits(prof.zipCode, 8) : '',
+            street: prof.street || '',
+            number: prof.number || '',
+            city: prof.city || '',
+            state: prof.state || '',
+            neighborhood: prof.neighborhood || '',
+            complement: prof.complement || '',
+            accessProfile: prof.accessProfile || DEFAULT_TEACHER_PROFILE,
+            permissions: Array.isArray(prof.permissions) && prof.permissions.length > 0 ? prof.permissions : getProfilePermissions(prof.accessProfile || DEFAULT_TEACHER_PROFILE),
+        });
+        setPersonSystemRoles(buildSystemRoleBadges(['PROFESSOR']));
+        setNameSuggestions([]);
+        setShowNameSuggestions(false);
+        setNameSuggestionError(null);
+        setExistingCpfAlert(null);
+        setEmailUsageAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
+        void resolvePersonSystemRoles(prof.cpf, prof.email);
+        setIsModalOpen(true);
+    };
+
+    const handleCpfBlur = async () => {
+        if (!formData.cpf) return;
+
+        const normalizedFormCpf = normalizeDocumentDigits(formData.cpf);
+
+        if (editingTeacherId) {
+            const normalizedOriginalCpf = normalizeDocumentDigits(originalTeacherCpf);
+            if (!normalizedFormCpf || normalizedFormCpf === normalizedOriginalCpf) {
+                setTeacherCpfConflictAlert(null);
+                setTeacherCpfConflictRoles([]);
+                return;
+            }
+
+            try {
+                const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
+                if (!profile) {
+                    setTeacherCpfConflictAlert(null);
+                    setTeacherCpfConflictRoles([]);
+                    return;
+                }
+
+                const profileName = String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase();
+                setTeacherCpfConflictAlert({
+                    name: profileName,
+                    cpf: formatCpf(formData.cpf),
+                });
+                setTeacherCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+                setSaveError(null);
+            } catch (error: any) {
+                setSaveError(error?.message || 'Não foi possível validar o CPF informado.');
+            }
+
+            return;
+        }
+
+        try {
+            const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
+            if (!profile) {
+                setPersonSystemRoles(['PROFESSOR']);
+                setExistingCpfAlert(null);
+                setTeacherCpfConflictAlert(null);
+                setTeacherCpfConflictRoles([]);
+                return;
+            }
+
+            setFormData((current) => (
+                mergeSharedPersonIntoForm(
+                    current as unknown as Record<string, string>,
+                    profile,
+                ) as unknown as TeacherFormState
+            ));
+            const resolvedRoles = buildSystemRoleBadges(profile.roles);
+            const detectedRoles = buildDetectedRoleBadges(profile.roles);
+            setPersonSystemRoles(resolvedRoles);
+            setExistingCpfAlert({
+                name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
+                roles: detectedRoles.length ? detectedRoles : ['CADASTRO BASE'],
+            });
+            setTeacherCpfConflictAlert({
+                name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
+                cpf: formatCpf(formData.cpf),
+            });
+            setTeacherCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+        } catch (error: any) {
+            setSaveError(error?.message || 'Não foi possível reaproveitar os dados deste CPF.');
+            setExistingCpfAlert(null);
+            setTeacherCpfConflictAlert(null);
+            setTeacherCpfConflictRoles([]);
+        }
+    };
+
+    const handleTeacherNameChange = (value: string) => {
+        setFormData((current) => ({ ...current, name: value.toUpperCase() }));
+        if (!editingTeacherId) {
+            setShowNameSuggestions(String(value || '').trim().length >= 2);
+        }
+    };
+
+    const handleTeacherCpfChange = (value: string) => {
+        setFormData((current) => ({ ...current, cpf: limitNumericDigits(value, 11) }));
+        setExistingCpfAlert(null);
+        setTeacherCpfConflictAlert(null);
+        setTeacherCpfConflictRoles([]);
+    };
+
+    const handleTeacherEmailChange = (value: string) => {
+        setFormData((current) => ({ ...current, email: value.toUpperCase() }));
+        setEmailUsageAlert(null);
+    };
+
+    const normalizeTeacherEmail = (value?: string | null) => String(value || '').trim().toUpperCase();
+
+    const resolveTeacherEmailUsageConflicts = async (email: string, showAlert = true) => {
+        const normalizedEmail = normalizeTeacherEmail(email);
+
+        if (!normalizedEmail || !normalizedEmail.includes('@')) {
+            if (showAlert) {
+                setEmailUsageAlert(null);
+            }
+            return [] as EmailUsageRecord[];
+        }
+
+        const normalizedOriginalEmail = normalizeTeacherEmail(originalTeacherEmail);
+        if (editingTeacherId && normalizedEmail === normalizedOriginalEmail) {
+            if (showAlert) {
+                setEmailUsageAlert(null);
+            }
+            return [] as EmailUsageRecord[];
+        }
+
+        const usages = await fetchEmailUsageByEmail(normalizedEmail);
+        const filteredUsages = usages.filter((usage) => {
+            if (!editingTeacherId) return true;
+            return !(usage.entityType === 'TEACHER' && usage.recordId === editingTeacherId);
+        });
+
+        if (filteredUsages.length === 0) {
+            if (showAlert) {
+                setEmailUsageAlert(null);
+            }
+            return [] as EmailUsageRecord[];
+        }
+
+        if (showAlert) {
+            setEmailUsageAlert({
+                email: normalizedEmail,
+                usages: filteredUsages,
+                currentTenantId,
+                currentTenantName: currentTenantBranding?.schoolName || 'ESCOLA LOGADA',
+            });
+        }
+
+        return filteredUsages;
+    };
+
+    const handleTeacherEmailBlur = async () => {
+        const normalizedEmail = String(formData.email || '').trim().toUpperCase();
+
+        if (!normalizedEmail || !normalizedEmail.includes('@')) {
+            setEmailUsageAlert(null);
+            return;
+        }
+
+        try {
+            await resolveTeacherEmailUsageConflicts(normalizedEmail);
+        } catch (error: any) {
+            setEmailUsageAlert(null);
+            setErrorStatus(error?.message || 'Não foi possível consultar o uso deste e-mail.');
+        }
+    };
+
+    const handleTeacherProfileChange = (profileCode: AccessProfileCode) => {
+        setFormData((current) => ({
+            ...current,
+            accessProfile: profileCode,
+            permissions: getProfilePermissions(profileCode),
+        }));
+    };
+
+    const toggleExportColumn = (column: TeacherExportColumnKey) => {
+        setExportColumns((current) => ({ ...current, [column]: !current[column] }));
+    };
+
+    const setAllExportColumns = (value: boolean) => {
+        setExportColumns(
+            availableTeacherExportColumns.reduce<Record<TeacherExportColumnKey, boolean>>((accumulator, column) => {
+                accumulator[column.key] = value;
+                return accumulator;
+            }, {} as Record<TeacherExportColumnKey, boolean>),
+        );
+    };
+
+    const renderTeacherInfoButton = (teacher: TeacherRecord) => (
+        <GridRecordPopover
+            title={teacher.name}
+            subtitle={teacher.birthDate ? `Nascimento: ${formatTeacherDate(teacher.birthDate)}` : 'Docente sem data de nascimento informada'}
+            buttonLabel={`Ver detalhes do professor ${teacher.name}`}
+            modalVariant="school-record-detail"
+            compactFooter
+            buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            badges={[
+                teacher.canceledAt ? 'INATIVO' : 'ATIVO',
+            ]}
+            sections={[
+                {
+                    title: 'Cadastro',
+                    items: [
+                        ...(teacherFieldAccess.sensitive ? [
+                            { label: 'CPF', value: teacher.cpf || 'Não informado' },
+                            { label: 'RG', value: teacher.rg || 'Não informado' },
+                            { label: 'CNPJ', value: teacher.cnpj || 'Não informado' },
+                        ] : []),
+                        { label: 'Apelido', value: teacher.nickname || 'Não informado' },
+                        { label: 'Nome empresarial', value: teacher.corporateName || 'Não informado' },
+                    ],
+                },
+                ...(teacherFieldAccess.contact || teacherFieldAccess.access ? [{
+                    title: 'Contato',
+                    items: [
+                        ...(teacherFieldAccess.access ? [{ label: 'E-mail', value: teacher.email || 'Não informado' }] : []),
+                        ...(teacherFieldAccess.contact ? [
+                            { label: 'Telefone principal', value: teacher.whatsapp || teacher.phone || teacher.cellphone1 || teacher.cellphone2 || 'Não informado' },
+                            { label: 'Telefone 1', value: teacher.cellphone1 || 'Não informado' },
+                            { label: 'Telefone 2', value: teacher.cellphone2 || 'Não informado' },
+                            { label: 'WhatsApp', value: teacher.whatsapp || 'Não informado' },
+                        ] : []),
+                    ],
+                }] : []),
+                ...(teacherFieldAccess.contact ? [{
+                    title: 'Endereço',
+                    items: [
+                        { label: 'Endereço completo', value: formatTeacherAddress(teacher) },
+                        { label: 'Cidade / UF', value: [teacher.city, teacher.state].filter(Boolean).join(' / ') || 'Não informado' },
+                        { label: 'CEP', value: teacher.zipCode || 'Não informado' },
+                        { label: 'Complemento', value: teacher.complement || 'Não informado' },
+                    ],
+                }] : []),
+            ]}
+            disciplines={getTeacherSubjectNames(teacher)}
+            tabs={[
+                { label: 'Cadastro', sectionTitles: ['Cadastro'], showDisciplines: true },
+                { label: 'Contato e endereço', sectionTitles: ['Contato', 'Endereço'] },
+            ]}
+            contextLabel="PRINCIPAL_PROFESSORES_POPUP"
+        />
+    );
+
+    const toggleGridColumnVisibility = (columnKey: TeacherColumnKey) => {
+        const isHidden = hiddenColumns.includes(columnKey);
+        const visibleCount = availableTeacherColumns.filter((column) => !hiddenColumns.includes(column.key)).length;
+
+        if (!isHidden && visibleCount === 1) {
+            setErrorStatus('Pelo menos uma coluna precisa continuar visível no grid.');
+            return;
+        }
+
+        setHiddenColumns((current) =>
+            isHidden ? current.filter((item) => item !== columnKey) : [...current, columnKey],
+        );
+    };
+
+    const moveGridColumn = (columnKey: TeacherColumnKey, direction: 'up' | 'down') => {
+        setColumnOrder((current) => {
+            const currentIndex = current.indexOf(columnKey);
+            if (currentIndex === -1) return current;
+            const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+            if (nextIndex < 0 || nextIndex >= current.length) return current;
+
+            const nextOrder = [...current];
+            const [removed] = nextOrder.splice(currentIndex, 1);
+            nextOrder.splice(nextIndex, 0, removed);
+            return nextOrder;
+        });
+    };
+
+    const resetGridColumns = () => {
+        setColumnOrder(normalizeTeacherColumnOrder(DEFAULT_VISIBLE_TEACHER_COLUMNS));
+        setHiddenColumns(ALL_TEACHER_COLUMN_KEYS.filter((key) => !DEFAULT_VISIBLE_TEACHER_COLUMNS.includes(key)));
+    };
+
+    const clearAllTeacherGridFilters = () => {
+        setSearchTerm('');
+        setSelectedSubjectFilter('ALL');
+        setStatusFilter('ACTIVE');
+        setTeacherColumnFilters({ ...EMPTY_TEACHER_COLUMN_FILTERS });
+        setTeacherColumnFilterDrafts({ ...EMPTY_TEACHER_COLUMN_FILTERS });
+        setSortState(DEFAULT_SORT);
+        setActiveTeacherFilterColumn(null);
+    };
+
+    const openTeacherColumnFilter = (columnKey: TeacherColumnKey | null) => {
+        if (!columnKey) {
+            setActiveTeacherFilterColumn(null);
+            return;
+        }
+
+        setTeacherColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: teacherColumnFilters[columnKey] || '',
+        }));
+        setActiveTeacherFilterColumn(columnKey);
+    };
+
+    const applyTeacherColumnFilter = (columnKey: TeacherColumnKey) => {
+        setTeacherColumnFilters((current) => ({
+            ...current,
+            [columnKey]: teacherColumnFilterDrafts[columnKey] || '',
+        }));
+        setActiveTeacherFilterColumn(null);
+    };
+
+    const clearTeacherColumnFilter = (columnKey: TeacherColumnKey) => {
+        setTeacherColumnFilters((current) => ({
+            ...current,
+            [columnKey]: '',
+        }));
+        setTeacherColumnFilterDrafts((current) => ({
+            ...current,
+            [columnKey]: '',
+        }));
+        setActiveTeacherFilterColumn(null);
+    };
+
+    const handleTeacherColumnFilterKeyDown = (
+        event: KeyboardEvent<HTMLInputElement>,
+        columnKey: TeacherColumnKey,
+    ) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        applyTeacherColumnFilter(columnKey);
+    };
+
+    const renderTeacherClearAllButton = () => (
+        <button
+            type="button"
+            onClick={clearAllTeacherGridFilters}
+            aria-label="Limpar todos os filtros"
+            title="Limpar todos os filtros"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${
+                hasTeacherGridFilters
+                    ? 'border-rose-300 bg-rose-50 text-rose-600 shadow-sm hover:bg-rose-100'
+                    : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300 hover:text-slate-600'
+            }`}
+        >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M4 6h16M7 12h10M10 18h4" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M18 4 6 20" />
+            </svg>
+        </button>
+    );
+
+    const renderTeacherColumnHeader = (column: TeacherGridColumnDefinition) => {
+        const isOpen = activeTeacherFilterColumn === column.key;
+        const isActive = Boolean(teacherColumnFilters[column.key]?.trim()) || sortState.column === column.key;
+        const alignClass =
+            column.align === 'right'
+                ? 'justify-end'
+                : column.align === 'center'
+                    ? 'justify-center'
+                    : 'justify-start';
+
+        return (
+            <div className={`relative flex items-center gap-2 ${alignClass}`}>
+                <span>{column.label}</span>
+                <button
+                    type="button"
+                    onClick={() => openTeacherColumnFilter(isOpen ? null : column.key)}
+                    aria-label={`Filtrar ${column.label}`}
+                    title={`Filtrar ${column.label}`}
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                        isActive || isOpen
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-400 hover:border-blue-200 hover:text-blue-600'
+                    }`}
+                >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7" strokeWidth={1.8} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m20 20-3.5-3.5" />
+                    </svg>
+                </button>
+                {isOpen ? (
+                    <div className={`absolute top-full z-40 mt-2 w-[276px] rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl ${
+                        column.align === 'right' ? 'right-0' : 'left-0'
+                    }`}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                            Ordenar coluna
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'asc' });
+                                    setActiveTeacherFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Crescente
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'desc' });
+                                    setActiveTeacherFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Decrescente
+                            </button>
+                        </div>
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                Filtrar {column.label}
+                            </div>
+                            <input
+                                value={teacherColumnFilterDrafts[column.key] || ''}
+                                onChange={(event) =>
+                                    setTeacherColumnFilterDrafts((current) => ({
+                                        ...current,
+                                        [column.key]: event.target.value.toUpperCase(),
+                                    }))
+                                }
+                                onKeyDown={(event) => handleTeacherColumnFilterKeyDown(event, column.key)}
+                                placeholder="DIGITE O FILTRO"
+                                className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => applyTeacherColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 transition hover:bg-blue-100"
+                            >
+                                Filtrar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => clearTeacherColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Limpar
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
+
+    const renderTeacherGridCell = (prof: TeacherRecord, columnKey: TeacherColumnKey) => {
+        if (columnKey === 'name') {
+            const subjectList = getTeacherSubjects(prof);
+            const teacherName = String(prof.name || 'PROFESSOR SEM NOME');
+
+            return (
+                <td key={columnKey} className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 border ${prof.canceledAt ? 'bg-rose-100 text-rose-700 border-rose-200/50' : 'bg-blue-100 text-blue-700 border-blue-200/50'}`}>
+                            {teacherName.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className={`flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-semibold ${prof.canceledAt ? 'text-rose-800' : 'text-slate-800'}`}>
+                                <span
+                                    className={`inline-flex h-3 w-3 shrink-0 rounded-full ${prof.canceledAt ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                                    title={prof.canceledAt ? 'INATIVO' : 'ATIVO'}
+                                    aria-label={prof.canceledAt ? 'INATIVO' : 'ATIVO'}
+                                    role="img"
+                                />
+                                <span className="min-w-0 max-w-[420px] truncate">{teacherName}</span>
+                                {subjectList.map((subjectName, index) => {
+                                    const normalizedSubjectName = normalizeTeacherSubjectName(subjectName);
+                                    const tone = disciplineToneMap[normalizedSubjectName] || DISCIPLINE_BADGE_TONES[0];
+
+                                    return (
+                                        <span
+                                            key={`${normalizedSubjectName || subjectName}-${index}`}
+                                            title={subjectName}
+                                            className={`inline-flex max-w-[170px] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] ${tone.chip}`}
+                                        >
+                                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${tone.dot}`} />
+                                            <span className="truncate">{subjectName}</span>
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+            );
+        }
+
+        if (columnKey === 'contact') {
+            return (
+                <td key={columnKey} className="px-6 py-4">
+                    <div className={`text-sm font-medium ${prof.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
+                        {teacherFieldAccess.access
+                            ? (prof.email || <span className="text-slate-400 italic">Sem login</span>)
+                            : (teacherFieldAccess.contact ? (prof.whatsapp || prof.phone || prof.cellphone1 || prof.cellphone2 || 'Sem contato') : '---')}
+                    </div>
+                    {teacherFieldAccess.contact ? (
+                        <div className={`text-[13px] mt-0.5 ${prof.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
+                            {prof.phone || prof.whatsapp || prof.cellphone1 || prof.cellphone2 || '---'}
+                        </div>
+                    ) : null}
+                </td>
+            );
+        }
+
+        if (columnKey === 'pwaStatus') {
+            return (
+                <td key={columnKey} className="px-6 py-4 text-center">
+                    {prof.email ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-700 border border-green-200">
+                            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> App Liberado
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            <span className="w-1.5 h-1.5 bg-slate-400 rounded-full"></span> Sem Acesso
+                        </span>
+                    )}
+                </td>
+            );
+        }
+        const value = TEACHER_COLUMNS.find((column) => column.key === columnKey)?.getValue(prof) || '---';
+        return (
+            <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${prof.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>
+                {value}
+            </td>
+        );
+    };
+
+    const openTeacherStatusModal = (teacher: TeacherRecord) => {
+        setTeacherStatusToggleTarget(teacher);
+        setTeacherStatusToggleAction(teacher.canceledAt ? 'activate' : 'deactivate');
+    };
+
+    const closeTeacherStatusModal = (force = false) => {
+        if (!force && isProcessingTeacherToggle) return;
+        setTeacherStatusToggleTarget(null);
+        setTeacherStatusToggleAction(null);
+    };
+
+    const confirmTeacherStatusToggle = async () => {
+        if (!teacherStatusToggleTarget || !teacherStatusToggleAction) return;
+        const willActivate = teacherStatusToggleAction === 'activate';
+
+        try {
+            setIsProcessingTeacherToggle(true);
+            const token = getStoredToken();
+            if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
+
+            const response = await fetch(`${API_BASE_URL}/teachers/${teacherStatusToggleTarget.id}/status`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+
+                },
+                body: JSON.stringify({ active: willActivate }),
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(data?.message || `Não foi possível ${willActivate ? 'ativar' : 'inativar'} o professor.`);
+            }
+
+            setSuccessStatus(data?.message || (willActivate ? 'Professor ativado com sucesso.' : 'Professor inativado com sucesso.'));
+            await fetchProfessores();
+            closeTeacherStatusModal(true);
+        } catch (error: any) {
+            setErrorStatus(error?.message || 'Não foi possível alterar o status do professor.');
+        } finally {
+            setIsProcessingTeacherToggle(false);
+        }
+    };
+
+    const toggleTeacherPermission = (permission: string) => {
+        setFormData((current) => ({
+            ...current,
+            permissions: current.permissions.includes(permission)
+                ? current.permissions.filter((item) => item !== permission)
+                : [...current.permissions, permission],
+        }));
+    };
+
+    const handleAssignSubjectToTeacher = async (event?: React.FormEvent) => {
+        event?.preventDefault();
+        if (!selectedTeacherForSubjects || !canManageTeacherSubjects) return;
+        if (!selectedSubjectIdForTeacher) {
+            setErrorStatus('Selecione uma disciplina para este professor.');
+            return;
+        }
+
+        const alreadyAssigned = selectedTeacherForSubjects.teacherSubjects?.some(
+            (assignment) => assignment.subjectId === selectedSubjectIdForTeacher,
+        );
+
+        if (alreadyAssigned) {
+            setErrorStatus('Esta disciplina já está vinculada a este professor.');
+            return;
+        }
+
+        try {
+            setIsAssigningSubject(true);
+            setErrorStatus(null);
+            const token = getStoredToken();
+            if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
+
+            const payload: { subjectId: string; hourlyRate?: number; effectiveFrom?: string; branchCode?: number } = {
+                subjectId: selectedSubjectIdForTeacher,
+                branchCode: selectedTeacherForSubjects.branchCode ?? currentBranchCode,
+            };
+
+            if (teacherFieldAccess.financial && hourlyRateForTeacher.trim()) {
+                const parsedHourlyRate = Number(hourlyRateForTeacher.replace(',', '.'));
+                if (Number.isNaN(parsedHourlyRate)) {
+                    throw new Error('Informe um valor de hora-aula válido.');
+                }
+                payload.hourlyRate = parsedHourlyRate;
+                payload.effectiveFrom = effectiveFromForTeacher || todayDateInput;
+            }
+
+            const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(data?.message || 'Não foi possível vincular a disciplina ao professor.');
+            }
+
+            setSuccessStatus('Disciplina vinculada ao professor com sucesso.');
+            setSelectedSubjectIdForTeacher('');
+            setHourlyRateForTeacher('');
+            setEffectiveFromForTeacher(todayDateInput);
+            await fetchProfessores();
+        } catch (err: any) {
+            setErrorStatus(err.message || 'Não foi possível vincular a disciplina ao professor.');
+        } finally {
+            setIsAssigningSubject(false);
+        }
+    };
+
+    const handleRemoveTeacherSubject = async (subjectId: string, subjectName: string) => {
+        if (!selectedTeacherForSubjects || !canManageTeacherSubjects) return;
+        const confirmed = window.confirm(`Deseja desvincular a disciplina ${subjectName} deste professor?`);
+        if (!confirmed) return;
+
+        try {
+            const assignmentKey = `${selectedTeacherForSubjects.id}:${subjectId}`;
+            setRemovingAssignmentKey(assignmentKey);
+            setErrorStatus(null);
+            const token = getStoredToken();
+            if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
+
+            const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
+                method: 'DELETE',
+                headers: {
+                    }
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(data?.message || 'Não foi possível desvincular a disciplina do professor.');
+            }
+
+            setSuccessStatus('Disciplina desvinculada com sucesso.');
+            await fetchProfessores();
+        } catch (err: any) {
+            setErrorStatus(err.message || 'Não foi possível desvincular a disciplina do professor.');
+        } finally {
+            setRemovingAssignmentKey(null);
+        }
+    };
+
+    const handleHourlyRateDraftChange = (subjectId: string, value: string) => {
+        setEditingHourlyRateBySubject((current) => ({
+            ...current,
+            [subjectId]: value,
+        }));
+    };
+
+    const handleEffectiveFromDraftChange = (subjectId: string, value: string) => {
+        setEditingEffectiveFromBySubject((current) => ({
+            ...current,
+            [subjectId]: value,
+        }));
+    };
+
+    const handleUpdateTeacherSubject = async (subjectId: string, subjectName: string) => {
+        if (!selectedTeacherForSubjects || !canManageTeacherSubjects || !teacherFieldAccess.financial) return;
+
+        const rawValue = (editingHourlyRateBySubject[subjectId] || '').trim();
+        const normalizedValue = rawValue.replace(',', '.');
+        const parsedHourlyRate = normalizedValue ? Number(normalizedValue) : null;
+        const effectiveFrom = editingEffectiveFromBySubject[subjectId] || todayDateInput;
+
+        if (normalizedValue && Number.isNaN(parsedHourlyRate)) {
+            setErrorStatus(`Informe um valor de hora-aula válido para ${subjectName}.`);
+            return;
+        }
+
+        if (!effectiveFrom) {
+            setErrorStatus(`Informe a data de vigência para ${subjectName}.`);
+            return;
+        }
+
+        try {
+            const assignmentKey = `${selectedTeacherForSubjects.id}:${subjectId}`;
+            setUpdatingAssignmentKey(assignmentKey);
+            setErrorStatus(null);
+            const token = getStoredToken();
+            if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
+
+            const response = await fetch(`${API_BASE_URL}/teachers/${selectedTeacherForSubjects.id}/subjects/${subjectId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    },
+                body: JSON.stringify({
+                    hourlyRate: parsedHourlyRate === null ? null : parsedHourlyRate,
+                    effectiveFrom,
+                })
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(data?.message || 'Não foi possível atualizar a hora-aula da disciplina.');
+            }
+
+            setSuccessStatus(`Hora-aula atualizada para ${subjectName} com vigência em ${new Date(`${effectiveFrom}T00:00:00`).toLocaleDateString()}.`);
+            await fetchProfessores();
+        } catch (err: any) {
+            setErrorStatus(err.message || 'Não foi possível atualizar a hora-aula da disciplina.');
+        } finally {
+            setUpdatingAssignmentKey(null);
+        }
+    };
+
+    const handleCepSearch = async () => {
+        try {
+            const address = await fetchAddressByCep(formData.zipCode);
+            if (!address) return;
+            setFormData((current) => ({
+                ...current,
+                street: address.street,
+                neighborhood: address.neighborhood,
+                city: address.city,
+                state: address.state,
+            }));
+        } catch (error: any) {
+            console.error('Falha ao consultar viaCEP:', error);
+            alert(error?.message || 'Falha ao consultar CEP.');
+        }
+    };
+
+    const isValidCpf = (cpf: string) => {
+        cpf = cpf.replace(/[^\d]+/g, '');
+        if (cpf === '' || cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+        let add = 0;
+        for (let i = 0; i < 9; i++) add += parseInt(cpf.charAt(i)) * (10 - i);
+        let rev = 11 - (add % 11);
+        if (rev === 10 || rev === 11) rev = 0;
+        if (rev !== parseInt(cpf.charAt(9))) return false;
+        add = 0;
+        for (let i = 0; i < 10; i++) add += parseInt(cpf.charAt(i)) * (11 - i);
+        rev = 11 - (add % 11);
+        if (rev === 10 || rev === 11) rev = 0;
+        if (rev !== parseInt(cpf.charAt(10))) return false;
+        return true;
+    };
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!String(formData.name || '').trim()) {
+            showErrorMessage('Informe o nome completo do professor.');
+            return;
+        }
+
+        // Validação de Documentos antes de enviar pro Back-End!
+        if (formData.cpf && formData.cpf.trim() !== '') {
+            if (!isValidCpf(formData.cpf)) {
+                setSaveError("E R R O ! ! !\nCPF Inválido\nPor favor, digite um CPF válido e tente novamente.");
+                setTimeout(() => setSaveError(null), 5000);
+                return;
+            }
+        }
+
+        if (formData.cnpj && formData.cnpj.trim() !== '') {
+            if (!isValidCnpj(formData.cnpj)) {
+                setSaveError("E R R O ! ! !\nCNPJ Inválido\nO CNPJ do professor (MEI/PJ) não é válido.");
+                setTimeout(() => setSaveError(null), 5000);
+                return;
+            }
+        }
+
+        try {
+            const token = getStoredToken();
+            const url = editingTeacherId
+                ? `${API_BASE_URL}/teachers/${editingTeacherId}`
+                : `${API_BASE_URL}/teachers`;
+            const method = editingTeacherId ? 'PATCH' : 'POST';
+
+            const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
+            const payload: Record<string, string | number | boolean | string[] | number[] | undefined> = { ...formData, ...branchPayload, permissions: formData.permissions };
+            if (branchPayload.branchAccessCodes === undefined) {
+                delete payload.branchAccessCodes;
+            }
+            if (!teacherFieldAccess.access) {
+                delete payload.email;
+                delete payload.telegramChatId;
+                delete payload.telegramUsername;
+                delete payload.telegramOptInEnabled;
+                delete payload.accessProfile;
+                delete payload.permissions;
+            }
+            if (!payload.birthDate) {
+                delete payload.birthDate;
+            }
+
+            if (payload.cpf) payload.cpf = formatCpf(String(payload.cpf));
+            if (payload.cnpj) payload.cnpj = formatCnpj(String(payload.cnpj));
+
+            if (payload.phone) payload.phone = formatPhone(String(payload.phone));
+            if (payload.whatsapp) payload.whatsapp = formatPhone(String(payload.whatsapp));
+            if (payload.cellphone1) payload.cellphone1 = formatPhone(String(payload.cellphone1));
+            if (payload.cellphone2) payload.cellphone2 = formatPhone(String(payload.cellphone2));
+
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    },
+                body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || 'Erro ao salvar Professor');
+            }
+
+            const wasEditing = Boolean(editingTeacherId);
+            closeModal();
+            await fetchProfessores();
+            setEmailUsageAlert(null);
+            setSaveSuccessPopup(null);
+            showSuccessMessage(wasEditing ? 'O professor foi alterado e a lista já foi atualizada.' : 'O professor foi inserido e a lista já foi atualizada.');
+
+        } catch (err: any) {
+            let errorMsg = err.message || 'Ocorreu um erro.';
+            setSaveError(errorMsg);
+            setTimeout(() => setSaveError(null), 5000);
+        }
+    };
+
+    const currentTeacherForSubjects = selectedTeacherForSubjects
+        ? professores.find((teacher) => teacher.id === selectedTeacherForSubjects.id) || selectedTeacherForSubjects
+        : null;
+    const currentTeacherAssignments = currentTeacherForSubjects?.teacherSubjects || [];
+    const assignedSubjectIds = new Set(currentTeacherAssignments.map((assignment) => assignment.subjectId));
+    const assignedSubjectNames = new Set(
+        currentTeacherAssignments
+            .map((assignment) => normalizeTeacherSubjectName(assignment.subject?.name))
+            .filter(Boolean),
+    );
+    const availableSubjectsForCurrentTeacher = subjects.filter((subject) => (
+        !subject.canceledAt
+        && !assignedSubjectIds.has(subject.id)
+        && !assignedSubjectNames.has(normalizeTeacherSubjectName(subject.name))
+    ));
+
+    const getAssignmentEffectiveFrom = (assignment: TeacherSubjectAssignment) =>
+        toDateInputValue(assignment.rateHistories?.[0]?.effectiveFrom) || todayDateInput;
+
+    return (
+        <div className="flex h-[calc(100vh-4.5rem)] min-h-0 w-full pt-0">
+            <div className="flex w-full flex-col bg-transparent">
+                <PrincipalProgramHeader
+                    eyebrow="Central docente"
+                    title="Equipe Docente"
+                    description="Gerencie os professores, dados contratuais e acesso ao Sistema."
+                    schoolName={currentTenantBranding?.schoolName}
+                    logoUrl={currentTenantBranding?.logoUrl}
+                    secondaryAction={
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-toggle-sidebar'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Recolher menu lateral"
+                                aria-label="Recolher menu lateral"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
+                                }}
+                                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20"
+                                title="Abrir notificações"
+                                aria-label="Abrir notificações"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                                </svg>
+                            </button>
+                        </>
+                    }
+                />
+
+            {errorStatus && (
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 mb-6 font-medium text-sm flex items-center gap-3">
+                    <span className="bg-red-200 text-red-700 w-6 h-6 rounded-full flex items-center justify-center font-bold">!</span>
+                    {errorStatus}
+                </div>
+            )}
+
+            {successStatus && (
+                <div className="bg-emerald-50 text-emerald-700 p-4 rounded-xl border border-emerald-100 mb-6 font-medium text-sm flex items-center gap-3">
+                    <span className="bg-emerald-200 text-emerald-700 w-6 h-6 rounded-full flex items-center justify-center font-bold">✓</span>
+                    {successStatus}
+                </div>
+            )}
+
+            {/* Tabela */}
+                <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="dashboard-band shrink-0 border-b px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        {canManageTeachers && (
+                            <button
+                                type="button"
+                                onClick={openModal}
+                                title="Cadastrar novo professor"
+                                aria-label="Cadastrar novo professor"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
+                            >
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        )}
+                        <div className="relative w-full max-w-xs">
+                            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} type="text" placeholder="Buscar docente..." className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Disciplina</span>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedSubjectFilter('ALL')}
+                                className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${selectedSubjectFilter === 'ALL' ? 'border-[#153a6a] bg-[#153a6a] text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                            >
+                                Todas
+                            </button>
+                            {disciplineOptions.map((discipline) => {
+                                const tone = disciplineToneMap[discipline.value] || DISCIPLINE_BADGE_TONES[0];
+                                const isSelected = selectedSubjectFilter === discipline.value;
+                                return (
+                                    <button
+                                        key={discipline.value}
+                                        type="button"
+                                        onClick={() => setSelectedSubjectFilter(discipline.value)}
+                                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition-colors ${isSelected ? `${tone.chip}` : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                        <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? tone.dot : 'bg-slate-400'}`} />
+                                        <span className="max-w-[140px] truncate">{discipline.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                    <table className="w-full min-w-[1180px] border-collapse text-left">
+                        <thead className="bg-slate-50">
+                            <tr className="dashboard-table-head border-b border-slate-300 text-[13px] font-bold uppercase tracking-wider">
+                                <th className="sticky top-0 z-20 w-12 bg-slate-50 px-3 py-3 text-left">
+                                    {renderTeacherClearAllButton()}
+                                </th>
+                                {visibleTeacherColumns.map((column) => (
+                                    <th key={column.key} className={`sticky top-0 z-20 bg-slate-50 px-6 py-3 ${column.align === 'center' ? 'text-center' : ''}`}>
+                                        {renderTeacherColumnHeader(column)}
+                                    </th>
+                                ))}
+                                <th className="sticky top-0 z-20 bg-slate-50 px-6 py-3 text-right">Ação</th>
+                            </tr>
+                            {activeTeacherFilterColumn ? (
+                                <tr aria-hidden="true">
+                                    <th colSpan={visibleTeacherColumns.length + 2} className="h-56 bg-white p-0" />
+                                </tr>
+                            ) : null}
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={visibleTeacherColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"></div>
+                                        Sincronizando com Banco de Dados...
+                                    </td>
+                                </tr>
+                            ) : sortedFilteredProfessores.length === 0 ? (
+                                <tr>
+                                    <td colSpan={visibleTeacherColumns.length + 2} className="px-6 py-12 text-center font-medium text-slate-400">
+                                        Nenhum professor cadastrado ainda.
+                                    </td>
+                                </tr>
+                            ) : (
+                                paginatedProfessores.map((prof, rowIndex) => {
+                                    const zebraClass = rowIndex % 2 === 0
+                                        ? prof.canceledAt
+                                            ? 'bg-rose-100/80 hover:bg-rose-200/80'
+                                            : 'bg-white hover:bg-slate-50'
+                                        : prof.canceledAt
+                                            ? 'bg-rose-200/70 hover:bg-rose-300/70'
+                                            : 'bg-slate-200/70 hover:bg-slate-300/60';
+                                    const isSelectedRow = selectedTeacherGridRowId === prof.id;
+                                    const rowClass = isSelectedRow
+                                        ? 'bg-blue-100 outline outline-2 outline-blue-400 outline-offset-[-2px] hover:bg-blue-100'
+                                        : zebraClass;
+
+                                    return (
+                                    <tr
+                                        key={prof.id}
+                                        onClick={() => setSelectedTeacherGridRowId(prof.id)}
+                                        aria-selected={isSelectedRow}
+                                        className={`group cursor-pointer transition-colors ${rowClass}`}
+                                    >
+                                        <td className="px-3 py-4" />
+                                        {visibleTeacherColumns.map((column) => renderTeacherGridCell(prof, column.key))}
+                                        <td className="px-6 py-4 text-right">
+                                        {canManageTeachers ? (
+                                            <div className="flex justify-end gap-2">
+                                                {renderTeacherInfoButton(prof)}
+                                                <GridRowActionIconButton
+                                                    title="Abrir manutenção do professor"
+                                                    onClick={() => handleEdit(prof)}
+                                                    tone="blue"
+                                                    visualStyle="outlined"
+                                                >
+                                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                    </svg>
+                                                </GridRowActionIconButton>
+                                                <GridRowActionIconButton
+                                                    title={prof.canceledAt ? 'Ativar professor' : 'Inativar professor'}
+                                                    onClick={() => openTeacherStatusModal(prof)}
+                                                    tone={prof.canceledAt ? 'emerald' : 'rose'}
+                                                    visualStyle="outlined"
+                                                >
+                                                        {prof.canceledAt ? (
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                            </svg>
+                                                        )}
+                                                </GridRowActionIconButton>
+                                            </div>
+                                        ) : (
+                                            <div className="flex justify-end gap-2">
+                                                {renderTeacherInfoButton(prof)}
+                                                <span className="self-center text-xs font-semibold text-slate-400">Somente leitura</span>
+                                            </div>
+                                        )}
+                                        </td>
+                                    </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm font-bold text-slate-700">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsGridConfigOpen(true)}
+                            title="ALTERAR COLUNAS GRID"
+                            aria-label="ALTERAR COLUNAS GRID"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <rect x="4" y="5" width="16" height="14" rx="2" strokeWidth={2} />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5v14M15 5v14" />
+                            </svg>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsExportModalOpen(true)}
+                            title="Abrir exportação e impressão"
+                            aria-label="Abrir exportação e impressão"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V4h12v5M6 18h12v2H6v-2zm-1-8h14a2 2 0 012 2v4H3v-4a2 2 0 012-2z" />
+                            </svg>
+                        </button>
+                        <GridStatusFilter
+                            value={statusFilter}
+                            onChange={setStatusFilter}
+                            activeLabel="Mostrar somente professores ativos"
+                            allLabel="Mostrar professores ativos e inativos"
+                            inactiveLabel="Mostrar somente professores inativos"
+                        />
+                        <div
+                            className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.14em] text-slate-700 shadow-sm"
+                            title={`${displayedTeachersCount} registro(s) encontrado(s)`}
+                        >
+                            Total registros: {new Intl.NumberFormat('pt-BR').format(displayedTeachersCount)}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        <select
+                            value={teacherPageSize}
+                            onChange={(event) => setTeacherPageSize(Number(event.target.value))}
+                            aria-label="Registros por página"
+                            className="h-8 rounded-full border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 outline-none transition hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                        >
+                            {[10, 20, 50, 100].map((pageSize) => (
+                                <option key={pageSize} value={pageSize}>{pageSize}</option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            aria-label="Voltar para o início"
+                            title="Voltar para o início"
+                            onClick={() => setTeacherPage(1)}
+                            disabled={currentTeacherPage <= 1}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'<<'}
+                        </button>
+                        <button
+                            type="button"
+                            aria-label="Voltar uma página"
+                            title="Voltar uma página"
+                            onClick={() => setTeacherPage((current) => Math.max(1, current - 1))}
+                            disabled={currentTeacherPage <= 1}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'<'}
+                        </button>
+                        <div className="min-w-20 text-center text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                            {currentTeacherPage}/{teacherTotalPages}
+                        </div>
+                        <button
+                            type="button"
+                            aria-label="Avançar uma página"
+                            title="Avançar uma página"
+                            onClick={() => setTeacherPage((current) => Math.min(teacherTotalPages, current + 1))}
+                            disabled={currentTeacherPage >= teacherTotalPages}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'>'}
+                        </button>
+                        <button
+                            type="button"
+                            aria-label="Ir para o fim"
+                            title="Ir para o fim"
+                            onClick={() => setTeacherPage(teacherTotalPages)}
+                            disabled={currentTeacherPage >= teacherTotalPages}
+                            className="h-8 min-w-8 rounded-full border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {'>>'}
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <GridColumnConfigModal
+                isOpen={isGridConfigOpen}
+                title="Configurar colunas do grid"
+                description="Reordene, oculte ou inclua colunas do cadastro de professores nesta tela."
+                columns={availableTeacherColumns.map((column) => ({
+                    key: column.key,
+                    label: column.label,
+                    visibleByDefault: column.visibleByDefault,
+                }))}
+                orderedColumns={columnOrder}
+                hiddenColumns={hiddenColumns}
+                onToggleColumnVisibility={toggleGridColumnVisibility}
+                onMoveColumn={moveGridColumn}
+                onReset={resetGridColumns}
+                onClose={() => setIsGridConfigOpen(false)}
+            />
+
+            <StatusConfirmationModal
+                isOpen={Boolean(teacherStatusToggleTarget && teacherStatusToggleAction)}
+                tenantId={currentTenantId}
+                actionType={teacherStatusToggleAction || 'activate'}
+                title={teacherStatusToggleAction === 'activate' ? 'Ativar professor' : 'Inativar professor'}
+                itemLabel="Professor"
+                itemName={teacherStatusToggleTarget?.name || ''}
+                description={teacherStatusToggleAction === 'activate'
+                    ? 'Ao ativar o professor, ele volta a ter acesso ao PWA e pode ser vinculado a disciplinas normalmente.'
+                    : 'Ao inativar o professor, seu acesso é suspenso, mantendo o histórico das aulas ministradas.'}
+                confirmLabel={teacherStatusToggleAction === 'activate' ? 'Confirmar ativação' : 'Confirmar inativação'}
+                onCancel={() => closeTeacherStatusModal(true)}
+                onConfirm={confirmTeacherStatusToggle}
+                isProcessing={isProcessingTeacherToggle}
+                statusActive={!teacherStatusToggleTarget?.canceledAt}
+                screenId={PROFESSORES_STATUS_MODAL_SCREEN_ID}
+            />
+
+            <GridExportModal
+                isOpen={isExportModalOpen}
+                title="Exportar professores"
+                description={`A exportação respeita a busca atual e inclui ${sortedFilteredProfessores.length} registro(s).`}
+                format={exportFormat}
+                onFormatChange={setExportFormat}
+                columns={availableTeacherExportColumns.map((column) => ({ key: column.key, label: column.label }))}
+                selectedColumns={exportColumns}
+                onToggleColumn={toggleExportColumn}
+                onSelectAll={setAllExportColumns}
+                storageKey={getTeacherExportConfigStorageKey(currentTenantId)}
+                legacyStorageKeys={teacherExportLegacyStorageKeys}
+                onClose={() => setIsExportModalOpen(false)}
+                onExport={async (config) => {
+                    try {
+                        await exportGridRows({
+                            rows: sortedFilteredProfessores,
+                            columns: config?.orderedColumns
+                                ? config.orderedColumns
+                                    .map((key) => availableTeacherExportColumns.find((column) => column.key === key))
+                                    .filter((column): column is GridColumnDefinition<TeacherRecord, TeacherExportColumnKey> => !!column)
+                                : availableTeacherExportColumns,
+                            selectedColumns: config?.selectedColumns || exportColumns,
+                            format: exportFormat,
+                            pdfOptions: config?.pdfOptions,
+                            fileBaseName: 'professores',
+                            branding: {
+                                title: 'Professores',
+                                subtitle: 'Exportação com os filtros atualmente aplicados.',
+                            },
+                        });
+                        setSuccessStatus(`Exportação ${exportFormat.toUpperCase()} preparada com ${sortedFilteredProfessores.length} registro(s).`);
+                        setIsExportModalOpen(false);
+                    } catch (error) {
+                        setErrorStatus(error instanceof Error ? error.message : 'Não foi possível exportar os professores.');
+                    }
+                }}
+            />
+
+            {/* MODAL MÁGICO DE CADASTRO / EDIÇÃO */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 animate-in fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[96vh]">
+
+                        <MaintenanceModalHeader
+                            title={editingTeacherId ? `Editar dossiê do docente: ${formData.name || 'DOCENTE'}` : 'Cadastrar novo docente'}
+                            eyebrow="Escola · Cadastros"
+                            description="Preencha os dados do professor e confirme para salvar."
+                            onClose={closeModal}
+                            schoolName={currentTenantBranding?.schoolName}
+                            logoUrl={currentTenantBranding?.logoUrl}
+                            compact
+                            className="px-4 py-2.5"
+                        />
+                        <div className="border-b border-slate-100 bg-white px-4 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                                    Papéis no sistema
+                                </span>
+                                {personSystemRoles.map((role) => (
+                                    <span
+                                        key={role}
+                                        className="inline-flex items-center justify-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700"
+                                    >
+                                        {role}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        {currentTeacherAssignments.length ? (
+                            <div className="border-b border-slate-100 bg-white px-4 py-2">
+                                <div className="mb-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                                    DISCIPLINAS
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {currentTeacherAssignments.map((assignment) => (
+                                        <span
+                                            key={assignment.id}
+                                            className="inline-flex items-center justify-center rounded-full border border-emerald-200 bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-600 shadow-sm"
+                                        >
+                                            {assignment.subject?.name || 'DISCIPLINA'}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {/* Abas */}
+                        <div className="flex border-b border-slate-200 bg-slate-50/50 px-4 pt-2 gap-1.5 shrink-0">
+                            <button type="button" onClick={() => setActiveTab(1)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 1 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                1. DADOS BÁSICOS E CONTATOS
+                            </button>
+                            <button type="button" onClick={() => setActiveTab(2)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 2 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                2. ENDEREÇO E LOGÍSTICA
+                            </button>
+                            <button type="button" onClick={() => setActiveTab(3)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 3 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                3. DISCIPLINAS
+                            </button>
+                            <button type="button" onClick={() => setActiveTab(4)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 4 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                4. ACESSO PWA (APP)
+                            </button>
+                            <button type="button" onClick={() => setActiveTab(5)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                5. FILIAIS DE ACESSO
+                            </button>
+                        </div>
+
+                        {/* Formulário */}
+                        <form id="teacher-form" onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar bg-white p-3">
+
+                            {activeTab === 1 && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Identificação Pessoal / Contratual</h4>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {teacherFieldAccess.sensitive ? (
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">CPF</label>
+                                            <input
+                                                type="text"
+                                                value={formatCpfInput(formData.cpf)}
+                                                onChange={(event) => handleTeacherCpfChange(event.target.value)}
+                                                onBlur={handleCpfBlur}
+                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                placeholder="Somente números"
+                                            />
+                                                {!editingTeacherId && existingCpfAlert ? (
+                                                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                                        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-amber-700">CPF já cadastrado</div>
+                                                        <div className="mt-1 text-xs font-semibold text-amber-800">
+                                                            {existingCpfAlert.name} já possui os papéis:
+                                                        </div>
+                                                        <div className="mt-1 flex flex-wrap gap-1">
+                                                            {existingCpfAlert.roles.map((role) => (
+                                                                <span key={`cpf-alert-${role}`} className="inline-flex items-center rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700">
+                                                                    {role}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
+                                        <div className="lg:col-span-2 relative">
+                                            <label className="text-xs font-bold text-slate-600 mb-1 block">Nome Completo do Docente *</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={formData.name}
+                                                onInvalid={(event) => {
+                                                    event.preventDefault();
+                                                    showErrorMessage('Informe o nome completo do professor.');
+                                                }}
+                                                onChange={(event) => handleTeacherNameChange(event.target.value)}
+                                                onFocus={() => {
+                                                    if (!editingTeacherId && String(formData.name || '').trim().length >= 2) {
+                                                        setShowNameSuggestions(true);
+                                                    }
+                                                }}
+                                                onBlur={() => {
+                                                    window.setTimeout(() => setShowNameSuggestions(false), 160);
+                                                }}
+                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                                placeholder="Ex: Professor Girafales"
+                                            />
+                                            {!editingTeacherId && (showNameSuggestions || isLoadingNameSuggestions) ? (
+                                                <div className="mt-2 w-full rounded-xl border border-blue-100 bg-white p-3 shadow-xl">
+                                                    <div className="mb-2 text-[11px] font-black uppercase tracking-[0.16em] text-blue-700">
+                                                        Possíveis nomes já cadastrados
+                                                    </div>
+                                                    {isLoadingNameSuggestions ? (
+                                                        <div className="text-xs font-semibold text-slate-500">Buscando sugestões...</div>
+                                                    ) : nameSuggestionError ? (
+                                                        <div className="text-xs font-semibold text-rose-600">{nameSuggestionError}</div>
+                                                    ) : nameSuggestions.length === 0 ? (
+                                                        <div className="text-xs font-semibold text-slate-500">Nenhum nome parecido encontrado.</div>
+                                                    ) : (
+                                                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                                                            {nameSuggestions.map((suggestion, index) => (
+                                                                <div key={`${suggestion.name}-${suggestion.cpf || suggestion.email || index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                                                    <div className="text-sm font-bold text-slate-700">{suggestion.name}</div>
+                                                                    <div className="mt-1 flex flex-wrap gap-1">
+                                                                        {(suggestion.roles || []).map((role) => (
+                                                                            <span key={`${suggestion.name}-${role}-${index}`} className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">
+                                                                                {normalizeSystemRoleLabel(role) || role}
+                                                                            </span>
+                                                                        ))}
+                                                                        {suggestion.cpf ? (
+                                                                            <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                                                                CPF {suggestion.cpf}
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-600 mb-1 block">Data de Nascimento</label>
+                                            <input type="date" value={formData.birthDate} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                        </div>
+                                        {teacherFieldAccess.sensitive ? (
+                                            <>
+                                                <div>
+                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">RG</label>
+                                                    <input type="text" value={formData.rg} onChange={e => setFormData({ ...formData, rg: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs font-bold text-slate-600 mb-1 block">CNPJ (PJ / MEI se houver)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={formatCnpjInput(formData.cnpj)}
+                                                        onChange={(e) =>
+                                                            setFormData({
+                                                                ...formData,
+                                                                cnpj: normalizeCnpj(e.target.value),
+                                                            })
+                                                        }
+                                                        className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                    />
+                                                </div>
+                                            </>
+                                        ) : null}
+
+                                        {teacherFieldAccess.contact || teacherFieldAccess.access ? (
+                                            <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+                                                {teacherFieldAccess.contact ? (
+                                                    <>
+                                                        <div>
+                                                            <label className="text-xs font-bold text-slate-600 mb-1 block">Celular 1 (WhatsApp)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={formatPhoneInput(formData.whatsapp)}
+                                                                onChange={(e) =>
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        whatsapp: limitNumericDigits(e.target.value, 11),
+                                                                    })
+                                                                }
+                                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs font-bold text-slate-600 mb-1 block">Telefone Secundário</label>
+                                                            <input
+                                                                type="text"
+                                                                value={formatPhoneInput(formData.phone)}
+                                                                onChange={(e) =>
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        phone: limitNumericDigits(e.target.value, 11),
+                                                                    })
+                                                                }
+                                                                className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                            />
+                                                        </div>
+                                                    </>
+                                                ) : null}
+                                                {teacherFieldAccess.access ? (
+                                                    <div className="md:col-span-2">
+                                                        <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail para contato / acesso</label>
+                                                        <input
+                                                            type="email"
+                                                            value={formData.email}
+                                                            onChange={(e) => handleTeacherEmailChange(e.target.value)}
+                                                            onBlur={() => void handleTeacherEmailBlur()}
+                                                            className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                        />
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 2 && (
+                                teacherFieldAccess.contact ? (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Endereço Residencial do Docente</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">CEP</label>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={formatCepInput(formData.zipCode)}
+                                                        onChange={(e) =>
+                                                            setFormData({
+                                                                ...formData,
+                                                                zipCode: limitNumericDigits(e.target.value, 8),
+                                                            })
+                                                        }
+                                                        className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                                        placeholder="00000-000"
+                                                    />
+                                                    <button type="button" onClick={handleCepSearch} className="bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-200 rounded-lg px-3 transition-colors font-bold shadow-sm">
+                                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Logradouro / Rua</label>
+                                                <input type="text" value={formData.street} onChange={e => setFormData({ ...formData, street: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Número</label>
+                                                <input type="text" value={formData.number} onChange={e => setFormData({ ...formData, number: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Bairro</label>
+                                                <input type="text" value={formData.neighborhood} onChange={e => setFormData({ ...formData, neighborhood: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Complemento</label>
+                                                <input type="text" value={formData.complement} onChange={e => setFormData({ ...formData, complement: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                            </div>
+                                            <div className="md:col-span-3">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Cidade</label>
+                                                <input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                            </div>
+                                            <div className="md:col-span-1">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">UF</label>
+                                                <input type="text" value={formData.state} onChange={e => setFormData({ ...formData, state: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-medium text-amber-700">
+                                        Seu perfil não possui autorização para consultar ou alterar os dados de contato e endereço deste professor.
+                                    </div>
+                                )
+                            )}
+
+                            {activeTab === 3 && (
+                                teacherFieldAccess.academic || canManageTeacherSubjects ? (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Disciplinas que o docente leciona</h4>
+
+                                        {!editingTeacherId || !currentTeacherForSubjects ? (
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium text-amber-800">
+                                                Salve o cadastro do professor primeiro. Depois disso, esta aba libera o vínculo das disciplinas que ele poderá lecionar.
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {canManageTeacherSubjects ? (
+                                                    <div className="dashboard-band-soft grid grid-cols-1 gap-3 rounded-2xl border p-3 md:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
+                                                        <div>
+                                                            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Nova disciplina</label>
+                                                            <select
+                                                                value={selectedSubjectIdForTeacher}
+                                                                onChange={(e) => setSelectedSubjectIdForTeacher(e.target.value)}
+                                                                disabled={isAssigningSubject}
+                                                                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                            >
+                                                                <option value="">Selecione uma disciplina</option>
+                                                                {availableSubjectsForCurrentTeacher.map((subject) => (
+                                                                    <option key={subject.id} value={subject.id}>{subject.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Hora-aula</label>
+                                                            {teacherFieldAccess.financial ? (
+                                                                <input
+                                                                    type="text"
+                                                                    value={hourlyRateForTeacher}
+                                                                    onChange={(e) => setHourlyRateForTeacher(e.target.value)}
+                                                                    placeholder="Ex: 45,00"
+                                                                    disabled={isAssigningSubject}
+                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                />
+                                                            ) : (
+                                                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+                                                                    Hora-aula oculta para este perfil.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-600">Vigência</label>
+                                                            {teacherFieldAccess.financial ? (
+                                                                <input
+                                                                    type="date"
+                                                                    value={effectiveFromForTeacher}
+                                                                    onChange={(e) => setEffectiveFromForTeacher(e.target.value)}
+                                                                    disabled={isAssigningSubject}
+                                                                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                />
+                                                            ) : (
+                                                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">
+                                                                    Vigência vinculada ao valor financeiro.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-end">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void handleAssignSubjectToTeacher()}
+                                                                disabled={isAssigningSubject}
+                                                                className="w-full rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-violet-600/20 transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                            >
+                                                                {isAssigningSubject ? 'Vinculando...' : 'Atribuir disciplina'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
+                                                {currentTeacherAssignments.length > 0 ? (
+                                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                        {currentTeacherAssignments.map((assignment) => (
+                                                            <div key={assignment.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-800">{assignment.subject?.name || 'Disciplina sem nome'}</div>
+                                                                        {teacherFieldAccess.financial ? (
+                                                                                <div className="mt-2 space-y-2">
+                                                                                <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                                                                    Valor hora-aula
+                                                                                </label>
+                                                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+                                                                                    <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+                                                                                        Valor atual
+                                                                                    </div>
+                                                                                    <div className="mt-0.5 text-sm font-extrabold text-emerald-800">
+                                                                                        {typeof assignment.hourlyRate === 'number'
+                                                                                            ? `R$ ${assignment.hourlyRate.toFixed(2).replace('.', ',')}`
+                                                                                            : 'Hora-aula não informada'}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="space-y-2">
+                                                                                    <input
+                                                                                        type="text"
+                                                                                        value={editingHourlyRateBySubject[assignment.subjectId] ?? ''}
+                                                                                        onChange={(event) => handleHourlyRateDraftChange(assignment.subjectId, event.target.value)}
+                                                                                        placeholder="Informar novo valor"
+                                                                                        disabled={updatingAssignmentKey === `${currentTeacherForSubjects.id}:${assignment.subjectId}`}
+                                                                                        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                    />
+                                                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                                                                                        <input
+                                                                                            type="date"
+                                                                                            value={editingEffectiveFromBySubject[assignment.subjectId] ?? getAssignmentEffectiveFrom(assignment)}
+                                                                                            onChange={(event) => handleEffectiveFromDraftChange(assignment.subjectId, event.target.value)}
+                                                                                            disabled={updatingAssignmentKey === `${currentTeacherForSubjects.id}:${assignment.subjectId}`}
+                                                                                            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                                        />
+                                                                                        {canManageTeacherSubjects ? (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleUpdateTeacherSubject(assignment.subjectId, assignment.subject?.name || 'Disciplina')}
+                                                                                                disabled={updatingAssignmentKey === `${currentTeacherForSubjects.id}:${assignment.subjectId}`}
+                                                                                                className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                                                            >
+                                                                                                {updatingAssignmentKey === `${currentTeacherForSubjects.id}:${assignment.subjectId}` ? 'Salvando...' : 'Salvar valor'}
+                                                                                            </button>
+                                                                                        ) : null}
+                                                                                    </div>
+                                                                                </div>
+                                                                                {assignment.rateHistories && assignment.rateHistories.length > 0 ? (
+                                                                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                                                                        <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                                                                            Histórico de vigência
+                                                                                        </div>
+                                                                                        <div className="space-y-1.5">
+                                                                                            {assignment.rateHistories.map((history) => (
+                                                                                                <div key={history.id} className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                                                                                                    <span className="font-semibold text-slate-700">
+                                                                                                        {formatTeacherRateHistoryValue(history.hourlyRate)}
+                                                                                                    </span>
+                                                                                                    <span>{formatTeacherRateHistoryLabel(history.effectiveFrom, history.effectiveTo)}</span>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : null}
+                                                                            </div>
+                                                                        ) : null}
+                                                                    </div>
+                                                                    <span className="rounded-full bg-violet-100 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-violet-700">
+                                                                        Ativa
+                                                                    </span>
+                                                                </div>
+                                                                {canManageTeacherSubjects ? (
+                                                                    <div className="mt-3 flex justify-end">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleRemoveTeacherSubject(assignment.subjectId, assignment.subject?.name || 'Disciplina')}
+                                                                            disabled={removingAssignmentKey === `${currentTeacherForSubjects.id}:${assignment.subjectId}`}
+                                                                            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                        >
+                                                                            {removingAssignmentKey === `${currentTeacherForSubjects.id}:${assignment.subjectId}` ? 'Desvinculando...' : 'Desvincular'}
+                                                                        </button>
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="dashboard-band-soft rounded-2xl border border-dashed px-6 py-8 text-center">
+                                                        <div className="text-base font-bold text-slate-700">Nenhuma disciplina vinculada</div>
+                                                        <p className="mt-2 text-sm font-medium text-slate-500">
+                                                            Este professor ainda não possui disciplinas cadastradas para lecionar.
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-medium text-amber-700">
+                                        Seu perfil não possui autorização para consultar as disciplinas vinculadas deste professor.
+                                    </div>
+                                )
+                            )}
+
+                            {activeTab === 4 && (
+                                teacherFieldAccess.access ? (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Configurações de Acesso ao App</h4>
+                                        <div className="grid grid-cols-1 gap-3 max-w-7xl mx-auto mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200 md:grid-cols-2">
+                                            <div className="md:col-span-2">
+                                                <h5 className="text-center text-sm font-semibold text-slate-600 mb-2">Forneça as credenciais para que o professor acesse chamadas e notas via PWA.</h5>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Perfil pré-definido do professor</label>
+                                                <select
+                                                    value={formData.accessProfile}
+                                                    onChange={e => handleTeacherProfileChange(e.target.value as AccessProfileCode)}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                >
+                                                    {getProfilesForRole('PROFESSOR').map((profile) => (
+                                                        <option key={profile.code} value={profile.code}>{profile.label}</option>
+                                                    ))}
+                                                </select>
+                                                <div className="mt-2 text-xs font-medium text-slate-500">
+                                                    Se este docente precisar de uma exceção, ajuste os checkboxes abaixo. Nesse caso, a permissão específica da tela passa a valer acima do perfil padrão.
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail de Login PWA (Apenas para Acesso)</label>
+                                                <input
+                                                    type="email"
+                                                    value={formData.email}
+                                                    onChange={(e) => handleTeacherEmailChange(e.target.value)}
+                                                    onBlur={() => void handleTeacherEmailBlur()}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Apenas para acessar o portal"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Telegram Chat ID</label>
+                                                <input
+                                                    value={formData.telegramChatId}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, telegramChatId: e.target.value.trim() }))}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Ex.: 123456789"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário Telegram</label>
+                                                <input
+                                                    value={formData.telegramUsername}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, telegramUsername: e.target.value.toUpperCase() }))}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Ex.: @USUARIO"
+                                                />
+                                            </div>
+                                            <label className="flex min-h-[46px] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.telegramOptInEnabled}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, telegramOptInEnabled: e.target.checked }))}
+                                                    className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                                />
+                                                Telegram ativo para notificações
+                                            </label>
+                                            <div className="md:col-span-2">
+                                                <div className="mb-2 text-xs font-bold text-slate-600">Permissões específicas do docente</div>
+                                                <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                                                    {PERMISSION_OPTIONS.map((permission) => (
+                                                        <label key={permission.value} title={permission.label} className="flex min-h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={formData.permissions.includes(permission.value)}
+                                                                onChange={() => toggleTeacherPermission(permission.value)}
+                                                                className="h-3 w-3 shrink-0 rounded border-slate-300 text-blue-600"
+                                                            />
+                                                            <span className="min-w-0 truncate text-[11px] font-medium leading-tight text-slate-700">{permission.label}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-medium text-amber-700">
+                                        Seu perfil não possui autorização para consultar ou alterar os dados de acesso PWA deste professor.
+                                    </div>
+                                )
+                            )}
+
+                            {activeTab === 5 && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                    <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Filiais de Acesso</h4>
+                                    <div className="grid grid-cols-1 gap-3 max-w-4xl mx-auto mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                        <TenantBranchSelect
+                                            branches={tenantBranches}
+                                            value={formData.branchCode}
+                                            onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
+                                            mode="multiple"
+                                            selectedBranchCodes={formData.branchAccessCodes}
+                                            onSelectedBranchCodesChange={(branchAccessCodes) => setFormData((current) => ({ ...current, branchAccessCodes }))}
+                                            labelClassName="text-xs font-bold text-slate-600 mb-1 block"
+                                            selectClassName="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                        </form>
+                        <MaintenanceModalFooter
+                            screenId={PROFESSORES_DETAIL_COPY_SCREEN_ID}
+                            screenNameCompact
+                            saveLabel={editingTeacherId ? 'Salvar' : 'Registrar professor'}
+                            formId="teacher-form"
+                            onSaveClick={() => {
+                                if (!String(formData.name || '').trim()) showErrorMessage('Informe o nome completo do professor.');
+                            }}
+                            className="px-4 py-2"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {saveSuccessPopup && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
+                                    ) : (
+                                        <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
+                                            {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">SUCESSO</div>
+                                    <h3 className="mt-1 text-xl font-bold text-slate-900">{saveSuccessPopup.title}</h3>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">{saveSuccessPopup.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end px-6 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setSaveSuccessPopup(null)}
+                                className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+                            >
+                                Voltar para lista
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {saveError && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 relative">
+                        <button
+                            onClick={() => setSaveError(null)}
+                            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100/50 hover:bg-slate-200 text-slate-400 hover:text-red-500 transition-colors z-10"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <div className="bg-red-500/10 p-6 flex flex-col items-center text-center">
+                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4 ring-4 ring-white shadow-sm">
+                                <span className="font-bold text-2xl">!</span>
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-800 mb-1">Atenção</h3>
+                            <div className="flex flex-col items-center w-full mt-1 mb-2">
+                                <p className="text-slate-600 font-bold text-[15px] leading-tight text-center">
+                                    {saveError.split('\n').map((line, i) => (
+                                        <span key={i} className="block mb-1">{line}</span>
+                                    ))}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {teacherCpfConflictAlert && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 px-4">
+                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200 relative">
+                        <div className="px-6 pb-4 pt-6">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img
+                                            src={currentTenantBranding.logoUrl}
+                                            alt={`Logotipo de ${currentTenantBranding.schoolName}`}
+                                            className="h-full w-full object-contain p-1.5"
+                                        />
+                                    ) : (
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">CPF</span>
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <div className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800">
+                                        <svg className="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
+                                        </svg>
+                                        ATENÇÃO
+                                    </div>
+                                    <div className="text-sm font-semibold text-slate-700">
+                                        CPF JÁ USADO POR:
+                                    </div>
+                                    <div className="mt-1 text-base font-bold text-slate-900">
+                                        {teacherCpfConflictAlert.name}
+                                    </div>
+                                    <div className="mt-1 text-sm font-medium text-slate-600">
+                                        CPF INFORMADO: {teacherCpfConflictAlert.cpf}
+                                    </div>
+                                    {teacherCpfConflictRoles.length > 0 ? (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {teacherCpfConflictRoles.map((role) => (
+                                                <span
+                                                    key={role}
+                                                    className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                                >
+                                                    {role}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : null}
+                                    <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+                                        RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 pb-4">
+                            <div className="flex justify-end">
+                                <div className="w-full max-w-[300px]">
+                                    <ScreenNameCopy
+                                        screenId={PROFESSORES_CPF_CONFLICT_SCREEN_ID}
+                                        label="Tela"
+                                        className="mt-0 justify-end"
+                                        disableMargin
+                                    />
+                                </div>
+                            </div>
+                            <div className="mt-4 text-right">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setTeacherCpfConflictAlert(null);
+                                        setTeacherCpfConflictRoles([]);
+                                    }}
+                                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition-colors"
+                                >
+                                    Fechar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {emailUsageAlert && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 px-4">
+                    <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200 relative">
+                        <button
+                            type="button"
+                            onClick={() => setEmailUsageAlert(null)}
+                            className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-slate-100/80 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-800"
+                        >
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <div className="border-b border-amber-100 bg-amber-50 px-6 py-5">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-sm">
+                                    {currentTenantBranding?.logoUrl ? (
+                                        <img
+                                            src={currentTenantBranding.logoUrl}
+                                            alt={`Logotipo de ${currentTenantBranding.schoolName}`}
+                                            className="h-full w-full object-contain p-1.5"
+                                        />
+                                    ) : (
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">EA</span>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">E-mail já utilizado</div>
+                                    <h3 className="mt-1 text-lg font-bold text-slate-800">{emailUsageAlert.email}</h3>
+                                    <p className="mt-1 text-sm font-medium text-slate-600">
+                                        Este e-mail já está cadastrado em {emailUsageAlert.usages.length} local(is). Verifique a escola e o perfil abaixo.
+                                    </p>
+                                </div>
+                            </div>
+                            {Array.from(new Set(
+                                emailUsageAlert.usages
+                                    .filter((usage) => usage.tenantId && usage.tenantId !== emailUsageAlert.currentTenantId)
+                                    .map((usage) => usage.tenantName),
+                            )).length > 0 ? (
+                                <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-semibold text-amber-800">
+                                    OUTRAS ESCOLAS ENCONTRADAS: {' '}
+                                    {Array.from(new Set(
+                                        emailUsageAlert.usages
+                                            .filter((usage) => usage.tenantId && usage.tenantId !== emailUsageAlert.currentTenantId)
+                                            .map((usage) => usage.tenantName),
+                                    )).join(' | ')}
+                                </div>
+                            ) : (
+                                <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
+                                    VÍNCULO LOCAL IDENTIFICADO NA ESCOLA {emailUsageAlert.currentTenantName}.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="max-h-[60vh] overflow-y-auto p-6">
+                            <div className="grid grid-cols-1 gap-3">
+                                {emailUsageAlert.usages.map((usage, index) => (
+                                    <div
+                                        key={`${usage.tenantId}-${usage.recordId}-${usage.entityType}-${index}`}
+                                        className={`rounded-2xl border px-4 py-4 ${usage.tenantId !== emailUsageAlert.currentTenantId ? 'border-amber-300 bg-amber-50/70' : 'border-slate-200 bg-slate-50'}`}
+                                    >
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                                    {usage.tenantName}
+                                                </div>
+                                                <div className="mt-1 text-sm font-bold text-slate-800">
+                                                    {usage.recordName || 'SEM NOME'}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {usage.tenantId !== emailUsageAlert.currentTenantId ? (
+                                                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
+                                                        OUTRA ESCOLA
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                                                        Escola Atual
+                                                    </span>
+                                                )}
+                                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">
+                                                    {usage.entityLabel}
+                                                </span>
+                                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600">
+                                                    {usage.tenantDocument || 'SEM DOCUMENTO'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+                            <div className="flex justify-end">
+                                <ScreenNameCopy
+                                    screenId={PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID}
+                                    label="NOME DA TELA"
+                                    className="mt-0 justify-end"
+                                    disableMargin
+                                />
+                            </div>
+                            <div className="flex justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setEmailUsageAlert(null)}
+                                    className="rounded-xl bg-[#153a6a] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-800"
+                                >
+                                    ENTENDI
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            </div>
+        </div>
+    );
+}
+
+
+
+
+

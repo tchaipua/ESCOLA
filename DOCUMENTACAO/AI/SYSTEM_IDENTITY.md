@@ -52,8 +52,8 @@ Oferecer uma plataforma unica para operacao escolar completa (academico, comunic
 
 ## Excecao operacional controlada
 
-- Existe um fluxo master exclusivo no MSINFOR ADMIN para exclusao fisica definitiva de uma escola e todas as suas dependencias
-- Esse fluxo e irreversivel, exige chave master e confirmacao explicita do `tenantId`
+- As rotas locais de purge administrativo estao desativadas e respondem `410 Gone`.
+- Uma futura exclusao fisica somente podera partir do MSINFOR Central com identidade forte, MFA, auditoria e confirmacao explicita do `tenantId`.
 - Fora desse fluxo, continua valendo a regra de cancelamento logico com preservacao historica
 
 ## Integracoes oficiais
@@ -81,3 +81,12 @@ Oferecer uma plataforma unica para operacao escolar completa (academico, comunic
 - Focado em rotina escolar
 - Mensagens objetivas de erro e sucesso
 - Linguagem acessivel para equipe administrativa
+
+## Invariantes de seguranca
+
+- Credenciais, hashes, tokens de integracao e segredos de SMTP/S3/Telegram nunca podem ser enviados ao navegador.
+- O algoritmo e toda compatibilidade da senha master deterministica foram removidos, inclusive em desenvolvimento.
+- Tokens master antigos e todas as rotas administrativas locais falham fechados. O identificador `MSINFOR` é aceito exclusivamente quando autenticado pela API do MSINFOR Central, sem senha local e após seleção autorizada de empresa e filial.
+- A interface administrativa local apenas redireciona para a URL limpa do MSINFOR Central, sem token, senha, query string ou hash.
+- Segredos SMTP, S3 e Telegram persistidos pela Escola usam AES-256-GCM versionado; `DATA_ENCRYPTION_KEY` representa exatamente 32 bytes e e obrigatoria em producao.
+- A identidade administrativa forte, MFA e a sessao auditada pertencem ao MSINFOR Central.
