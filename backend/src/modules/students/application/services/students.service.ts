@@ -20,6 +20,7 @@ import {
   withRoleBranchAccessCodes,
 } from "../../../../common/tenant/role-branch-accesses";
 import * as bcrypt from "bcrypt";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
   getDefaultAccessProfileForRole,
@@ -523,6 +524,7 @@ export class StudentsService {
 
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
+      assertStrongPassword(sanitizedDto.password);
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     }
@@ -624,6 +626,7 @@ export class StudentsService {
         email: sanitizedDto.email,
         displayName: sanitizedDto.name,
         credential: String(sanitizedDto.password),
+        externalSubjectId: `PERSON:${createdStudent.personId || createdStudent.id}`,
         branchCodes: branchSelection.explicitBranchCodes,
         roleCode: accessProfile || "ALUNO",
       });
@@ -1129,6 +1132,7 @@ export class StudentsService {
 
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
+      assertStrongPassword(sanitizedDto.password);
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     }
@@ -1251,6 +1255,19 @@ export class StudentsService {
           { userId: this.userId() },
         );
       }
+    }
+
+    if (emailForPasswordSync) {
+      await this.centralIdentityProvisioning.synchronize({
+        tenantId: this.tenantId(),
+        login: emailForPasswordSync,
+        email: emailForPasswordSync,
+        displayName: resolvedStudentName,
+        ...(sanitizedDto.password ? { credential: String(sanitizedDto.password) } : {}),
+        externalSubjectId: `PERSON:${updatedStudent.personId || updatedStudent.id}`,
+        branchCodes: branchSelection.explicitBranchCodes,
+        roleCode: accessProfile || "ALUNO",
+      });
     }
 
     const refreshedStudent = await this.findStudentEntity(id);

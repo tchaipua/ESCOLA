@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -18,6 +19,7 @@ import {
   withRoleBranchAccessCodes,
 } from "../../../../common/tenant/role-branch-accesses";
 import * as bcrypt from "bcrypt";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
   getDefaultAccessProfileForRole,
@@ -31,6 +33,8 @@ import {
   sanitizeTeacherForViewer,
 } from "../../../../common/auth/entity-visibility";
 import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
+import { SHARED_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
+import { listTenantBranches } from "../../../../common/tenant/tenant-branches";
 
 @Injectable()
 export class TeachersService {
@@ -95,6 +99,41 @@ export class TeachersService {
     return String(value || "").replace(/\D/g, "");
   }
 
+  private normalizeAccessUsername(value?: string | null): string | null {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (/\s/.test(normalized)) {
+      throw new BadRequestException(
+        "O usuário de acesso não pode conter espaços.",
+      );
+    }
+    return normalized || null;
+  }
+
+  private async assertUniqueAccessUsername(
+    tenantId: string,
+    accessUsername?: string | null,
+    excludeTeacherId?: string,
+  ) {
+    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
+    if (!normalizedUsername) return;
+
+    const teacher = await this.prisma.teacher.findFirst({
+      where: {
+        tenantId,
+        accessUsername: normalizedUsername,
+        canceledAt: null,
+        ...(excludeTeacherId ? { id: { not: excludeTeacherId } } : {}),
+      },
+      select: { id: true, person: { select: { name: true } } },
+    });
+
+    if (teacher) {
+      throw new ConflictException(
+        `O usuário de acesso já está cadastrado para o professor ${teacher.person?.name || "informado"}.`,
+      );
+    }
+  }
+
   private async assertUniqueTeacherCpf(
     tenantId: string,
     cpf?: string | null,
@@ -124,6 +163,29 @@ export class TeachersService {
     if (person) {
       throw new ConflictException(
         `Já existe um professor com este CPF nesta escola: ${person.name}.`,
+      );
+    }
+  }
+
+  private async assertTeacherPersonIsNotShared(
+    tenantId: string,
+    teacherId: string,
+    personId?: string | null,
+  ) {
+    if (!personId) return;
+
+    const linkedTeacherCount = await this.prisma.teacher.count({
+      where: {
+        tenantId,
+        personId,
+        canceledAt: null,
+        id: { not: teacherId },
+      },
+    });
+
+    if (linkedTeacherCount > 0) {
+      throw new ConflictException(
+        "Este professor está vinculado ao mesmo cadastro-base de outro professor. Regularize o CPF/cadastro-base antes de alterar o nome, para não modificar os demais registros.",
       );
     }
   }
@@ -283,6 +345,27 @@ export class TeachersService {
     return teacher;
   }
 
+  private async resolveCentralBranchCodes(
+    tenantId: string,
+    branchCode: number,
+    explicitBranchCodes: number[],
+  ) {
+    if (explicitBranchCodes.length > 0) {
+      return explicitBranchCodes;
+    }
+
+    if (branchCode !== SHARED_BRANCH_CODE) {
+      return [branchCode];
+    }
+
+    const branches = await listTenantBranches(this.prisma, tenantId);
+    return branches
+      .filter((branch) => branch.isActive)
+      .map((branch) => branch.branchCode)
+      .filter((code) => code >= 1)
+      .sort((left, right) => left - right);
+  }
+
   async create(createDto: CreateTeacherDto, currentUser?: ICurrentUser) {
     const tenantId = getTenantContext()!.tenantId;
     const branchSelection = await resolveRoleBranchSelection(
@@ -293,6 +376,11 @@ export class TeachersService {
       getTenantContext()!.branchCode,
     );
     const targetBranchCode = branchSelection.branchCode;
+    const centralBranchCodes = await this.resolveCentralBranchCodes(
+      tenantId,
+      targetBranchCode,
+      branchSelection.explicitBranchCodes,
+    );
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
     const sanitizedDto = this.sanitizeTeacherMutationDto(
@@ -302,6 +390,14 @@ export class TeachersService {
 
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    sanitizedDto.accessUsername = this.normalizeAccessUsername(
+      sanitizedDto.accessUsername,
+    );
+    if (sanitizedDto.accessUsername && !sanitizedDto.email) {
+      throw new BadRequestException(
+        "Informe o e-mail quando informar o usuário de acesso do PWA.",
+      );
+    }
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       tenantId,
@@ -314,11 +410,13 @@ export class TeachersService {
     );
 
     await this.assertUniqueTeacherCpf(tenantId, sanitizedDto.cpf);
+    await this.assertUniqueAccessUsername(tenantId, sanitizedDto.accessUsername);
 
     await this.fillAddressFromViaCep(sanitizedDto);
 
     let hashedPassword = undefined;
     if (sanitizedDto.password) {
+      assertStrongPassword(sanitizedDto.password);
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     }
@@ -405,11 +503,12 @@ export class TeachersService {
     if (sanitizedDto.email && hashedPassword) {
       await this.centralIdentityProvisioning.synchronize({
         tenantId,
-        login: sanitizedDto.email,
+        login: sanitizedDto.accessUsername || sanitizedDto.email,
         email: sanitizedDto.email,
         displayName: sanitizedDto.name,
         credential: String(sanitizedDto.password),
-        branchCodes: branchSelection.explicitBranchCodes,
+        externalSubjectId: `PERSON:${createdTeacher.personId || createdTeacher.id}`,
+        branchCodes: centralBranchCodes,
         roleCode: accessProfile || "PROFESSOR",
       });
     }
@@ -526,6 +625,7 @@ export class TeachersService {
     const tenantId = getTenantContext()!.tenantId;
     await this.normalizeLegacyTeacherDateTimes(tenantId);
     const teacher = await this.findTeacherEntity(id);
+    await this.assertTeacherPersonIsNotShared(tenantId, id, teacher.personId);
     const sanitizedDto = this.sanitizeTeacherMutationDto(
       updateDto,
       currentUser,
@@ -538,10 +638,29 @@ export class TeachersService {
       teacher.branchCode,
     );
     const targetBranchCode = branchSelection.branchCode;
+    const centralBranchCodes = await this.resolveCentralBranchCodes(
+      tenantId,
+      targetBranchCode,
+      branchSelection.explicitBranchCodes,
+    );
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
     if (sanitizedDto.email)
       sanitizedDto.email = sanitizedDto.email.toUpperCase();
+    if (Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")) {
+      sanitizedDto.accessUsername = this.normalizeAccessUsername(
+        sanitizedDto.accessUsername,
+      );
+    }
+    if (
+      sanitizedDto.accessUsername &&
+      !sanitizedDto.email &&
+      !teacher.person?.email
+    ) {
+      throw new BadRequestException(
+        "Informe o e-mail quando informar o usuário de acesso do PWA.",
+      );
+    }
 
     const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
       teacher.person?.email,
@@ -568,18 +687,31 @@ export class TeachersService {
       teacher.person?.name,
     );
 
-    if (
-      sanitizedDto.cpf &&
-      this.normalizeDocument(sanitizedDto.cpf) !==
-        this.normalizeDocument(teacher.person?.cpf)
-    ) {
-      await this.assertUniqueTeacherCpf(tenantId, sanitizedDto.cpf, id);
-    }
+    const cpfBeingSaved = Object.prototype.hasOwnProperty.call(
+      sanitizedDto,
+      "cpf",
+    )
+      ? sanitizedDto.cpf
+      : teacher.person?.cpf;
+
+    // A Person é compartilhada por CPF dentro do tenant. Se dados legados
+    // deixaram mais de um professor apontando para o mesmo CPF, atualizar o
+    // nome de um deles alteraria todos os vínculos daquela pessoa. Bloqueie
+    // antes da sincronização para preservar a integridade do cadastro.
+    await this.assertUniqueTeacherCpf(tenantId, cpfBeingSaved, id);
+    await this.assertUniqueAccessUsername(
+      tenantId,
+      Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
+        ? sanitizedDto.accessUsername
+        : teacher.accessUsername,
+      id,
+    );
 
     await this.fillAddressFromViaCep(sanitizedDto);
 
     let hashedPassword = undefined;
     if (sanitizedDto.password) {
+      assertStrongPassword(sanitizedDto.password);
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
     }
@@ -646,6 +778,20 @@ export class TeachersService {
       };
     });
 
+    // Quando o professor não possui CPF, o cadastro-base ainda deve ser
+    // atualizado pelo personId já vinculado ao professor. Nunca use CPF vazio
+    // como critério de busca ou de atualização em massa.
+    const personIdForSharedUpdate = updatedTeacher.personId || teacher.personId;
+    if (personIdForSharedUpdate && !this.normalizeDocument(sanitizedDto.cpf)) {
+      await this.prisma.person.update({
+        where: { id: personIdForSharedUpdate },
+        data: {
+          name: sanitizedDto.name,
+          updatedBy: getTenantContext()!.userId,
+        },
+      });
+    }
+
     await this.sharedProfilesService.syncSharedProfile(
       tenantId,
       "TEACHER",
@@ -662,6 +808,10 @@ export class TeachersService {
     );
 
     const emailForPasswordSync = sanitizedDto.email || teacher.person?.email;
+    const accessUsernameForSync =
+      Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
+        ? sanitizedDto.accessUsername
+        : teacher.accessUsername;
     if (emailForPasswordSync) {
       if (hashedPassword) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
@@ -677,14 +827,15 @@ export class TeachersService {
       }
     }
 
-    if (emailForPasswordSync && sanitizedDto.password) {
+    if (emailForPasswordSync) {
       await this.centralIdentityProvisioning.synchronize({
         tenantId,
-        login: emailForPasswordSync,
+        login: accessUsernameForSync || emailForPasswordSync,
         email: emailForPasswordSync,
         displayName: sanitizedDto.name || teacher.person?.name || "Professor",
-        credential: String(sanitizedDto.password),
-        branchCodes: branchSelection.explicitBranchCodes,
+        ...(sanitizedDto.password ? { credential: String(sanitizedDto.password) } : {}),
+        externalSubjectId: `PERSON:${updatedTeacher.personId || updatedTeacher.id}`,
+        branchCodes: centralBranchCodes,
         roleCode: accessProfile || "PROFESSOR",
       });
     }

@@ -2537,6 +2537,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     <div className="relative">
                                         <input
                                             type={showNewPassword ? 'text' : 'password'}
+                                            minLength={6}
+                                            pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
                                             value={newPassword}
                                             onChange={(event) => setNewPassword(event.target.value)}
                                             placeholder="INFORME A NOVA SENHA"
@@ -2570,6 +2572,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     <div className="relative">
                                         <input
                                             type={showConfirmNewPassword ? 'text' : 'password'}
+                                            minLength={6}
+                                            pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
                                             value={confirmNewPassword}
                                             onChange={(event) => setConfirmNewPassword(event.target.value)}
                                             placeholder="REPITA A NOVA SENHA"

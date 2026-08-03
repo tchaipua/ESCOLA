@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import {
@@ -1077,6 +1078,7 @@ export class PeopleService {
 
       let hashedPassword: string | null = null;
       if (createDto.password) {
+        assertStrongPassword(createDto.password);
         const salt = await bcrypt.genSalt(10);
         hashedPassword = await bcrypt.hash(createDto.password, salt);
       }
@@ -1201,6 +1203,7 @@ export class PeopleService {
 
       let hashedPassword: string | undefined;
       if (updateDto.password) {
+        assertStrongPassword(updateDto.password);
         const salt = await bcrypt.genSalt(10);
         hashedPassword = await bcrypt.hash(updateDto.password, salt);
       }

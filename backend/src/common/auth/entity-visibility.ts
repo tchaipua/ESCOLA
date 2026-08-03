@@ -188,6 +188,7 @@ export function sanitizeTeacherForViewer<T extends Record<string, any>>(
 
   if (!canViewTeacherAccessData(viewer)) {
     result.email = null;
+    result.accessUsername = null;
     result.accessProfile = null;
     result.permissions = [];
     result.branchAccessCodes = [];

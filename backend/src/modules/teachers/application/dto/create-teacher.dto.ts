@@ -63,6 +63,11 @@ export class CreateTeacherDto {
   @IsOptional()
   email?: string;
 
+  @ApiPropertyOptional({ description: "Usuário livre usado no login do PWA" })
+  @IsString()
+  @IsOptional()
+  accessUsername?: string | null;
+
   @ApiPropertyOptional({ description: "ID do chat do professor no Telegram" })
   @IsString()
   @IsOptional()
@@ -82,7 +87,7 @@ export class CreateTeacherDto {
 
   @ApiPropertyOptional({ description: "Senha de Acesso ao PWA" })
   @IsString()
-  @MinLength(4)
+  @MinLength(6)
   @IsOptional()
   password?: string;
 

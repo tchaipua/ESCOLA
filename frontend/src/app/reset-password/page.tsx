@@ -32,7 +32,7 @@ function ResetPasswordContent() {
         }
 
         if (newPassword.length < 6) {
-            setErrorStatus('Por segurança, a senha deve ter no mínimo 6 caracteres.');
+            setErrorStatus('A senha deve ter no mínimo 6 caracteres e conter letra maiúscula, letra minúscula e caractere especial.');
             return;
         }
 
@@ -133,6 +133,8 @@ function ResetPasswordContent() {
                                         </div>
                                         <input
                                             type="password"
+                                            minLength={6}
+                                            pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
                                             className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold rounded-xl pl-10 pr-4 py-3 outline-none focus:border-[#2272c7] focus:ring-4 focus:ring-[#2272c7]/20 transition-all"
                                             placeholder="Mínimo de 6 caracteres"
                                             value={newPassword}
@@ -153,6 +155,8 @@ function ResetPasswordContent() {
                                         </div>
                                         <input
                                             type="password"
+                                            minLength={6}
+                                            pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
                                             className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold rounded-xl pl-10 pr-4 py-3 outline-none focus:border-[#2272c7] focus:ring-4 focus:ring-[#2272c7]/20 transition-all"
                                             placeholder="Repita a senha digitada"
                                             value={confirmPassword}

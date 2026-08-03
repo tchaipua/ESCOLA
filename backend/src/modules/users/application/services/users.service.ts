@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 
@@ -18,6 +19,7 @@ export class UsersService {
     let hashedPassword: string | null = null;
 
     if (normalizedPassword) {
+      assertStrongPassword(normalizedPassword);
       hashedPassword = await bcrypt.hash(normalizedPassword, 10);
       await this.sharedProfilesService.updateEmailCredentialPassword(
         normalizedEmail,

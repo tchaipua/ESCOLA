@@ -13,6 +13,7 @@ import { ApplyFinanceSourceParametersDto } from "../dto/finance-source-parameter
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import * as nodemailer from "nodemailer";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import {
   getDefaultPermissionsForRole,
   normalizePermissions,
@@ -947,6 +948,7 @@ export class TenantsService {
         "Senha forte do administrador é obrigatória.",
       );
     }
+    assertStrongPassword(normalizedAdminPassword);
     const hashedPassword = await bcrypt.hash(
       normalizedAdminPassword,
       await bcrypt.genSalt(12),
@@ -2672,9 +2674,7 @@ export class TenantsService {
 
     let hashedPassword: string | null = null;
     if (password) {
-      if (password.length < 6) {
-        throw new ConflictException("A senha deve ter no mínimo 6 caracteres.");
-      }
+      assertStrongPassword(password);
 
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(password, salt);
@@ -2956,9 +2956,7 @@ export class TenantsService {
       Boolean(normalizedIncomingEmail) &&
       normalizedIncomingEmail !== normalizedCurrentEmail;
     if (payload.password !== undefined && payload.password !== "") {
-      if (String(payload.password).length < 6) {
-        throw new ConflictException("A senha deve ter no mínimo 6 caracteres.");
-      }
+      assertStrongPassword(String(payload.password));
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(String(payload.password), salt);
     }
@@ -3431,8 +3429,9 @@ export class TenantsService {
 
     let hashedPassword: string | undefined;
     if (updateTenantDto.adminPassword) {
+      assertStrongPassword(String(updateTenantDto.adminPassword).trim());
       const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(updateTenantDto.adminPassword, salt);
+      hashedPassword = await bcrypt.hash(String(updateTenantDto.adminPassword).trim(), salt);
     }
 
     const adminsToSync: Array<{

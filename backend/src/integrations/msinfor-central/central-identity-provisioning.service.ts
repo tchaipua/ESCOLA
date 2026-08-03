@@ -14,7 +14,8 @@ export class CentralIdentityProvisioningService {
     login: string;
     email: string;
     displayName: string;
-    credential: string;
+    credential?: string;
+    externalSubjectId: string;
     branchCodes: number[];
     roleCode: string;
   }) {
@@ -23,7 +24,8 @@ export class CentralIdentityProvisioningService {
       login: input.login,
       email: input.email,
       displayName: input.displayName,
-      credential: input.credential,
+      ...(input.credential ? { credential: input.credential } : {}),
+      externalSubjectId: input.externalSubjectId,
       tenantId: configuration.tenant.id,
       branchCodes: input.branchCodes,
       roleCode: input.roleCode,

@@ -171,14 +171,14 @@ async function testChangeSharedPasswordUpdatesGlobalEmailCredential() {
     "tenant-1",
     "user",
     "SENHA-MISTA",
-    "NOVA123",
+    "Nova@123",
   );
 
   assert.deepEqual(result, { status: "SUCCESS" });
   assert.equal(updateCalls.length, 1);
   assert.equal(updateCalls[0][0], "Prof@Escola.com");
   assert.equal(updateCalls[0][2], "user-1");
-  assert.equal(await bcrypt.compare("NOVA123", updateCalls[0][1]), true);
+  assert.equal(await bcrypt.compare("Nova@123", updateCalls[0][1]), true);
 }
 
 async function testChangeSharedPasswordRejectsBlankPasswordWithSpaces() {
@@ -224,7 +224,7 @@ async function testChangeSharedPasswordRejectsShortNewPassword() {
         "12345",
       ),
     (error) => {
-      assert.equal(error.message, "A nova senha deve ter pelo menos 6 caracteres.");
+      assert.match(error.message, /no mínimo 6 caracteres|maiúscula|minúscula|especial/);
       return true;
     },
   );

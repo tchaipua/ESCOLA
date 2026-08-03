@@ -819,7 +819,8 @@ export class MsInforCentralSettingsClient {
     login: string;
     email: string;
     displayName: string;
-    credential: string;
+    credential?: string;
+    externalSubjectId: string;
     tenantId: string;
     branchCodes: number[];
     roleCode: string;

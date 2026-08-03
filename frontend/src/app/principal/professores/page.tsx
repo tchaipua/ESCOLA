@@ -84,6 +84,7 @@ type TeacherRecord = {
     branchAccessCodes?: number[] | null;
     name: string;
     canceledAt?: string | null;
+    accessUsername?: string | null;
     email?: string | null;
     telegramChatId?: string | null;
     telegramUsername?: string | null;
@@ -130,8 +131,10 @@ type TeacherFormState = {
     whatsapp: string;
     cellphone1: string;
     cellphone2: string;
+    accessUsername: string;
     email: string;
     password: string;
+    passwordConfirmation: string;
     telegramChatId: string;
     telegramUsername: string;
     telegramOptInEnabled: boolean;
@@ -807,6 +810,7 @@ export default function ProfessoresPage() {
     const [teacherStatusToggleTarget, setTeacherStatusToggleTarget] = useState<TeacherRecord | null>(null);
     const [teacherStatusToggleAction, setTeacherStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingTeacherToggle, setIsProcessingTeacherToggle] = useState(false);
+    const [isPwaPasswordVisible, setIsPwaPasswordVisible] = useState(false);
 
     const canViewTeachers = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']);
     const canManageTeachers = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_TEACHERS');
@@ -957,7 +961,7 @@ export default function ProfessoresPage() {
         branchCode: 1,
         branchAccessCodes: [1],
         name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
-        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
+        phone: '', whatsapp: '', cellphone1: '', cellphone2: '', accessUsername: '', email: '', password: '', passwordConfirmation: '',
         telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
         zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
         accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
@@ -1164,6 +1168,7 @@ export default function ProfessoresPage() {
         setEditingTeacherId(null);
         setOriginalTeacherEmail('');
         setOriginalTeacherCpf('');
+        setIsPwaPasswordVisible(false);
         setActiveTab(1);
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
@@ -1175,7 +1180,7 @@ export default function ProfessoresPage() {
             branchCode: currentBranchCode,
             branchAccessCodes: [currentBranchCode],
             name: '', rg: '', cpf: '', cnpj: '', nickname: '', corporateName: '', birthDate: '',
-            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '', password: '',
+            phone: '', whatsapp: '', cellphone1: '', cellphone2: '', accessUsername: '', email: '', password: '', passwordConfirmation: '',
             telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
             zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
             accessProfile: DEFAULT_TEACHER_PROFILE, permissions: getProfilePermissions(DEFAULT_TEACHER_PROFILE)
@@ -1196,6 +1201,7 @@ export default function ProfessoresPage() {
         setEditingTeacherId(null);
         setOriginalTeacherEmail('');
         setOriginalTeacherCpf('');
+        setIsPwaPasswordVisible(false);
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
         setHourlyRateForTeacher('');
@@ -1249,8 +1255,10 @@ export default function ProfessoresPage() {
             whatsapp: prof.whatsapp ? limitNumericDigits(prof.whatsapp, 11) : '',
             cellphone1: prof.cellphone1 ? limitNumericDigits(prof.cellphone1, 11) : '',
             cellphone2: prof.cellphone2 ? limitNumericDigits(prof.cellphone2, 11) : '',
+            accessUsername: prof.accessUsername || '',
             email: prof.email || '',
             password: '',
+            passwordConfirmation: '',
             telegramChatId: prof.telegramChatId || '',
             telegramUsername: prof.telegramUsername || '',
             telegramOptInEnabled: Boolean(prof.telegramOptInAt && !prof.telegramOptOutAt),
@@ -2036,6 +2044,41 @@ export default function ProfessoresPage() {
             return;
         }
 
+        const rawPwaUsername = String(formData.accessUsername || '');
+        const pwaUsername = rawPwaUsername.trim();
+        const pwaEmail = String(formData.email || '').trim();
+        const pwaPassword = String(formData.password || '');
+        const pwaPasswordConfirmation = String(formData.passwordConfirmation || '');
+        if (/\s/.test(rawPwaUsername)) {
+            showErrorMessage('O usuário de acesso do PWA não pode conter espaços.');
+            return;
+        }
+        const isPwaCredentialAttempt = Boolean(pwaPassword || pwaPasswordConfirmation);
+        if (isPwaCredentialAttempt && !pwaUsername) {
+            showErrorMessage('Informe o usuário de acesso do PWA.');
+            return;
+        }
+        if (isPwaCredentialAttempt && !pwaPassword) {
+            showErrorMessage('Informe a senha de acesso PWA.');
+            return;
+        }
+        if (isPwaCredentialAttempt && !pwaPasswordConfirmation) {
+            showErrorMessage('Confirme a senha de acesso PWA.');
+            return;
+        }
+        if (isPwaCredentialAttempt && pwaPassword !== pwaPasswordConfirmation) {
+            showErrorMessage('A confirmação da senha de acesso PWA não confere.');
+            return;
+        }
+        if (pwaUsername && !pwaEmail) {
+            showErrorMessage('Informe o e-mail quando informar o usuário de acesso do PWA.');
+            return;
+        }
+        if (pwaEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pwaEmail)) {
+            showErrorMessage('Informe um e-mail válido para o cadastro do professor.');
+            return;
+        }
+
         // Validação de Documentos antes de enviar pro Back-End!
         if (formData.cpf && formData.cpf.trim() !== '') {
             if (!isValidCpf(formData.cpf)) {
@@ -2066,6 +2109,7 @@ export default function ProfessoresPage() {
                 delete payload.branchAccessCodes;
             }
             if (!teacherFieldAccess.access) {
+                delete payload.accessUsername;
                 delete payload.email;
                 delete payload.telegramChatId;
                 delete payload.telegramUsername;
@@ -2079,6 +2123,10 @@ export default function ProfessoresPage() {
             if (!payload.password) {
                 delete payload.password;
             }
+            if (!pwaEmail) {
+                delete payload.email;
+            }
+            delete payload.passwordConfirmation;
 
             if (payload.cpf) payload.cpf = formatCpf(String(payload.cpf));
             if (payload.cnpj) payload.cnpj = formatCnpj(String(payload.cnpj));
@@ -2580,6 +2628,9 @@ export default function ProfessoresPage() {
                             <button type="button" onClick={() => setActiveTab(5)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 5 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
                                 5. FILIAIS DE ACESSO
                             </button>
+                            <button type="button" onClick={() => setActiveTab(6)} className={`px-3 py-1.5 rounded-t-lg font-bold text-xs tracking-wide transition-colors ${activeTab === 6 ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-sm' : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'}`}>
+                                6. PERMISSÕES DO DOCENTE
+                            </button>
                         </div>
 
                         {/* Formulário */}
@@ -2735,18 +2786,6 @@ export default function ProfessoresPage() {
                                                             />
                                                         </div>
                                                     </>
-                                                ) : null}
-                                                {teacherFieldAccess.access ? (
-                                                    <div className="md:col-span-2">
-                                                        <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail para contato / acesso</label>
-                                                        <input
-                                                            type="email"
-                                                            value={formData.email}
-                                                            onChange={(e) => handleTeacherEmailChange(e.target.value)}
-                                                            onBlur={() => void handleTeacherEmailBlur()}
-                                                            className="w-full bg-slate-50 border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500 focus:bg-white"
-                                                        />
-                                                    </div>
                                                 ) : null}
                                             </div>
                                         ) : null}
@@ -3017,27 +3056,119 @@ export default function ProfessoresPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail de Login PWA (Apenas para Acesso)</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário de acesso (Usado no Login)</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.accessUsername}
+                                                    onChange={(e) => setFormData((current) => ({ ...current, accessUsername: e.target.value.toUpperCase() }))}
+                                                    pattern="\S+"
+                                                    required={Boolean(formData.password || formData.passwordConfirmation)}
+                                                    onInvalid={(event) => {
+                                                        event.preventDefault();
+                                                        showErrorMessage('Informe um usuário de acesso do PWA sem espaços.');
+                                                    }}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="Nome do usuário usado no login"
+                                                />
+                                                <div className="mt-1 text-xs font-medium text-slate-500">
+                                                    Pode ser um nome livre e não precisa ter formato de e-mail.
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail</label>
                                                 <input
                                                     type="email"
                                                     value={formData.email}
                                                     onChange={(e) => handleTeacherEmailChange(e.target.value)}
                                                     onBlur={() => void handleTeacherEmailBlur()}
+                                                    required={Boolean(formData.accessUsername)}
+                                                    onInvalid={(event) => {
+                                                        event.preventDefault();
+                                                        showErrorMessage('Informe o e-mail quando informar o usuário de acesso do PWA.');
+                                                    }}
                                                     className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-                                                    placeholder="Apenas para acessar o portal"
+                                                    placeholder="E-mail para contato e recuperação"
                                                 />
+                                                <div className="mt-1 text-xs font-medium text-slate-500">
+                                                    Obrigatório quando usuário, senha e confirmação forem informados.
+                                                </div>
                                             </div>
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Senha de acesso PWA</label>
-                                                <input
-                                                    type="password"
-                                                    value={formData.password}
-                                                    onChange={(e) => setFormData((current) => ({ ...current, password: e.target.value }))}
-                                                    minLength={4}
-                                                    autoComplete="new-password"
-                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-                                                    placeholder={editingTeacherId ? 'Preencha somente para trocar a senha' : 'Defina a senha do professor'}
-                                                />
+                                                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                                                    <input
+                                                        type={isPwaPasswordVisible ? 'text' : 'password'}
+                                                        value={formData.password}
+                                                        onChange={(e) => setFormData((current) => ({ ...current, password: e.target.value }))}
+                                                        minLength={6}
+                                                        pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
+                                                        onInvalid={(event) => {
+                                                            event.preventDefault();
+                                                            showErrorMessage('A senha deve ter no mínimo 6 caracteres e conter ao menos uma letra maiúscula, uma letra minúscula e um caractere especial.');
+                                                        }}
+                                                        autoComplete="new-password"
+                                                        className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
+                                                        placeholder={editingTeacherId ? 'Preencha somente para trocar a senha' : 'Defina a senha do professor'}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsPwaPasswordVisible((current) => !current)}
+                                                        className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
+                                                        aria-label={isPwaPasswordVisible ? 'Ocultar senha de acesso PWA' : 'Mostrar senha de acesso PWA'}
+                                                        title={isPwaPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                                                    >
+                                                        {isPwaPasswordVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.77 9.77 0 0112 4.8c5.05 0 9.27 3.11 10.5 7.2a10.76 10.76 0 01-4.04 5.45M6.1 6.1A10.75 10.75 0 001.5 12c.64 2.13 2.1 3.99 4.1 5.3" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M1.5 12S5.5 4.8 12 4.8 22.5 12 22.5 12 18.5 19.2 12 19.2 1.5 12 1.5 12z" />
+                                                                <circle cx="12" cy="12" r="3" />
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Confirmar senha de acesso PWA</label>
+                                                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                                                    <input
+                                                        type={isPwaPasswordVisible ? 'text' : 'password'}
+                                                        value={formData.passwordConfirmation}
+                                                        onChange={(e) => setFormData((current) => ({ ...current, passwordConfirmation: e.target.value }))}
+                                                        required={Boolean(formData.password || formData.passwordConfirmation)}
+                                                        onInvalid={(event) => {
+                                                            event.preventDefault();
+                                                            showErrorMessage('Confirme a senha de acesso PWA.');
+                                                        }}
+                                                        autoComplete="new-password"
+                                                        className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
+                                                        placeholder="Repita a senha de acesso"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsPwaPasswordVisible((current) => !current)}
+                                                        className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
+                                                        aria-label={isPwaPasswordVisible ? 'Ocultar confirmação de senha de acesso PWA' : 'Mostrar confirmação de senha de acesso PWA'}
+                                                        title={isPwaPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                                                    >
+                                                        {isPwaPasswordVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.88 5.09A9.77 9.77 0 0112 4.8c5.05 0 9.27 3.11 10.5 7.2a10.76 10.76 0 01-4.04 5.45M6.1 6.1A10.75 10.75 0 001.5 12c.64 2.13 2.1 3.99 4.1 5.3" />
+                                                            </svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M1.5 12S5.5 4.8 12 4.8 22.5 12 22.5 12 18.5 19.2 12 19.2 1.5 12 1.5 12z" />
+                                                                <circle cx="12" cy="12" r="3" />
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div>
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Telegram Chat ID</label>
@@ -3066,22 +3197,6 @@ export default function ProfessoresPage() {
                                                 />
                                                 Telegram ativo para notificações
                                             </label>
-                                            <div className="md:col-span-2">
-                                                <div className="mb-2 text-xs font-bold text-slate-600">Permissões específicas do docente</div>
-                                                <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                                                    {PERMISSION_OPTIONS.map((permission) => (
-                                                        <label key={permission.value} title={permission.label} className="flex min-h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={formData.permissions.includes(permission.value)}
-                                                                onChange={() => toggleTeacherPermission(permission.value)}
-                                                                className="h-3 w-3 shrink-0 rounded border-slate-300 text-blue-600"
-                                                            />
-                                                            <span className="min-w-0 truncate text-[11px] font-medium leading-tight text-slate-700">{permission.label}</span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
                                 ) : (
@@ -3107,6 +3222,36 @@ export default function ProfessoresPage() {
                                         />
                                     </div>
                                 </div>
+                            )}
+
+                            {activeTab === 6 && (
+                                teacherFieldAccess.access ? (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Permissões específicas do docente</h4>
+                                        <div className="grid grid-cols-1 gap-3 max-w-7xl mx-auto mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                            <div className="text-xs font-medium text-slate-500">
+                                                Ajuste as permissões específicas que terão prioridade sobre o perfil pré-definido do professor.
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-1.5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                                                {PERMISSION_OPTIONS.map((permission) => (
+                                                    <label key={permission.value} title={permission.label} className="flex min-h-7 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={formData.permissions.includes(permission.value)}
+                                                            onChange={() => toggleTeacherPermission(permission.value)}
+                                                            className="h-3 w-3 shrink-0 rounded border-slate-300 text-blue-600"
+                                                        />
+                                                        <span className="min-w-0 truncate text-[11px] font-medium leading-tight text-slate-700">{permission.label}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-medium text-amber-700">
+                                        Seu perfil não possui autorização para consultar ou alterar as permissões específicas deste professor.
+                                    </div>
+                                )
                             )}
 
                         </form>

@@ -790,6 +790,7 @@ model Teacher {
   tenantId   String
   branchCode Int     @default(1)
   personId   String?
+  accessUsername String?
 
   accessProfile String?
   permissions   String?
@@ -811,6 +812,7 @@ model Teacher {
 
   @@index([tenantId])
   @@index([personId])
+  @@unique([tenantId, accessUsername])
   @@map("teachers")
 }
 

@@ -12,6 +12,7 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import * as bcrypt from "bcrypt";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import {
   getDefaultAccessProfileForRole,
@@ -283,6 +284,7 @@ export class GuardiansService {
 
       let hashedPassword = undefined;
       if (sanitizedDto.password) {
+        assertStrongPassword(sanitizedDto.password);
         const salt = await bcrypt.genSalt(10);
         hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
       }
@@ -372,6 +374,7 @@ export class GuardiansService {
           email: sanitizedDto.email,
           displayName: sanitizedDto.name,
           credential: String(sanitizedDto.password),
+          externalSubjectId: `PERSON:${createdGuardian.personId || createdGuardian.id}`,
           branchCodes: branchSelection.explicitBranchCodes,
           roleCode: accessProfile || "RESPONSAVEL",
         });
@@ -602,6 +605,7 @@ export class GuardiansService {
 
       let hashedPassword = undefined;
       if (sanitizedDto.password) {
+        assertStrongPassword(sanitizedDto.password);
         const salt = await bcrypt.genSalt(10);
         hashedPassword = await bcrypt.hash(sanitizedDto.password, salt);
       }
@@ -709,6 +713,19 @@ export class GuardiansService {
             { userId: getTenantContext()!.userId },
           );
         }
+      }
+
+      if (emailForPasswordSync) {
+        await this.centralIdentityProvisioning.synchronize({
+          tenantId: getTenantContext()!.tenantId,
+          login: emailForPasswordSync,
+          email: emailForPasswordSync,
+          displayName: sanitizedDto.name || currentGuardian.person?.name || "Responsável",
+          ...(sanitizedDto.password ? { credential: String(sanitizedDto.password) } : {}),
+          externalSubjectId: `PERSON:${updatedGuardian.personId || updatedGuardian.id}`,
+          branchCodes: branchSelection.explicitBranchCodes,
+          roleCode: accessProfile || "RESPONSAVEL",
+        });
       }
 
       const refreshedGuardian = await this.findGuardianEntity(id);

@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsString,
   IsOptional,
+  Matches,
   MinLength,
   IsArray,
   ArrayUnique,
@@ -23,6 +24,7 @@ export class RegisterDto {
   @ApiPropertyOptional({ description: "Senha de acesso" })
   @IsString()
   @MinLength(6, { message: "A senha deve ter no mínimo 6 caracteres" })
+  @Matches(/^(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}$/, { message: "A senha deve conter maiúscula, minúscula e caractere especial" })
   @IsOptional()
   password?: string;
 

@@ -77,7 +77,7 @@ export class UpdatePersonDto {
 
   @ApiPropertyOptional()
   @IsString()
-  @MinLength(4)
+  @MinLength(6)
   @IsOptional()
   password?: string;
 

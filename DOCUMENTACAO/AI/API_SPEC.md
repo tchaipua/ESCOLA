@@ -179,6 +179,20 @@ Resposta resumida:
 
 ## Auth
 
+### Provisionamento técnico da identidade Central
+
+- Cadastros operacionais com acesso (professor, aluno, responsável e usuário)
+  sincronizam a identidade mínima pelo endpoint central
+  `/identity/technical/synchronize`.
+- O payload envia `externalSubjectId` estável no formato `PERSON:<personId>`
+  ou `USER:<userId>`, além do UUID global da empresa e dos códigos das filiais
+  autorizadas.
+- A senha é enviada somente para criar a primeira identidade. Atualizações de
+  perfil ou de filiais vinculam a conta existente e nunca substituem a senha
+  global já gravada na Central.
+- A mesma conta pode possuir vínculos em empresas diferentes, mantendo uma
+  única credencial e isolamento operacional por tenant/filial.
+
 ### POST `/auth/login`
 
 - Produção: a credencial é validada exclusivamente pelo MSINFOR Central por
@@ -553,6 +567,13 @@ Continuam existindo e agora atuam como area operacional especializada:
 - leem e gravam dados comuns em `people`
 - respeitam tenant e auditoria
 - mantem campos especificos do papel
+
+No cadastro de `/teachers`, `accessUsername` identifica o login PWA do professor;
+o login antigo por e-mail continua compatível para registros sem esse campo.
+`email` continua sendo o contato e o endereço de recuperação; quando
+`accessUsername` for informado, o e-mail torna-se obrigatório e deve ser válido.
+Sem `accessUsername`, o e-mail permanece opcional. A confirmação de senha é
+validada no frontend e nunca é persistida.
 
 ## Anos letivos e feriados
 

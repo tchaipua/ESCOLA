@@ -11,6 +11,7 @@ import { JwtService } from "@nestjs/jwt";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { PrismaClient } from "@prisma/client";
 import * as bcrypt from "bcrypt";
+import { assertStrongPassword } from "../../../../common/security/password-policy";
 import { LoginDto } from "../dto/login.dto";
 import { RegisterDto } from "../dto/register.dto";
 import { ForgotPasswordDto } from "../dto/forgot-password.dto";
@@ -70,6 +71,7 @@ type AccountLookup = {
   branchCode: number;
   name: string;
   email: string | null;
+  accessUsername?: string | null;
   password: string | null;
   role: string;
   complementaryProfiles?: string | null;
@@ -146,7 +148,14 @@ export class AuthService {
   }
 
   private async findAccountByEmail(email: string): Promise<AccountLookup[]> {
-    const emailVariants = this.normalizeEmailVariants(email);
+    return this.findAccountByLogin(email, false);
+  }
+
+  private async findAccountByLogin(
+    login: string,
+    allowTeacherUsername = true,
+  ): Promise<AccountLookup[]> {
+    const loginVariants = this.normalizeEmailVariants(login);
     const prismaClient = this.getCrossTenantPrisma();
     const tenantSelect = {
       id: true,
@@ -168,7 +177,7 @@ export class AuthService {
 
     const [users, teachers, students, guardians] = await Promise.all([
       prismaClient.user.findMany({
-        where: { email: { in: emailVariants }, canceledAt: null },
+        where: { email: { in: loginVariants }, canceledAt: null },
         select: {
           ...baseSelect,
           name: true,
@@ -185,12 +194,21 @@ export class AuthService {
         },
       }),
       prismaClient.teacher.findMany({
-        where: {
-          person: { email: { in: emailVariants } },
-          canceledAt: null,
-        },
+        where: allowTeacherUsername
+          ? {
+              OR: [
+                { person: { email: { in: loginVariants } } },
+                { accessUsername: { in: loginVariants } },
+              ],
+              canceledAt: null,
+            }
+          : {
+              person: { email: { in: loginVariants } },
+              canceledAt: null,
+            },
         select: {
           ...baseSelect,
+          accessUsername: true,
           person: { select: { name: true, email: true, password: true } },
           branchAccesses: {
             where: { canceledAt: null },
@@ -201,7 +219,7 @@ export class AuthService {
       }),
       prismaClient.student.findMany({
         where: {
-          person: { email: { in: emailVariants } },
+          person: { email: { in: loginVariants } },
           canceledAt: null,
         },
         select: {
@@ -216,7 +234,7 @@ export class AuthService {
       }),
       prismaClient.guardian.findMany({
         where: {
-          person: { email: { in: emailVariants } },
+          person: { email: { in: loginVariants } },
           canceledAt: null,
         },
         select: {
@@ -255,6 +273,7 @@ export class AuthService {
         ...t,
         name: t.person?.name ?? "PROFESSOR",
         email: t.person?.email ?? null,
+        accessUsername: t.accessUsername ?? null,
         password: t.person?.password ?? null,
         modelType: "teacher" as const,
         role: "PROFESSOR",
@@ -1242,7 +1261,7 @@ export class AuthService {
       centralCompany.tradeName ||
       centralCompany.legalName ||
       centralTenantConfiguration.tenant.displayName;
-    const localAccounts = (await this.findAccountByEmail(loginDto.email))
+    const localAccounts = (await this.findAccountByLogin(loginDto.email))
       .filter(
         (account) =>
           account.tenantId === localTenant.id &&
@@ -1264,8 +1283,14 @@ export class AuthService {
       );
     }
 
+    const localAccountEmail = localAccounts.find((account) => account.email)?.email;
+    if (!localAccountEmail) {
+      throw new ForbiddenException(
+        "O acesso local não possui e-mail cadastrado para recuperação.",
+      );
+    }
     const existingCredential =
-      await this.sharedProfilesService.findEmailCredential(loginDto.email);
+      await this.sharedProfilesService.findEmailCredential(localAccountEmail);
     if (
       existingCredential?.centralIdentityAccountId &&
       existingCredential.centralIdentityAccountId.toLowerCase() !==
@@ -1276,7 +1301,7 @@ export class AuthService {
       );
     }
     await this.sharedProfilesService.bindCentralIdentity(
-      loginDto.email,
+      localAccountEmail,
       identity.account.id,
       identity.account.id,
     );
@@ -1296,30 +1321,50 @@ export class AuthService {
   }
 
   private async loginWithLocalIdentity(loginDto: LoginDto) {
-    const accounts = await this.findAccountByEmail(loginDto.email);
+    const accounts = await this.findAccountByLogin(loginDto.email);
     if (accounts.length === 0) {
       throw new UnauthorizedException(
         `USUÁRIO NÃO LOCALIZADO.|${loginDto.email}`,
       );
     }
 
-    const credential = await this.loadEmailCredential(loginDto.email);
-    if (!credential?.passwordHash) {
-      throw new UnauthorizedException(
-        "ESTE E-MAIL AINDA NÃO POSSUI UMA SENHA DE ACESSO CONFIGURADA. USE A OPÇÃO ESQUECI A SENHA PARA CRIAR SUA SENHA E ENTRAR NO SISTEMA.",
-      );
-    }
-    if (
-      !(await bcrypt.compare(loginDto.password, credential.passwordHash))
-    ) {
+    const authenticatedAccounts = (
+      await Promise.all(
+        accounts.map(async (account) => {
+          if (!account.email) return null;
+          const credential = await this.loadEmailCredential(account.email);
+          if (!credential?.passwordHash) return null;
+          const isPasswordValid = await bcrypt.compare(
+            loginDto.password,
+            credential.passwordHash,
+          );
+          return isPasswordValid ? { account, credential } : null;
+        }),
+      )
+    ).filter(
+      (entry): entry is { account: AccountLookup; credential: NonNullable<Awaited<ReturnType<AuthService["loadEmailCredential"]>>> } => Boolean(entry),
+    );
+
+    if (authenticatedAccounts.length === 0) {
       throw new UnauthorizedException(
         `SENHA INVÁLIDA PARA O USUÁRIO|${accounts[0].name.toUpperCase()}`,
       );
     }
-    if (!credential.emailVerified) {
-      return this.triggerEmailVerification(loginDto.email, accounts[0]?.name);
+
+    const accountWithUnverifiedEmail = authenticatedAccounts.find(
+      (entry) => !entry.credential.emailVerified,
+    );
+    if (accountWithUnverifiedEmail?.account.email) {
+      return this.triggerEmailVerification(
+        accountWithUnverifiedEmail.account.email,
+        accountWithUnverifiedEmail.account.name,
+      );
     }
-    return this.completeAuthenticatedLogin(accounts, loginDto);
+
+    return this.completeAuthenticatedLogin(
+      authenticatedAccounts.map((entry) => entry.account),
+      loginDto,
+    );
   }
 
   async login(loginDto: LoginDto) {
@@ -1664,12 +1709,6 @@ export class AuthService {
     if (!normalizedCurrentPassword || !normalizedNewPassword) {
       throw new UnauthorizedException("Informe a senha atual e a nova senha.");
     }
-    if (normalizedNewPassword.length < 6) {
-      throw new BadRequestException(
-        "A nova senha deve ter pelo menos 6 caracteres.",
-      );
-    }
-
     if (modelType === "master") {
       throw new UnauthorizedException(
         "Sessão administrativa legada não é aceita.",
@@ -1699,6 +1738,7 @@ export class AuthService {
       modelType,
       normalizedCurrentPassword,
     );
+    assertStrongPassword(normalizedNewPassword);
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(normalizedNewPassword, salt);
@@ -1748,6 +1788,7 @@ export class AuthService {
     }
     let hashedPassword: string | null = null;
     if (normalizedPassword) {
+      assertStrongPassword(normalizedPassword);
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(normalizedPassword, salt);
     }
@@ -1892,6 +1933,8 @@ export class AuthService {
     if (!credential?.email) {
       throw new UnauthorizedException("Token inválido ou expirado.");
     }
+
+    assertStrongPassword(resetDto.newPassword);
 
     const salt = await bcrypt.genSalt(10);
     const newHashedPassword = await bcrypt.hash(resetDto.newPassword, salt);

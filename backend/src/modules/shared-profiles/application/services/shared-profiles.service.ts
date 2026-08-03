@@ -1184,9 +1184,10 @@ export class SharedProfilesService {
     const currentPerson = await this.findPersonById(
       (sourceRecord as { personId?: string | null }).personId,
     );
+    const personId = (sourceRecord as { personId?: string | null }).personId;
     const cpfPerson = await this.findPersonByCpf(
       tenantId,
-      payloadCpf || previousCpf || null,
+      currentPerson ? null : personId ? null : payloadCpf || previousCpf || null,
       currentPerson?.id,
     );
     const cnpjPerson = await this.findPersonByCnpj(
@@ -1943,7 +1944,8 @@ export class SharedProfilesService {
     previousCpf?: string | null,
   ) {
     const normalizedSourceCpf = this.normalizeDocument(sourceRecord.cpf);
-    if (!normalizedSourceCpf) {
+    const sourcePersonId = String(sourceRecord.personId || "").trim();
+    if (!normalizedSourceCpf && !sourcePersonId) {
       return;
     }
 

@@ -71,7 +71,7 @@ export class CreateGuardianDto {
     description: "Senha de Acesso ao PWA (Min: 4 caracteres)",
   })
   @IsString()
-  @MinLength(4)
+  @MinLength(6)
   @IsOptional()
   password?: string;
 
