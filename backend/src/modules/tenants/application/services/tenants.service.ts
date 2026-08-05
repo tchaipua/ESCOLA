@@ -47,6 +47,7 @@ import {
 } from "../../../../common/validation/cnpj";
 import { decryptOptionalSecret } from "../../../../common/security/secret-encryption";
 import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
+import { MsInforCentralSettingsClient } from "../../../../integrations/msinfor-central/msinfor-central-settings.client";
 
 type EmailUsageEntityType =
   | "ADMIN_USER"
@@ -177,6 +178,7 @@ export class TenantsService {
     private readonly financeiroService: FinanceiroService,
     private readonly globalSettingsService: GlobalSettingsService,
     private readonly centralConfiguration: CentralTenantConfigurationService,
+    private readonly centralIdentity: MsInforCentralSettingsClient,
   ) {}
 
   async findCentralOperationalSummary(centralTenantId: string, branchCodeRaw?: string) {
@@ -1089,12 +1091,16 @@ export class TenantsService {
       company.tradeName ||
       company.legalName ||
       configuration.tenant.displayName;
+    const logoUrl = this.centralIdentity.resolvePublicLogoUrl(
+      company.logoReference,
+      configuration.branch ? "branch" : "company",
+    );
     const defaultBranch = configuration.branch
       ? {
           id: configuration.branch.id,
           branchCode: configuration.branch.branchCode,
           name: configuration.branch.displayName,
-          logoUrl: company.logoReference || null,
+          logoUrl,
           document: company.documentNumber || null,
           email: company.contacts.email || null,
           phone: company.contacts.phone || company.contacts.mobile || null,
@@ -1110,7 +1116,7 @@ export class TenantsService {
       id: tenantId,
       centralTenantId: configuration.tenant.id,
       name: displayName,
-      logoUrl: company.logoReference || null,
+      logoUrl,
       document: company.documentNumber || null,
       email: company.contacts.email || null,
       phone: company.contacts.phone || company.contacts.mobile || null,

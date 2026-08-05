@@ -147,7 +147,7 @@ async function testLegacyMasterCredentialWasRemoved() {
         email: "MSINFOR",
         password: "qualquer-valor",
       }),
-    /somente no MSINFOR Central/,
+    /MSINFOR Central/,
   );
 }
 

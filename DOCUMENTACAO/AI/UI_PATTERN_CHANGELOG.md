@@ -585,3 +585,17 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `C:/Sistemas/IA/Financeiro/DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `C:/Sistemas/IA/Financeiro/DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
 - Status: aprovado
+
+### UIP-0041
+
+- Data: 2026-08-05
+- Padrao: mensagem padrao de erro operacional baseada na Central MSINFOR
+- Contexto: foi aprovado aplicar no cadastro exclusivo de professores o modelo visual de erro da tela `MSINFOR_CENTRAL_IA_MENSAGEM_ERRO` para bloquear CPF ja utilizado por outro cadastro.
+- Alteracao: criado o `PAT-016` com fundo escurecido/desfocado, faixa lateral vermelha, marcador circular de exclamacao, logo institucional, titulo central `ERRO !!!!`, corpo objetivo e fechamento por `×`. No popup de conflito de CPF da tela `PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO`, o usuario autorizou uma excecao local sem nome tecnico e sem botao de copiar.
+- Componentes/Telas:
+  - `frontend/src/app/components/system-message-provider.tsx`
+  - `frontend/src/app/globals.css`
+  - `frontend/src/app/principal/professores/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `frontend/src/app/lib/ui-standards.ts`
+- Status: aprovado

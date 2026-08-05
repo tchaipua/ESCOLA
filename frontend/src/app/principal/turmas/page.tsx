@@ -469,6 +469,7 @@ export default function TurmasPage() {
     const [seriesClassStatusToggleTarget, setSeriesClassStatusToggleTarget] = useState<SeriesClassRecord | null>(null);
     const [seriesClassStatusToggleAction, setSeriesClassStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingSeriesClassToggle, setIsProcessingSeriesClassToggle] = useState(false);
+    const [isSmtpPasswordVisible, setIsSmtpPasswordVisible] = useState(false);
     const [classStudentsModalOpen, setClassStudentsModalOpen] = useState(false);
     const [classStudentsLoading, setClassStudentsLoading] = useState(false);
     const [classStudentsError, setClassStudentsError] = useState<string | null>(null);
@@ -653,6 +654,7 @@ export default function TurmasPage() {
     const resetForm = () => {
         setEditingId(null);
         setFormData({ ...EMPTY_FORM, branchCode: currentBranchCode });
+        setIsSmtpPasswordVisible(false);
     };
 
     const openCreateModal = () => {
@@ -847,6 +849,7 @@ export default function TurmasPage() {
 
     const handleEdit = (item: SeriesClassRecord) => {
         setEditingId(item.id);
+        setIsSmtpPasswordVisible(false);
         setFormData({
             branchCode: typeof item.branchCode === 'number' ? item.branchCode : (typeof item.class?.branchCode === 'number' ? item.class.branchCode : currentBranchCode),
             seriesId: item.seriesId,
@@ -1711,13 +1714,36 @@ export default function TurmasPage() {
                                         placeholder="E-mail remetente"
                                         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 md:col-span-2"
                                     />
-                                    <input
-                                        type="password"
-                                        value={formData.smtpPassword}
-                                        onChange={(event) => setFormData((current) => ({ ...current, smtpPassword: event.target.value }))}
-                                        placeholder={editingId ? 'Nova senha SMTP, se quiser alterar' : 'Senha SMTP / App Password'}
-                                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 md:col-span-2"
-                                    />
+                                    <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 md:col-span-2">
+                                        <input
+                                            type={isSmtpPasswordVisible ? 'text' : 'password'}
+                                            value={formData.smtpPassword}
+                                            onChange={(event) => setFormData((current) => ({ ...current, smtpPassword: event.target.value }))}
+                                            placeholder={editingId ? 'Nova senha SMTP, se quiser alterar' : 'Senha SMTP / App Password'}
+                                            className="min-w-0 flex-1 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsSmtpPasswordVisible((current) => !current)}
+                                            className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
+                                            aria-label={isSmtpPasswordVisible ? 'Ocultar senha SMTP' : 'Mostrar senha SMTP'}
+                                            title={isSmtpPasswordVisible ? 'Ocultar senha SMTP' : 'Mostrar senha SMTP'}
+                                        >
+                                            {isSmtpPasswordVisible ? (
+                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 3l18 18" />
+                                                    <path d="M10.58 10.58A2 2 0 0013.42 13.42" />
+                                                    <path d="M9.88 5.09A10.94 10.94 0 0112 5c7 0 10 7 10 7a18.27 18.27 0 01-4.23 5.42" />
+                                                    <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 005.39-1.44" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    </div>
                                     <input
                                         value={formData.smtpSenderName}
                                         onChange={(event) => setFormData((current) => ({ ...current, smtpSenderName: event.target.value }))}

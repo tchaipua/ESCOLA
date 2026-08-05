@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { clearStoredSession } from '@/app/lib/auth-storage';
 import { copyTextToClipboard } from '@/app/lib/clipboard';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 import TeacherDailyAgendaPanel from '@/app/components/teacher-daily-agenda-panel';
 import ScreenAuditModal from '@/app/components/screen-audit-modal';
+import { normalizePublicImageUrl } from '@/app/lib/public-image-url';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const CACHE_KEY = '@Escola-PWA-Teacher-Cache:v1';
@@ -671,6 +671,8 @@ export default function ProfessorPwaPage() {
         await flushReadQueue().catch(() => null);
     };
 
+    const tenantLogoUrl = normalizePublicImageUrl(tenant?.logoUrl);
+
     if (isLoading && !teacher) {
         return <main className="min-h-screen bg-slate-100 px-4 py-8"><div className="mx-auto max-w-md rounded-[28px] border border-slate-200 bg-white px-5 py-10 text-center text-sm font-semibold text-slate-500 shadow-sm">Carregando painel do professor...</div></main>;
     }
@@ -683,12 +685,10 @@ export default function ProfessorPwaPage() {
                         <div className="flex items-start justify-between gap-3">
                             <div className="flex items-start gap-3">
                                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10">
-                                    {tenant?.logoUrl ? (
-                                        <Image
-                                            src={tenant.logoUrl}
+                                    {tenantLogoUrl ? (
+                                        <img
+                                            src={tenantLogoUrl}
                                             alt={`Logo de ${tenant?.name || 'ESCOLA'}`}
-                                            width={48}
-                                            height={48}
                                             className="h-full w-full object-contain p-2"
                                         />
                                     ) : (

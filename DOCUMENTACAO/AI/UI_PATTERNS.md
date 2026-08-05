@@ -518,6 +518,27 @@ Referencia aprovada:
   - nao criar coluna com titulo `Semaforo` nem pill textual `ATIVO`/`INATIVO` na linha
 - preservar os botoes e controles ja aprovados da tela, alterando apenas a estrutura necessaria para cumprir este padrao
 
+### PAT-016 - Mensagem padrao de erro operacional
+
+- popup centralizado com fundo escurecido e desfoque leve no conteudo atras
+- cartao branco com degradê branco/azul muito claro, borda cinza e sombra ampla
+- faixa vertical vermelha na lateral esquerda e marcador circular vermelho com `!`
+- cabecalho horizontal com logotipo institucional separado e titulo central `ERRO !!!!`
+- corpo centralizado, objetivo e em uppercase quando for texto operacional, podendo apresentar titulo do conflito, dado informado, cadastro encontrado e motivo do bloqueio
+- botao pequeno vermelho `×` no canto inferior direito para fechar; nao usar botao grande de confirmacao em erro bloqueante
+- erros de validacao e conflitos devem impedir a mutacao quando a regra de negocio exigir bloqueio; o frontend deve apenas apresentar a resposta do backend, sem substituir a validacao do tenant
+- excecao aprovada para o popup de conflito de CPF da tela `PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO`: nao exibir nome tecnico, bloco `Tela:` nem botao de copiar no rodape desse popup, conforme solicitacao explicita do usuario; essa excecao nao remove a obrigacao das demais telas e modais
+
+Componentes base:
+
+- `frontend/src/app/components/system-message-provider.tsx`
+- `frontend/src/app/globals.css`
+
+Tela referencia:
+
+- `PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO`
+- `MSINFOR_CENTRAL_IA_MENSAGEM_ERRO`
+
 ## Telas-modelo para novos sistemas
 
 Usar estas telas como referencia inicial:

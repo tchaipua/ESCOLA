@@ -10,6 +10,8 @@ import {
   MinLength,
   ArrayUnique,
   Min,
+  MaxLength,
+  Matches,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
@@ -49,6 +51,14 @@ export class CreateGuardianDto {
   @IsEmail()
   @IsOptional()
   email?: string;
+
+  @ApiPropertyOptional({ description: "Login livre usado no PWA, sem espaços" })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(160)
+  @Matches(/^\S+$/u, { message: "O login utilizado não pode conter espaços." })
+  @IsOptional()
+  accessUsername?: string | null;
 
   @ApiPropertyOptional({ description: "ID do chat do responsável no Telegram" })
   @IsString()

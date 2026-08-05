@@ -201,6 +201,10 @@ Resposta resumida:
 - Descoberta: a primeira chamada não envia tenant. Em
   `MULTIPLE_TENANTS`, o `tenantId` escolhido pelo navegador é o UUID global
   devolvido pela Central, nunca o UUID ou alias do banco local.
+- A resposta de `MULTIPLE_TENANTS` pode trazer `logoUrl` como URL pública
+  somente leitura do logotipo da empresa cadastrada na Central; quando não
+  houver logotipo, o campo permanece `null` e a interface usa as iniciais da
+  empresa como fallback visual.
 - Resolução local: o backend exige `databaseAlias = MSINFOR_DATABASE_ALIAS`,
   localiza `Tenant.centralTenantId` e exige coincidência exata entre papel
   central e papel local.
@@ -275,6 +279,10 @@ Respostas possiveis:
 ```
 
 ### Multiplas filiais liberadas
+
+- O campo `logoUrl` das filiais, quando existente, é devolvido como URL
+  pública somente leitura da Central; a referência interna do armazenamento
+  não é enviada diretamente ao navegador.
 
 ```json
 {

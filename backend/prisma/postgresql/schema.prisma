@@ -306,6 +306,7 @@ model User {
   branchCode            Int     @default(1)
   name                  String
   email                 String
+  accessUsername        String?
   password              String?
   photoUrl              String?
   complementaryProfiles String?
@@ -328,6 +329,7 @@ model User {
   tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   branchAccesses UserBranchAccess[]
 
+  @@unique([tenantId, accessUsername])
   @@index([tenantId])
   @@map("users")
 }
@@ -662,6 +664,7 @@ model Guardian {
   tenantId   String
   branchCode Int     @default(1)
   personId   String?
+  accessUsername String?
 
   accessProfile String?
   permissions   String?
@@ -681,6 +684,7 @@ model Guardian {
 
   @@index([tenantId])
   @@index([personId])
+  @@unique([tenantId, accessUsername])
   @@map("guardians")
 }
 
@@ -692,6 +696,7 @@ model Student {
   tenantId   String
   branchCode Int     @default(1)
   personId   String?
+  accessUsername String?
 
   photoUrl          String?
   accessProfile     String?
@@ -720,6 +725,7 @@ model Student {
   @@index([tenantId])
   @@index([personId])
   @@index([billingGuardianId])
+  @@unique([tenantId, accessUsername])
   @@map("students")
 }
 

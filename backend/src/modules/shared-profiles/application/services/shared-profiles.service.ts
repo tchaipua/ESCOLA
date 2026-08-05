@@ -1943,12 +1943,6 @@ export class SharedProfilesService {
     userId?: string | null,
     previousCpf?: string | null,
   ) {
-    const normalizedSourceCpf = this.normalizeDocument(sourceRecord.cpf);
-    const sourcePersonId = String(sourceRecord.personId || "").trim();
-    if (!normalizedSourceCpf && !sourcePersonId) {
-      return;
-    }
-
     const person = await this.upsertSharedPerson(
       tenantId,
       sourceRecord,
@@ -1975,10 +1969,6 @@ export class SharedProfilesService {
       });
     }
 
-    await this.syncLinkedRolesFromPerson(tenantId, person, userId, {
-      kind,
-      id: sourceId,
-    });
   }
 
   async syncSharedProfileFromAdministrativeUser(
@@ -1994,7 +1984,6 @@ export class SharedProfilesService {
       previousCpf,
     );
 
-    await this.syncLinkedRolesFromPerson(tenantId, person, userId);
     return person;
   }
 

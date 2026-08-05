@@ -1181,6 +1181,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             ),
         },
         {
+            href: '/principal/usuarios',
+            label: 'Funcionários e Usuários',
+            allowWhen:
+                currentRole === 'SOFTHOUSE_ADMIN' ||
+                currentRole === 'ADMIN' ||
+                currentRole === 'SECRETARIA' ||
+                currentRole === 'COORDENACAO',
+            icon: (
+                <svg className="w-5 h-5 opacity-70 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-10a4 4 0 100-8 4 4 0 000 8zm7-3v6m3-3h-6" />
+                </svg>
+            ),
+        },
+        {
             href: '/principal/calendario-aulas',
             label: 'Calendário de aulas',
             allowWhen: currentRole === 'PROFESSOR',
@@ -1382,6 +1396,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         : [];
     const peopleControlHrefSet = new Set([
         '/principal/pessoas',
+        '/principal/usuarios',
         '/principal/professores',
         '/principal/alunos',
         '/principal/responsaveis',
@@ -2501,18 +2516,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                                 <div className="md:col-span-3">
                                     <label className="mb-1 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Senha atual</label>
-                                    <div className="relative">
+                                    <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                                         <input
                                             type={showCurrentPassword ? 'text' : 'password'}
                                             value={currentPassword}
                                             onChange={(event) => setCurrentPassword(event.target.value)}
                                             placeholder="INFORME A SENHA ATUAL"
-                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium text-slate-700 outline-none focus:bg-white"
+                                            className="min-w-0 flex-1 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 outline-none focus:bg-white"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowCurrentPassword((value) => !value)}
-                                            className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900"
+                                            className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-white hover:text-slate-900"
                                             aria-label={showCurrentPassword ? 'Ocultar senha atual' : 'Mostrar senha atual'}
                                         >
                                             {showCurrentPassword ? (
@@ -2534,7 +2549,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                                 <div className="md:col-span-3">
                                     <label className="mb-1 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Nova senha</label>
-                                    <div className="relative">
+                                    <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                                         <input
                                             type={showNewPassword ? 'text' : 'password'}
                                             minLength={6}
@@ -2542,12 +2557,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             value={newPassword}
                                             onChange={(event) => setNewPassword(event.target.value)}
                                             placeholder="INFORME A NOVA SENHA"
-                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium text-slate-700 outline-none focus:bg-white"
+                                            className="min-w-0 flex-1 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 outline-none focus:bg-white"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowNewPassword((value) => !value)}
-                                            className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900"
+                                            className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-white hover:text-slate-900"
                                             aria-label={showNewPassword ? 'Mostrar senha nova' : 'Ocultar senha nova'}
                                         >
                                             {showNewPassword ? (
@@ -2569,7 +2584,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
                                 <div className="md:col-span-3">
                                     <label className="mb-1 block text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Repetir nova senha</label>
-                                    <div className="relative">
+                                    <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                                         <input
                                             type={showConfirmNewPassword ? 'text' : 'password'}
                                             minLength={6}
@@ -2577,12 +2592,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                             value={confirmNewPassword}
                                             onChange={(event) => setConfirmNewPassword(event.target.value)}
                                             placeholder="REPITA A NOVA SENHA"
-                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium text-slate-700 outline-none focus:bg-white"
+                                            className="min-w-0 flex-1 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 outline-none focus:bg-white"
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowConfirmNewPassword((value) => !value)}
-                                            className="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-900"
+                                            className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-white hover:text-slate-900"
                                             aria-label={showConfirmNewPassword ? 'Mostrar confirmação de senha' : 'Ocultar confirmação de senha'}
                                         >
                                             {showConfirmNewPassword ? (

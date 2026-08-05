@@ -44,16 +44,30 @@ import { getDefaultAccessProfileForRole, getProfilePermissions, getProfilesForRo
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
-import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { cacheTenantBranding, readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { fetchUserPreference, saveUserPreference } from '@/app/lib/user-preferences';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import { showErrorMessage, showSuccessMessage } from '@/app/components/system-message-provider';
 import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
+
+const FALLBACK_INSTITUTIONAL_LOGO = '/logo-msinfor.jpg';
+
+function resolveInstitutionalLogoUrl(value?: string | null, scope: 'branch' | 'company' = 'company') {
+    const normalized = String(value || '').trim();
+    if (!normalized) return FALLBACK_INSTITUTIONAL_LOGO;
+    if (/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(normalized)) return normalized;
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+    if (normalized.startsWith('/') && !normalized.startsWith('//')) return normalized;
+    if (/^[a-z0-9][a-z0-9/_-]*\.(?:png|jpe?g|webp|gif)$/i.test(normalized)) {
+        return `${API_BASE_URL}/public/${scope}-logo?key=${encodeURIComponent(normalized)}`;
+    }
+    return FALLBACK_INSTITUTIONAL_LOGO;
+}
+
 const PROFESSORES_SCREEN_ID = 'PRINCIPAL_PROFESSORES';
 const PROFESSORES_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_STATUS_MODAL';
 const PROFESSORES_DETAIL_COPY_SCREEN_ID = 'PRINCIPAL_PROFESSORES_DETAIL_DOCENTE_EXCLUSIVO';
 const PROFESSORES_EMAIL_USAGE_MODAL_SCREEN_ID = 'PRINCIPAL_PROFESSORES_EMAIL_USAGE_MODAL';
-const PROFESSORES_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_PROFESSORES_POPUP_CPF_CONFLICT';
 const limitNumericDigits = (value: string, maxLength: number) => normalizeDocumentDigits(value).slice(0, maxLength);
 
 type SubjectRecord = {
@@ -756,14 +770,13 @@ export default function ProfessoresPage() {
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [activeTab, setActiveTab] = useState(1);
-    const [saveError, setSaveErrorState] = useState<string | null>(null);
     const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
     const [currentBranchCode, setCurrentBranchCode] = useState(1);
     const [tenantBranches, setTenantBranches] = useState<TenantBranchSummary[]>([]);
+    const [tenantBrandingRevision, setTenantBrandingRevision] = useState(0);
     const setSaveError = (message: string | null) => {
-        setSaveErrorState(null);
         if (message) showErrorMessage(message);
     };
     const [searchTerm, setSearchTerm] = useState('');
@@ -805,12 +818,14 @@ export default function ProfessoresPage() {
     const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
     const [originalTeacherEmail, setOriginalTeacherEmail] = useState('');
     const [originalTeacherCpf, setOriginalTeacherCpf] = useState('');
+    const [originalTeacherAccessUsername, setOriginalTeacherAccessUsername] = useState('');
     const [teacherCpfConflictAlert, setTeacherCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
     const [teacherCpfConflictRoles, setTeacherCpfConflictRoles] = useState<string[]>([]);
     const [teacherStatusToggleTarget, setTeacherStatusToggleTarget] = useState<TeacherRecord | null>(null);
     const [teacherStatusToggleAction, setTeacherStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingTeacherToggle, setIsProcessingTeacherToggle] = useState(false);
     const [isPwaPasswordVisible, setIsPwaPasswordVisible] = useState(false);
+    const [isPwaPasswordConfirmationVisible, setIsPwaPasswordConfirmationVisible] = useState(false);
 
     const canViewTeachers = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']);
     const canManageTeachers = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_TEACHERS');
@@ -852,8 +867,38 @@ export default function ProfessoresPage() {
     const todayDateInput = useMemo(() => new Date().toISOString().split('T')[0], []);
     const currentTenantBranding = useMemo(
         () => readCachedTenantBranding(currentTenantId),
-        [currentTenantId],
+        [currentTenantId, tenantBrandingRevision],
     );
+    const currentTenantLogoUrl = useMemo(
+        () => resolveInstitutionalLogoUrl(currentTenantBranding?.logoUrl, 'branch'),
+        [currentTenantBranding?.logoUrl],
+    );
+    useEffect(() => {
+        if (!currentTenantId) return;
+        let active = true;
+
+        const refreshTenantBranding = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/tenants/current`, { credentials: 'include' });
+                const data = await response.json().catch(() => null) as { id?: string; name?: string; logoUrl?: string | null } | null;
+                if (!active || !response.ok || data?.id !== currentTenantId) return;
+
+                cacheTenantBranding({
+                    tenantId: data.id,
+                    schoolName: data.name || 'ESCOLA',
+                    logoUrl: data.logoUrl || null,
+                });
+                setTenantBrandingRevision((current) => current + 1);
+            } catch {
+                // A identidade já exibida no cache continua válida enquanto a atualização falha.
+            }
+        };
+
+        void refreshTenantBranding();
+        return () => {
+            active = false;
+        };
+    }, [currentTenantId]);
     const disciplineOptions = useMemo(() => {
         const items = new Map<string, string>();
         professores.forEach((prof) => {
@@ -1168,7 +1213,9 @@ export default function ProfessoresPage() {
         setEditingTeacherId(null);
         setOriginalTeacherEmail('');
         setOriginalTeacherCpf('');
+        setOriginalTeacherAccessUsername('');
         setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
         setActiveTab(1);
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
@@ -1201,7 +1248,9 @@ export default function ProfessoresPage() {
         setEditingTeacherId(null);
         setOriginalTeacherEmail('');
         setOriginalTeacherCpf('');
+        setOriginalTeacherAccessUsername('');
         setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
         setSelectedTeacherForSubjects(null);
         setSelectedSubjectIdForTeacher('');
         setHourlyRateForTeacher('');
@@ -1222,6 +1271,9 @@ export default function ProfessoresPage() {
         setEditingTeacherId(prof.id);
         setOriginalTeacherEmail(String(prof.email || '').trim().toUpperCase());
         setOriginalTeacherCpf(prof.cpf ? limitNumericDigits(prof.cpf, 11) : '');
+        setOriginalTeacherAccessUsername(prof.accessUsername || '');
+        setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
         setActiveTab(1);
         setSelectedTeacherForSubjects(prof);
         setSelectedSubjectIdForTeacher('');
@@ -2045,12 +2097,16 @@ export default function ProfessoresPage() {
         }
 
         const rawPwaUsername = String(formData.accessUsername || '');
-        const pwaUsername = rawPwaUsername.trim();
+        const pwaUsername = rawPwaUsername.normalize('NFKC').trim().toUpperCase();
         const pwaEmail = String(formData.email || '').trim();
         const pwaPassword = String(formData.password || '');
         const pwaPasswordConfirmation = String(formData.passwordConfirmation || '');
-        if (/\s/.test(rawPwaUsername)) {
-            showErrorMessage('O usuário de acesso do PWA não pode conter espaços.');
+        if (pwaUsername && !/^\S{3,160}$/u.test(pwaUsername)) {
+            showErrorMessage('Informe o login utilizado com 3 a 160 caracteres e sem espaços.');
+            return;
+        }
+        if (originalTeacherAccessUsername && !pwaUsername) {
+            showErrorMessage('O login utilizado não pode ser removido nesta tela. Informe um novo login para substituí-lo.');
             return;
         }
         const isPwaCredentialAttempt = Boolean(pwaPassword || pwaPasswordConfirmation);
@@ -2070,6 +2126,14 @@ export default function ProfessoresPage() {
             showErrorMessage('A confirmação da senha de acesso PWA não confere.');
             return;
         }
+        if (pwaUsername && !originalTeacherAccessUsername && !pwaPassword) {
+            showErrorMessage('Informe a senha inicial e a confirmação de senha para liberar o acesso do professor.');
+            return;
+        }
+        if (pwaPassword && !/(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}/.test(pwaPassword)) {
+            showErrorMessage('A senha deve ter ao menos 6 caracteres, com maiúscula, minúscula e caractere especial.');
+            return;
+        }
         if (pwaUsername && !pwaEmail) {
             showErrorMessage('Informe o e-mail quando informar o usuário de acesso do PWA.');
             return;
@@ -2083,15 +2147,33 @@ export default function ProfessoresPage() {
         if (formData.cpf && formData.cpf.trim() !== '') {
             if (!isValidCpf(formData.cpf)) {
                 setSaveError("E R R O ! ! !\nCPF Inválido\nPor favor, digite um CPF válido e tente novamente.");
-                setTimeout(() => setSaveError(null), 5000);
                 return;
+            }
+
+            const normalizedCpf = normalizeDocumentDigits(formData.cpf);
+            const normalizedOriginalCpf = normalizeDocumentDigits(originalTeacherCpf);
+            const cpfBelongsToAnotherCadastro = !editingTeacherId || normalizedCpf !== normalizedOriginalCpf;
+            if (cpfBelongsToAnotherCadastro) {
+                try {
+                    const profile = await fetchSharedPersonProfileByCpf(formData.cpf);
+                    if (profile) {
+                        setTeacherCpfConflictAlert({
+                            name: String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase(),
+                            cpf: formatCpf(formData.cpf),
+                        });
+                        setTeacherCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+                        return;
+                    }
+                } catch (error: unknown) {
+                    setSaveError(error instanceof Error ? error.message : 'Não foi possível validar o CPF informado.');
+                    return;
+                }
             }
         }
 
         if (formData.cnpj && formData.cnpj.trim() !== '') {
             if (!isValidCnpj(formData.cnpj)) {
                 setSaveError("E R R O ! ! !\nCNPJ Inválido\nO CNPJ do professor (MEI/PJ) não é válido.");
-                setTimeout(() => setSaveError(null), 5000);
                 return;
             }
         }
@@ -2104,7 +2186,7 @@ export default function ProfessoresPage() {
             const method = editingTeacherId ? 'PATCH' : 'POST';
 
             const branchPayload = buildBranchAccessPayload(formData.branchAccessCodes, tenantBranches, currentBranchCode);
-            const payload: Record<string, string | number | boolean | string[] | number[] | undefined> = { ...formData, ...branchPayload, permissions: formData.permissions };
+            const payload: Record<string, string | number | boolean | string[] | number[] | undefined> = { ...formData, ...branchPayload, accessUsername: pwaUsername || undefined, permissions: formData.permissions };
             if (branchPayload.branchAccessCodes === undefined) {
                 delete payload.branchAccessCodes;
             }
@@ -2122,6 +2204,9 @@ export default function ProfessoresPage() {
             }
             if (!payload.password) {
                 delete payload.password;
+            }
+            if (!pwaUsername) {
+                delete payload.accessUsername;
             }
             if (!pwaEmail) {
                 delete payload.email;
@@ -2156,10 +2241,9 @@ export default function ProfessoresPage() {
             setSaveSuccessPopup(null);
             showSuccessMessage(wasEditing ? 'O professor foi alterado e a lista já foi atualizada.' : 'O professor foi inserido e a lista já foi atualizada.');
 
-        } catch (err: any) {
-            let errorMsg = err.message || 'Ocorreu um erro.';
+        } catch (err: unknown) {
+            const errorMsg = err instanceof Error ? err.message : 'Ocorreu um erro.';
             setSaveError(errorMsg);
-            setTimeout(() => setSaveError(null), 5000);
         }
     };
 
@@ -2190,7 +2274,7 @@ export default function ProfessoresPage() {
                     title="Equipe Docente"
                     description="Gerencie os professores, dados contratuais e acesso ao Sistema."
                     schoolName={currentTenantBranding?.schoolName}
-                    logoUrl={currentTenantBranding?.logoUrl}
+                    logoUrl={currentTenantLogoUrl}
                     secondaryAction={
                         <>
                             <button
@@ -2574,7 +2658,7 @@ export default function ProfessoresPage() {
                             description="Preencha os dados do professor e confirme para salvar."
                             onClose={closeModal}
                             schoolName={currentTenantBranding?.schoolName}
-                            logoUrl={currentTenantBranding?.logoUrl}
+                            logoUrl={currentTenantLogoUrl}
                             compact
                             className="px-4 py-2.5"
                         />
@@ -3056,26 +3140,28 @@ export default function ProfessoresPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário de acesso (Usado no Login)</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Nome Usuário Usado na Tela de Login (Não deve conter espaços)</label>
                                                 <input
                                                     type="text"
                                                     value={formData.accessUsername}
                                                     onChange={(e) => setFormData((current) => ({ ...current, accessUsername: e.target.value.toUpperCase() }))}
-                                                    pattern="\S+"
+                                                    minLength={3}
+                                                    maxLength={160}
+                                                    pattern="\S{3,160}"
                                                     required={Boolean(formData.password || formData.passwordConfirmation)}
                                                     onInvalid={(event) => {
                                                         event.preventDefault();
                                                         showErrorMessage('Informe um usuário de acesso do PWA sem espaços.');
                                                     }}
                                                     className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-                                                    placeholder="Nome do usuário usado no login"
+                                                    placeholder="USUÁRIO, CPF OU E-MAIL"
                                                 />
                                                 <div className="mt-1 text-xs font-medium text-slate-500">
                                                     Pode ser um nome livre e não precisa ter formato de e-mail.
                                                 </div>
                                             </div>
                                             <div className="md:col-span-2">
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail para confirmação e recuperação</label>
                                                 <input
                                                     type="email"
                                                     value={formData.email}
@@ -3136,7 +3222,7 @@ export default function ProfessoresPage() {
                                                 <label className="text-xs font-bold text-slate-600 mb-1 block">Confirmar senha de acesso PWA</label>
                                                 <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                                                     <input
-                                                        type={isPwaPasswordVisible ? 'text' : 'password'}
+                                                        type={isPwaPasswordConfirmationVisible ? 'text' : 'password'}
                                                         value={formData.passwordConfirmation}
                                                         onChange={(e) => setFormData((current) => ({ ...current, passwordConfirmation: e.target.value }))}
                                                         required={Boolean(formData.password || formData.passwordConfirmation)}
@@ -3150,12 +3236,12 @@ export default function ProfessoresPage() {
                                                     />
                                                     <button
                                                         type="button"
-                                                        onClick={() => setIsPwaPasswordVisible((current) => !current)}
+                                                        onClick={() => setIsPwaPasswordConfirmationVisible((current) => !current)}
                                                         className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-blue-600"
-                                                        aria-label={isPwaPasswordVisible ? 'Ocultar confirmação de senha de acesso PWA' : 'Mostrar confirmação de senha de acesso PWA'}
-                                                        title={isPwaPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                                                        aria-label={isPwaPasswordConfirmationVisible ? 'Ocultar confirmação de senha de acesso PWA' : 'Mostrar confirmação de senha de acesso PWA'}
+                                                        title={isPwaPasswordConfirmationVisible ? 'Ocultar senha' : 'Mostrar senha'}
                                                     >
-                                                        {isPwaPasswordVisible ? (
+                                                        {isPwaPasswordConfirmationVisible ? (
                                                             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
                                                                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
@@ -3303,110 +3389,79 @@ export default function ProfessoresPage() {
                 </div>
             )}
 
-            {saveError && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 relative">
-                        <button
-                            onClick={() => setSaveError(null)}
-                            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100/50 hover:bg-slate-200 text-slate-400 hover:text-red-500 transition-colors z-10"
-                        >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-
-                        <div className="bg-red-500/10 p-6 flex flex-col items-center text-center">
-                            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4 ring-4 ring-white shadow-sm">
-                                <span className="font-bold text-2xl">!</span>
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-800 mb-1">Atenção</h3>
-                            <div className="flex flex-col items-center w-full mt-1 mb-2">
-                                <p className="text-slate-600 font-bold text-[15px] leading-tight text-center">
-                                    {saveError.split('\n').map((line, i) => (
-                                        <span key={i} className="block mb-1">{line}</span>
-                                    ))}
+            {teacherCpfConflictAlert && (
+                <div className="system-message-backdrop" data-system-message-ignore role="presentation">
+                    <section className="system-message-card system-message-error" role="alertdialog" aria-modal="true" aria-label="Erro de CPF duplicado">
+                        <span className="system-message-accent" aria-hidden="true" />
+                        <span className="system-message-status-icon" aria-hidden="true">!</span>
+                        <header className="system-message-header">
+                            <span className="system-message-logo">
+                                <img
+                                    src={currentTenantLogoUrl}
+                                    alt={currentTenantBranding?.schoolName || 'Logotipo institucional'}
+                                    onError={(event) => {
+                                        const companyLogoUrl = resolveInstitutionalLogoUrl(currentTenantBranding?.logoUrl, 'company');
+                                        if (companyLogoUrl !== FALLBACK_INSTITUTIONAL_LOGO && !event.currentTarget.dataset.companyLogoFallbackTried) {
+                                            event.currentTarget.dataset.companyLogoFallbackTried = 'true';
+                                            event.currentTarget.src = companyLogoUrl;
+                                            return;
+                                        }
+                                        event.currentTarget.onerror = null;
+                                        event.currentTarget.src = FALLBACK_INSTITUTIONAL_LOGO;
+                                    }}
+                                />
+                            </span>
+                            <strong>ERRO !!!!</strong>
+                            <span aria-hidden="true" />
+                        </header>
+                        <div className="system-message-divider" />
+                        <div className="system-message-body">
+                            <div className="w-full max-w-[390px] space-y-2 text-center text-[#10265f]">
+                                <p className="!max-w-none !text-[16px] !font-black uppercase !leading-tight">
+                                    CPF JÁ CADASTRADO
+                                </p>
+                                <p className="!max-w-none !text-[14px] !font-semibold !leading-snug">
+                                    O CPF INFORMADO JÁ ESTÁ CADASTRADO PARA OUTRA PESSOA NO SISTEMA.
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
+                                    CPF INFORMADO: {teacherCpfConflictAlert.cpf}
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-bold uppercase !leading-snug">
+                                    CADASTRO EXISTENTE: {teacherCpfConflictAlert.name}
+                                </p>
+                                {teacherCpfConflictRoles.length > 0 ? (
+                                    <div className="flex flex-wrap justify-center gap-2 pt-1">
+                                        {teacherCpfConflictRoles.map((role) => (
+                                            <span
+                                                key={role}
+                                                className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                            >
+                                                {role}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
+                                    NÃO É POSSÍVEL PROSSEGUIR COM ESTE CADASTRO.
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug !text-red-700">
+                                    MUITO CUIDADO: CASO DESEJE PROSSEGUIR COM ESTE CADASTRO, DEIXE O CPF EM BRANCO.
                                 </p>
                             </div>
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {teacherCpfConflictAlert && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200 px-4">
-                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200 relative">
-                        <div className="px-6 pb-4 pt-6">
-                            <div className="flex items-start gap-4">
-                                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                                    {currentTenantBranding?.logoUrl ? (
-                                        <img
-                                            src={currentTenantBranding.logoUrl}
-                                            alt={`Logotipo de ${currentTenantBranding.schoolName}`}
-                                            className="h-full w-full object-contain p-1.5"
-                                        />
-                                    ) : (
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">CPF</span>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800">
-                                        <svg className="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
-                                        </svg>
-                                        ATENÇÃO
-                                    </div>
-                                    <div className="text-sm font-semibold text-slate-700">
-                                        CPF JÁ USADO POR:
-                                    </div>
-                                    <div className="mt-1 text-base font-bold text-slate-900">
-                                        {teacherCpfConflictAlert.name}
-                                    </div>
-                                    <div className="mt-1 text-sm font-medium text-slate-600">
-                                        CPF INFORMADO: {teacherCpfConflictAlert.cpf}
-                                    </div>
-                                    {teacherCpfConflictRoles.length > 0 ? (
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {teacherCpfConflictRoles.map((role) => (
-                                                <span
-                                                    key={role}
-                                                    className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
-                                                >
-                                                    {role}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    ) : null}
-                                    <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                                        RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="px-6 pb-4">
-                            <div className="flex justify-end">
-                                <div className="w-full max-w-[300px]">
-                                    <ScreenNameCopy
-                                        screenId={PROFESSORES_CPF_CONFLICT_SCREEN_ID}
-                                        label="Tela"
-                                        className="mt-0 justify-end"
-                                        disableMargin
-                                    />
-                                </div>
-                            </div>
-                            <div className="mt-4 text-right">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setTeacherCpfConflictAlert(null);
-                                        setTeacherCpfConflictRoles([]);
-                                    }}
-                                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 transition-colors"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setTeacherCpfConflictAlert(null);
+                                setTeacherCpfConflictRoles([]);
+                            }}
+                            className="system-message-close"
+                            aria-label="Fechar mensagem de erro"
+                            title="Fechar"
+                        >
+                            ×
+                        </button>
+                    </section>
                 </div>
             )}
 

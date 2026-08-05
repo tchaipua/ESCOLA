@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ConflictException,
@@ -29,11 +30,13 @@ import { StudentsService } from "../../../students/application/services/students
 import {
   filterRoleBranchRecordsForCurrentBranch,
   isRoleBranchRecordVisibleInCurrentBranch,
+  resolveCentralRoleBranchCodes,
   resolveRoleBranchSelection,
   syncRoleBranchAccesses,
   withRoleBranchAccessCodes,
 } from "../../../../common/tenant/role-branch-accesses";
 import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
+import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
 
 @Injectable()
 export class GuardiansService {
@@ -46,6 +49,50 @@ export class GuardiansService {
 
   private normalizeDocument(value?: string | null): string {
     return String(value || "").replace(/\D/g, "");
+  }
+
+  private normalizeAccessUsername(value?: string | null): string | null {
+    const normalized = String(value || "").normalize("NFKC").trim().toUpperCase();
+    if (normalized && !/^\S{3,160}$/u.test(normalized)) {
+      throw new BadRequestException(
+        "Informe o login utilizado com 3 a 160 caracteres e sem espaços.",
+      );
+    }
+    return normalized || null;
+  }
+
+  private async assertUniqueAccessUsername(
+    tenantId: string,
+    accessUsername?: string | null,
+    excludeGuardianId?: string,
+  ) {
+    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
+    if (!normalizedUsername) return;
+    const [guardian, teacher, student] = await Promise.all([
+      this.prisma.guardian.findFirst({
+        where: {
+          tenantId,
+          accessUsername: normalizedUsername,
+          ...(excludeGuardianId ? { id: { not: excludeGuardianId } } : {}),
+        },
+        select: { id: true, person: { select: { name: true } } },
+      }),
+      this.prisma.teacher.findFirst({
+        where: { tenantId, accessUsername: normalizedUsername },
+        select: { id: true },
+      }),
+      this.prisma.student.findFirst({
+        where: { tenantId, accessUsername: normalizedUsername },
+        select: { id: true },
+      }),
+    ]);
+    if (guardian || teacher || student) {
+      throw new ConflictException(
+        guardian
+          ? `O login utilizado já está cadastrado para o responsável ${guardian.person?.name || "informado"}.`
+          : "O login utilizado já pertence a outro perfil de acesso desta escola.",
+      );
+    }
   }
 
   private async assertUniqueGuardianCpf(
@@ -155,6 +202,7 @@ export class GuardiansService {
 
     if (!canViewGuardianAccessData(viewer)) {
       delete sanitizedDto.email;
+      delete sanitizedDto.accessUsername;
       delete sanitizedDto.password;
       delete sanitizedDto.accessProfile;
       delete sanitizedDto.permissions;
@@ -257,12 +305,37 @@ export class GuardiansService {
       getTenantContext()!.branchCode,
     );
     const targetBranchCode = branchSelection.branchCode;
+    const centralBranchCodes = await resolveCentralRoleBranchCodes(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      targetBranchCode,
+      branchSelection.explicitBranchCodes,
+    );
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
       const sanitizedDto = this.sanitizeGuardianMutationDto(
         createDto,
         currentUser,
       );
+
+      sanitizedDto.accessUsername = this.normalizeAccessUsername(
+        sanitizedDto.accessUsername,
+      );
+      if (sanitizedDto.accessUsername && !sanitizedDto.email) {
+        throw new BadRequestException(
+          "Informe o e-mail para confirmação e recuperação do acesso do responsável.",
+        );
+      }
+      if (sanitizedDto.accessUsername && !sanitizedDto.password) {
+        throw new BadRequestException(
+          "Informe a senha inicial ao cadastrar o login utilizado do responsável.",
+        );
+      }
+      if (sanitizedDto.password && !sanitizedDto.accessUsername) {
+        throw new BadRequestException(
+          "Informe o login utilizado ao cadastrar uma senha de acesso do responsável.",
+        );
+      }
 
       await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
         getTenantContext()!.tenantId,
@@ -281,6 +354,10 @@ export class GuardiansService {
 
       const tenantId = getTenantContext()!.tenantId;
       await this.assertUniqueGuardianCpf(tenantId, sanitizedDto.cpf);
+      await this.assertUniqueAccessUsername(
+        tenantId,
+        sanitizedDto.accessUsername,
+      );
 
       let hashedPassword = undefined;
       if (sanitizedDto.password) {
@@ -353,7 +430,7 @@ export class GuardiansService {
       );
 
       if (sanitizedDto.email) {
-        if (hashedPassword) {
+        if (hashedPassword && !isCentralIdentityEnabled()) {
           await this.sharedProfilesService.updateEmailCredentialPassword(
             sanitizedDto.email,
             hashedPassword,
@@ -367,15 +444,15 @@ export class GuardiansService {
         }
       }
 
-      if (sanitizedDto.email && hashedPassword) {
+      if (sanitizedDto.accessUsername && sanitizedDto.email && hashedPassword) {
         await this.centralIdentityProvisioning.synchronize({
           tenantId,
-          login: sanitizedDto.email,
+          login: sanitizedDto.accessUsername,
           email: sanitizedDto.email,
           displayName: sanitizedDto.name,
           credential: String(sanitizedDto.password),
           externalSubjectId: `PERSON:${createdGuardian.personId || createdGuardian.id}`,
-          branchCodes: branchSelection.explicitBranchCodes,
+          branchCodes: centralBranchCodes,
           roleCode: accessProfile || "RESPONSAVEL",
         });
       }
@@ -554,12 +631,28 @@ export class GuardiansService {
       currentGuardian.branchCode,
     );
     const targetBranchCode = branchSelection.branchCode;
+    const centralBranchCodes = await resolveCentralRoleBranchCodes(
+      this.prisma,
+      getTenantContext()!.tenantId,
+      targetBranchCode,
+      branchSelection.explicitBranchCodes,
+    );
 
     return runWithTenantBranchScope(currentGuardian.branchCode, async () => {
       const sanitizedDto = this.sanitizeGuardianMutationDto(
         updateDto,
         currentUser,
       );
+
+      if (Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")) {
+        sanitizedDto.accessUsername = this.normalizeAccessUsername(
+          sanitizedDto.accessUsername,
+        );
+      }
+      const accessUsernameForSync =
+        Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
+          ? sanitizedDto.accessUsername
+          : currentGuardian.accessUsername;
 
       await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
         getTenantContext()!.tenantId,
@@ -590,6 +683,27 @@ export class GuardiansService {
       const shouldResolvePasswordForEmailChange =
         Boolean(normalizedIncomingEmail) &&
         normalizedIncomingEmail !== normalizedCurrentEmail;
+
+      if (accessUsernameForSync && !normalizedIncomingEmail) {
+        throw new BadRequestException(
+          "Informe o e-mail para confirmação e recuperação do acesso do responsável.",
+        );
+      }
+      if (sanitizedDto.password && !accessUsernameForSync) {
+        throw new BadRequestException(
+          "Informe o login utilizado ao cadastrar uma senha de acesso do responsável.",
+        );
+      }
+      if (accessUsernameForSync && !currentGuardian.accessUsername && !sanitizedDto.password) {
+        throw new BadRequestException(
+          "Informe a senha inicial ao liberar o primeiro acesso do responsável.",
+        );
+      }
+      await this.assertUniqueAccessUsername(
+        getTenantContext()!.tenantId,
+        accessUsernameForSync,
+        id,
+      );
 
       if (
         sanitizedDto.cpf !== undefined &&
@@ -686,7 +800,7 @@ export class GuardiansService {
       await this.sharedProfilesService.syncSharedProfile(
         getTenantContext()!.tenantId,
         "GUARDIAN",
-        updatedGuardian.id,
+        id,
         {
           ...updatedGuardian,
           ...sanitizedDto,
@@ -701,13 +815,13 @@ export class GuardiansService {
       const emailForPasswordSync =
         sanitizedDto.email || currentGuardian.person?.email;
       if (emailForPasswordSync) {
-        if (hashedPassword) {
+        if (hashedPassword && !isCentralIdentityEnabled()) {
           await this.sharedProfilesService.updateEmailCredentialPassword(
             emailForPasswordSync,
             hashedPassword,
             getTenantContext()!.userId,
           );
-        } else if (shouldResolvePasswordForEmailChange) {
+        } else if (shouldResolvePasswordForEmailChange || hashedPassword) {
           await this.sharedProfilesService.ensureEmailCredential(
             emailForPasswordSync,
             { userId: getTenantContext()!.userId },
@@ -715,15 +829,15 @@ export class GuardiansService {
         }
       }
 
-      if (emailForPasswordSync) {
+      if (accessUsernameForSync && emailForPasswordSync) {
         await this.centralIdentityProvisioning.synchronize({
           tenantId: getTenantContext()!.tenantId,
-          login: emailForPasswordSync,
+          login: accessUsernameForSync,
           email: emailForPasswordSync,
           displayName: sanitizedDto.name || currentGuardian.person?.name || "Responsável",
           ...(sanitizedDto.password ? { credential: String(sanitizedDto.password) } : {}),
-          externalSubjectId: `PERSON:${updatedGuardian.personId || updatedGuardian.id}`,
-          branchCodes: branchSelection.explicitBranchCodes,
+          externalSubjectId: `PERSON:${updatedGuardian.personId || id}`,
+          branchCodes: centralBranchCodes,
           roleCode: accessProfile || "RESPONSAVEL",
         });
       }
@@ -737,22 +851,25 @@ export class GuardiansService {
   }
 
   async remove(id: string) {
-    await this.findGuardianEntity(id);
+    const guardian = await this.findGuardianEntity(id);
     await this.assertGuardianIsNotBillingPayer(
       id,
       "inativar ou excluir este responsável",
     );
-    return this.prisma.guardian.updateMany({
+    const result = await this.prisma.guardian.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: getTenantContext()!.userId,
       },
     });
+
+    await this.synchronizeGuardianStatus(guardian, false);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
-    await this.findGuardianEntity(id);
+    const guardian = await this.findGuardianEntity(id);
 
     if (!active) {
       await this.assertGuardianIsNotBillingPayer(
@@ -776,12 +893,41 @@ export class GuardiansService {
           },
     });
 
+    await this.synchronizeGuardianStatus(guardian, active);
+
     return {
       message: active
         ? "Responsável ativado com sucesso."
         : "Responsável inativado com sucesso.",
       guardian: this.mapGuardianAccess(updatedGuardian),
     };
+  }
+
+  private async synchronizeGuardianStatus(
+    guardian: Awaited<ReturnType<GuardiansService["findGuardianEntity"]>>,
+    enabled: boolean,
+  ) {
+    const login = guardian.accessUsername?.trim();
+    const email = guardian.person?.email?.trim();
+    if (!login || !email) return;
+
+    await this.centralIdentityProvisioning.synchronize({
+      tenantId: getTenantContext()!.tenantId,
+      login,
+      email,
+      displayName: guardian.person?.name || "Responsável",
+      externalSubjectId: `PERSON:${guardian.personId || guardian.id}`,
+      branchCodes: await resolveCentralRoleBranchCodes(
+        this.prisma,
+        getTenantContext()!.tenantId,
+        guardian.branchCode,
+        guardian.branchAccesses.map((access) => access.branchCode),
+      ),
+      roleCode:
+        normalizeAccessProfileCode(guardian.accessProfile, "RESPONSAVEL") ||
+        "RESPONSAVEL",
+      enabled,
+    });
   }
 
   // ==========================================

@@ -169,6 +169,7 @@ type StudentRecord = {
     whatsapp?: string | null;
     cellphone1?: string | null;
     cellphone2?: string | null;
+    accessUsername?: string | null;
     email?: string | null;
     telegramChatId?: string | null;
     telegramUsername?: string | null;
@@ -207,7 +208,10 @@ type StudentFormState = {
     whatsapp: string;
     cellphone1: string;
     cellphone2: string;
+    accessUsername: string;
     email: string;
+    password: string;
+    passwordConfirmation: string;
     telegramChatId: string;
     telegramUsername: string;
     telegramOptInEnabled: boolean;
@@ -251,7 +255,10 @@ const EMPTY_FORM: StudentFormState = {
     whatsapp: '',
     cellphone1: '',
     cellphone2: '',
+    accessUsername: '',
     email: '',
+    password: '',
+    passwordConfirmation: '',
     telegramChatId: '',
     telegramUsername: '',
     telegramOptInEnabled: false,
@@ -278,7 +285,6 @@ const EMPTY_GUARDIAN_LINK_FORM: GuardianLinkFormState = {
     guardianQuery: '',
 };
 
-const CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_ALUNOS_POPUP_CPF_CONFLICT';
 const inputClass = 'w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'mb-1 block text-xs font-bold text-slate-600';
 
@@ -335,8 +341,8 @@ const STUDENT_COLUMNS: ConfigurableGridColumn<StudentRecord, StudentColumnKey>[]
     { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: true },
     { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
     { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
-    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.email || row.whatsapp || row.phone || row.cellphone1 || '---', visibleByDefault: true },
-    { key: 'email', label: 'E-mail de login', getValue: (row) => row.email || '---', visibleByDefault: false },
+    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.accessUsername || row.email || row.whatsapp || row.phone || row.cellphone1 || '---', visibleByDefault: true },
+    { key: 'email', label: 'Login utilizado', getValue: (row) => row.accessUsername || row.email || '---', visibleByDefault: false },
     { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
     { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
     { key: 'cellphone1', label: 'Telefone 1', getValue: (row) => row.cellphone1 || '---', visibleByDefault: false },
@@ -360,7 +366,7 @@ const STUDENT_COLUMNS: ConfigurableGridColumn<StudentRecord, StudentColumnKey>[]
     { key: 'state', label: 'UF', getValue: (row) => row.state || '---', visibleByDefault: false },
     { key: 'cityState', label: 'Cidade / UF', getValue: (row) => [row.city, row.state].filter(Boolean).join(' / ') || '---', visibleByDefault: false },
     { key: 'address', label: 'Endereço', getValue: (row) => getStudentAddressLabel(row), visibleByDefault: false },
-    { key: 'pwaStatus', label: 'Status PWA', getValue: (row) => row.email ? 'APP LIBERADO' : 'SEM ACESSO', getSortValue: (row) => row.email ? 1 : 0, visibleByDefault: true },
+    { key: 'pwaStatus', label: 'Status PWA', getValue: (row) => row.accessUsername ? 'APP LIBERADO' : 'SEM ACESSO', getSortValue: (row) => row.accessUsername ? 1 : 0, visibleByDefault: true },
     { key: 'accessProfile', label: 'Perfil', getValue: (row) => formatStudentAccessProfile(row.accessProfile), visibleByDefault: false },
     { key: 'notes', label: 'Observações', getValue: (row) => row.notes || '---', visibleByDefault: false },
 ];
@@ -455,7 +461,7 @@ function getStudentColumnFilterValues(row: StudentRecord, columnKey: StudentColu
     const baseValue = column?.getValue(row) || '';
 
     if (columnKey === 'name') {
-        return [row.name, row.nickname, row.email, formatStudentDate(row.birthDate), baseValue];
+        return [row.name, row.nickname, row.accessUsername, row.email, formatStudentDate(row.birthDate), baseValue];
     }
 
     if (columnKey === 'currentEnrollment') {
@@ -467,7 +473,7 @@ function getStudentColumnFilterValues(row: StudentRecord, columnKey: StudentColu
     }
 
     if (columnKey === 'contact') {
-        return [row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+        return [row.accessUsername, row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
     }
 
     if (columnKey === 'address') {
@@ -533,7 +539,7 @@ function getAlunosAuditOrderBy(column: StudentColumnKey) {
         state: 'ST.state',
         cityState: 'ST.city',
         address: 'ST.street',
-        pwaStatus: 'ST.email',
+        pwaStatus: 'ST.accessUsername',
         accessProfile: 'ST.accessProfile',
         notes: 'ST.notes',
     };
@@ -814,6 +820,7 @@ export default function AlunosPage() {
     const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
     const [originalStudentCpf, setOriginalStudentCpf] = useState('');
     const [originalStudentPersonId, setOriginalStudentPersonId] = useState<string | null>(null);
+    const [originalStudentAccessUsername, setOriginalStudentAccessUsername] = useState('');
     const [originalStudentSeriesClassId, setOriginalStudentSeriesClassId] = useState('');
     const [currentRole, setCurrentRole] = useState<string | null>(null);
     const [currentPermissions, setCurrentPermissions] = useState<string[]>([]);
@@ -824,6 +831,8 @@ export default function AlunosPage() {
     const [saveError, setSaveErrorState] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [formData, setFormData] = useState<StudentFormState>(EMPTY_FORM);
+    const [isPwaPasswordVisible, setIsPwaPasswordVisible] = useState(false);
+    const [isPwaPasswordConfirmationVisible, setIsPwaPasswordConfirmationVisible] = useState(false);
     const [studentGuardians, setStudentGuardians] = useState<StudentGuardianLink[]>([]);
     const [guardiansCatalog, setGuardiansCatalog] = useState<GuardianSummary[]>([]);
     const [guardianLinkForm, setGuardianLinkForm] = useState<GuardianLinkFormState>(EMPTY_GUARDIAN_LINK_FORM);
@@ -962,7 +971,7 @@ export default function AlunosPage() {
                         : !isActive;
               const matchesSearch =
                   !term ||
-                  [student.name, student.email, student.cpf, student.whatsapp, student.phone]
+                  [student.name, student.accessUsername, student.email, student.cpf, student.whatsapp, student.phone]
                       .some((value) => String(value || '').toUpperCase().includes(term));
               const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
                   matchesStudentGridFilter(getStudentColumnFilterValues(student, columnKey, activeSchoolYearId), filter),
@@ -1299,6 +1308,7 @@ export default function AlunosPage() {
         setEditingStudentId(null);
         setOriginalStudentCpf('');
         setOriginalStudentPersonId(null);
+        setOriginalStudentAccessUsername('');
         setOriginalStudentSeriesClassId('');
         setCpfConflictAlert(null);
         setCpfConflictRoles([]);
@@ -1314,6 +1324,8 @@ export default function AlunosPage() {
         setEmailUsageAlert(null);
         resetGuardianSection();
         setPhotoError(null);
+        setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
     };
 
     const toggleExportColumn = (column: StudentExportColumnKey) => {
@@ -1602,7 +1614,7 @@ export default function AlunosPage() {
                 <td key={columnKey} className="px-6 py-4">
                     <div className={`text-sm font-medium ${student.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
                         {studentFieldAccess.access
-                            ? (student.email || <span className="italic text-slate-400">Sem login</span>)
+                            ? (student.accessUsername || student.email || <span className="italic text-slate-400">Sem login</span>)
                             : (studentFieldAccess.contact ? (student.whatsapp || student.phone || student.cellphone1 || student.cellphone2 || 'Sem contato') : '---')}
                     </div>
                     {studentFieldAccess.contact ? (
@@ -1641,8 +1653,8 @@ export default function AlunosPage() {
         if (columnKey === 'pwaStatus') {
             return (
                 <td key={columnKey} className="px-6 py-4 text-center">
-                    <span className={`inline-flex rounded-md px-2.5 py-1 text-xs font-bold ${student.email ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                        {student.email ? 'App liberado' : 'Sem acesso'}
+                    <span className={`inline-flex rounded-md px-2.5 py-1 text-xs font-bold ${student.accessUsername ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {student.accessUsername ? 'App liberado' : 'Sem acesso'}
                     </span>
                 </td>
             );
@@ -1659,6 +1671,7 @@ export default function AlunosPage() {
         setEditingStudentId(null);
         setOriginalStudentCpf('');
         setOriginalStudentPersonId(null);
+        setOriginalStudentAccessUsername('');
         setOriginalStudentSeriesClassId('');
         setCpfConflictAlert(null);
         setActiveTab(1);
@@ -1670,6 +1683,8 @@ export default function AlunosPage() {
         setNameSuggestionError(null);
         resetGuardianSection();
         setPhotoError(null);
+        setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
         setIsModalOpen(true);
     };
 
@@ -1681,6 +1696,7 @@ export default function AlunosPage() {
             setEditingStudentId(detail.id);
             setOriginalStudentCpf(detail.cpf || '');
             setOriginalStudentPersonId(detail.personId || null);
+            setOriginalStudentAccessUsername(detail.accessUsername || '');
             setOriginalStudentSeriesClassId(getCurrentEnrollmentSeriesClassId(detail, activeSchoolYearId));
             setActiveTab(initialTab);
             setFormData({
@@ -1698,7 +1714,10 @@ export default function AlunosPage() {
                 whatsapp: detail.whatsapp || '',
                 cellphone1: detail.cellphone1 || '',
                 cellphone2: detail.cellphone2 || '',
+                accessUsername: detail.accessUsername || '',
                 email: detail.email || '',
+                password: '',
+                passwordConfirmation: '',
                 telegramChatId: detail.telegramChatId || '',
                 telegramUsername: detail.telegramUsername || '',
                 telegramOptInEnabled: Boolean(detail.telegramOptInAt && !detail.telegramOptOutAt),
@@ -1727,6 +1746,8 @@ export default function AlunosPage() {
             void resolvePersonSystemRoles(detail.cpf, detail.email);
             resetGuardianSection();
             setPhotoError(null);
+            setIsPwaPasswordVisible(false);
+            setIsPwaPasswordConfirmationVisible(false);
             setIsModalOpen(true);
         } catch (error) {
             setErrorStatus(errorMessage(error, 'Não foi possível abrir os dados do aluno.'));
@@ -1949,6 +1970,38 @@ export default function AlunosPage() {
         if (formData.cpf && !isValidCpf(formData.cpf)) return setSaveError('CPF inválido. Informe um CPF válido.');
         if (formData.cnpj && !isValidCnpj(formData.cnpj)) return setSaveError('CNPJ inválido. Informe um CNPJ válido.');
 
+        const accessUsername = String(formData.accessUsername || '').normalize('NFKC').trim().toUpperCase();
+        const password = String(formData.password || '');
+        const passwordConfirmation = String(formData.passwordConfirmation || '');
+        if (accessUsername && !/^\S{3,160}$/u.test(accessUsername)) {
+            setActiveTab(3);
+            return setSaveError('Informe o login utilizado com 3 a 160 caracteres e sem espaços.');
+        }
+        if (originalStudentAccessUsername && !accessUsername) {
+            setActiveTab(3);
+            return setSaveError('O login utilizado não pode ser removido nesta tela. Informe um novo login para substituí-lo.');
+        }
+        if (password && !accessUsername) {
+            setActiveTab(3);
+            return setSaveError('Informe o login utilizado ao cadastrar uma senha de acesso do aluno.');
+        }
+        if (accessUsername && (!formData.email.trim() || !formData.email.includes('@'))) {
+            setActiveTab(3);
+            return setSaveError('Informe um e-mail válido para confirmação e recuperação do acesso.');
+        }
+        if (accessUsername && !originalStudentAccessUsername && !password) {
+            setActiveTab(3);
+            return setSaveError('Informe a senha inicial e a confirmação de senha para liberar o acesso.');
+        }
+        if (password && !/(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}/.test(password)) {
+            setActiveTab(3);
+            return setSaveError('A senha deve ter ao menos 6 caracteres, com maiúscula, minúscula e caractere especial.');
+        }
+        if (password !== passwordConfirmation) {
+            setActiveTab(3);
+            return setSaveError('A senha e a confirmação de senha não conferem.');
+        }
+
         const billingPayerType: BillingPayerType = formData.billingPayerType === 'RESPONSAVEL' ? 'RESPONSAVEL' : 'ALUNO';
         const selectedBillingGuardian = studentGuardians.find((link) => link.guardian?.id === formData.billingGuardianId);
 
@@ -2005,6 +2058,7 @@ export default function AlunosPage() {
             const payload: Record<string, string | number | boolean | string[] | number[] | null | undefined> = {
                 ...formData,
                 ...branchPayload,
+                accessUsername: accessUsername || undefined,
                 cpf: formatCpf(formData.cpf),
                 cnpj: formatCnpj(formData.cnpj),
                 phone: formatPhone(formData.phone),
@@ -2019,6 +2073,9 @@ export default function AlunosPage() {
                 delete payload.branchAccessCodes;
             }
             if (!String(formData.email || '').trim()) delete payload.email;
+            if (!accessUsername) delete payload.accessUsername;
+            if (!password) delete payload.password;
+            delete payload.passwordConfirmation;
             delete payload.seriesClassId;
             if (!payload.birthDate) delete payload.birthDate;
             if (!studentFieldAccess.financial) {
@@ -2027,7 +2084,9 @@ export default function AlunosPage() {
                 delete payload.billingGuardianId;
             }
             if (!studentFieldAccess.access) {
+                delete payload.accessUsername;
                 delete payload.email;
+                delete payload.password;
                 delete payload.telegramChatId;
                 delete payload.telegramUsername;
                 delete payload.telegramOptInEnabled;
@@ -2175,7 +2234,7 @@ export default function AlunosPage() {
             avatarUrl={student.photoUrl}
             badges={[
                 student.canceledAt ? 'INATIVO' : 'ATIVO',
-                ...(studentFieldAccess.access ? [student.email ? 'APP LIBERADO' : 'SEM ACESSO', formatStudentAccessProfile(student.accessProfile)] : []),
+                ...(studentFieldAccess.access ? [student.accessUsername ? 'APP LIBERADO' : 'SEM ACESSO', formatStudentAccessProfile(student.accessProfile)] : []),
             ]}
             sections={[
                 {
@@ -2880,7 +2939,21 @@ export default function AlunosPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>E-mail de login (opcional)</label>
+                                                <label className={labelClass}>Login utilizado</label>
+                                                <input
+                                                    type="text"
+                                                    minLength={3}
+                                                    maxLength={160}
+                                                    pattern="\S{3,160}"
+                                                    title="Use de 3 a 160 caracteres, sem espaços. Pode ser um e-mail."
+                                                    value={formData.accessUsername}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, accessUsername: event.target.value.toUpperCase() }))}
+                                                    className={`${inputClass} bg-white`}
+                                                    placeholder="USUÁRIO, CPF OU E-MAIL"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>E-mail para confirmação e recuperação</label>
                                                 <input
                                                     type="email"
                                                     value={formData.email}
@@ -2888,6 +2961,47 @@ export default function AlunosPage() {
                                                     onBlur={handleEmailUsageBlur}
                                                     className={`${inputClass} bg-white`}
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>{originalStudentAccessUsername ? 'Nova senha (deixe em branco para manter)' : 'Senha inicial'}</label>
+                                                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                                                    <input
+                                                        type={isPwaPasswordVisible ? 'text' : 'password'}
+                                                        minLength={6}
+                                                        pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
+                                                        value={formData.password}
+                                                        onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
+                                                        className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
+                                                        autoComplete="new-password"
+                                                    />
+                                                    <button type="button" onClick={() => setIsPwaPasswordVisible((current) => !current)} className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500" aria-label={isPwaPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}>
+                                                        {isPwaPasswordVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.7 10.7 0 0112 4c5.5 0 9 5 9 5a18.8 18.8 0 01-2.1 2.6M6.6 6.6C4.3 8.2 3 10 3 10s3.5 5 9 5c1 0 2-.2 2.9-.5" /></svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Confirmação de senha</label>
+                                                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                                                    <input
+                                                        type={isPwaPasswordConfirmationVisible ? 'text' : 'password'}
+                                                        minLength={6}
+                                                        value={formData.passwordConfirmation}
+                                                        onChange={(event) => setFormData((current) => ({ ...current, passwordConfirmation: event.target.value }))}
+                                                        className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
+                                                        autoComplete="new-password"
+                                                    />
+                                                    <button type="button" onClick={() => setIsPwaPasswordConfirmationVisible((current) => !current)} className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500" aria-label={isPwaPasswordConfirmationVisible ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
+                                                        {isPwaPasswordConfirmationVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.7 10.7 0 0112 4c5.5 0 9 5 9 5a18.8 18.8 0 01-2.1 2.6M6.6 6.6C4.3 8.2 3 10 3 10s3.5 5 9 5c1 0 2-.2 2.9-.5" /></svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div>
                                                 <label className={labelClass}>Telegram Chat ID</label>
@@ -3492,36 +3606,41 @@ export default function AlunosPage() {
             ) : null}
 
             {cpfConflictAlert ? (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-2xl">
-                        <div className="flex items-start gap-4">
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                                {currentTenantBranding?.logoUrl ? (
-                                    <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName} className="h-full w-full object-contain" />
-                                ) : (
-                                    <span className="text-xs font-black tracking-[0.2em] text-[#153a6a]">
-                                        {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex-1">
-                                <div className="mb-2 flex items-center gap-2 text-lg font-bold text-slate-800">
-                                    <svg className="h-5 w-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.29 3.86l-8.2 14.22A2 2 0 003.82 21h16.36a2 2 0 001.73-2.92L13.71 3.86a2 2 0 00-3.42 0z" />
-                                    </svg>
-                                    ATENÇÃO
-                                </div>
-                                <div className="text-sm font-semibold text-slate-700">
-                                    CPF JÁ USADO POR:
-                                </div>
-                                <div className="mt-1 text-base font-bold text-slate-900">
-                                    {cpfConflictAlert.name}
-                                </div>
-                                <div className="mt-1 text-sm font-medium text-slate-600">
+                <div className="system-message-backdrop" data-system-message-ignore role="presentation">
+                    <section className="system-message-card system-message-error" role="alertdialog" aria-modal="true" aria-label="Erro de CPF duplicado do aluno">
+                        <span className="system-message-accent" aria-hidden="true" />
+                        <span className="system-message-status-icon" aria-hidden="true">!</span>
+                        <header className="system-message-header">
+                            <span className="system-message-logo">
+                                <img
+                                    src={currentTenantBranding?.logoUrl || '/logo-msinfor.jpg'}
+                                    alt={currentTenantBranding?.schoolName || 'Logotipo institucional'}
+                                    onError={(event) => {
+                                        event.currentTarget.onerror = null;
+                                        event.currentTarget.src = '/logo-msinfor.jpg';
+                                    }}
+                                />
+                            </span>
+                            <strong>ERRO !!!!</strong>
+                            <span aria-hidden="true" />
+                        </header>
+                        <div className="system-message-divider" />
+                        <div className="system-message-body">
+                            <div className="w-full max-w-[390px] space-y-2 text-center text-[#10265f]">
+                                <p className="!max-w-none !text-[16px] !font-black uppercase !leading-tight">
+                                    CPF JÁ CADASTRADO
+                                </p>
+                                <p className="!max-w-none !text-[14px] !font-semibold !leading-snug">
+                                    O CPF INFORMADO JÁ ESTÁ CADASTRADO PARA OUTRA PESSOA NO SISTEMA.
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
                                     CPF INFORMADO: {cpfConflictAlert.cpf}
-                                </div>
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-bold uppercase !leading-snug">
+                                    CADASTRO EXISTENTE: {cpfConflictAlert.name}
+                                </p>
                                 {cpfConflictRoles.length > 0 ? (
-                                    <div className="mt-3 flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap justify-center gap-2 pt-1">
                                         {cpfConflictRoles.map((role) => (
                                             <span
                                                 key={role}
@@ -3532,34 +3651,27 @@ export default function AlunosPage() {
                                         ))}
                                     </div>
                                 ) : null}
-                                <div className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-                                    RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
-                                </div>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
+                                    NÃO É POSSÍVEL PROSSEGUIR COM ESTE CADASTRO.
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug !text-red-700">
+                                    MUITO CUIDADO: CASO DESEJE PROSSEGUIR COM ESTE CADASTRO, DEIXE O CPF EM BRANCO.
+                                </p>
                             </div>
                         </div>
-                        <div className="mt-4 flex justify-end">
-                            <div className="w-full max-w-[300px]">
-                                <ScreenNameCopy
-                                    screenId={CPF_CONFLICT_SCREEN_ID}
-                                    label="Tela"
-                                    className="mt-0 justify-end"
-                                    disableMargin
-                                />
-                            </div>
-                        </div>
-                        <div className="mt-5 text-right">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setCpfConflictAlert(null);
-                                    setCpfConflictRoles([]);
-                                }}
-                                className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-                            >
-                                Fechar
-                            </button>
-                        </div>
-                    </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setCpfConflictAlert(null);
+                                setCpfConflictRoles([]);
+                            }}
+                            className="system-message-close"
+                            aria-label="Fechar mensagem de erro"
+                            title="Fechar"
+                        >
+                            ×
+                        </button>
+                    </section>
                 </div>
             ) : saveError ? (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">

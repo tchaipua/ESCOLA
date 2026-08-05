@@ -10,6 +10,8 @@ import {
   Min,
   MinLength,
   ArrayUnique,
+  MaxLength,
+  Matches,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
@@ -65,6 +67,9 @@ export class CreateTeacherDto {
 
   @ApiPropertyOptional({ description: "Usuário livre usado no login do PWA" })
   @IsString()
+  @MinLength(3)
+  @MaxLength(160)
+  @Matches(/^\S+$/u, { message: "O login utilizado não pode conter espaços." })
   @IsOptional()
   accessUsername?: string | null;
 

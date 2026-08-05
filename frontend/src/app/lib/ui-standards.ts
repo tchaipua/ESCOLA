@@ -8,6 +8,7 @@ export type UiPatternId =
     | 'grid-export-excel'
     | 'record-details-popup'
     | 'institutional-popup-identity'
+    | 'system-error-message'
     | 'tabbed-form-fixed-footer'
     | 'special-access-flow'
     | 'global-settings-tabs';
@@ -168,6 +169,21 @@ export const UI_PATTERNS: UiPatternDefinition[] = [
         referenceScreens: [
             'frontend/src/app/principal/mensalidades/page.tsx',
             'frontend/src/app/components/status-confirmation-modal.tsx',
+        ],
+        status: 'approved',
+    },
+    {
+        id: 'system-error-message',
+        name: 'MENSAGEM PADRAO DE ERRO OPERACIONAL',
+        summary: 'POPUP CENTRAL COM FUNDO ESCURECIDO, FAIXA LATERAL VERMELHA, MARCADOR DE EXCLAMACAO, LOGO INSTITUCIONAL, TITULO ERRO !!!! E FECHAMENTO POR X; O POPUP DE CONFLITO DE CPF DOS PROFESSORES TEM EXCECAO LOCAL SEM NOME TECNICO E SEM COPIA.',
+        documentationPath: 'DOCUMENTACAO/AI/UI_PATTERNS.md#pat-016---mensagem-padrao-de-erro-operacional',
+        componentPaths: [
+            'frontend/src/app/components/system-message-provider.tsx',
+            'frontend/src/app/globals.css',
+        ],
+        referenceScreens: [
+            'frontend/src/app/principal/professores/page.tsx',
+            'MSINFOR_CENTRAL_IA_MENSAGEM_ERRO',
         ],
         status: 'approved',
     },

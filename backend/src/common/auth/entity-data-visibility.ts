@@ -129,6 +129,7 @@ export function sanitizeStudentForViewer<T extends Record<string, any>>(
 
   if (!canViewStudentAccessData(viewer)) {
     sanitized.email = null;
+    sanitized.accessUsername = null;
     sanitized.accessProfile = null;
     sanitized.permissions = [];
   }
@@ -214,6 +215,7 @@ export function sanitizeGuardianForViewer<T extends Record<string, any>>(
 
   if (!canViewGuardianAccessData(viewer)) {
     sanitized.email = null;
+    sanitized.accessUsername = null;
     sanitized.accessProfile = null;
     sanitized.permissions = [];
   }

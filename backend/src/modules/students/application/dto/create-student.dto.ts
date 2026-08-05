@@ -11,6 +11,9 @@ import {
   ArrayUnique,
   IsIn,
   Min,
+  MinLength,
+  MaxLength,
+  Matches,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
@@ -74,6 +77,13 @@ export class CreateStudentDto {
   @ApiPropertyOptional() @IsString() @IsOptional() cellphone2?: string;
 
   @ApiPropertyOptional() @IsEmail() @IsOptional() email?: string;
+  @ApiPropertyOptional({ description: "Login livre usado no PWA, sem espaços" })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(160)
+  @Matches(/^\S+$/u, { message: "O login utilizado não pode conter espaços." })
+  @IsOptional()
+  accessUsername?: string | null;
   @ApiPropertyOptional({ description: "ID do chat do aluno no Telegram" })
   @IsString()
   @IsOptional()

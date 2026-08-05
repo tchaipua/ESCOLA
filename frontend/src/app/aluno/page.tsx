@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearStoredSession } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
+import { normalizePublicImageUrl } from '@/app/lib/public-image-url';
 import {
     dequeueStudentPwaReads,
     enqueueStudentPwaRead,
@@ -270,6 +271,7 @@ export default function AlunoPwaPage() {
     };
 
     const unreadCount = notifications.filter((notification) => !notification.readAt).length;
+    const tenantLogoUrl = normalizePublicImageUrl(tenant?.logoUrl);
 
     if (isLoading && !summary) {
         return (
@@ -289,7 +291,7 @@ export default function AlunoPwaPage() {
                         <div className="flex items-start justify-between gap-3">
                             <div className="flex items-center gap-3">
                                 <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/10">
-                                    {tenant?.logoUrl ? <img src={tenant.logoUrl} alt={tenant.name} className="h-full w-full object-cover" /> : <span className="text-sm font-black">AL</span>}
+                                    {tenantLogoUrl ? <img src={tenantLogoUrl} alt={tenant?.name || 'ESCOLA'} className="h-full w-full object-cover" /> : <span className="text-sm font-black">AL</span>}
                                 </div>
                                 <div>
                                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-100">PWA do aluno</div>

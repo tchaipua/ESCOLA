@@ -176,6 +176,34 @@ export async function resolveRoleBranchSelection(
   };
 }
 
+export async function resolveCentralRoleBranchCodes(
+  prisma: TenantBranchClient,
+  tenantId: string,
+  branchCode: number,
+  explicitBranchCodes: number[],
+) {
+  if (explicitBranchCodes.length > 0) {
+    return Array.from(new Set(explicitBranchCodes)).sort(
+      (left, right) => left - right,
+    );
+  }
+
+  const normalizedBranchCode = normalizeBranchCode(
+    branchCode,
+    DEFAULT_BRANCH_CODE,
+  );
+  if (normalizedBranchCode !== SHARED_BRANCH_CODE) {
+    return [normalizedBranchCode];
+  }
+
+  const branches = await listTenantBranches(prisma, tenantId);
+  return branches
+    .filter((branch) => branch.isActive)
+    .map((branch) => branch.branchCode)
+    .filter((code) => code >= DEFAULT_BRANCH_CODE)
+    .sort((left, right) => left - right);
+}
+
 export async function syncRoleBranchAccesses(
   prisma: TenantBranchClient,
   owner: RoleBranchOwner,

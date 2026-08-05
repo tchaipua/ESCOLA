@@ -15,6 +15,7 @@ import {
 import {
   filterRoleBranchRecordsForCurrentBranch,
   isRoleBranchRecordVisibleInCurrentBranch,
+  resolveCentralRoleBranchCodes,
   resolveRoleBranchSelection,
   syncRoleBranchAccesses,
   withRoleBranchAccessCodes,
@@ -35,6 +36,7 @@ import {
   sanitizeStudentForViewer,
 } from "../../../../common/auth/entity-visibility";
 import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
+import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
 
 @Injectable()
 export class StudentsService {
@@ -119,6 +121,50 @@ export class StudentsService {
 
   private normalizeDocument(value?: string | null): string {
     return String(value || "").replace(/\D/g, "");
+  }
+
+  private normalizeAccessUsername(value?: string | null): string | null {
+    const normalized = String(value || "").normalize("NFKC").trim().toUpperCase();
+    if (normalized && !/^\S{3,160}$/u.test(normalized)) {
+      throw new BadRequestException(
+        "Informe o login utilizado com 3 a 160 caracteres e sem espaços.",
+      );
+    }
+    return normalized || null;
+  }
+
+  private async assertUniqueAccessUsername(
+    tenantId: string,
+    accessUsername?: string | null,
+    excludeStudentId?: string,
+  ) {
+    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
+    if (!normalizedUsername) return;
+    const [student, teacher, guardian] = await Promise.all([
+      this.prisma.student.findFirst({
+        where: {
+          tenantId,
+          accessUsername: normalizedUsername,
+          ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
+        },
+        select: { id: true, person: { select: { name: true } } },
+      }),
+      this.prisma.teacher.findFirst({
+        where: { tenantId, accessUsername: normalizedUsername },
+        select: { id: true },
+      }),
+      this.prisma.guardian.findFirst({
+        where: { tenantId, accessUsername: normalizedUsername },
+        select: { id: true },
+      }),
+    ]);
+    if (student || teacher || guardian) {
+      throw new ConflictException(
+        student
+          ? `O login utilizado já está cadastrado para o aluno ${student.person?.name || "informado"}.`
+          : "O login utilizado já pertence a outro perfil de acesso desta escola.",
+      );
+    }
   }
 
   private async assertUniqueStudentCpf(
@@ -348,6 +394,7 @@ export class StudentsService {
 
     if (!canViewStudentAccessData(viewer)) {
       delete sanitizedDto.email;
+      delete sanitizedDto.accessUsername;
       delete sanitizedDto.password;
       delete sanitizedDto.accessProfile;
       delete sanitizedDto.permissions;
@@ -494,12 +541,37 @@ export class StudentsService {
       getTenantContext()!.branchCode,
     );
     const targetBranchCode = branchSelection.branchCode;
+    const centralBranchCodes = await resolveCentralRoleBranchCodes(
+      this.prisma,
+      this.tenantId(),
+      targetBranchCode,
+      branchSelection.explicitBranchCodes,
+    );
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
     const sanitizedDto = this.sanitizeStudentMutationDto(
       createDto,
       currentUser,
     );
+
+    sanitizedDto.accessUsername = this.normalizeAccessUsername(
+      sanitizedDto.accessUsername,
+    );
+    if (sanitizedDto.accessUsername && !sanitizedDto.email) {
+      throw new BadRequestException(
+        "Informe o e-mail para confirmação e recuperação do acesso do aluno.",
+      );
+    }
+    if (sanitizedDto.accessUsername && !sanitizedDto.password) {
+      throw new BadRequestException(
+        "Informe a senha inicial ao cadastrar o login utilizado do aluno.",
+      );
+    }
+    if (sanitizedDto.password && !sanitizedDto.accessUsername) {
+      throw new BadRequestException(
+        "Informe o login utilizado ao cadastrar uma senha de acesso do aluno.",
+      );
+    }
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
@@ -512,6 +584,10 @@ export class StudentsService {
     );
 
     await this.assertUniqueStudentCpf(this.tenantId(), sanitizedDto.cpf);
+    await this.assertUniqueAccessUsername(
+      this.tenantId(),
+      sanitizedDto.accessUsername,
+    );
 
     // 1. Completa Endereços faltantes batendo na API Externa ViaCEP
     await this.fillAddressFromViaCep(sanitizedDto);
@@ -605,7 +681,7 @@ export class StudentsService {
     });
 
     if (sanitizedDto.email) {
-      if (hashedPassword) {
+      if (hashedPassword && !isCentralIdentityEnabled()) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
           sanitizedDto.email,
           hashedPassword,
@@ -619,15 +695,15 @@ export class StudentsService {
       }
     }
 
-    if (sanitizedDto.email && hashedPassword) {
+    if (sanitizedDto.accessUsername && sanitizedDto.email && hashedPassword) {
       await this.centralIdentityProvisioning.synchronize({
         tenantId: this.tenantId(),
-        login: sanitizedDto.email,
+        login: sanitizedDto.accessUsername,
         email: sanitizedDto.email,
         displayName: sanitizedDto.name,
         credential: String(sanitizedDto.password),
         externalSubjectId: `PERSON:${createdStudent.personId || createdStudent.id}`,
-        branchCodes: branchSelection.explicitBranchCodes,
+        branchCodes: centralBranchCodes,
         roleCode: accessProfile || "ALUNO",
       });
     }
@@ -1094,8 +1170,23 @@ export class StudentsService {
       currentStudent.branchCode,
     );
     const targetBranchCode = branchSelection.branchCode;
+    const centralBranchCodes = await resolveCentralRoleBranchCodes(
+      this.prisma,
+      this.tenantId(),
+      targetBranchCode,
+      branchSelection.explicitBranchCodes,
+    );
 
     return runWithTenantBranchScope(currentStudent.branchCode, async () => {
+    if (Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")) {
+      sanitizedDto.accessUsername = this.normalizeAccessUsername(
+        sanitizedDto.accessUsername,
+      );
+    }
+    const accessUsernameForSync =
+      Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
+        ? sanitizedDto.accessUsername
+        : currentStudent.accessUsername;
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
       sanitizedDto,
@@ -1130,6 +1221,27 @@ export class StudentsService {
       Boolean(normalizedIncomingEmail) &&
       normalizedIncomingEmail !== normalizedCurrentEmail;
 
+    if (accessUsernameForSync && !normalizedIncomingEmail) {
+      throw new BadRequestException(
+        "Informe o e-mail para confirmação e recuperação do acesso do aluno.",
+      );
+    }
+    if (sanitizedDto.password && !accessUsernameForSync) {
+      throw new BadRequestException(
+        "Informe o login utilizado ao cadastrar uma senha de acesso do aluno.",
+      );
+    }
+    if (accessUsernameForSync && !currentStudent.accessUsername && !sanitizedDto.password) {
+      throw new BadRequestException(
+        "Informe a senha inicial ao liberar o primeiro acesso do aluno.",
+      );
+    }
+    await this.assertUniqueAccessUsername(
+      this.tenantId(),
+      accessUsernameForSync,
+      id,
+    );
+
     let hashedPassword: string | undefined;
     if (sanitizedDto.password) {
       assertStrongPassword(sanitizedDto.password);
@@ -1152,10 +1264,21 @@ export class StudentsService {
       sanitizedDto.name,
       currentStudent.person?.name,
     );
+    const currentBlankCpfPersonLinkCount =
+      currentStudent.personId &&
+      !this.normalizeDocument(currentStudent.person?.cpf)
+        ? await this.prisma.student.count({
+            where: {
+              tenantId: this.tenantId(),
+              personId: currentStudent.personId,
+            },
+          })
+        : 0;
     const shouldDetachBlankCpfPersonLink =
       !this.normalizeDocument(sanitizedDto.cpf || currentStudent.person?.cpf) &&
       Boolean(currentStudent.personId) &&
-      !this.normalizeDocument(currentStudent.person?.cpf);
+      !this.normalizeDocument(currentStudent.person?.cpf) &&
+      currentBlankCpfPersonLinkCount > 1;
     const billingSettings = await this.resolveUpdateBillingSettings(
       id,
       currentStudent,
@@ -1181,7 +1304,7 @@ export class StudentsService {
     delete rawData.telegramOptInEnabled;
 
     const updatedStudent = await this.prisma.$transaction(async (tx) => {
-      const student = await tx.student.update({
+      const updateResult = await tx.student.updateMany({
         where: { id },
         data: {
           ...rawData,
@@ -1203,6 +1326,14 @@ export class StudentsService {
           updatedBy: this.userId(),
         },
       });
+      if (updateResult.count !== 1) {
+        throw new NotFoundException("Aluno não encontrado nesta Instituição.");
+      }
+
+      const student = await tx.student.findFirst({ where: { id } });
+      if (!student) {
+        throw new NotFoundException("Aluno não encontrado nesta Instituição.");
+      }
 
       await syncRoleBranchAccesses(
         tx,
@@ -1228,10 +1359,13 @@ export class StudentsService {
     await this.sharedProfilesService.syncSharedProfile(
       this.tenantId(),
       "STUDENT",
-      updatedStudent.id,
+      id,
       {
         ...updatedStudent,
         ...sanitizedDto,
+        personId:
+          updatedStudent.personId ||
+          (shouldDetachBlankCpfPersonLink ? null : currentStudent.personId),
         name: resolvedStudentName,
         password: null,
         resetPasswordToken: null,
@@ -1243,13 +1377,13 @@ export class StudentsService {
 
     const emailForPasswordSync = sanitizedDto.email || currentStudent.person?.email;
     if (emailForPasswordSync) {
-      if (hashedPassword) {
+      if (hashedPassword && !isCentralIdentityEnabled()) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
           emailForPasswordSync,
           hashedPassword,
           this.userId(),
         );
-      } else if (shouldResolvePasswordForEmailChange) {
+      } else if (shouldResolvePasswordForEmailChange || hashedPassword) {
         await this.sharedProfilesService.ensureEmailCredential(
           emailForPasswordSync,
           { userId: this.userId() },
@@ -1257,15 +1391,15 @@ export class StudentsService {
       }
     }
 
-    if (emailForPasswordSync) {
+    if (accessUsernameForSync && emailForPasswordSync) {
       await this.centralIdentityProvisioning.synchronize({
         tenantId: this.tenantId(),
-        login: emailForPasswordSync,
+        login: accessUsernameForSync,
         email: emailForPasswordSync,
         displayName: resolvedStudentName,
         ...(sanitizedDto.password ? { credential: String(sanitizedDto.password) } : {}),
-        externalSubjectId: `PERSON:${updatedStudent.personId || updatedStudent.id}`,
-        branchCodes: branchSelection.explicitBranchCodes,
+        externalSubjectId: `PERSON:${updatedStudent.personId || id}`,
+        branchCodes: centralBranchCodes,
         roleCode: accessProfile || "ALUNO",
       });
     }
@@ -1420,20 +1554,23 @@ export class StudentsService {
   }
 
   async remove(id: string) {
-    await this.findStudentEntity(id);
+    const student = await this.findStudentEntity(id);
 
     // Soft Delete OBRIGATÓRIO da Diretiva
-    return this.prisma.student.updateMany({
+    const result = await this.prisma.student.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: this.userId(),
       },
     });
+
+    await this.synchronizeStudentStatus(student, false);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
-    await this.findStudentEntity(id);
+    const student = await this.findStudentEntity(id);
 
     const updatedStudent = await this.prisma.student.update({
       where: { id },
@@ -1450,12 +1587,40 @@ export class StudentsService {
           },
     });
 
+    await this.synchronizeStudentStatus(student, active);
+
     return {
       message: active
         ? "Aluno ativado com sucesso."
         : "Aluno inativado com sucesso.",
       student: this.mapStudentAccess(updatedStudent),
     };
+  }
+
+  private async synchronizeStudentStatus(
+    student: Awaited<ReturnType<StudentsService["findStudentEntity"]>>,
+    enabled: boolean,
+  ) {
+    const login = student.accessUsername?.trim();
+    const email = student.person?.email?.trim();
+    if (!login || !email) return;
+
+    await this.centralIdentityProvisioning.synchronize({
+      tenantId: this.tenantId(),
+      login,
+      email,
+      displayName: student.person?.name || "Aluno",
+      externalSubjectId: `PERSON:${student.personId || student.id}`,
+      branchCodes: await resolveCentralRoleBranchCodes(
+        this.prisma,
+        this.tenantId(),
+        student.branchCode,
+        student.branchAccesses.map((access) => access.branchCode),
+      ),
+      roleCode:
+        normalizeAccessProfileCode(student.accessProfile, "ALUNO") || "ALUNO",
+      enabled,
+    });
   }
 
   private async ensureStudentPersonLink(

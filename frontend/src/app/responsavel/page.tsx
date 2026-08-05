@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { clearStoredSession } from '@/app/lib/auth-storage';
 import { getDashboardAuthContext, getHomeRouteForRole } from '@/app/lib/dashboard-crud-utils';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
+import { normalizePublicImageUrl } from '@/app/lib/public-image-url';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const CACHE_KEY = '@Escola-PWA-Guardian-Cache:v1';
@@ -822,6 +822,7 @@ export default function ResponsavelPwaPage() {
         auditText: buildResponsavelAuditText(responsavelAuditParams),
         sqlText: buildResponsavelAuditSql(responsavelAuditParams),
     };
+    const tenantLogoUrl = normalizePublicImageUrl(tenant?.logoUrl);
 
     return (
         <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(29,78,216,0.16),_transparent_35%),linear-gradient(180deg,#eff6ff_0%,#f8fafc_36%,#e2e8f0_100%)] px-4 py-5">
@@ -831,13 +832,11 @@ export default function ResponsavelPwaPage() {
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="flex items-center gap-3">
-                                    {tenant?.logoUrl ? (
+                                    {tenantLogoUrl ? (
                                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/20 bg-white/10">
-                                            <Image
-                                                src={tenant.logoUrl}
+                                            <img
+                                                src={tenantLogoUrl}
                                                 alt={tenant?.name || 'ESCOLA'}
-                                                width={48}
-                                                height={48}
                                                 className="h-full w-full object-contain p-1"
                                             />
                                         </div>

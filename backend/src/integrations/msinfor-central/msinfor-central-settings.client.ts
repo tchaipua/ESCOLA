@@ -11,6 +11,8 @@ import { isProductionEnvironment } from "../../common/security/security-config";
 
 const SIGNATURE_VERSION = "v1";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
+const PUBLIC_BRANCH_LOGO_KEY_PATTERN = /^logos\/filiais\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp)$/i;
+const PUBLIC_COMPANY_LOGO_KEY_PATTERN = /^logos\/empresas\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[A-Za-z0-9._-]+\.(?:png|jpe?g|webp)$/i;
 
 type CachedSettings = {
   value: Record<string, unknown>;
@@ -157,6 +159,7 @@ export type CentralIdentityMembership = {
   tenantDisplayName: string;
   tenantDocumentNumber: string;
   tenantCity: string;
+  tenantLogoUrl?: string;
   roleCode: string;
   branchCodes: number[];
 };
@@ -815,6 +818,34 @@ async function readLimitedJson(response: Response) {
 export class MsInforCentralSettingsClient {
   private cache?: CachedSettings;
 
+  resolvePublicLogoUrl(
+    reference?: string | null,
+    scope: "branch" | "company" = "company",
+  ) {
+    const normalized = String(reference || "").trim();
+    if (!normalized) return null;
+    if (/^https:\/\//i.test(normalized)) return normalized;
+
+    const pattern =
+      scope === "branch"
+        ? PUBLIC_BRANCH_LOGO_KEY_PATTERN
+        : PUBLIC_COMPANY_LOGO_KEY_PATTERN;
+    if (!pattern.test(normalized)) return null;
+
+    try {
+      const base = new URL(`${this.baseUrl}/`);
+      if (isProductionEnvironment() && base.protocol !== "https:") return null;
+      const target = new URL(
+        `public/${scope === "branch" ? "branch-logo" : "company-logo"}`,
+        base,
+      );
+      target.searchParams.set("key", normalized);
+      return target.toString();
+    } catch {
+      return null;
+    }
+  }
+
   async synchronizeTechnicalIdentity(payload: {
     login: string;
     email: string;
@@ -1009,8 +1040,15 @@ export class MsInforCentralSettingsClient {
           );
         }
       }
+      const upstreamMessage = isProductionEnvironment()
+        ? ""
+        : (Array.isArray(payload?.message)
+            ? payload.message.join("; ")
+            : String(payload?.message || ""))
+          .replace(/[\r\n]+/g, " ")
+          .slice(0, 300);
       throw new BadGatewayException(
-        "A Central MSINFOR não respondeu corretamente.",
+        `A Central MSINFOR recusou a operação técnica (HTTP ${response.status})${upstreamMessage ? `: ${upstreamMessage}` : "."}`,
       );
     }
     return payload;
@@ -1100,6 +1138,9 @@ export class MsInforCentralSettingsClient {
               membership?.tenantDocumentNumber || "",
             ).trim(),
             tenantCity: String(membership?.tenantCity || "").trim(),
+            ...(String(membership?.tenantLogoUrl || "").trim()
+              ? { tenantLogoUrl: String(membership.tenantLogoUrl).trim() }
+              : {}),
             roleCode: validatedCode(
               membership?.roleCode,
               "membership.roleCode",

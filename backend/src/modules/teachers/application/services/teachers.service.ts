@@ -35,6 +35,7 @@ import {
 import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 import { SHARED_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 import { listTenantBranches } from "../../../../common/tenant/tenant-branches";
+import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
 
 @Injectable()
 export class TeachersService {
@@ -100,10 +101,10 @@ export class TeachersService {
   }
 
   private normalizeAccessUsername(value?: string | null): string | null {
-    const normalized = String(value || "").trim().toUpperCase();
-    if (/\s/.test(normalized)) {
+    const normalized = String(value || "").normalize("NFKC").trim().toUpperCase();
+    if (normalized && (!/^\S{3,160}$/u.test(normalized))) {
       throw new BadRequestException(
-        "O usuário de acesso não pode conter espaços.",
+        "Informe o login utilizado com 3 a 160 caracteres e sem espaços.",
       );
     }
     return normalized || null;
@@ -117,19 +118,30 @@ export class TeachersService {
     const normalizedUsername = this.normalizeAccessUsername(accessUsername);
     if (!normalizedUsername) return;
 
-    const teacher = await this.prisma.teacher.findFirst({
-      where: {
-        tenantId,
-        accessUsername: normalizedUsername,
-        canceledAt: null,
-        ...(excludeTeacherId ? { id: { not: excludeTeacherId } } : {}),
-      },
-      select: { id: true, person: { select: { name: true } } },
-    });
+    const [teacher, student, guardian] = await Promise.all([
+      this.prisma.teacher.findFirst({
+        where: {
+          tenantId,
+          accessUsername: normalizedUsername,
+          ...(excludeTeacherId ? { id: { not: excludeTeacherId } } : {}),
+        },
+        select: { id: true, person: { select: { name: true } } },
+      }),
+      this.prisma.student.findFirst({
+        where: { tenantId, accessUsername: normalizedUsername },
+        select: { id: true },
+      }),
+      this.prisma.guardian.findFirst({
+        where: { tenantId, accessUsername: normalizedUsername },
+        select: { id: true },
+      }),
+    ]);
 
-    if (teacher) {
+    if (teacher || student || guardian) {
       throw new ConflictException(
-        `O usuário de acesso já está cadastrado para o professor ${teacher.person?.name || "informado"}.`,
+        teacher
+          ? `O login utilizado já está cadastrado para o professor ${teacher.person?.name || "informado"}.`
+          : "O login utilizado já pertence a outro perfil de acesso desta escola.",
       );
     }
   }
@@ -163,6 +175,30 @@ export class TeachersService {
     if (person) {
       throw new ConflictException(
         `Já existe um professor com este CPF nesta escola: ${person.name}.`,
+      );
+    }
+  }
+
+  private async assertCpfIsNotAlreadyRegistered(
+    tenantId: string,
+    cpf?: string | null,
+    excludePersonId?: string | null,
+  ) {
+    const normalizedCpf = this.normalizeDocument(cpf);
+    if (!normalizedCpf) return;
+
+    const person = await this.prisma.person.findFirst({
+      where: {
+        tenantId,
+        cpfDigits: normalizedCpf,
+        ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
+      },
+      select: { id: true, name: true },
+    });
+
+    if (person) {
+      throw new ConflictException(
+        `O CPF INFORMADO JÁ ESTÁ CADASTRADO PARA ${person.name || "OUTRA PESSOA"}. NÃO É POSSÍVEL PROSSEGUIR COM UM NOVO CADASTRO DE PROFESSOR.`,
       );
     }
   }
@@ -271,6 +307,7 @@ export class TeachersService {
 
     if (!canViewTeacherAccessData(viewer)) {
       delete sanitizedDto.email;
+      delete sanitizedDto.accessUsername;
       delete sanitizedDto.password;
       delete sanitizedDto.accessProfile;
       delete sanitizedDto.permissions;
@@ -398,12 +435,24 @@ export class TeachersService {
         "Informe o e-mail quando informar o usuário de acesso do PWA.",
       );
     }
+    if (sanitizedDto.accessUsername && !sanitizedDto.password) {
+      throw new BadRequestException(
+        "Informe a senha inicial ao cadastrar o login utilizado do professor.",
+      );
+    }
+    if (sanitizedDto.password && !sanitizedDto.accessUsername) {
+      throw new BadRequestException(
+        "Informe o login utilizado ao cadastrar uma senha de acesso do professor.",
+      );
+    }
 
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       tenantId,
       sanitizedDto,
       "TEACHER",
     );
+
+    await this.assertCpfIsNotAlreadyRegistered(tenantId, sanitizedDto.cpf);
 
     sanitizedDto.name = this.sharedProfilesService.resolveWritableName(
       sanitizedDto.name,
@@ -486,7 +535,7 @@ export class TeachersService {
     );
 
     if (sanitizedDto.email) {
-      if (hashedPassword) {
+      if (hashedPassword && !isCentralIdentityEnabled()) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
           sanitizedDto.email,
           hashedPassword,
@@ -500,7 +549,7 @@ export class TeachersService {
       }
     }
 
-    if (sanitizedDto.email && hashedPassword) {
+    if (sanitizedDto.accessUsername && sanitizedDto.email && hashedPassword) {
       await this.centralIdentityProvisioning.synchronize({
         tenantId,
         login: sanitizedDto.accessUsername || sanitizedDto.email,
@@ -661,6 +710,20 @@ export class TeachersService {
         "Informe o e-mail quando informar o usuário de acesso do PWA.",
       );
     }
+    const accessUsernameForSync =
+      Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
+        ? sanitizedDto.accessUsername
+        : teacher.accessUsername;
+    if (sanitizedDto.password && !accessUsernameForSync) {
+      throw new BadRequestException(
+        "Informe o login utilizado ao cadastrar uma senha de acesso do professor.",
+      );
+    }
+    if (accessUsernameForSync && !teacher.accessUsername && !sanitizedDto.password) {
+      throw new BadRequestException(
+        "Informe a senha inicial ao liberar o primeiro acesso do professor.",
+      );
+    }
 
     const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
       teacher.person?.email,
@@ -693,6 +756,12 @@ export class TeachersService {
     )
       ? sanitizedDto.cpf
       : teacher.person?.cpf;
+
+    await this.assertCpfIsNotAlreadyRegistered(
+      tenantId,
+      cpfBeingSaved,
+      teacher.personId,
+    );
 
     // A Person é compartilhada por CPF dentro do tenant. Se dados legados
     // deixaram mais de um professor apontando para o mesmo CPF, atualizar o
@@ -746,7 +815,7 @@ export class TeachersService {
     delete rawData.telegramOptInEnabled;
 
     const updatedTeacher = await this.prisma.$transaction(async (tx) => {
-      const teacherResult = await tx.teacher.update({
+      const updateResult = await tx.teacher.updateMany({
         where: { id },
         data: {
           ...rawData,
@@ -756,6 +825,14 @@ export class TeachersService {
           updatedBy: getTenantContext()!.userId,
         },
       });
+      if (updateResult.count !== 1) {
+        throw new NotFoundException("Professor não encontrado para esta escola.");
+      }
+
+      const teacherResult = await tx.teacher.findFirst({ where: { id } });
+      if (!teacherResult) {
+        throw new NotFoundException("Professor não encontrado para esta escola.");
+      }
 
       await syncRoleBranchAccesses(
         tx,
@@ -795,10 +872,11 @@ export class TeachersService {
     await this.sharedProfilesService.syncSharedProfile(
       tenantId,
       "TEACHER",
-      updatedTeacher.id,
+      id,
       {
         ...updatedTeacher,
         ...sanitizedDto,
+        personId: updatedTeacher.personId || teacher.personId,
         password: null,
         resetPasswordToken: null,
         resetPasswordExpires: null,
@@ -808,18 +886,14 @@ export class TeachersService {
     );
 
     const emailForPasswordSync = sanitizedDto.email || teacher.person?.email;
-    const accessUsernameForSync =
-      Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
-        ? sanitizedDto.accessUsername
-        : teacher.accessUsername;
     if (emailForPasswordSync) {
-      if (hashedPassword) {
+      if (hashedPassword && !isCentralIdentityEnabled()) {
         await this.sharedProfilesService.updateEmailCredentialPassword(
           emailForPasswordSync,
           hashedPassword,
           getTenantContext()!.userId,
         );
-      } else if (shouldResolvePasswordForEmailChange) {
+      } else if (shouldResolvePasswordForEmailChange || hashedPassword) {
         await this.sharedProfilesService.ensureEmailCredential(
           emailForPasswordSync,
           { userId: getTenantContext()!.userId },
@@ -827,20 +901,20 @@ export class TeachersService {
       }
     }
 
-    if (emailForPasswordSync) {
+    if (accessUsernameForSync && emailForPasswordSync) {
       await this.centralIdentityProvisioning.synchronize({
         tenantId,
-        login: accessUsernameForSync || emailForPasswordSync,
+        login: accessUsernameForSync,
         email: emailForPasswordSync,
         displayName: sanitizedDto.name || teacher.person?.name || "Professor",
         ...(sanitizedDto.password ? { credential: String(sanitizedDto.password) } : {}),
-        externalSubjectId: `PERSON:${updatedTeacher.personId || updatedTeacher.id}`,
+        externalSubjectId: `PERSON:${personIdForSharedUpdate || id}`,
         branchCodes: centralBranchCodes,
         roleCode: accessProfile || "PROFESSOR",
       });
     }
 
-    const refreshedTeacher = await this.findTeacherEntity(updatedTeacher.id);
+    const refreshedTeacher = await this.findTeacherEntity(id);
     return sanitizeTeacherForViewer(
       this.mapTeacherAccess(refreshedTeacher),
       currentUser,
@@ -849,9 +923,9 @@ export class TeachersService {
   }
 
   async remove(id: string) {
-    await this.findTeacherEntity(id);
+    const teacher = await this.findTeacherEntity(id);
     const tenantId = getTenantContext()!.tenantId;
-    return this.prisma.teacher.updateMany({
+    const result = await this.prisma.teacher.updateMany({
       where: {
         id,
         tenantId,
@@ -862,10 +936,13 @@ export class TeachersService {
         updatedBy: getTenantContext()!.userId,
       },
     });
+
+    await this.synchronizeTeacherStatus(teacher, false);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
-    await this.findTeacherEntity(id);
+    const teacher = await this.findTeacherEntity(id);
     const tenantId = getTenantContext()!.tenantId;
 
     await this.prisma.teacher.updateMany({
@@ -886,6 +963,8 @@ export class TeachersService {
           },
     });
 
+    await this.synchronizeTeacherStatus(teacher, active);
+
     const updatedTeacher = await this.findTeacherEntity(id);
 
     return {
@@ -894,5 +973,31 @@ export class TeachersService {
         : "Professor inativado com sucesso.",
       teacher: this.mapTeacherAccess(updatedTeacher),
     };
+  }
+
+  private async synchronizeTeacherStatus(
+    teacher: Awaited<ReturnType<TeachersService["findTeacherEntity"]>>,
+    enabled: boolean,
+  ) {
+    const login = teacher.accessUsername?.trim();
+    const email = teacher.person?.email?.trim();
+    if (!login || !email) return;
+
+    await this.centralIdentityProvisioning.synchronize({
+      tenantId: getTenantContext()!.tenantId,
+      login,
+      email,
+      displayName: teacher.person?.name || "Professor",
+      externalSubjectId: `PERSON:${teacher.personId || teacher.id}`,
+      branchCodes: await this.resolveCentralBranchCodes(
+        getTenantContext()!.tenantId,
+        teacher.branchCode,
+        teacher.branchAccesses.map((access) => access.branchCode),
+      ),
+      roleCode:
+        normalizeAccessProfileCode(teacher.accessProfile, "PROFESSOR") ||
+        "PROFESSOR",
+      enabled,
+    });
   }
 }

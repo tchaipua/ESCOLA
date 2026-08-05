@@ -18,6 +18,7 @@ export class CentralIdentityProvisioningService {
     externalSubjectId: string;
     branchCodes: number[];
     roleCode: string;
+    enabled?: boolean;
   }) {
     const configuration = await this.configurations.findConfiguration(input.tenantId);
     return this.client.synchronizeTechnicalIdentity({
@@ -29,7 +30,7 @@ export class CentralIdentityProvisioningService {
       tenantId: configuration.tenant.id,
       branchCodes: input.branchCodes,
       roleCode: input.roleCode,
-      enabled: true,
+      enabled: input.enabled !== false,
     });
   }
 }

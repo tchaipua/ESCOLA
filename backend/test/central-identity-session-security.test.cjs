@@ -157,6 +157,32 @@ function createAuthHarness({
         return null;
       },
     },
+    user: {
+      findMany: async () => [
+        {
+          id: LOCAL_USER_ID,
+          tenantId: LOCAL_TENANT_ID,
+          branchCode: 1,
+          name: "USUÁRIO LOCAL",
+          email: "USER@EXAMPLE.TEST",
+          password: null,
+          role: "SECRETARIA",
+          accessProfile: null,
+          complementaryProfiles: null,
+          cashierOnly: false,
+          permissions: null,
+          branchAccesses: [{ branchCode: 1, isDefault: true }],
+          tenant: {
+            id: LOCAL_TENANT_ID,
+            name: "ESCOLA LOCAL",
+            branches: [],
+          },
+        },
+      ],
+    },
+    teacher: { findMany: async () => [] },
+    student: { findMany: async () => [] },
+    guardian: { findMany: async () => [] },
     authSession: {
       create: async ({ data }) => {
         sessions.push({ id: `session-${sessions.length + 1}`, ...data });
@@ -179,6 +205,7 @@ function createAuthHarness({
   };
   const signedPayloads = [];
   const centralIdentity = {
+    resolvePublicLogoUrl: (reference) => reference || null,
     authenticateAndResolve: async (_login, _credential, tenantId) => {
       assert.equal(tenantId, CENTRAL_TENANT_ID);
       return {
@@ -334,6 +361,38 @@ async function testCentralIdentityMapsServerSideAndIssuesRevocableSession() {
       "nova senha",
     ),
     /administrada pelo MSINFOR Central/,
+  );
+}
+
+function testCentralAccessProfilesMapToLocalRoles() {
+  const { service } = createAuthHarness();
+  assert.equal(
+    service.centralRoleMatchesAccount("PROFESSOR_PADRAO", {
+      role: "PROFESSOR",
+      accessProfile: "PROFESSOR_PADRAO",
+    }),
+    true,
+  );
+  assert.equal(
+    service.centralRoleMatchesAccount("ALUNO_CONSULTA", {
+      role: "ALUNO",
+      accessProfile: "ALUNO_CONSULTA",
+    }),
+    true,
+  );
+  assert.equal(
+    service.centralRoleMatchesAccount("RESPONSAVEL_CONSULTA", {
+      role: "RESPONSAVEL",
+      accessProfile: "RESPONSAVEL_CONSULTA",
+    }),
+    true,
+  );
+  assert.equal(
+    service.centralRoleMatchesAccount("PROFESSOR_PADRAO", {
+      role: "ALUNO",
+      accessProfile: "ALUNO_CONSULTA",
+    }),
+    false,
   );
 }
 
@@ -654,13 +713,14 @@ async function main() {
   try {
     await testCentralIdentityUsesExactHmacBody();
     await testCentralIdentityMapsServerSideAndIssuesRevocableSession();
+    testCentralAccessProfilesMapToLocalRoles();
     await testRevokedSessionIsRejectedByJwtStrategy();
     await testCookieIsTheOnlyAcceptedSessionTransport();
     testGlobalCookieCsrfGuard();
     await testTenantLinkScriptIsIdempotentAndFailClosed();
     testRuntimeRoleAuditAndStaticContainment();
     console.log(
-      "central-identity-session-security: 6 testes aprovados",
+      "central-identity-session-security: 7 testes aprovados",
     );
   } finally {
     restoreEnvironment();

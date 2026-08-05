@@ -24,6 +24,7 @@ import {
   serializePermissions,
 } from "../../../../common/auth/user-permissions";
 import {
+  ACCESS_PROFILE_DEFINITIONS,
   getDefaultAccessProfileForRole,
   normalizeComplementaryAccessProfiles,
   normalizeAccessProfileCode,
@@ -74,6 +75,7 @@ type AccountLookup = {
   accessUsername?: string | null;
   password: string | null;
   role: string;
+  accessProfile?: string | null;
   complementaryProfiles?: string | null;
   cashierOnly?: boolean | null;
   permissions: string[];
@@ -114,6 +116,30 @@ export class AuthService {
     private readonly centralConfiguration: CentralTenantConfigurationService,
   ) {}
 
+  private resolveCentralLocalRole(roleCode?: string | null) {
+    const normalizedRoleCode = String(roleCode || "").trim().toUpperCase();
+    const profileCode = normalizeAccessProfileCode(normalizedRoleCode);
+    return profileCode
+      ? ACCESS_PROFILE_DEFINITIONS[profileCode].role
+      : normalizedRoleCode;
+  }
+
+  private centralRoleMatchesAccount(
+    roleCode: string,
+    account: Pick<AccountLookup, "role" | "accessProfile">,
+  ) {
+    const normalizedAccountRole = account.role.trim().toUpperCase();
+    if (normalizedAccountRole !== this.resolveCentralLocalRole(roleCode)) {
+      return false;
+    }
+    const profileCode = normalizeAccessProfileCode(roleCode);
+    return (
+      !profileCode ||
+      normalizeAccessProfileCode(account.accessProfile, account.role) ===
+        profileCode
+    );
+  }
+
   private normalizeEmailVariants(email: string): string[] {
     const clean = email.trim();
     return Array.from(
@@ -153,7 +179,7 @@ export class AuthService {
 
   private async findAccountByLogin(
     login: string,
-    allowTeacherUsername = true,
+    allowAccessUsername = true,
   ): Promise<AccountLookup[]> {
     const loginVariants = this.normalizeEmailVariants(login);
     const prismaClient = this.getCrossTenantPrisma();
@@ -177,11 +203,20 @@ export class AuthService {
 
     const [users, teachers, students, guardians] = await Promise.all([
       prismaClient.user.findMany({
-        where: { email: { in: loginVariants }, canceledAt: null },
+        where: allowAccessUsername
+          ? {
+              OR: [
+                { email: { in: loginVariants } },
+                { accessUsername: { in: loginVariants } },
+              ],
+              canceledAt: null,
+            }
+          : { email: { in: loginVariants }, canceledAt: null },
         select: {
           ...baseSelect,
           name: true,
           email: true,
+          accessUsername: true,
           password: true,
           role: true,
           complementaryProfiles: true,
@@ -194,7 +229,7 @@ export class AuthService {
         },
       }),
       prismaClient.teacher.findMany({
-        where: allowTeacherUsername
+        where: allowAccessUsername
           ? {
               OR: [
                 { person: { email: { in: loginVariants } } },
@@ -218,12 +253,21 @@ export class AuthService {
         },
       }),
       prismaClient.student.findMany({
-        where: {
-          person: { email: { in: loginVariants } },
-          canceledAt: null,
-        },
+        where: allowAccessUsername
+          ? {
+              OR: [
+                { person: { email: { in: loginVariants } } },
+                { accessUsername: { in: loginVariants } },
+              ],
+              canceledAt: null,
+            }
+          : {
+              person: { email: { in: loginVariants } },
+              canceledAt: null,
+            },
         select: {
           ...baseSelect,
+          accessUsername: true,
           person: { select: { name: true, email: true, password: true } },
           branchAccesses: {
             where: { canceledAt: null },
@@ -233,12 +277,21 @@ export class AuthService {
         },
       }),
       prismaClient.guardian.findMany({
-        where: {
-          person: { email: { in: loginVariants } },
-          canceledAt: null,
-        },
+        where: allowAccessUsername
+          ? {
+              OR: [
+                { person: { email: { in: loginVariants } } },
+                { accessUsername: { in: loginVariants } },
+              ],
+              canceledAt: null,
+            }
+          : {
+              person: { email: { in: loginVariants } },
+              canceledAt: null,
+            },
         select: {
           ...baseSelect,
+          accessUsername: true,
           person: { select: { name: true, email: true, password: true } },
           branchAccesses: {
             where: { canceledAt: null },
@@ -296,6 +349,7 @@ export class AuthService {
         ...s,
         name: s.person?.name ?? "ALUNO",
         email: s.person?.email ?? null,
+        accessUsername: s.accessUsername ?? null,
         password: s.person?.password ?? null,
         modelType: "student" as const,
         role: "ALUNO",
@@ -318,6 +372,7 @@ export class AuthService {
         ...g,
         name: g.person?.name ?? "RESPONSAVEL",
         email: g.person?.email ?? null,
+        accessUsername: g.accessUsername ?? null,
         password: g.person?.password ?? null,
         modelType: "guardian" as const,
         role: "RESPONSAVEL",
@@ -557,7 +612,10 @@ export class AuthService {
       id: branch.id,
       branchCode: branch.branchCode,
       name: branch.displayName,
-      logoUrl: branch.company.logoReference || null,
+      logoUrl: this.centralIdentity.resolvePublicLogoUrl(
+        branch.company.logoReference,
+        "branch",
+      ),
       isActive: true,
     }));
   }
@@ -1203,7 +1261,7 @@ export class AuthService {
           tenants: identity.memberships.map((membership) => ({
             id: membership.tenantId,
             name: membership.tenantDisplayName,
-            logoUrl: null,
+            logoUrl: membership.tenantLogoUrl || null,
             documentNumber: membership.tenantDocumentNumber,
             city: membership.tenantCity,
           })),
@@ -1250,7 +1308,7 @@ export class AuthService {
       );
     }
 
-    const normalizedCentralRole = identity.roleCode.trim().toUpperCase();
+    const normalizedCentralRole = this.resolveCentralLocalRole(identity.roleCode);
     if (isMasterLoginIdentifier(loginDto.email.trim().toUpperCase())) {
       await this.ensureMasterProjection(localTenant.id, normalizedCentralRole);
     }
@@ -1265,7 +1323,7 @@ export class AuthService {
       .filter(
         (account) =>
           account.tenantId === localTenant.id &&
-          account.role.trim().toUpperCase() === normalizedCentralRole,
+          this.centralRoleMatchesAccount(identity.roleCode, account),
       )
       .map((account) => ({
         ...account,
@@ -1273,7 +1331,10 @@ export class AuthService {
         tenant: {
           ...account.tenant,
           name: centralTenantName,
-          logoUrl: centralCompany.logoReference || null,
+          logoUrl: this.centralIdentity.resolvePublicLogoUrl(
+            centralCompany.logoReference,
+            "company",
+          ),
           branches: [],
         },
       }));
@@ -1420,8 +1481,7 @@ export class AuthService {
       "memberships" in resolution ||
       resolution.account.id.toLowerCase() !==
         localCredential.centralIdentityAccountId.toLowerCase() ||
-      resolution.roleCode.toUpperCase() !==
-        currentAccount.role.trim().toUpperCase()
+      !this.centralRoleMatchesAccount(resolution.roleCode, currentAccount)
     ) {
       throw new UnauthorizedException("Credencial inválida.");
     }

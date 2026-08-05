@@ -55,6 +55,7 @@ export default function StatusConfirmationModal({
     const [passwordError, setPasswordError] = useState<string | null>(null);
     const [reason, setReason] = useState('');
     const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
     useEffect(() => {
         if (!isOpen) {
@@ -62,12 +63,14 @@ export default function StatusConfirmationModal({
             setPasswordError(null);
             setReason('');
             setIsVerifyingPassword(false);
+            setIsPasswordVisible(false);
             return;
         }
 
         setPassword('');
         setPasswordError(null);
         setReason('');
+        setIsPasswordVisible(false);
     }, [isOpen, actionType, itemName]);
 
     const shouldRequestPassword = requirePassword && actionType !== 'activate';
@@ -172,20 +175,43 @@ export default function StatusConfirmationModal({
                 </div>
                 {shouldRequestPassword ? (
                     <div className="space-y-4 border-t border-slate-100 px-6 pb-6 pt-5">
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(event) => {
-                                setPassword(event.target.value);
-                                if (passwordError) {
-                                    setPasswordError(null);
-                                }
-                            }}
-                            aria-label="Senha de confirmação"
-                            placeholder="Informar Senha Inativação Aqui !!!"
-                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 placeholder:text-rose-600 placeholder:font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
-                            disabled={isVerifyingPassword}
-                        />
+                        <div className="flex overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                            <input
+                                type={isPasswordVisible ? 'text' : 'password'}
+                                value={password}
+                                onChange={(event) => {
+                                    setPassword(event.target.value);
+                                    if (passwordError) {
+                                        setPasswordError(null);
+                                    }
+                                }}
+                                aria-label="Senha de confirmação"
+                                placeholder="Informar Senha Inativação Aqui !!!"
+                                className="min-w-0 flex-1 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-900 placeholder:text-rose-600 placeholder:font-semibold outline-none"
+                                disabled={isVerifyingPassword}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setIsPasswordVisible((current) => !current)}
+                                className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-white hover:text-blue-600"
+                                aria-label={isPasswordVisible ? 'Ocultar senha de confirmação' : 'Mostrar senha de confirmação'}
+                                title={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
+                            >
+                                {isPasswordVisible ? (
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M3 3l18 18" />
+                                        <path d="M10.58 10.58A2 2 0 0013.42 13.42" />
+                                        <path d="M9.88 5.09A10.94 10.94 0 0112 5c7 0 10 7 10 7a18.27 18.27 0 01-4.23 5.42" />
+                                        <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 005.39-1.44" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                        <circle cx="12" cy="12" r="3" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
                         <textarea value={reason} onChange={(event) => setReason(event.target.value)} aria-label="Observação do motivo" placeholder="Descreva o motivo da inativação" className="min-h-24 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:bg-white" disabled={isVerifyingPassword} />
                     </div>
                 ) : null}

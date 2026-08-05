@@ -10,9 +10,12 @@ import {
   type StoredSessionProfile,
 } from '@/app/lib/auth-storage';
 import { getHomeRouteForRole, getHomeRouteForSession } from '@/app/lib/dashboard-crud-utils';
+import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const DEFAULT_CENTRAL_URL = 'http://localhost:3200';
+const SCHOOL_SELECTION_SCREEN_ID = 'LOGIN_SELECAO_EMPRESA_MSINFOR';
+const BRANCH_SELECTION_SCREEN_ID = 'LOGIN_SELECAO_FILIAL_MSINFOR';
 
 function getCentralUrl(): string | null {
   const configuredUrl =
@@ -591,7 +594,7 @@ export default function LoginPage() {
 
           {/* Círculo Principal */}
           <div className="w-[420px] h-[420px] rounded-full border-[14px] border-[#2272c7] bg-[#cfd5de] flex flex-col items-center justify-center p-10 relative z-10 shadow-inner">
-            <form onSubmit={handleLogin} className="w-[85%] flex flex-col items-center">
+            <form onSubmit={handleLogin} className="w-[85%] flex flex-col items-center translate-y-3">
 
               {/* Input Usuário */}
               <div className="flex w-full mb-4 shadow-sm bg-white rounded-md overflow-hidden h-11">
@@ -628,7 +631,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setIsPasswordVisible((current) => !current)}
-                  className="flex w-12 items-center justify-center text-slate-500 transition hover:bg-slate-50 hover:text-[#2272c7]"
+                  className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-[#2272c7]"
                   aria-label={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
                   title={isPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}
                 >
@@ -684,13 +687,6 @@ export default function LoginPage() {
                   "ACESSAR"
                 )}
               </button>
-
-              <p className="mt-4 max-w-[240px] text-center text-[11px] font-bold uppercase tracking-[0.14em] text-[#5c6778]">
-                Se este login tiver mais de um papel, voce escolhe como entrar no proximo passo.
-              </p>
-
-              {/* Mensagem de Erro Removida daqui e joguei lá pro Modal Central (no fundo do componente) */}
-              <div className="h-6 mt-3"></div>
 
             </form>
           </div>
@@ -807,10 +803,12 @@ export default function LoginPage() {
         <div data-system-message-ignore className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
           <div className={`bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200 ${isMasterLogin ? 'max-w-5xl' : 'max-w-md'}`}>
             <div className="bg-[#2272c7] p-6 text-center">
-              <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
+              <div className="w-16 h-16 overflow-hidden rounded-full bg-white p-1 mx-auto mb-3 border border-white/50 shadow-lg">
+                <img
+                  src="/logo-msinfor.jpg"
+                  alt="Logotipo MSINFOR Sistemas"
+                  className="h-full w-full rounded-full object-contain"
+                />
               </div>
               <h2 className="text-xl font-bold text-white mb-1">{isMasterLogin ? 'Empresas disponíveis' : 'Múltiplos Vínculos'}</h2>
               <p className="text-blue-100 text-sm font-medium opacity-90">
@@ -831,30 +829,53 @@ export default function LoginPage() {
                     className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-[#2272c7] focus:bg-white focus:ring-2 focus:ring-blue-100"
                   />
                   <div className="max-h-[48vh] overflow-auto rounded-2xl border border-slate-200">
-                    <table className="w-full min-w-[680px] text-left text-sm">
+                    <table className="w-full min-w-[720px] text-left text-sm">
                       <thead className="sticky top-0 bg-slate-100 text-xs font-black uppercase tracking-wide text-slate-500">
                         <tr>
+                          <th className="w-20 px-4 py-4 text-center">Selecionar</th>
                           <th className="px-5 py-4">Empresa</th>
                           <th className="px-5 py-4">CNPJ</th>
                           <th className="px-5 py-4">Cidade</th>
-                          <th className="px-5 py-4 text-right">Ação</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {visibleMasterCompanies.map((company) => (
                           <tr key={company.id} className="bg-white transition hover:bg-blue-50/70">
-                            <td className="px-5 py-4 font-bold text-slate-800">{company.name}</td>
-                            <td className="px-5 py-4 text-slate-600">{company.documentNumber || 'Não informado'}</td>
-                            <td className="px-5 py-4 text-slate-600">{company.city || 'Não informada'}</td>
-                            <td className="px-5 py-3 text-right">
+                            <td className="px-4 py-3 text-center">
                               <button
                                 type="button"
                                 onClick={() => handleSelectSchool(company.id)}
-                                className="rounded-xl bg-[#2272c7] px-4 py-2 text-xs font-black uppercase tracking-wide text-white transition hover:bg-[#185b9e]"
+                                disabled={loading}
+                                aria-label={`Selecionar empresa ${company.name}`}
+                                title={`Selecionar ${company.name}`}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#2272c7] text-white shadow-sm transition hover:bg-[#185b9e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2272c7] disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                Selecionar
+                                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                  <path d="M5 12.5 9.5 17 19 7.5" />
+                                </svg>
+                                <span className="sr-only">Selecionar empresa</span>
                               </button>
                             </td>
+                            <td className="px-5 py-3 font-bold text-slate-800">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-xs font-black text-[#2272c7] shadow-sm">
+                                  {company.logoUrl ? (
+                                    <img
+                                      src={company.logoUrl}
+                                      alt={`Logotipo de ${company.name}`}
+                                      className="h-full w-full object-contain p-1"
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  ) : (
+                                    <span>{company.name.substring(0, 2).toUpperCase()}</span>
+                                  )}
+                                </div>
+                                <span>{company.name}</span>
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 text-slate-600">{company.documentNumber || 'Não informado'}</td>
+                            <td className="px-5 py-4 text-slate-600">{company.city || 'Não informada'}</td>
                           </tr>
                         ))}
                         {!visibleMasterCompanies.length && (
@@ -896,13 +917,25 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <div className="mt-6 pt-4 border-t border-slate-100">
+              <div className="mt-6 border-t border-slate-100 pt-4">
+                <div className="flex items-center gap-4">
+                  <ScreenNameCopy
+                    screenId={SCHOOL_SELECTION_SCREEN_ID}
+                    label="Popup"
+                    disableMargin
+                    compact
+                    className="min-w-0 flex-1"
+                    originText="Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\page.tsx"
+                    auditText="Popup de seleção de empresa exibido após a autenticação MSINFOR quando existem múltiplos vínculos. A seleção apenas define o tenant global que será reenviado ao endpoint de login para concluir a sessão."
+                    sqlText="A consulta das empresas é preparada pelo MSINFOR Central. O sistema Escola não consulta o banco de outra escola e não permite escolher tenant fora da lista retornada pela autenticação."
+                  />
                 <button
                   onClick={() => setMultipleSchools(null)}
-                  className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+                  className="shrink-0 rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
                 >
                   Voltar ao Login
                 </button>
+                </div>
               </div>
             </div>
           </div>
@@ -982,10 +1015,12 @@ export default function LoginPage() {
         <div data-system-message-ignore className="fixed inset-0 z-[66] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-[#2272c7] p-6 text-center">
-              <div className="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mx-auto mb-3 backdrop-blur-sm border border-white/30 shadow-inner">
-                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h.01M9 13h.01M9 17h.01M15 13h.01M15 17h.01" />
-                </svg>
+              <div className="w-16 h-16 overflow-hidden rounded-full bg-white p-1 mx-auto mb-3 border border-white/50 shadow-lg">
+                <img
+                  src="/logo-msinfor.jpg"
+                  alt="Logotipo MSINFOR Sistemas"
+                  className="h-full w-full rounded-full object-contain"
+                />
               </div>
               <h2 className="text-xl font-bold text-white mb-1">Escolha a Filial</h2>
               <p className="text-blue-100 text-sm font-medium opacity-90">
@@ -1032,6 +1067,16 @@ export default function LoginPage() {
               </div>
 
               <div className="mt-6 pt-4 border-t border-slate-100">
+                <ScreenNameCopy
+                  screenId={BRANCH_SELECTION_SCREEN_ID}
+                  label="Popup"
+                  disableMargin
+                  compact
+                  className="mb-3"
+                  originText="Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\page.tsx"
+                  auditText="Popup de seleção de filial apresentado após a autenticação quando o acesso possui mais de uma filial liberada. A escolha é reenviada ao backend para concluir a sessão no tenant e na filial autorizados."
+                  sqlText="A lista de filiais vem da configuração ativa do MSINFOR Central e é filtrada pelo vínculo do usuário. O sistema Escola não permite selecionar filial fora dos códigos autorizados."
+                />
                 <button
                   onClick={() => setMultipleBranchOptions(null)}
                   className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"

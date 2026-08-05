@@ -12,6 +12,8 @@ function ResetPasswordContent() {
 
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false);
+    const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<boolean>(false);
@@ -125,45 +127,87 @@ function ResetPasswordContent() {
 
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 mb-1.5 ml-1 block uppercase tracking-wider">Nova Senha</label>
-                                    <div className="relative">
+                                    <div className="relative flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 transition-all focus-within:border-[#2272c7] focus-within:ring-4 focus-within:ring-[#2272c7]/20">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <svg className="h-5 w-5 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
                                                 <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z" />
                                             </svg>
                                         </div>
                                         <input
-                                            type="password"
+                                            type={isNewPasswordVisible ? 'text' : 'password'}
                                             minLength={6}
                                             pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold rounded-xl pl-10 pr-4 py-3 outline-none focus:border-[#2272c7] focus:ring-4 focus:ring-[#2272c7]/20 transition-all"
+                                            className="min-w-0 flex-1 bg-slate-50 pl-10 pr-4 py-3 text-slate-900 font-bold outline-none"
                                             placeholder="Mínimo de 6 caracteres"
                                             value={newPassword}
                                             onChange={e => setNewPassword(e.target.value)}
                                             disabled={!token}
                                             required
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsNewPasswordVisible((current) => !current)}
+                                            className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-white hover:text-[#2272c7]"
+                                            aria-label={isNewPasswordVisible ? 'Ocultar nova senha' : 'Mostrar nova senha'}
+                                            title={isNewPasswordVisible ? 'Ocultar nova senha' : 'Mostrar nova senha'}
+                                        >
+                                            {isNewPasswordVisible ? (
+                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 3l18 18" />
+                                                    <path d="M10.58 10.58A2 2 0 0013.42 13.42" />
+                                                    <path d="M9.88 5.09A10.94 10.94 0 0112 5c7 0 10 7 10 7a18.27 18.27 0 01-4.23 5.42" />
+                                                    <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 005.39-1.44" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 mb-1.5 ml-1 block uppercase tracking-wider">Confirme a Nova Senha</label>
-                                    <div className="relative">
+                                    <div className="relative flex overflow-hidden rounded-xl border border-slate-200 bg-slate-50 transition-all focus-within:border-[#2272c7] focus-within:ring-4 focus-within:ring-[#2272c7]/20">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <svg className="h-5 w-5 text-slate-400" fill="currentColor" viewBox="0 0 24 24">
                                                 <path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM8.9 6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2H8.9V6zM18 20H6V10h12v10z" />
                                             </svg>
                                         </div>
                                         <input
-                                            type="password"
+                                            type={isConfirmPasswordVisible ? 'text' : 'password'}
                                             minLength={6}
                                             pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
-                                            className="w-full bg-slate-50 border border-slate-200 text-slate-900 font-bold rounded-xl pl-10 pr-4 py-3 outline-none focus:border-[#2272c7] focus:ring-4 focus:ring-[#2272c7]/20 transition-all"
+                                            className="min-w-0 flex-1 bg-slate-50 pl-10 pr-4 py-3 text-slate-900 font-bold outline-none"
                                             placeholder="Repita a senha digitada"
                                             value={confirmPassword}
                                             onChange={e => setConfirmPassword(e.target.value)}
                                             disabled={!token}
                                             required
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsConfirmPasswordVisible((current) => !current)}
+                                            className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500 transition hover:bg-white hover:text-[#2272c7]"
+                                            aria-label={isConfirmPasswordVisible ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}
+                                            title={isConfirmPasswordVisible ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}
+                                        >
+                                            {isConfirmPasswordVisible ? (
+                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M3 3l18 18" />
+                                                    <path d="M10.58 10.58A2 2 0 0013.42 13.42" />
+                                                    <path d="M9.88 5.09A10.94 10.94 0 0112 5c7 0 10 7 10 7a18.27 18.27 0 01-4.23 5.42" />
+                                                    <path d="M6.61 6.61C3.61 8.79 2 12 2 12s3 7 10 7a10.9 10.9 0 005.39-1.44" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                                                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
 

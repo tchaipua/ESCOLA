@@ -52,7 +52,6 @@ import {
     type AccessProfileCode,
 } from '@/app/lib/access-profiles';
 const RESPONSAVEIS_STATUS_MODAL_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_STATUS_MODAL';
-const RESPONSAVEIS_CPF_CONFLICT_SCREEN_ID = 'PRINCIPAL_RESPONSAVEIS_POPUP_CPF_CONFLICT';
 import { buildDefaultExportColumns, buildExportColumnsFromGridColumns, exportGridRows, sortGridRows, type GridColumnDefinition, type GridSortState } from '@/app/lib/grid-export-utils';
 import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
 import { buildBranchAccessPayload, resolveBranchAccessSelection } from '@/app/lib/tenant-branch-selection';
@@ -88,6 +87,7 @@ type GuardianRecord = {
     whatsapp?: string | null;
     cellphone1?: string | null;
     cellphone2?: string | null;
+    accessUsername?: string | null;
     email?: string | null;
     telegramChatId?: string | null;
     telegramUsername?: string | null;
@@ -121,7 +121,8 @@ function dedupeGuardianRecords(records: GuardianRecord[]) {
 
 type GuardianFormState = {
     name: string; birthDate: string; cpf: string; rg: string; cnpj: string; nickname: string; corporateName: string;
-    phone: string; whatsapp: string; cellphone1: string; cellphone2: string; email: string;
+    phone: string; whatsapp: string; cellphone1: string; cellphone2: string; accessUsername: string; email: string;
+    password: string; passwordConfirmation: string;
     telegramChatId: string; telegramUsername: string; telegramOptInEnabled: boolean;
     zipCode: string; street: string; number: string; city: string; state: string; neighborhood: string; complement: string;
     branchCode: number;
@@ -133,7 +134,8 @@ const DEFAULT_GUARDIAN_PROFILE = getDefaultAccessProfileForRole('RESPONSAVEL');
 
 const EMPTY_FORM: GuardianFormState = {
     name: '', birthDate: '', cpf: '', rg: '', cnpj: '', nickname: '', corporateName: '',
-    phone: '', whatsapp: '', cellphone1: '', cellphone2: '', email: '',
+    phone: '', whatsapp: '', cellphone1: '', cellphone2: '', accessUsername: '', email: '',
+    password: '', passwordConfirmation: '',
     telegramChatId: '', telegramUsername: '', telegramOptInEnabled: false,
     zipCode: '', street: '', number: '', city: '', state: '', neighborhood: '', complement: '',
     branchCode: 1,
@@ -249,11 +251,11 @@ function getGuardianColumnFilterValues(row: GuardianRecord, columnKey: GuardianC
     const baseValue = column?.getValue(row) || '';
 
     if (columnKey === 'name') {
-        return [row.name, row.nickname, row.corporateName, row.email, formatGuardianDate(row.birthDate), baseValue];
+        return [row.name, row.nickname, row.corporateName, row.accessUsername, row.email, formatGuardianDate(row.birthDate), baseValue];
     }
 
     if (columnKey === 'contact') {
-        return [row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
+        return [row.accessUsername, row.email, row.phone, row.whatsapp, row.cellphone1, row.cellphone2, baseValue];
     }
 
     if (columnKey === 'address') {
@@ -468,6 +470,8 @@ export default function ResponsaveisPage() {
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
     const [formData, setFormData] = useState<GuardianFormState>(EMPTY_FORM);
+    const [isPwaPasswordVisible, setIsPwaPasswordVisible] = useState(false);
+    const [isPwaPasswordConfirmationVisible, setIsPwaPasswordConfirmationVisible] = useState(false);
     const [selectedGuardianForStudents, setSelectedGuardianForStudents] = useState<GuardianRecord | null>(null);
     const [sortState, setSortState] = useState<GridSortState<GuardianColumnKey>>(DEFAULT_SORT);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
@@ -500,6 +504,7 @@ export default function ResponsaveisPage() {
     const [debouncedGuardianNameQuery, setDebouncedGuardianNameQuery] = useState('');
     const [emailUsageAlert, setEmailUsageAlert] = useState<EmailUsageAlert | null>(null);
     const [originalGuardianCpf, setOriginalGuardianCpf] = useState('');
+    const [originalGuardianAccessUsername, setOriginalGuardianAccessUsername] = useState('');
     const [, setExistingCpfAlert] = useState<{ name: string; roles: string[] } | null>(null);
     const [guardianCpfConflictAlert, setGuardianCpfConflictAlert] = useState<{ name: string; cpf: string } | null>(null);
     const [guardianCpfConflictRoles, setGuardianCpfConflictRoles] = useState<string[]>([]);
@@ -555,7 +560,7 @@ export default function ResponsaveisPage() {
                         : !isActive;
             const matchesSearch =
                 !term ||
-                [guardian.name, guardian.email, guardian.cpf, guardian.whatsapp, guardian.phone]
+                [guardian.name, guardian.accessUsername, guardian.email, guardian.cpf, guardian.whatsapp, guardian.phone]
                     .some((value) => String(value || '').toUpperCase().includes(term));
             const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
                 matchesGuardianGridFilter(getGuardianColumnFilterValues(guardian, columnKey), filter),
@@ -756,6 +761,9 @@ export default function ResponsaveisPage() {
         setGuardianCpfConflictAlert(null);
         setGuardianCpfConflictRoles([]);
         setOriginalGuardianCpf('');
+        setOriginalGuardianAccessUsername('');
+        setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
     };
 
     const openModal = () => {
@@ -771,6 +779,9 @@ export default function ResponsaveisPage() {
         setGuardianCpfConflictAlert(null);
         setGuardianCpfConflictRoles([]);
         setOriginalGuardianCpf('');
+        setOriginalGuardianAccessUsername('');
+        setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
     };
 
     const handleEdit = (guardian: GuardianRecord) => {
@@ -788,7 +799,10 @@ export default function ResponsaveisPage() {
             whatsapp: guardian.whatsapp ? limitNumericDigits(guardian.whatsapp, 11) : '',
             cellphone1: guardian.cellphone1 ? limitNumericDigits(guardian.cellphone1, 11) : '',
             cellphone2: guardian.cellphone2 ? limitNumericDigits(guardian.cellphone2, 11) : '',
+            accessUsername: guardian.accessUsername || '',
             email: guardian.email || '',
+            password: '',
+            passwordConfirmation: '',
             telegramChatId: guardian.telegramChatId || '',
             telegramUsername: guardian.telegramUsername || '',
             telegramOptInEnabled: Boolean(guardian.telegramOptInAt && !guardian.telegramOptOutAt),
@@ -814,6 +828,9 @@ export default function ResponsaveisPage() {
         setGuardianCpfConflictAlert(null);
         setGuardianCpfConflictRoles([]);
         setOriginalGuardianCpf(guardian.cpf ? limitNumericDigits(guardian.cpf, 11) : '');
+        setOriginalGuardianAccessUsername(guardian.accessUsername || '');
+        setIsPwaPasswordVisible(false);
+        setIsPwaPasswordConfirmationVisible(false);
         void resolvePersonSystemRoles(guardian.cpf, guardian.email);
         setIsModalOpen(true);
     };
@@ -1254,6 +1271,45 @@ export default function ResponsaveisPage() {
             return;
         }
 
+        const accessUsername = String(formData.accessUsername || '').normalize('NFKC').trim().toUpperCase();
+        const password = String(formData.password || '');
+        const passwordConfirmation = String(formData.passwordConfirmation || '');
+        if (accessUsername && !/^\S{3,160}$/u.test(accessUsername)) {
+            setActiveTab(3);
+            showErrorMessage('Informe o login utilizado com 3 a 160 caracteres e sem espaços.');
+            return;
+        }
+        if (originalGuardianAccessUsername && !accessUsername) {
+            setActiveTab(3);
+            showErrorMessage('O login utilizado não pode ser removido nesta tela. Informe um novo login para substituí-lo.');
+            return;
+        }
+        if (password && !accessUsername) {
+            setActiveTab(3);
+            showErrorMessage('Informe o login utilizado ao cadastrar uma senha de acesso do responsável.');
+            return;
+        }
+        if (accessUsername && (!formData.email.trim() || !formData.email.includes('@'))) {
+            setActiveTab(3);
+            showErrorMessage('Informe um e-mail válido para confirmação e recuperação do acesso.');
+            return;
+        }
+        if (accessUsername && !originalGuardianAccessUsername && !password) {
+            setActiveTab(3);
+            showErrorMessage('Informe a senha inicial e a confirmação de senha para liberar o acesso.');
+            return;
+        }
+        if (password && !/(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}/.test(password)) {
+            setActiveTab(3);
+            showErrorMessage('A senha deve ter ao menos 6 caracteres, com maiúscula, minúscula e caractere especial.');
+            return;
+        }
+        if (password !== passwordConfirmation) {
+            setActiveTab(3);
+            showErrorMessage('A senha e a confirmação de senha não conferem.');
+            return;
+        }
+
         try {
             const { token } = getDashboardAuthContext();
             if (!token) throw new Error('Token não encontrado, por favor faça login novamente.');
@@ -1263,6 +1319,7 @@ export default function ResponsaveisPage() {
             const payload: Record<string, string | string[] | number[] | number | boolean | undefined> = {
                 ...formData,
                 ...branchPayload,
+                accessUsername: accessUsername || undefined,
                 cpf: formatCpf(formData.cpf),
                 cnpj: formatCnpj(formData.cnpj),
                 phone: formatPhone(formData.phone),
@@ -1275,8 +1332,13 @@ export default function ResponsaveisPage() {
             }
             if (!payload.birthDate) delete payload.birthDate;
             if (!String(payload.email || '').trim()) delete payload.email;
+            if (!accessUsername) delete payload.accessUsername;
+            if (!password) delete payload.password;
+            delete payload.passwordConfirmation;
             if (!guardianFieldAccess.access) {
+                delete payload.accessUsername;
                 delete payload.email;
+                delete payload.password;
                 delete payload.accessProfile;
                 delete payload.permissions;
             }
@@ -1791,7 +1853,21 @@ export default function ResponsaveisPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>E-mail de login</label>
+                                                <label className={labelClass}>Login utilizado</label>
+                                                <input
+                                                    type="text"
+                                                    minLength={3}
+                                                    maxLength={160}
+                                                    pattern="\S{3,160}"
+                                                    title="Use de 3 a 160 caracteres, sem espaços. Pode ser um e-mail."
+                                                    value={formData.accessUsername}
+                                                    onChange={(event) => setFormData((current) => ({ ...current, accessUsername: event.target.value.toUpperCase() }))}
+                                                    className={`${inputClass} bg-white`}
+                                                    placeholder="USUÁRIO, CPF OU E-MAIL"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>E-mail para confirmação e recuperação</label>
                                                 <input
                                                     type="email"
                                                     value={formData.email}
@@ -1799,6 +1875,47 @@ export default function ResponsaveisPage() {
                                                     onBlur={handleEmailUsageBlur}
                                                     className={`${inputClass} bg-white`}
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>{originalGuardianAccessUsername ? 'Nova senha (deixe em branco para manter)' : 'Senha inicial'}</label>
+                                                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                                                    <input
+                                                        type={isPwaPasswordVisible ? 'text' : 'password'}
+                                                        minLength={6}
+                                                        pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\s]).{6,}"
+                                                        value={formData.password}
+                                                        onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
+                                                        className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
+                                                        autoComplete="new-password"
+                                                    />
+                                                    <button type="button" onClick={() => setIsPwaPasswordVisible((current) => !current)} className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500" aria-label={isPwaPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}>
+                                                        {isPwaPasswordVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.7 10.7 0 0112 4c5.5 0 9 5 9 5a18.8 18.8 0 01-2.1 2.6M6.6 6.6C4.3 8.2 3 10 3 10s3.5 5 9 5c1 0 2-.2 2.9-.5" /></svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className={labelClass}>Confirmação de senha</label>
+                                                <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+                                                    <input
+                                                        type={isPwaPasswordConfirmationVisible ? 'text' : 'password'}
+                                                        minLength={6}
+                                                        value={formData.passwordConfirmation}
+                                                        onChange={(event) => setFormData((current) => ({ ...current, passwordConfirmation: event.target.value }))}
+                                                        className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
+                                                        autoComplete="new-password"
+                                                    />
+                                                    <button type="button" onClick={() => setIsPwaPasswordConfirmationVisible((current) => !current)} className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500" aria-label={isPwaPasswordConfirmationVisible ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
+                                                        {isPwaPasswordConfirmationVisible ? (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M10.6 10.7a2 2 0 002.7 2.7M9.9 4.2A10.7 10.7 0 0112 4c5.5 0 9 5 9 5a18.8 18.8 0 01-2.1 2.6M6.6 6.6C4.3 8.2 3 10 3 10s3.5 5 9 5c1 0 2-.2 2.9-.5" /></svg>
+                                                        ) : (
+                                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div>
                                                 <label className={labelClass}>Telegram Chat ID</label>
@@ -1970,73 +2087,72 @@ export default function ResponsaveisPage() {
             ) : null}
 
             {guardianCpfConflictAlert ? (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                    <div className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-2xl">
-                        <div className="flex items-start gap-4 border-b border-amber-100 bg-amber-50 px-6 py-5">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white shadow-sm">
-                                {currentTenantBranding?.logoUrl ? (
-                                    <img src={currentTenantBranding.logoUrl} alt={currentTenantBranding.schoolName || 'Escola'} className="h-full w-full object-contain" />
-                                ) : (
-                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-[#153a6a]">
-                                        {String(currentTenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="min-w-0">
-                                <div className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">ATENÇÃO</div>
-                                <div className="mt-1 text-lg font-bold text-slate-900">
-                                    CPF JÁ USADO POR:
-                                </div>
-                                <div className="mt-1 text-base font-bold text-slate-900">
-                                    {guardianCpfConflictAlert.name}
-                                </div>
-                                <div className="mt-1 text-sm font-medium text-slate-600">
-                                    CPF INFORMADO: {guardianCpfConflictAlert.cpf}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="space-y-3 px-6 py-4">
-                            {guardianCpfConflictRoles.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                    {guardianCpfConflictRoles.map((role) => (
-                                        <span
-                                            key={role}
-                                            className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
-                                        >
-                                            {role}
-                                        </span>
-                                    ))}
-                                </div>
-                            ) : null}
-                            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-900">
-                                RECOMENDAMOS DEIXAR O CPF EM BRANCO QUANDO FOREM PESSOAS DIFERENTES, PARA EVITAR CONFLITO NO SISTEMA.
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
-                            <div className="flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setGuardianCpfConflictAlert(null);
-                                        setGuardianCpfConflictRoles([]);
+                <div className="system-message-backdrop" data-system-message-ignore role="presentation">
+                    <section className="system-message-card system-message-error" role="alertdialog" aria-modal="true" aria-label="Erro de CPF duplicado do responsável">
+                        <span className="system-message-accent" aria-hidden="true" />
+                        <span className="system-message-status-icon" aria-hidden="true">!</span>
+                        <header className="system-message-header">
+                            <span className="system-message-logo">
+                                <img
+                                    src={currentTenantBranding?.logoUrl || '/logo-msinfor.jpg'}
+                                    alt={currentTenantBranding?.schoolName || 'Logotipo institucional'}
+                                    onError={(event) => {
+                                        event.currentTarget.onerror = null;
+                                        event.currentTarget.src = '/logo-msinfor.jpg';
                                     }}
-                                    className="rounded-lg bg-rose-600 px-6 py-2 text-sm font-bold text-white hover:bg-rose-700"
-                                >
-                                    FECHAR
-                                </button>
-                            </div>
-                        </div>
-                        <div className="border-t border-slate-100 bg-white px-6 py-3">
-                            <div className="flex justify-end">
-                                <ScreenNameCopy
-                                    screenId={RESPONSAVEIS_CPF_CONFLICT_SCREEN_ID}
-                                    label="Tela"
-                                    disableMargin
-                                    className="w-auto"
                                 />
+                            </span>
+                            <strong>ERRO !!!!</strong>
+                            <span aria-hidden="true" />
+                        </header>
+                        <div className="system-message-divider" />
+                        <div className="system-message-body">
+                            <div className="w-full max-w-[390px] space-y-2 text-center text-[#10265f]">
+                                <p className="!max-w-none !text-[16px] !font-black uppercase !leading-tight">
+                                    CPF JÁ CADASTRADO
+                                </p>
+                                <p className="!max-w-none !text-[14px] !font-semibold !leading-snug">
+                                    O CPF INFORMADO JÁ ESTÁ CADASTRADO PARA OUTRA PESSOA NO SISTEMA.
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
+                                    CPF INFORMADO: {guardianCpfConflictAlert.cpf}
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-bold uppercase !leading-snug">
+                                    CADASTRO EXISTENTE: {guardianCpfConflictAlert.name}
+                                </p>
+                                {guardianCpfConflictRoles.length > 0 ? (
+                                    <div className="flex flex-wrap justify-center gap-2 pt-1">
+                                        {guardianCpfConflictRoles.map((role) => (
+                                            <span
+                                                key={role}
+                                                className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-700"
+                                            >
+                                                {role}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
+                                    NÃO É POSSÍVEL PROSSEGUIR COM ESTE CADASTRO.
+                                </p>
+                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug !text-red-700">
+                                    MUITO CUIDADO: CASO DESEJE PROSSEGUIR COM ESTE CADASTRO, DEIXE O CPF EM BRANCO.
+                                </p>
                             </div>
                         </div>
-                    </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setGuardianCpfConflictAlert(null);
+                                setGuardianCpfConflictRoles([]);
+                            }}
+                            className="system-message-close"
+                            aria-label="Fechar mensagem de erro"
+                            title="Fechar"
+                        >
+                            ×
+                        </button>
+                    </section>
                 </div>
             ) : null}
 
