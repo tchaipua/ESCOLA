@@ -11,7 +11,7 @@ import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 
 export class LoginDto {
-  @ApiProperty({ description: "E-mail ou identificador do usuário" })
+  @ApiProperty({ description: "Usuário de acesso da pessoa" })
   @IsString()
   @IsNotEmpty({ message: "O usuário é obrigatório" })
   email!: string;

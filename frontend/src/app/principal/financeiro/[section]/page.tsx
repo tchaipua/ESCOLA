@@ -15,6 +15,21 @@ const FINANCEIRO_FRONTEND_URL = '/financeiro-app';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const cardClass = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
 
+function resolveFinanceBrandingLogoUrl(
+  value?: string | null,
+  scope: 'branch' | 'company' = 'branch',
+) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return null;
+  if (/^data:image\//i.test(normalized) || /^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+  if (/^[a-z0-9][a-z0-9/_-]*\.(?:png|jpe?g|webp|gif)$/i.test(normalized)) {
+    return `${API_BASE_URL}/public/${scope}-logo?key=${encodeURIComponent(normalized)}`;
+  }
+  return null;
+}
+
 const SECTION_CONFIG = {
   resumo: {
     label: 'Resumo geral',
@@ -297,10 +312,16 @@ export function PrincipalFinanceiroSectionPageContent({
     authContext.permissions.includes('MANAGE_FINANCIAL');
   const tenantBranding = readCachedTenantBranding(authContext.tenantId);
   const financeBranding = useMemo(
-    () => ({
-      schoolName: tenantBranding?.schoolName || currentBranch?.name || null,
-      logoUrl: currentBranch?.logoUrl || tenantBranding?.logoUrl || null,
-    }),
+    () => {
+      const logoReference = tenantBranding?.logoUrl || currentBranch?.logoUrl || null;
+      return {
+        schoolName: tenantBranding?.schoolName || currentBranch?.name || null,
+        logoUrl: resolveFinanceBrandingLogoUrl(
+          logoReference,
+          'branch',
+        ),
+      };
+    },
     [currentBranch?.logoUrl, currentBranch?.name, tenantBranding?.logoUrl, tenantBranding?.schoolName],
   );
 

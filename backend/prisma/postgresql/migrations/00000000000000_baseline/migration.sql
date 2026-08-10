@@ -1012,7 +1012,6 @@ CREATE INDEX "people_tenantId_idx" ON "people"("tenantId");
 CREATE UNIQUE INDEX "people_tenantId_cpfDigits_key" ON "people"("tenantId", "cpfDigits");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "people_tenantId_cnpjNormalized_key" ON "people"("tenantId", "cnpjNormalized");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "people_tenantId_telegramChatId_key" ON "people"("tenantId", "telegramChatId");

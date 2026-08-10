@@ -1,9 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
-import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
-import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
@@ -11,16 +10,18 @@ import { dispatchScreenAuditContext, formatAuditValue, formatTenantAuditValue, t
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const PESSOAS_SCREEN_ID = 'PRINCIPAL_PESSOAS';
-const PESSOAS_EDIT_MODAL_SCREEN_ID = 'POPUP_PRINCIPAL_PESSOAS_MANUTENCAO';
 
 const ROLE_CONFIG: Record<string, { label: string; color: string }> = {
   ADMINISTRADOR: { label: 'Administrador', color: 'border-violet-200 bg-violet-50 text-violet-700' },
+  SECRETARIA: { label: 'Secretaria', color: 'border-violet-200 bg-violet-50 text-violet-700' },
+  COORDENACAO: { label: 'Coordenação', color: 'border-violet-200 bg-violet-50 text-violet-700' },
   PROFESSOR: { label: 'Professor', color: 'border-blue-200 bg-blue-50 text-blue-700' },
   ALUNO: { label: 'Aluno', color: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   RESPONSAVEL: { label: 'Responsavel', color: 'border-amber-200 bg-amber-50 text-amber-700' },
 };
 
 type PersonRole = keyof typeof ROLE_CONFIG;
+type PessoasRoleFilter = PersonRole | 'ALL' | 'FUNCIONARIOS';
 
 type PersonRecord = {
   id: string;
@@ -36,6 +37,7 @@ type PersonRecord = {
   phone?: string | null;
   cellphone1?: string | null;
   cellphone2?: string | null;
+  accessUsername?: string | null;
   zipCode?: string | null;
   street?: string | null;
   number?: string | null;
@@ -64,38 +66,17 @@ type PersonRecord = {
   roles: Array<{
     role: PersonRole;
     roleLabel: string;
+    recordId?: string;
     active: boolean;
     accessProfile: string | null;
   }>;
-};
-
-type PersonBasicForm = {
-  name: string;
-  birthDate: string;
-  rg: string;
-  cpf: string;
-  cnpj: string;
-  nickname: string;
-  corporateName: string;
-  phone: string;
-  whatsapp: string;
-  cellphone1: string;
-  cellphone2: string;
-  email: string;
-  zipCode: string;
-  street: string;
-  number: string;
-  city: string;
-  state: string;
-  neighborhood: string;
-  complement: string;
 };
 
 type PessoasAuditParams = {
   tenantId: string | null;
   tenantName?: string | null;
   searchTerm: string;
-  roleFilter: PersonRole | 'ALL';
+  roleFilter: PessoasRoleFilter;
   displayedRowsCount: number;
 };
 
@@ -107,57 +88,10 @@ function normalizeSearchValue(value?: string | null) {
   return String(value || '').trim().toUpperCase();
 }
 
-function formatDateInput(value?: string | null) {
-  if (!value) return '';
-  return String(value).slice(0, 10);
-}
-
-function buildPersonBasicForm(person: PersonRecord): PersonBasicForm {
-  return {
-    name: person.name || '',
-    birthDate: formatDateInput(person.birthDate),
-    rg: person.rg || '',
-    cpf: person.cpf || '',
-    cnpj: person.cnpj || '',
-    nickname: person.nickname || '',
-    corporateName: person.corporateName || '',
-    phone: person.phone || '',
-    whatsapp: person.whatsapp || '',
-    cellphone1: person.cellphone1 || '',
-    cellphone2: person.cellphone2 || '',
-    email: person.email || '',
-    zipCode: person.zipCode || '',
-    street: person.street || '',
-    number: person.number || '',
-    city: person.city || '',
-    state: person.state || '',
-    neighborhood: person.neighborhood || '',
-    complement: person.complement || '',
-  };
-}
-
-function normalizePersonBasicPayload(form: PersonBasicForm) {
-  return {
-    name: form.name.trim(),
-    birthDate: form.birthDate || undefined,
-    rg: form.rg.trim(),
-    cpf: form.cpf.trim(),
-    cnpj: form.cnpj.trim(),
-    nickname: form.nickname.trim(),
-    corporateName: form.corporateName.trim(),
-    phone: form.phone.trim(),
-    whatsapp: form.whatsapp.trim(),
-    cellphone1: form.cellphone1.trim(),
-    cellphone2: form.cellphone2.trim(),
-    email: form.email.trim() || undefined,
-    zipCode: form.zipCode.trim(),
-    street: form.street.trim(),
-    number: form.number.trim(),
-    city: form.city.trim(),
-    state: form.state.trim(),
-    neighborhood: form.neighborhood.trim(),
-    complement: form.complement.trim(),
-  };
+function isAdministrativeRole(role?: string | null) {
+  return ['ADMINISTRADOR', 'SECRETARIA', 'COORDENACAO'].includes(
+    String(role || '').trim().toUpperCase(),
+  );
 }
 
 function buildPessoasAuditSql(params: PessoasAuditParams) {
@@ -186,6 +120,7 @@ WHERE P.tenantId = ${toSqlLiteral(params.tenantId || '')}
   AND (
     ${toSqlLiteral(searchTerm)} = ''
     OR UPPER(COALESCE(P.name, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
+    OR UPPER(COALESCE(P.accessUsername, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
     OR UPPER(COALESCE(P.email, '')) LIKE '%' || UPPER(${toSqlLiteral(searchTerm)}) || '%'
     OR REPLACE(REPLACE(REPLACE(COALESCE(P.cpf, ''), '.', ''), '-', ''), '/', '') LIKE '%' || ${toSqlLiteral(searchDigits)} || '%'
     OR REPLACE(REPLACE(REPLACE(COALESCE(P.cnpj, ''), '.', ''), '-', ''), '/', '') LIKE '%' || ${toSqlLiteral(searchDigits)} || '%'
@@ -195,8 +130,19 @@ WHERE P.tenantId = ${toSqlLiteral(params.tenantId || '')}
     OR (${toSqlLiteral(roleFilter)} = 'PROFESSOR' AND T.id IS NOT NULL)
     OR (${toSqlLiteral(roleFilter)} = 'ALUNO' AND ST.id IS NOT NULL)
     OR (${toSqlLiteral(roleFilter)} = 'RESPONSAVEL' AND G.id IS NOT NULL)
-    OR (${toSqlLiteral(roleFilter)} = 'ADMINISTRADOR' AND EXISTS (
-      SELECT 1 FROM users U WHERE U.personId = P.id AND U.tenantId = P.tenantId
+    OR (${toSqlLiteral(roleFilter)} IN ('ADMINISTRADOR', 'FUNCIONARIOS') AND EXISTS (
+      SELECT 1
+      FROM users U
+      WHERE U.tenantId = P.tenantId
+        AND U.role IN ('ADMIN', 'SECRETARIA', 'COORDENACAO')
+        AND (
+          U.personId = P.id
+          OR (U.personId IS NULL AND UPPER(COALESCE(U.email, '')) = UPPER(COALESCE(P.email, '')))
+        )
+        AND (
+          ${toSqlLiteral(roleFilter)} = 'FUNCIONARIOS'
+          OR U.role = 'ADMIN'
+        )
     ))
   )
 ORDER BY P.name ASC;`;
@@ -236,19 +182,15 @@ OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
 }
 
 export default function PessoasPage() {
+  const router = useRouter();
   const [people, setPeople] = useState<PersonRecord[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRoleFilter, setSelectedRoleFilter] = useState<PersonRole | 'ALL'>('ALL');
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState<PessoasRoleFilter>('ALL');
   const [isLoading, setIsLoading] = useState(true);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
-  const [editingPerson, setEditingPerson] = useState<PersonRecord | null>(null);
-  const [editForm, setEditForm] = useState<PersonBasicForm | null>(null);
-  const [editError, setEditError] = useState<string | null>(null);
-  const [editSuccess, setEditSuccess] = useState<string | null>(null);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const canView = ['SOFTHOUSE_ADMIN', 'ADMIN', 'SECRETARIA', 'COORDENACAO'].includes(currentRole || '');
 
@@ -257,6 +199,24 @@ export default function PessoasPage() {
     setToken(auth.token);
     setCurrentRole(auth.role);
     setCurrentTenantId(auth.tenantId);
+  }, []);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const restoredSearch = query.get('restoreSearch');
+    const restoredRole = query.get('restoreRole');
+    const validRoles: PessoasRoleFilter[] = ['ALL', 'FUNCIONARIOS', 'ADMINISTRADOR', 'SECRETARIA', 'COORDENACAO', 'PROFESSOR', 'ALUNO', 'RESPONSAVEL'];
+
+    if (restoredSearch === null && restoredRole === null) return;
+    if (restoredSearch !== null) setSearchTerm(restoredSearch);
+    if (restoredRole && validRoles.includes(restoredRole as PessoasRoleFilter)) {
+      setSelectedRoleFilter(restoredRole as PessoasRoleFilter);
+    }
+
+    query.delete('restoreSearch');
+    query.delete('restoreRole');
+    const nextQuery = query.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`);
   }, []);
 
   const reloadPeople = useCallback(async () => {
@@ -307,6 +267,7 @@ export default function PessoasPage() {
       const termDigits = onlyDigits(term);
       const searchValues = [
         person.name,
+        person.accessUsername,
         person.email,
         person.cpf,
         person.cnpj,
@@ -320,7 +281,11 @@ export default function PessoasPage() {
         || Boolean(termDigits && documentValues.some((value) => value.includes(termDigits)));
       const matchesRole = selectedRoleFilter === 'ALL'
         ? true
-        : person.roles.some((role) => role.role === selectedRoleFilter);
+        : selectedRoleFilter === 'ADMINISTRADOR'
+          ? person.roles.some((role) => role.role === 'ADMINISTRADOR')
+          : selectedRoleFilter === 'FUNCIONARIOS'
+            ? person.roles.some((role) => isAdministrativeRole(role.role))
+            : person.roles.some((role) => role.role === selectedRoleFilter);
       return matchesSearch && matchesRole;
     });
   }, [uniquePeople, searchTerm, selectedRoleFilter]);
@@ -330,6 +295,7 @@ export default function PessoasPage() {
     return {
       total: base.length,
       administradores: base.filter((person) => person.roles.some((role) => role.role === 'ADMINISTRADOR')).length,
+      funcionariosUsuarios: base.filter((person) => person.roles.some((role) => isAdministrativeRole(role.role))).length,
       professores: base.filter((person) => person.roles.some((role) => role.role === 'PROFESSOR')).length,
       alunos: base.filter((person) => person.roles.some((role) => role.role === 'ALUNO')).length,
       responsaveis: base.filter((person) => person.roles.some((role) => role.role === 'RESPONSAVEL')).length,
@@ -363,57 +329,24 @@ export default function PessoasPage() {
     });
   }, [pessoasAuditContext]);
 
-  const openEditPerson = (person: PersonRecord) => {
-    setEditingPerson(person);
-    setEditForm(buildPersonBasicForm(person));
-    setEditError(null);
-    setEditSuccess(null);
-  };
+  const openPersonProfileEditor = (person: PersonRecord) => {
+    const roleTargets: Array<{ role: PersonRole; path: string }> = [
+      { role: 'ALUNO', path: '/principal/alunos' },
+      { role: 'PROFESSOR', path: '/principal/professores' },
+      { role: 'RESPONSAVEL', path: '/principal/responsaveis' },
+    ];
 
-  const closeEditPerson = () => {
-    if (isSavingEdit) return;
-    setEditingPerson(null);
-    setEditForm(null);
-    setEditError(null);
-    setEditSuccess(null);
-  };
-
-  const updateEditField = (field: keyof PersonBasicForm, value: string) => {
-    setEditForm((current) => current ? { ...current, [field]: field === 'email' ? value.toUpperCase() : value.toUpperCase() } : current);
-  };
-
-  const saveEditPerson = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!token || !editingPerson || !editForm) return;
-    if (!editForm.name.trim()) {
-      setEditError('Informe o nome da pessoa.');
-      return;
-    }
-
-    try {
-      setIsSavingEdit(true);
-      setEditError(null);
-      setEditSuccess(null);
-      const response = await fetch(`${API_BASE_URL}/people/${editingPerson.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-
-        },
-        body: JSON.stringify(normalizePersonBasicPayload(editForm)),
+    for (const target of roleTargets) {
+      const roleRecord = person.roles.find((role) => role.role === target.role && role.recordId);
+      if (!roleRecord?.recordId) continue;
+      const query = new URLSearchParams({
+        edit: roleRecord.recordId,
+        returnTo: 'PRINCIPAL_PESSOAS',
+        returnSearch: searchTerm,
+        returnRole: selectedRoleFilter,
       });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(data?.message || 'Não foi possível alterar os dados básicos da pessoa.');
-      }
-      await reloadPeople();
-      setEditSuccess('Dados básicos alterados com sucesso.');
-      setEditingPerson(data || editingPerson);
-      if (data) setEditForm(buildPersonBasicForm(data));
-    } catch (error) {
-      setEditError(error instanceof Error ? error.message : 'Falha ao salvar os dados básicos.');
-    } finally {
-      setIsSavingEdit(false);
+      router.push(`${target.path}?${query.toString()}`);
+      return;
     }
   };
 
@@ -487,6 +420,14 @@ export default function PessoasPage() {
         </div>
         <div
           role="button"
+          onClick={() => setSelectedRoleFilter('FUNCIONARIOS')}
+          className={`rounded-[28px] border px-5 py-6 transition ${selectedRoleFilter === 'FUNCIONARIOS' ? 'border-cyan-500 bg-cyan-50/80 shadow' : 'border-slate-200 bg-white'}`}
+        >
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-cyan-600">Funcionários e usuários</div>
+          <div className="mt-3 text-3xl font-black text-slate-900">{metrics.funcionariosUsuarios}</div>
+        </div>
+        <div
+          role="button"
           onClick={() => setSelectedRoleFilter('PROFESSOR')}
           className={`rounded-[28px] border px-5 py-6 transition ${selectedRoleFilter === 'PROFESSOR' ? 'border-blue-500 bg-blue-50/60 shadow' : 'border-slate-200 bg-white'}`}
         >
@@ -550,30 +491,37 @@ export default function PessoasPage() {
             {filteredPeople.map((person) => {
               const isAluno = person.roles.some((role) => role.role === 'ALUNO');
               const isGuardian = person.roles.some((role) => role.role === 'RESPONSAVEL');
+              const canOpenRoleEditor = person.roles.some((role) => (
+                ['ALUNO', 'PROFESSOR', 'RESPONSAVEL'].includes(role.role) && Boolean(role.recordId)
+              ));
               const guardianAssignments = person.guardianAssignments || [];
 
               return (
-                <article key={person.id} className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                <article
+                  key={person.id}
+                  onClick={canOpenRoleEditor ? () => openPersonProfileEditor(person) : undefined}
+                  onKeyDown={canOpenRoleEditor ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openPersonProfileEditor(person);
+                    }
+                  } : undefined}
+                  role={canOpenRoleEditor ? 'button' : undefined}
+                  tabIndex={canOpenRoleEditor ? 0 : undefined}
+                  aria-label={canOpenRoleEditor ? `Abrir edição dos perfis de ${person.name}` : undefined}
+                  className={`overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm ${canOpenRoleEditor ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md' : ''}`}
+                >
                   <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#ffffff_0%,#f8fafc_45%,#eff6ff_100%)] p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h3 className="mt-2 text-xl font-black text-slate-800">{person.name}</h3>
                         <div className="mt-2 text-sm font-medium text-slate-500">
-                          {person.email || 'Sem login configurado'}
+                          {person.accessUsername ? `Usuário: ${person.accessUsername}` : 'Sem usuário de acesso'}
                         </div>
                       </div>
                       <div className={`rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${person.sharedLoginEnabled ? 'border border-emerald-200 bg-emerald-50 text-emerald-700' : 'border border-slate-200 bg-slate-100 text-slate-500'}`}>
                         {person.sharedLoginEnabled ? 'Login ativo' : 'Sem login'}
                       </div>
-                    </div>
-                    <div className="mt-4 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => openEditPerson(person)}
-                        className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-50"
-                      >
-                        Editar dados
-                      </button>
                     </div>
                     <div className="mt-4 flex flex-col gap-2">
                       <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Origem</div>
@@ -670,75 +618,6 @@ export default function PessoasPage() {
       </section>
       </div>
       </div>
-      {editingPerson && editForm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
-            <MaintenanceModalHeader
-              title="Alterar dados básicos"
-              eyebrow="Escola · Pessoas"
-              description={editingPerson.name}
-              onClose={closeEditPerson}
-              schoolName={currentTenantBranding?.schoolName}
-              logoUrl={currentTenantBranding?.logoUrl}
-            />
-
-            <form onSubmit={saveEditPerson} className="max-h-[calc(92vh-96px)] overflow-y-auto px-6 py-5">
-              {editError ? (
-                <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-bold text-red-700">
-                  {editError}
-                </div>
-              ) : null}
-              {editSuccess ? (
-                <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-700">
-                  {editSuccess}
-                </div>
-              ) : null}
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {[
-                  ['name', 'Nome *'],
-                  ['birthDate', 'Data nascimento'],
-                  ['rg', 'RG'],
-                  ['cpf', 'CPF'],
-                  ['cnpj', 'CNPJ'],
-                  ['nickname', 'Apelido'],
-                  ['corporateName', 'Razão social'],
-                  ['email', 'E-mail'],
-                  ['phone', 'Telefone fixo'],
-                  ['whatsapp', 'WhatsApp'],
-                  ['cellphone1', 'Celular 01'],
-                  ['cellphone2', 'Celular 02'],
-                  ['zipCode', 'CEP'],
-                  ['street', 'Logradouro'],
-                  ['number', 'Número'],
-                  ['neighborhood', 'Bairro'],
-                  ['city', 'Cidade'],
-                  ['state', 'UF'],
-                  ['complement', 'Complemento'],
-                ].map(([field, label]) => (
-                  <label key={field} className={field === 'street' || field === 'complement' ? 'lg:col-span-2' : ''}>
-                    <span className="mb-2 block text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{label}</span>
-                    <input
-                      type={field === 'birthDate' ? 'date' : 'text'}
-                      value={editForm[field as keyof PersonBasicForm]}
-                      onChange={(event) => updateEditField(field as keyof PersonBasicForm, event.target.value)}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white"
-                    />
-                  </label>
-                ))}
-              </div>
-
-              <MaintenanceModalFooter
-                screenId={PESSOAS_EDIT_MODAL_SCREEN_ID}
-                saveLabel="Salvar dados básicos"
-                isSaving={isSavingEdit}
-                disabled={!editForm.name.trim()}
-                className="-mx-6 -mb-5 mt-6"
-              />
-            </form>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

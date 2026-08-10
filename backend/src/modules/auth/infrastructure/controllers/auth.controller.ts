@@ -180,6 +180,22 @@ export class AuthController {
     return this.authService.forgotPassword(resetDto);
   }
 
+  @Roles("ADMIN", "SECRETARIA", "COORDENACAO")
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post("request-password-reset")
+  @ApiOperation({
+    summary: "Enviar redefinição para e-mail confirmado de um acesso da escola",
+  })
+  async requestPasswordReset(
+    @CurrentUser() user: ICurrentUser,
+    @Body() resetDto: ForgotPasswordDto,
+  ) {
+    return this.authService.requestPasswordResetForConfirmedEmail(
+      resetDto.email,
+      user,
+    );
+  }
+
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post("reset-password")

@@ -206,7 +206,7 @@ export class AuthService {
         where: allowAccessUsername
           ? {
               OR: [
-                { email: { in: loginVariants } },
+                { person: { accessUsername: { in: loginVariants } } },
                 { accessUsername: { in: loginVariants } },
               ],
               canceledAt: null,
@@ -217,6 +217,7 @@ export class AuthService {
           name: true,
           email: true,
           accessUsername: true,
+          person: { select: { name: true, email: true, password: true, accessUsername: true } },
           password: true,
           role: true,
           complementaryProfiles: true,
@@ -232,7 +233,7 @@ export class AuthService {
         where: allowAccessUsername
           ? {
               OR: [
-                { person: { email: { in: loginVariants } } },
+                { person: { accessUsername: { in: loginVariants } } },
                 { accessUsername: { in: loginVariants } },
               ],
               canceledAt: null,
@@ -244,7 +245,7 @@ export class AuthService {
         select: {
           ...baseSelect,
           accessUsername: true,
-          person: { select: { name: true, email: true, password: true } },
+          person: { select: { name: true, email: true, password: true, accessUsername: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -256,7 +257,7 @@ export class AuthService {
         where: allowAccessUsername
           ? {
               OR: [
-                { person: { email: { in: loginVariants } } },
+                { person: { accessUsername: { in: loginVariants } } },
                 { accessUsername: { in: loginVariants } },
               ],
               canceledAt: null,
@@ -268,7 +269,7 @@ export class AuthService {
         select: {
           ...baseSelect,
           accessUsername: true,
-          person: { select: { name: true, email: true, password: true } },
+          person: { select: { name: true, email: true, password: true, accessUsername: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -280,7 +281,7 @@ export class AuthService {
         where: allowAccessUsername
           ? {
               OR: [
-                { person: { email: { in: loginVariants } } },
+                { person: { accessUsername: { in: loginVariants } } },
                 { accessUsername: { in: loginVariants } },
               ],
               canceledAt: null,
@@ -292,7 +293,7 @@ export class AuthService {
         select: {
           ...baseSelect,
           accessUsername: true,
-          person: { select: { name: true, email: true, password: true } },
+          person: { select: { name: true, email: true, password: true, accessUsername: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -305,6 +306,9 @@ export class AuthService {
     return [
       ...users.map((u) => ({
         ...u,
+        name: u.person?.name ?? u.name,
+        email: u.person?.email ?? u.email,
+        accessUsername: u.person?.accessUsername ?? u.accessUsername ?? null,
         modelType: "user" as const,
         branchAccessCodes: Array.from(
           new Set(
@@ -326,7 +330,7 @@ export class AuthService {
         ...t,
         name: t.person?.name ?? "PROFESSOR",
         email: t.person?.email ?? null,
-        accessUsername: t.accessUsername ?? null,
+        accessUsername: t.person?.accessUsername ?? t.accessUsername ?? null,
         password: t.person?.password ?? null,
         modelType: "teacher" as const,
         role: "PROFESSOR",
@@ -349,7 +353,7 @@ export class AuthService {
         ...s,
         name: s.person?.name ?? "ALUNO",
         email: s.person?.email ?? null,
-        accessUsername: s.accessUsername ?? null,
+        accessUsername: s.person?.accessUsername ?? s.accessUsername ?? null,
         password: s.person?.password ?? null,
         modelType: "student" as const,
         role: "ALUNO",
@@ -372,7 +376,7 @@ export class AuthService {
         ...g,
         name: g.person?.name ?? "RESPONSAVEL",
         email: g.person?.email ?? null,
-        accessUsername: g.accessUsername ?? null,
+        accessUsername: g.person?.accessUsername ?? g.accessUsername ?? null,
         password: g.person?.password ?? null,
         modelType: "guardian" as const,
         role: "RESPONSAVEL",
@@ -1319,7 +1323,11 @@ export class AuthService {
       centralCompany.tradeName ||
       centralCompany.legalName ||
       centralTenantConfiguration.tenant.displayName;
-    const localAccounts = (await this.findAccountByLogin(loginDto.email))
+    const localAccounts = (
+      await (isMasterLoginIdentifier(loginDto.email.trim().toUpperCase())
+        ? this.findAccountByEmail(loginDto.email)
+        : this.findAccountByLogin(loginDto.email))
+    )
       .filter(
         (account) =>
           account.tenantId === localTenant.id &&
@@ -1906,11 +1914,15 @@ export class AuthService {
     }
     const accounts = await this.findAccountByEmail(forgotDto.email);
 
-    if (accounts.length === 0) {
+    const scopedAccounts = forgotDto.tenantId
+      ? accounts.filter((account) => account.tenantId === forgotDto.tenantId)
+      : accounts;
+
+    if (scopedAccounts.length === 0) {
       throw new NotFoundException("E-mail não encontrado na base de dados.");
     }
 
-    const userToRecover = this.pickPreferredAccount(accounts);
+    const userToRecover = this.pickPreferredAccount(scopedAccounts);
     if (!userToRecover) {
       return {
         message: "Se o e-mail existir, você receberá um link de recuperação.",
@@ -1974,6 +1986,40 @@ export class AuthService {
         "Não foi possível enviar o e-mail de recuperação. Tente novamente.",
       );
     }
+  }
+
+  async requestPasswordResetForConfirmedEmail(
+    email: string,
+    currentUser: ICurrentUser,
+  ) {
+    if (isCentralIdentityEnabled()) {
+      return {
+        status: "CENTRAL_IDENTITY_REQUIRED",
+        message:
+          "A redefinição de senha desta conta é feita no MSINFOR Central.",
+      };
+    }
+
+    const normalizedEmail = String(email || "").trim().toUpperCase();
+    const accounts = await this.findAccountByEmail(normalizedEmail);
+    if (!accounts.some((account) => account.tenantId === currentUser.tenantId)) {
+      throw new ForbiddenException(
+        "O e-mail informado não pertence a um acesso desta escola.",
+      );
+    }
+
+    const credential =
+      await this.sharedProfilesService.findEmailCredential(normalizedEmail);
+    if (!credential?.emailVerified) {
+      throw new BadRequestException(
+        "A redefinição só pode ser solicitada para e-mail confirmado.",
+      );
+    }
+
+    return this.forgotPassword({
+      email: normalizedEmail,
+      tenantId: currentUser.tenantId,
+    });
   }
 
   async resetPassword(resetDto: ResetPasswordDto) {

@@ -503,7 +503,15 @@ export class FinanceiroService {
         company.legalName ||
         central.tenant.displayName,
       companyDocument: company.documentNumber || null,
-      logoUrl: company.logoReference || null,
+      logoUrl:
+        this.centralConfiguration.resolvePublicLogoUrl(
+          company.logoReference,
+          "branch",
+        ) ||
+        this.centralConfiguration.resolvePublicLogoUrl(
+          company.logoReference,
+          "company",
+        ),
       cashierUserId: currentUser.userId,
       cashierDisplayName:
         currentUser.name || currentUser.email || currentUser.userId,
@@ -576,11 +584,15 @@ export class FinanceiroService {
       (prefix) =>
         gatewayPath === prefix || gatewayPath.startsWith(`${prefix}/`),
     );
+    const requiresCashierInQuery = gatewayPath === "/cash-sessions/current";
     const protectedQueryReplacements = [
       replacementByLowercase.get("sourcesystem")!,
       replacementByLowercase.get("sourcetenantid")!,
       ...(requiresBranchInQuery
         ? [replacementByLowercase.get("sourcebranchcode")!]
+        : []),
+      ...(requiresCashierInQuery
+        ? [replacementByLowercase.get("cashieruserid")!]
         : []),
     ];
     for (const replacement of protectedQueryReplacements) {

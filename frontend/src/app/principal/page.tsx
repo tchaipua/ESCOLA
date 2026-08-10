@@ -403,10 +403,10 @@ export default function DashboardPage() {
             image: '/principal/dashboard.svg',
         },
         {
-            href: '/principal/usuarios',
-            title: 'Funcionários e Usuários',
-            description: 'Acesse a área administrativa de funcionários, usuários e perfis da escola.',
-            image: '/principal/pessoas.svg',
+            href: '/principal/configura-escola',
+            title: 'Administrativo',
+            description: 'Acesse os cadastros administrativos de funcionários, disciplinas, séries e turmas.',
+            image: '/principal/grade.svg',
         },
         {
             href: '/principal/relatorios',

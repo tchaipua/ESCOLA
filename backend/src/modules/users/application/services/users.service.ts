@@ -7,6 +7,8 @@ import {
 import * as bcrypt from "bcrypt";
 import { Prisma } from "@prisma/client";
 import { assertStrongPassword } from "../../../../common/security/password-policy";
+import { isValidCpf } from "../../../../common/validation/cpf";
+import { isValidCnpj } from "../../../../common/validation/cnpj";
 import {
   getComplementaryProfilePermissions,
   getDefaultAccessProfileForRole,
@@ -58,6 +60,7 @@ type SharedPersonData = {
   complement?: string | null;
   name: string;
   email: string;
+  accessUsername: string | null;
 };
 
 @Injectable()
@@ -76,13 +79,7 @@ export class UsersService {
   }
 
   private normalizeAccessUsername(value?: string | null) {
-    const normalized = String(value || "").normalize("NFKC").trim().toUpperCase();
-    if (normalized && !/^\S{3,160}$/u.test(normalized)) {
-      throw new BadRequestException(
-        "Informe o usuário de acesso com 3 a 160 caracteres e sem espaços.",
-      );
-    }
-    return normalized || null;
+    return this.sharedProfilesService.normalizeAccessUsername(value) || null;
   }
 
   private normalizeText(value?: string | null) {
@@ -143,6 +140,7 @@ export class UsersService {
     const sharedPerson: SharedPersonData = {
       name,
       email,
+      accessUsername,
       birthDate,
       rg: this.normalizeText(payload.rg),
       cpf: this.normalizeText(payload.cpf),
@@ -161,6 +159,13 @@ export class UsersService {
       neighborhood: this.normalizeText(payload.neighborhood),
       complement: this.normalizeText(payload.complement),
     };
+
+    if (sharedPerson.cpf && !isValidCpf(sharedPerson.cpf)) {
+      throw new BadRequestException("CPF inválido.");
+    }
+    if (sharedPerson.cnpj && !isValidCnpj(sharedPerson.cnpj)) {
+      throw new BadRequestException("CNPJ inválido.");
+    }
 
     return {
       role,
@@ -199,42 +204,13 @@ export class UsersService {
   private async assertUniqueAccessUsername(
     tenantId: string,
     accessUsername?: string | null,
-    currentUserId?: string,
+    excludePersonId?: string | null,
   ) {
-    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
-    if (!normalizedUsername) return;
-
-    const [user, teacher, student, guardian] = await Promise.all([
-      this.prisma.user.findFirst({
-        where: {
-          tenantId,
-          accessUsername: normalizedUsername,
-          canceledAt: null,
-          ...(currentUserId ? { id: { not: currentUserId } } : {}),
-        },
-        select: { id: true, name: true },
-      }),
-      this.prisma.teacher.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername, canceledAt: null },
-        select: { id: true, person: { select: { name: true } } },
-      }),
-      this.prisma.student.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername, canceledAt: null },
-        select: { id: true },
-      }),
-      this.prisma.guardian.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername, canceledAt: null },
-        select: { id: true },
-      }),
-    ]);
-
-    if (user || teacher || student || guardian) {
-      throw new ConflictException(
-        user
-          ? `O usuário de acesso já está cadastrado para ${user.name || "outro usuário"}.`
-          : "O usuário de acesso já pertence a outro perfil desta escola.",
-      );
-    }
+    await this.sharedProfilesService.assertUniqueAccessUsername(
+      tenantId,
+      accessUsername,
+      excludePersonId,
+    );
   }
 
   private async resolveBranchAccess(
@@ -329,20 +305,35 @@ export class UsersService {
     const emails = Array.from(
       new Set(users.map((user) => this.sharedProfilesService.normalizeEmail(user.email)).filter(Boolean)),
     );
-    const people = emails.length
+    const personIds = Array.from(
+      new Set(users.map((user) => user.personId).filter(Boolean)),
+    );
+    const people = personIds.length
       ? await this.prisma.person.findMany({
-          where: { tenantId, canceledAt: null, email: { in: emails } },
+          where: {
+            tenantId,
+            canceledAt: null,
+            id: { in: personIds },
+          },
           orderBy: { updatedAt: "desc" },
         })
       : [];
-    const personByEmail = new Map<string, any>();
+    const emailCredentials = emails.length
+      ? await this.prisma.emailCredential.findMany({
+          where: { email: { in: emails } },
+          select: { email: true, emailVerified: true },
+        })
+      : [];
+    const emailVerificationByEmail = new Map(
+      emailCredentials.map((credential) => [credential.email, credential.emailVerified]),
+    );
+    const personById = new Map<string, any>();
     for (const person of people) {
-      const email = this.sharedProfilesService.normalizeEmail(person.email);
-      if (email && !personByEmail.has(email)) personByEmail.set(email, person);
+      personById.set(person.id, person);
     }
 
     return users.map((user) => {
-      const person = personByEmail.get(this.sharedProfilesService.normalizeEmail(user.email));
+      const person = personById.get(user.personId);
       const effectivePermissions = resolveAccountPermissions({
         role: user.role,
         accessProfile: user.accessProfile,
@@ -352,9 +343,11 @@ export class UsersService {
       return {
         id: user.id,
         tenantId: user.tenantId,
+        personId: person?.id || user.personId || null,
         name: user.name || person?.name || "USUÁRIO",
-        email: user.email,
-        accessUsername: user.accessUsername || null,
+        email: person?.email || user.email,
+        emailVerified: emailVerificationByEmail.get(this.sharedProfilesService.normalizeEmail(person?.email || user.email)) === true,
+        accessUsername: person?.accessUsername || user.accessUsername || null,
         role: user.role,
         accessProfile: user.accessProfile,
         permissions: effectivePermissions,
@@ -389,7 +382,17 @@ export class UsersService {
   async create(createUserDto: CreateUserDto, currentUser: ICurrentUser) {
     const normalized = this.normalizePayload(createUserDto);
     await this.assertUniqueEmail(currentUser.tenantId, normalized.email);
-    await this.assertUniqueAccessUsername(currentUser.tenantId, normalized.accessUsername);
+    const existingSharedProfile = normalized.sharedPerson.cpf
+      ? await this.sharedProfilesService.findSharedProfileByCpf(
+          currentUser.tenantId,
+          normalized.sharedPerson.cpf,
+        )
+      : null;
+    await this.assertUniqueAccessUsername(
+      currentUser.tenantId,
+      normalized.accessUsername,
+      (existingSharedProfile as { personId?: string | null } | null)?.personId,
+    );
     const branchAccess = await this.resolveBranchAccess(
       currentUser.tenantId,
       normalized.role,
@@ -398,7 +401,7 @@ export class UsersService {
     );
 
     await this.syncCredential(normalized.email, normalized.password, currentUser.userId);
-    await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
+    const sharedPerson = await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
       currentUser.tenantId,
       normalized.sharedPerson,
       currentUser.userId,
@@ -410,9 +413,9 @@ export class UsersService {
         data: {
           tenantId: currentUser.tenantId,
           branchCode: branchAccess.branchCode,
+          personId: sharedPerson.id,
           name: normalized.name,
-          email: normalized.email,
-          accessUsername: normalized.accessUsername,
+          email: sharedPerson.email || normalized.email,
           password: null,
           role: normalized.role,
           accessProfile: normalized.role === "ADMIN" ? getDefaultAccessProfileForRole(normalized.role) : normalized.accessProfile,
@@ -455,6 +458,7 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto, currentUser: ICurrentUser) {
+    this.sharedProfilesService.assertValidCpfIfProvided(updateUserDto.cpf);
     const current = await this.prisma.user.findFirst({
       where: { id, tenantId: currentUser.tenantId, canceledAt: null },
       include: {
@@ -470,18 +474,20 @@ export class UsersService {
       ? this.normalizeEmail(updateUserDto.email)
       : this.sharedProfilesService.normalizeEmail(current.email);
     if (incomingEmail !== this.sharedProfilesService.normalizeEmail(current.email)) {
-      throw new BadRequestException("O e-mail de login não pode ser alterado nesta edição.");
+      await this.assertUniqueEmail(currentUser.tenantId, incomingEmail, current.id);
     }
 
     const existingPerson = await this.prisma.person.findFirst({
-      where: { tenantId: currentUser.tenantId, canceledAt: null, email: current.email },
+      where: current.personId
+        ? { id: current.personId, tenantId: currentUser.tenantId, canceledAt: null }
+        : { id: "__NO_PERSON_LINK__", tenantId: currentUser.tenantId },
       orderBy: { updatedAt: "desc" },
     });
     const base: Record<string, any> = existingPerson || {};
     const payload = {
       ...updateUserDto,
       name: updateUserDto.name ?? current.name,
-      email: current.email,
+      email: updateUserDto.email ?? base.email ?? current.email,
       birthDate: updateUserDto.birthDate ?? (base.birthDate ? base.birthDate.toISOString().slice(0, 10) : undefined),
       rg: updateUserDto.rg ?? base.rg,
       cpf: updateUserDto.cpf ?? base.cpf,
@@ -502,7 +508,7 @@ export class UsersService {
       role: updateUserDto.role ?? current.role,
       accessUsername: Object.prototype.hasOwnProperty.call(updateUserDto, "accessUsername")
         ? updateUserDto.accessUsername
-        : current.accessUsername,
+        : base.accessUsername ?? current.accessUsername,
       accessProfile: updateUserDto.accessProfile ?? current.accessProfile ?? undefined,
       permissions: updateUserDto.permissions ?? normalizePermissions(current.permissions),
       complementaryProfiles: updateUserDto.complementaryProfiles ?? normalizeComplementaryAccessProfiles(current.complementaryProfiles),
@@ -513,7 +519,7 @@ export class UsersService {
     await this.assertUniqueAccessUsername(
       currentUser.tenantId,
       normalized.accessUsername,
-      current.id,
+      existingPerson?.id || current.personId,
     );
     const branchAccess = await this.resolveBranchAccess(
       currentUser.tenantId,
@@ -525,19 +531,27 @@ export class UsersService {
     if (normalized.password) {
       await this.syncCredential(normalized.email, normalized.password, currentUser.userId);
     }
-    await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
+    const sharedPerson = await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
       currentUser.tenantId,
-      normalized.sharedPerson,
+      { ...normalized.sharedPerson, personId: current.personId || undefined },
       currentUser.userId,
       base.cpf || normalized.sharedPerson.cpf,
     );
+
+    if (!normalized.password && incomingEmail !== this.sharedProfilesService.normalizeEmail(current.email)) {
+      await this.sharedProfilesService.ensureEmailCredential(
+        sharedPerson.email || normalized.email,
+        { userId: currentUser.userId },
+      );
+    }
 
     await this.prisma.user.update({
       where: { id: current.id },
       data: {
         branchCode: branchAccess.branchCode,
-        name: normalized.name,
-        accessUsername: normalized.accessUsername,
+        personId: sharedPerson.id,
+        name: sharedPerson.name || normalized.name,
+        email: sharedPerson.email || normalized.email,
         role: normalized.role,
         accessProfile: normalized.role === "ADMIN" ? getDefaultAccessProfileForRole(normalized.role) : normalized.accessProfile,
         permissions: normalized.role === "ADMIN" ? null : serializePermissions(normalized.effectivePermissions),

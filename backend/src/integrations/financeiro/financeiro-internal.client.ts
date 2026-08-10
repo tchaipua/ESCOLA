@@ -56,8 +56,8 @@ const PROTECTED_HEADERS = new Set([
   "x-msinfor-signature",
 ]);
 
-type ExpectedBinaryContentType = "application/pdf" | "application/xml" | "image/*";
-type FinanceiroBinaryContentType = "application/pdf" | "application/xml" | "image/jpeg" | "image/png" | "image/webp" | "image/bmp";
+type ExpectedBinaryContentType = "application/pdf" | "application/xml" | "image/*" | "s3-object";
+type FinanceiroBinaryContentType = "application/pdf" | "application/xml" | "application/json" | "application/octet-stream" | "text/plain" | "text/csv" | "image/gif" | "image/jpeg" | "image/png" | "image/webp" | "image/bmp" | "image/tiff";
 
 type InternalRequest = {
   method?: string;
@@ -264,6 +264,7 @@ async function readLimitedJson(response: Response) {
 function safeDownloadDisposition(
   received: string | null,
   contentType: FinanceiroBinaryContentType,
+  inline = false,
 ) {
   if (received && /[\r\n\u0000-\u001f\u007f]/.test(received)) {
     throw new BadGatewayException(
@@ -282,7 +283,7 @@ function safeDownloadDisposition(
       candidate = "";
     }
   }
-  const extension = contentType === "application/pdf" ? ".pdf" : contentType === "application/xml" ? ".xml" : contentType === "image/png" ? ".png" : contentType === "image/webp" ? ".webp" : contentType === "image/bmp" ? ".bmp" : ".jpg";
+  const extension = contentType === "application/pdf" ? ".pdf" : contentType === "application/xml" ? ".xml" : contentType === "application/json" ? ".json" : contentType === "text/csv" ? ".csv" : contentType === "text/plain" ? ".txt" : contentType === "image/gif" ? ".gif" : contentType === "image/png" ? ".png" : contentType === "image/webp" ? ".webp" : contentType === "image/bmp" ? ".bmp" : contentType === "image/tiff" ? ".tiff" : ".jpg";
   const safeName = (candidate || `documento${extension}`)
     .normalize("NFKC")
     .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
@@ -291,7 +292,7 @@ function safeDownloadDisposition(
   const finalName = safeName.toLowerCase().endsWith(extension)
     ? safeName
     : `${safeName}${extension}`;
-  return `attachment; filename*=UTF-8''${encodeRfc3986(finalName)}`;
+  return `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeRfc3986(finalName)}`;
 }
 
 function safeCacheControl(received: string | null) {
@@ -316,8 +317,10 @@ async function readBinaryResponse(
     .trim()
     .toLowerCase();
   const isImage = expectedContentType === "image/*";
+  const isS3Object = expectedContentType === "s3-object";
   const permittedImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/bmp"]);
-  if (isImage ? !permittedImageTypes.has(receivedContentType) : receivedContentType !== expectedContentType) {
+  const permittedS3ObjectTypes = new Set(["application/pdf", "application/xml", "application/json", "application/octet-stream", "text/plain", "text/csv", "image/gif", "image/jpeg", "image/png", "image/webp", "image/bmp", "image/tiff"]);
+  if (isS3Object ? !permittedS3ObjectTypes.has(receivedContentType) : isImage ? !permittedImageTypes.has(receivedContentType) : receivedContentType !== expectedContentType) {
     throw new BadGatewayException(
       "Tipo de arquivo inesperado recebido do Financeiro.",
     );
@@ -328,9 +331,9 @@ async function readBinaryResponse(
     .trimStart();
   if (
     !body.length ||
-    (expectedContentType === "application/pdf" &&
+    (!isS3Object && expectedContentType === "application/pdf" &&
       !body.subarray(0, 5).equals(Buffer.from("%PDF-"))) ||
-    (expectedContentType === "application/xml" &&
+    (!isS3Object && expectedContentType === "application/xml" &&
       !prefix.startsWith("<"))
   ) {
     throw new BadGatewayException(
@@ -344,6 +347,7 @@ async function readBinaryResponse(
     contentDisposition: safeDownloadDisposition(
       response.headers.get("content-disposition"),
       receivedContentType as FinanceiroBinaryContentType,
+      isS3Object,
     ),
     cacheControl: safeCacheControl(
       response.headers.get("cache-control"),

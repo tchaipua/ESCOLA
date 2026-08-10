@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { getStoredToken } from '@/app/lib/auth-storage';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
@@ -19,7 +20,6 @@ import {
     fetchEmailUsageByEmail,
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
-    fetchSharedPersonProfileByEmail,
     fetchTenantBranches,
     formatCepInput,
     formatCnpj,
@@ -36,6 +36,7 @@ import {
     mergeSharedPersonIntoForm,
     normalizeCnpj,
     normalizeDocumentDigits,
+    requestPasswordReset,
     type EmailUsageRecord,
     type SharedNameSuggestion,
     type TenantBranchSummary,
@@ -100,6 +101,7 @@ type TeacherRecord = {
     canceledAt?: string | null;
     accessUsername?: string | null;
     email?: string | null;
+    emailVerified?: boolean | null;
     telegramChatId?: string | null;
     telegramUsername?: string | null;
     telegramOptInAt?: string | null;
@@ -294,8 +296,8 @@ const TEACHER_COLUMNS: TeacherGridColumnDefinition[] = [
     { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: false },
     { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
     { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
-    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.email || row.phone || row.whatsapp || '---', visibleByDefault: false },
-    { key: 'email', label: 'E-mail de login', getValue: (row) => row.email || '---', visibleByDefault: false },
+    { key: 'contact', label: 'Contato', getValue: (row) => row.phone || row.whatsapp || row.cellphone1 || row.cellphone2 || '---', visibleByDefault: false },
+    { key: 'email', label: 'E-mail de recuperação', getValue: (row) => row.email || '---', visibleByDefault: false },
     { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
     { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
     { key: 'cellphone1', label: 'Telefone 1', getValue: (row) => row.cellphone1 || '---', visibleByDefault: false },
@@ -762,10 +764,12 @@ OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
 }
 
 export default function ProfessoresPage() {
+    const router = useRouter();
     const [professores, setProfessores] = useState<TeacherRecord[]>([]);
     const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [returnToPessoas, setReturnToPessoas] = useState(false);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
     const [successStatus, setSuccessStatus] = useState<string | null>(null);
     const [saveSuccessPopup, setSaveSuccessPopup] = useState<{ title: string; message: string } | null>(null);
@@ -826,6 +830,7 @@ export default function ProfessoresPage() {
     const [isProcessingTeacherToggle, setIsProcessingTeacherToggle] = useState(false);
     const [isPwaPasswordVisible, setIsPwaPasswordVisible] = useState(false);
     const [isPwaPasswordConfirmationVisible, setIsPwaPasswordConfirmationVisible] = useState(false);
+    const requestedEditTeacherIdRef = useRef<string | null>(null);
 
     const canViewTeachers = hasAllDashboardPermissions(currentRole, currentPermissions, ['VIEW_TEACHERS', 'VIEW_SUBJECTS']);
     const canManageTeachers = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_TEACHERS');
@@ -1102,16 +1107,15 @@ export default function ProfessoresPage() {
         fetchProfessores();
     }, []);
 
-    const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
+    const resolvePersonSystemRoles = async (cpf?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
-        const normalizedEmail = String(email || '').trim().toUpperCase();
 
         try {
-            const [cpfProfile, emailProfile] = await Promise.all([
-                normalizedCpf.length === 11 ? fetchSharedPersonProfileByCpf(normalizedCpf) : Promise.resolve(null),
-                normalizedEmail.includes('@') ? fetchSharedPersonProfileByEmail(normalizedEmail) : Promise.resolve(null),
-            ]);
-            setPersonSystemRoles(buildSystemRoleBadges([...(cpfProfile?.roles || []), ...(emailProfile?.roles || [])]));
+            const cpfProfile = normalizedCpf.length === 11
+                ? await fetchSharedPersonProfileByCpf(normalizedCpf)
+                : null;
+            const roles = buildSystemRoleBadges(cpfProfile?.roles || []);
+            setPersonSystemRoles(roles.length ? roles : ['PROFESSOR']);
         } catch {
             setPersonSystemRoles(['PROFESSOR']);
         }
@@ -1267,6 +1271,25 @@ export default function ProfessoresPage() {
         setTeacherCpfConflictRoles([]);
     };
 
+    const buildPessoasReturnUrl = () => {
+        const currentQuery = new URLSearchParams(window.location.search);
+        const restoreQuery = new URLSearchParams();
+        const search = currentQuery.get('returnSearch');
+        const role = currentQuery.get('returnRole');
+        if (search !== null) restoreQuery.set('restoreSearch', search);
+        if (role !== null) restoreQuery.set('restoreRole', role);
+        const queryString = restoreQuery.toString();
+        return `/principal/pessoas${queryString ? `?${queryString}` : ''}`;
+    };
+
+    const closeModalAndReturn = () => {
+        if (returnToPessoas) {
+            router.push(buildPessoasReturnUrl());
+            return;
+        }
+        closeModal();
+    };
+
     const handleEdit = (prof: TeacherRecord) => {
         setEditingTeacherId(prof.id);
         setOriginalTeacherEmail(String(prof.email || '').trim().toUpperCase());
@@ -1332,9 +1355,25 @@ export default function ProfessoresPage() {
         setEmailUsageAlert(null);
         setTeacherCpfConflictAlert(null);
         setTeacherCpfConflictRoles([]);
-        void resolvePersonSystemRoles(prof.cpf, prof.email);
+        void resolvePersonSystemRoles(prof.cpf);
         setIsModalOpen(true);
     };
+
+    useEffect(() => {
+        const query = new URLSearchParams(window.location.search);
+        const requestedTeacherId = query.get('edit');
+        if (query.get('returnTo') === 'PRINCIPAL_PESSOAS') setReturnToPessoas(true);
+        if (!requestedTeacherId || isLoading || isModalOpen || requestedEditTeacherIdRef.current === requestedTeacherId) return;
+
+        const requestedTeacher = professores.find((teacher) => teacher.id === requestedTeacherId);
+        if (!requestedTeacher) return;
+
+        requestedEditTeacherIdRef.current = requestedTeacherId;
+        handleEdit(requestedTeacher);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('edit');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }, [isLoading, isModalOpen, professores]);
 
     const handleCpfBlur = async () => {
         if (!formData.cpf) return;
@@ -1553,11 +1592,46 @@ export default function ProfessoresPage() {
                         { label: 'Complemento', value: teacher.complement || 'Não informado' },
                     ],
                 }] : []),
+                ...(teacherFieldAccess.access ? [
+                    {
+                        title: 'Acesso PWA',
+                        items: [
+                            { label: 'Status do acesso', value: teacher.accessUsername ? 'APP LIBERADO' : 'SEM ACESSO' },
+                            { label: 'Usuário de acesso', value: teacher.accessUsername || 'Não informado' },
+                            { label: 'E-mail para recuperação', value: teacher.email || 'Não informado' },
+                            { label: 'E-mail confirmado', value: teacher.email ? (teacher.emailVerified ? 'CONFIRMADO' : 'PENDENTE') : 'SEM E-MAIL', tone: teacher.emailVerified ? undefined : ('danger' as const) },
+                            { label: 'Senha de acesso', value: 'Não exibida por segurança' },
+                        ],
+                    },
+                    {
+                        title: 'Autoridades',
+                        items: [
+                            { label: 'Perfil de acesso', value: teacher.accessProfile ? teacher.accessProfile.replaceAll('_', ' ') : 'PADRÃO' },
+                            { label: 'Permissões', value: formatTeacherPermissions(teacher) },
+                        ],
+                    },
+                ] : []),
             ]}
             disciplines={getTeacherSubjectNames(teacher)}
             tabs={[
                 { label: 'Cadastro', sectionTitles: ['Cadastro'], showDisciplines: true },
                 { label: 'Contato e endereço', sectionTitles: ['Contato', 'Endereço'] },
+                ...(teacherFieldAccess.access ? [{
+                    label: 'Acesso PWA',
+                    sectionTitles: ['Acesso PWA', 'Autoridades'],
+                    actions: teacher.emailVerified ? [{
+                        id: 'request-password-reset',
+                        label: 'Redefinir senha por e-mail',
+                        onClick: async () => {
+                            try {
+                                const result = await requestPasswordReset(teacher.email || '');
+                                showSuccessMessage(result?.message || 'Link de redefinição enviado para o e-mail confirmado.');
+                            } catch (error) {
+                                showErrorMessage(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição.');
+                            }
+                        },
+                    }] : [],
+                }] : []),
             ]}
             contextLabel="PRINCIPAL_PROFESSORES_POPUP"
         />
@@ -1781,7 +1855,9 @@ export default function ProfessoresPage() {
                                     aria-label={prof.canceledAt ? 'INATIVO' : 'ATIVO'}
                                     role="img"
                                 />
-                                <span className="min-w-0 max-w-[420px] truncate">{teacherName}</span>
+                                <span className="min-w-0 max-w-[420px]">
+                                    <span className="block truncate" title={teacherName}>{teacherName}</span>
+                                </span>
                                 {subjectList.map((subjectName, index) => {
                                     const normalizedSubjectName = normalizeTeacherSubjectName(subjectName);
                                     const tone = disciplineToneMap[normalizedSubjectName] || DISCIPLINE_BADGE_TONES[0];
@@ -1808,9 +1884,7 @@ export default function ProfessoresPage() {
             return (
                 <td key={columnKey} className="px-6 py-4">
                     <div className={`text-sm font-medium ${prof.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
-                        {teacherFieldAccess.access
-                            ? (prof.email || <span className="text-slate-400 italic">Sem login</span>)
-                            : (teacherFieldAccess.contact ? (prof.whatsapp || prof.phone || prof.cellphone1 || prof.cellphone2 || 'Sem contato') : '---')}
+                        {teacherFieldAccess.contact ? (prof.whatsapp || prof.phone || prof.cellphone1 || prof.cellphone2 || 'Sem contato') : '---'}
                     </div>
                     {teacherFieldAccess.contact ? (
                         <div className={`text-[13px] mt-0.5 ${prof.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
@@ -2095,7 +2169,6 @@ export default function ProfessoresPage() {
             showErrorMessage('Informe o nome completo do professor.');
             return;
         }
-
         const rawPwaUsername = String(formData.accessUsername || '');
         const pwaUsername = rawPwaUsername.normalize('NFKC').trim().toUpperCase();
         const pwaEmail = String(formData.email || '').trim();
@@ -2240,6 +2313,7 @@ export default function ProfessoresPage() {
             setEmailUsageAlert(null);
             setSaveSuccessPopup(null);
             showSuccessMessage(wasEditing ? 'O professor foi alterado e a lista já foi atualizada.' : 'O professor foi inserido e a lista já foi atualizada.');
+            if (returnToPessoas) router.push(buildPessoasReturnUrl());
 
         } catch (err: unknown) {
             const errorMsg = err instanceof Error ? err.message : 'Ocorreu um erro.';
@@ -2656,7 +2730,7 @@ export default function ProfessoresPage() {
                             title={editingTeacherId ? `Editar dossiê do docente: ${formData.name || 'DOCENTE'}` : 'Cadastrar novo docente'}
                             eyebrow="Escola · Cadastros"
                             description="Preencha os dados do professor e confirme para salvar."
-                            onClose={closeModal}
+                            onClose={closeModalAndReturn}
                             schoolName={currentTenantBranding?.schoolName}
                             logoUrl={currentTenantLogoUrl}
                             compact
@@ -3140,7 +3214,7 @@ export default function ProfessoresPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Nome Usuário Usado na Tela de Login (Não deve conter espaços)</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário de acesso da pessoa (sem espaços)</label>
                                                 <input
                                                     type="text"
                                                     value={formData.accessUsername}
@@ -3154,10 +3228,10 @@ export default function ProfessoresPage() {
                                                         showErrorMessage('Informe um usuário de acesso do PWA sem espaços.');
                                                     }}
                                                     className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-                                                    placeholder="USUÁRIO, CPF OU E-MAIL"
+                                                    placeholder="USUÁRIO DE ACESSO"
                                                 />
                                                 <div className="mt-1 text-xs font-medium text-slate-500">
-                                                    Pode ser um nome livre e não precisa ter formato de e-mail.
+                                                    Fica salvo na pessoa e é compartilhado entre todos os perfis dela.
                                                 </div>
                                             </div>
                                             <div className="md:col-span-2">

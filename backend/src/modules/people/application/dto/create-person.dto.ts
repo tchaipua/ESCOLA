@@ -76,6 +76,11 @@ export class CreatePersonDto {
   @IsOptional()
   email?: string;
 
+  @ApiPropertyOptional({ description: "Usuário de acesso compartilhado pela pessoa" })
+  @IsString()
+  @IsOptional()
+  accessUsername?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @MinLength(6)

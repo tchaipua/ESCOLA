@@ -224,4 +224,11 @@ export class CentralTenantConfigurationService {
       ),
     };
   }
+
+  resolvePublicLogoUrl(
+    reference?: string | null,
+    scope: "branch" | "company" = "company",
+  ) {
+    return this.client.resolvePublicLogoUrl(reference, scope);
+  }
 }

@@ -304,6 +304,7 @@ model User {
   id                    String  @id @default(uuid())
   tenantId              String
   branchCode            Int     @default(1)
+  personId              String?
   name                  String
   email                 String
   accessUsername        String?
@@ -327,10 +328,12 @@ model User {
   canceledBy String?
 
   tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person         Person?            @relation(fields: [personId], references: [id], onDelete: SetNull)
   branchAccesses UserBranchAccess[]
 
   @@unique([tenantId, accessUsername])
   @@index([tenantId])
+  @@index([tenantId, personId])
   @@map("users")
 }
 
@@ -448,6 +451,7 @@ model Person {
   telegramUsername     String?
   telegramOptInAt      DateTime?
   telegramOptOutAt     DateTime?
+  accessUsername       String?
   password             String?
   resetPasswordToken   String?
   resetPasswordExpires DateTime?
@@ -474,11 +478,12 @@ model Person {
   teachers  Teacher[]
   students  Student[]
   guardians Guardian[]
+  users     User[]
 
   @@unique([tenantId, cpfDigits])
-  @@unique([tenantId, cnpjNormalized])
   @@unique([tenantId, telegramChatId])
   @@index([tenantId])
+  @@index([tenantId, accessUsername])
   @@map("people")
 }
 

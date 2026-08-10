@@ -72,6 +72,7 @@ type PersonWithRoles = {
   cellphone1?: string | null;
   cellphone2?: string | null;
   email?: string | null;
+  accessUsername?: string | null;
   password?: string | null;
   resetPasswordToken?: string | null;
   resetPasswordExpires?: Date | null;
@@ -101,6 +102,7 @@ type PersonWithRoles = {
 
 type AdministrativeRoleRecord = {
   id: string;
+  role: string;
   canceledAt?: Date | null;
   canceledBy?: string | null;
   accessProfile: string | null;
@@ -113,6 +115,7 @@ type BasicPersonIdentity = {
   branchCode: number;
   name: string;
   email?: string | null;
+  accessUsername?: string | null;
   cpf?: string | null;
 };
 
@@ -240,9 +243,6 @@ export class PeopleService {
     }
 
     const normalizedRoleCpf = this.normalizeIdentityDocument(roleRecord.cpf);
-    const normalizedRoleEmail = this.normalizeIdentityText(roleRecord.email);
-    const normalizedRoleName = this.normalizeIdentityText(roleRecord.name);
-
     for (const person of peopleById.values()) {
       const normalizedPersonCpf = this.normalizeIdentityDocument(person.cpf);
       if (
@@ -253,23 +253,6 @@ export class PeopleService {
         return person.id;
       }
 
-      const normalizedPersonEmail = this.normalizeIdentityText(person.email);
-      if (
-        normalizedRoleEmail &&
-        normalizedPersonEmail &&
-        normalizedRoleEmail === normalizedPersonEmail
-      ) {
-        return person.id;
-      }
-
-      const normalizedPersonName = this.normalizeIdentityText(person.name);
-      if (
-        normalizedRoleName &&
-        normalizedPersonName &&
-        normalizedRoleName === normalizedPersonName
-      ) {
-        return person.id;
-      }
     }
 
     return null;
@@ -288,9 +271,11 @@ export class PeopleService {
   }
 
   private mapAdministrativeRoleSummary(roleRecord: AdministrativeRoleRecord) {
+    const role = String(roleRecord.role || "ADMIN").toUpperCase();
+    const roleLabel = role === "ADMIN" ? "ADMINISTRADOR" : role;
     return {
-      role: "ADMINISTRADOR",
-      roleLabel: "ADMINISTRADOR",
+      role: roleLabel,
+      roleLabel,
       recordId: roleRecord.id,
       active: !roleRecord.canceledAt && !roleRecord.canceledBy,
       accessProfile: roleRecord.accessProfile || null,
@@ -425,7 +410,7 @@ export class PeopleService {
 
     const primaryStudent = this.getPrimaryRoleRecord(person.students);
     const photoUrl = primaryStudent?.photoUrl ?? null;
-    const sharedLoginEnabled = Boolean(person.email && person.password);
+    const sharedLoginEnabled = Boolean(person.accessUsername);
     const guardianContacts = this.collectGuardianContacts(person);
     const guardianIds = person.guardians.map((record) => record.id);
     const guardianAssignments =
@@ -447,6 +432,7 @@ export class PeopleService {
       cellphone1: person.cellphone1 ?? null,
       cellphone2: person.cellphone2 ?? null,
       email: person.email ?? null,
+      accessUsername: person.accessUsername ?? null,
       zipCode: person.zipCode ?? null,
       street: person.street ?? null,
       number: person.number ?? null,
@@ -493,23 +479,6 @@ export class PeopleService {
       }
     }
 
-    const normalizedCnpj = normalizeCnpj(payload.cnpj);
-    if (normalizedCnpj) {
-      const personByCnpj = await this.prisma.person.findFirst({
-        where: {
-          tenantId: this.tenantId(),
-          cnpjNormalized: normalizedCnpj,
-          ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
-        },
-        select: { id: true, name: true },
-      });
-
-      if (personByCnpj) {
-        throw new ConflictException(
-          `Já existe uma pessoa com este CNPJ na escola: ${personByCnpj.name}. Adicione o novo papel ao cadastro existente.`,
-        );
-      }
-    }
   }
 
   private async findPersonEntity(id: string) {
@@ -756,6 +725,7 @@ export class PeopleService {
             cellphone1: string | null;
             cellphone2: string | null;
             email: string | null;
+            accessUsername: string | null;
             password: string | null;
             zipCode: string | null;
             street: string | null;
@@ -768,11 +738,12 @@ export class PeopleService {
         >`
           SELECT
             id, tenantId, branchCode, name, rg, cpf, cnpj, nickname, corporateName,
-            phone, whatsapp, cellphone1, cellphone2, email, password,
+            phone, whatsapp, cellphone1, cellphone2, email, accessUsername, password,
             zipCode, street, number, city, state, neighborhood, complement
           FROM people
           WHERE tenantId = ${tenantId}
             AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+            AND canceledAt IS NULL
           ORDER BY name ASC
         `,
         this.prisma.$queryRaw<
@@ -799,9 +770,10 @@ export class PeopleService {
             t.permissions,
             t.canceledBy
           FROM teachers t
-          LEFT JOIN people p ON p.id = t.personId AND p.tenantId = t.tenantId
+          LEFT JOIN people p ON p.id = t.personId AND p.tenantId = t.tenantId AND p.canceledAt IS NULL
           WHERE t.tenantId = ${tenantId}
             AND t.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+            AND t.canceledAt IS NULL
           ORDER BY t.id ASC
         `,
         this.prisma.$queryRaw<
@@ -830,9 +802,10 @@ export class PeopleService {
             s.canceledBy,
             s.photoUrl
           FROM students s
-          LEFT JOIN people p ON p.id = s.personId AND p.tenantId = s.tenantId
+          LEFT JOIN people p ON p.id = s.personId AND p.tenantId = s.tenantId AND p.canceledAt IS NULL
           WHERE s.tenantId = ${tenantId}
             AND s.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+            AND s.canceledAt IS NULL
           ORDER BY s.id ASC
         `,
         this.prisma.$queryRaw<
@@ -859,9 +832,10 @@ export class PeopleService {
             g.permissions,
             g.canceledBy
           FROM guardians g
-          LEFT JOIN people p ON p.id = g.personId AND p.tenantId = g.tenantId
+          LEFT JOIN people p ON p.id = g.personId AND p.tenantId = g.tenantId AND p.canceledAt IS NULL
           WHERE g.tenantId = ${tenantId}
             AND g.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+            AND g.canceledAt IS NULL
           ORDER BY g.id ASC
         `,
           this.prisma.$queryRaw<
@@ -885,24 +859,27 @@ export class PeopleService {
             p.cellphone2 AS guardianCellphone2
             FROM guardian_students gs
             INNER JOIN guardians g ON g.id = gs.guardianId
-            LEFT JOIN people p ON p.id = g.personId AND p.tenantId = g.tenantId
+            LEFT JOIN people p ON p.id = g.personId AND p.tenantId = g.tenantId AND p.canceledAt IS NULL
             WHERE gs.tenantId = ${tenantId}
               AND gs.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-              AND gs.canceledBy IS NULL
+              AND gs.canceledAt IS NULL
               AND g.tenantId = ${tenantId}
               AND g.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+              AND g.canceledAt IS NULL
           `,
           this.prisma.$queryRaw<
             Array<{
               id: string;
               name: string;
               email: string | null;
+              personId: string | null;
               role: string;
+              accessProfile: string | null;
               canceledAt: Date | null;
               canceledBy: string | null;
             }>
           >`
-            SELECT id, name, email, role, canceledAt, canceledBy
+            SELECT id, name, email, personId, role, accessProfile, canceledAt, canceledBy
             FROM users
             WHERE tenantId = ${tenantId}
               AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
@@ -978,20 +955,23 @@ export class PeopleService {
         guardiansByPersonId.set(personId, current);
       }
 
-      const administrativeRolesByEmail = new Map<string, AdministrativeRoleRecord[]>();
+      const administrativeRolesByPersonId = new Map<string, AdministrativeRoleRecord[]>();
       for (const user of users) {
-        const normalizedEmail = this.sharedProfilesService.normalizeEmail(user.email);
-        if (!normalizedEmail || user.role !== "ADMIN") continue;
-
-        const current = administrativeRolesByEmail.get(normalizedEmail) || [];
-        current.push({
+        const roleRecord = {
           id: user.id,
+          role: user.role,
           canceledAt: user.canceledAt,
           canceledBy: user.canceledBy,
-          accessProfile: "ADMINISTRADOR",
+          accessProfile: user.accessProfile || null,
           permissions: null,
-        });
-        administrativeRolesByEmail.set(normalizedEmail, current);
+        };
+        if (user.personId) {
+          const current = administrativeRolesByPersonId.get(user.personId) || [];
+          current.push(roleRecord);
+          administrativeRolesByPersonId.set(user.personId, current);
+          continue;
+        }
+
       }
 
       return Promise.all(
@@ -1010,9 +990,7 @@ export class PeopleService {
               students: studentsByPersonId.get(person.id) || [],
               guardians: guardiansByPersonId.get(person.id) || [],
             },
-            administrativeRolesByEmail.get(
-              this.sharedProfilesService.normalizeEmail(person.email) || "",
-            ) || [],
+            administrativeRolesByPersonId.get(person.id) || [],
           ),
         ),
       );
@@ -1020,33 +998,34 @@ export class PeopleService {
 
   async findOne(id: string) {
     const person = await this.findPersonEntity(id);
-    const administrativeRoleRecords = person.email
-      ? await this.prisma.user.findMany({
-          where: {
-            tenantId: person.tenantId,
-            email: this.sharedProfilesService.normalizeEmail(person.email) || "",
-            role: "ADMIN",
-            canceledAt: null,
-          },
-          select: {
-            id: true,
-            canceledAt: true,
-            canceledBy: true,
-          },
-        }).then((users) =>
-          users.map((user) => ({
-            id: user.id,
-            canceledAt: user.canceledAt,
-            canceledBy: user.canceledBy,
-            accessProfile: "ADMINISTRADOR",
-            permissions: null,
-          })),
-        )
-      : [];
+    const administrativeRoleRecords = await this.prisma.user.findMany({
+      where: {
+        tenantId: person.tenantId,
+        canceledAt: null,
+        personId: person.id,
+      },
+      select: {
+        id: true,
+        role: true,
+        canceledAt: true,
+        canceledBy: true,
+        accessProfile: true,
+      },
+    }).then((users) =>
+      users.map((user) => ({
+        id: user.id,
+        role: user.role,
+        canceledAt: user.canceledAt,
+        canceledBy: user.canceledBy,
+        accessProfile: user.accessProfile,
+        permissions: null,
+      })),
+    );
     return this.mapPersonResponse(person, administrativeRoleRecords);
   }
 
   async create(createDto: CreatePersonDto, currentUser?: ICurrentUser) {
+    this.sharedProfilesService.assertValidCpfIfProvided(createDto.cpf);
     const targetBranchCode = await resolveWritableTenantBranchCode(
       this.prisma,
       this.tenantId(),
@@ -1069,6 +1048,13 @@ export class PeopleService {
 
       const normalizedEmail = this.sharedProfilesService.normalizeEmail(
         createDto.email,
+      );
+      const normalizedAccessUsername = this.sharedProfilesService.normalizeAccessUsername(
+        createDto.accessUsername,
+      );
+      await this.sharedProfilesService.assertUniqueAccessUsername(
+        this.tenantId(),
+        normalizedAccessUsername,
       );
       await this.ensureUniquePersonIdentity({
         cpf: createDto.cpf,
@@ -1102,6 +1088,7 @@ export class PeopleService {
           cellphone1: mutableData.cellphone1 || null,
           cellphone2: mutableData.cellphone2 || null,
           email: normalizedEmail || null,
+          accessUsername: normalizedAccessUsername || null,
           password: null,
           zipCode: mutableData.zipCode || null,
           street: mutableData.street || null,
@@ -1152,6 +1139,7 @@ export class PeopleService {
     updateDto: UpdatePersonDto,
     currentUser?: ICurrentUser,
   ) {
+    this.sharedProfilesService.assertValidCpfIfProvided(updateDto.cpf);
     const currentPerson = await this.findPersonEntity(id);
     const targetBranchCode = await resolveWritableTenantBranchCode(
       this.prisma,
@@ -1182,6 +1170,19 @@ export class PeopleService {
       )
         ? this.sharedProfilesService.normalizeEmail(updateDto.email)
         : currentPerson.email;
+      const normalizedAccessUsername = Object.prototype.hasOwnProperty.call(
+        updateDto,
+        "accessUsername",
+      )
+        ? this.sharedProfilesService.normalizeAccessUsername(
+            updateDto.accessUsername,
+          )
+        : currentPerson.accessUsername || "";
+      await this.sharedProfilesService.assertUniqueAccessUsername(
+        this.tenantId(),
+        normalizedAccessUsername,
+        id,
+      );
       const normalizedCurrentEmail = this.sharedProfilesService.normalizeEmail(
         currentPerson.email,
       );
@@ -1273,6 +1274,12 @@ export class PeopleService {
           email: Object.prototype.hasOwnProperty.call(updateDto, "email")
             ? normalizedEmail || null
             : undefined,
+          accessUsername: Object.prototype.hasOwnProperty.call(
+            updateDto,
+            "accessUsername",
+          )
+            ? normalizedAccessUsername || null
+            : undefined,
           password:
             hashedPassword || shouldResolvePasswordForEmailChange
               ? null
@@ -1358,6 +1365,12 @@ export class PeopleService {
       select: { id: true },
     });
     if (hasGuardian) return;
+
+    const hasAdministrativeUser = await this.prisma.user.findFirst({
+      where: { tenantId: this.tenantId(), personId, canceledAt: null },
+      select: { id: true },
+    });
+    if (hasAdministrativeUser) return;
 
     throw new BadRequestException(
       "Este cadastro precisa estar vinculado a pelo menos um papel operacional (ALUNO, PROFESSOR ou RESPONSÁVEL).",

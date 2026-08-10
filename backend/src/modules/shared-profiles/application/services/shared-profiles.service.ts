@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -12,6 +13,7 @@ import {
   isValidCnpj,
   normalizeCnpj,
 } from "../../../../common/validation/cnpj";
+import { isValidCpf } from "../../../../common/validation/cpf";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
 
@@ -48,6 +50,7 @@ type SharedProfileRecord = {
   neighborhood?: string | null;
   complement?: string | null;
   email?: string | null;
+  accessUsername?: string | null;
   password?: string | null;
   resetPasswordToken?: string | null;
   resetPasswordExpires?: string | Date | null;
@@ -61,6 +64,7 @@ type SharedProfileSource = {
 type SharedEmailAccountRecord = {
   id: string;
   email?: string | null;
+  accessUsername?: string | null;
   password?: string | null;
   updatedAt: Date;
 };
@@ -89,6 +93,7 @@ type SharedPersonRecord = {
   cellphone1?: string | null;
   cellphone2?: string | null;
   email?: string | null;
+  accessUsername?: string | null;
   password?: string | null;
   resetPasswordToken?: string | null;
   resetPasswordExpires?: Date | null;
@@ -115,6 +120,7 @@ type SharedProfilePayload = Partial<
     | "cellphone1"
     | "cellphone2"
     | "email"
+    | "accessUsername"
     | "password"
     | "resetPasswordToken"
     | "resetPasswordExpires"
@@ -130,6 +136,7 @@ type SharedProfilePayload = Partial<
 >;
 
 type AdministrativeSharedProfilePayload = {
+  personId?: string | null;
   name?: string | null;
   birthDate?: Date | null;
   rg?: string | null;
@@ -142,6 +149,7 @@ type AdministrativeSharedProfilePayload = {
   cellphone1?: string | null;
   cellphone2?: string | null;
   email?: string | null;
+  accessUsername?: string | null;
   password?: string | null;
   resetPasswordToken?: string | null;
   resetPasswordExpires?: Date | null;
@@ -205,6 +213,7 @@ const SHARED_PROFILE_FIELDS = [
   "cellphone1",
   "cellphone2",
   "email",
+  "accessUsername",
   "zipCode",
   "street",
   "number",
@@ -218,8 +227,30 @@ const SHARED_PROFILE_FIELDS = [
 export class SharedProfilesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  normalizeDocument(value?: string | null) {
+  normalizeDocument(value?: unknown) {
     return String(value || "").replace(/\D/g, "");
+  }
+
+  assertValidCpfIfProvided(value?: unknown) {
+    const normalizedCpf = this.normalizeDocument(value);
+    if (normalizedCpf && !isValidCpf(normalizedCpf)) {
+      throw new BadRequestException(
+        "CPF inválido. Informe um CPF válido ou deixe o campo em branco.",
+      );
+    }
+
+    return normalizedCpf;
+  }
+
+  assertValidCnpjIfProvided(value?: unknown) {
+    const normalizedCnpj = normalizeCnpj(String(value || ""));
+    if (normalizedCnpj && !isValidCnpj(normalizedCnpj)) {
+      throw new BadRequestException(
+        "CNPJ inválido. Informe um CNPJ válido ou deixe o campo em branco.",
+      );
+    }
+
+    return normalizedCnpj;
   }
 
   normalizeEmail(value?: string | null) {
@@ -246,6 +277,44 @@ export class SharedProfilesService {
     return typeof prismaWithUnscoped.getUnscopedClient === "function"
       ? prismaWithUnscoped.getUnscopedClient()
       : this.prisma;
+  }
+
+  normalizeAccessUsername(value?: string | null) {
+    const normalized = String(value || "")
+      .normalize("NFKC")
+      .trim()
+      .toUpperCase();
+    if (normalized && !/^\S{3,160}$/u.test(normalized)) {
+      throw new BadRequestException(
+        "Informe o usuário de acesso com 3 a 160 caracteres e sem espaços.",
+      );
+    }
+    return normalized || "";
+  }
+
+  async assertUniqueAccessUsername(
+    tenantId: string,
+    accessUsername?: string | null,
+    excludePersonId?: string | null,
+  ) {
+    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
+    if (!normalizedUsername) return;
+
+    const duplicate = await this.prisma.person.findFirst({
+      where: {
+        tenantId,
+        canceledAt: null,
+        accessUsername: normalizedUsername,
+        ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
+      },
+      select: { id: true, name: true },
+    });
+
+    if (duplicate) {
+      throw new ConflictException(
+        `O usuário de acesso já pertence a outra pessoa desta escola: ${duplicate.name || "PESSOA"}.`,
+      );
+    }
   }
 
   private async revokeAuthSessionsForEmail(
@@ -291,6 +360,27 @@ export class SharedProfilesService {
     return this.prisma.emailCredential.findUnique({
       where: { email: normalizedEmail },
     });
+  }
+
+  async getEmailVerificationMap(emails: Array<string | null | undefined>) {
+    const normalizedEmails = Array.from(
+      new Set(
+        emails
+          .map((email) => this.normalizeEmail(email))
+          .filter((email): email is string => Boolean(email)),
+      ),
+    );
+
+    if (!normalizedEmails.length) return new Map<string, boolean>();
+
+    const credentials = await this.prisma.emailCredential.findMany({
+      where: { email: { in: normalizedEmails } },
+      select: { email: true, emailVerified: true },
+    });
+
+    return new Map(
+      credentials.map((credential) => [credential.email, credential.emailVerified]),
+    );
   }
 
   async ensureEmailCredential(
@@ -775,6 +865,7 @@ export class SharedProfilesService {
       cellphone1: record.cellphone1 ?? null,
       cellphone2: record.cellphone2 ?? null,
       email: record.email ?? null,
+      accessUsername: record.accessUsername ?? null,
       zipCode: record.zipCode ?? null,
       street: record.street ?? null,
       number: record.number ?? null,
@@ -825,6 +916,7 @@ export class SharedProfilesService {
       cellphone1: true,
       cellphone2: true,
       email: true,
+      accessUsername: true,
       password: true,
       resetPasswordToken: true,
       resetPasswordExpires: true,
@@ -911,7 +1003,7 @@ export class SharedProfilesService {
     exclude?: { kind: SharedProfileKind; id: string },
   ) {
     const normalizedCpf = this.normalizeDocument(cpf);
-    if (!normalizedCpf) return [] as SharedProfileSource[];
+    if (!isValidCpf(normalizedCpf)) return [] as SharedProfileSource[];
 
     const people = await this.prisma.person.findMany({
       where: {
@@ -988,30 +1080,12 @@ export class SharedProfilesService {
     excludePersonId?: string | null,
   ) {
     const normalizedCpf = this.normalizeDocument(cpf);
-    if (!normalizedCpf) return null;
+    if (!isValidCpf(normalizedCpf)) return null;
 
     return this.prisma.person.findFirst({
       where: {
         tenantId,
         cpfDigits: normalizedCpf,
-        ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
-      },
-      select: this.selectPersonFields(),
-    });
-  }
-
-  private async findPersonByCnpj(
-    tenantId: string,
-    cnpj?: string | null,
-    excludePersonId?: string | null,
-  ) {
-    const normalizedCnpj = normalizeCnpj(cnpj);
-    if (!normalizedCnpj) return null;
-
-    return this.prisma.person.findFirst({
-      where: {
-        tenantId,
-        cnpjNormalized: normalizedCnpj,
         ...(excludePersonId ? { id: { not: excludePersonId } } : {}),
       },
       select: this.selectPersonFields(),
@@ -1049,6 +1123,8 @@ export class SharedProfilesService {
     userId?: string | null,
     branchCode = DEFAULT_BRANCH_CODE,
   ) {
+    this.assertValidCpfIfProvided(payload.cpf);
+    this.assertValidCnpjIfProvided(payload.cnpj);
     const normalizedEmail = this.normalizeEmail(
       typeof payload.email === "string" ? payload.email : null,
     );
@@ -1062,6 +1138,12 @@ export class SharedProfilesService {
     if (normalizedCnpj && !isValidCnpj(normalizedCnpj)) {
       throw new BadRequestException("CNPJ inválido.");
     }
+
+    const normalizedAccessUsername = this.normalizeAccessUsername(
+      typeof payload.accessUsername === "string"
+        ? payload.accessUsername
+        : null,
+    );
 
     const birthDate =
       payload.birthDate instanceof Date
@@ -1100,6 +1182,7 @@ export class SharedProfilesService {
         ? null
         : String(payload.cellphone2),
       email: normalizedEmail || null,
+      accessUsername: normalizedAccessUsername || null,
       password: this.isBlank(payload.password)
         ? null
         : String(payload.password),
@@ -1155,6 +1238,7 @@ export class SharedProfilesService {
       cellphone1: nextData.cellphone1,
       cellphone2: nextData.cellphone2,
       email: nextData.email,
+      accessUsername: nextData.accessUsername,
       password: nextData.password,
       resetPasswordToken: nextData.resetPasswordToken,
       resetPasswordExpires: nextData.resetPasswordExpires,
@@ -1184,27 +1268,30 @@ export class SharedProfilesService {
     const currentPerson = await this.findPersonById(
       (sourceRecord as { personId?: string | null }).personId,
     );
-    const personId = (sourceRecord as { personId?: string | null }).personId;
     const cpfPerson = await this.findPersonByCpf(
       tenantId,
-      currentPerson ? null : personId ? null : payloadCpf || previousCpf || null,
+      payloadCpf || previousCpf || null,
       currentPerson?.id,
     );
-    const cnpjPerson = await this.findPersonByCnpj(
-      tenantId,
-      typeof payload.cnpj === "string" ? payload.cnpj : null,
-      currentPerson?.id,
-    );
-    if (cpfPerson && cnpjPerson && cpfPerson.id !== cnpjPerson.id) {
-      throw new BadRequestException(
-        "O CPF e o CNPJ informados pertencem a pessoas diferentes. Revise o cadastro antes de adicionar o papel.",
-      );
-    }
+    const basePerson = currentPerson || cpfPerson || null;
 
-    const basePerson = currentPerson || cpfPerson || cnpjPerson || null;
+    this.assertValidCpfIfProvided(payloadCpf);
+    this.assertValidCpfIfProvided(previousCpf);
+
+    const effectivePayload =
+      basePerson && this.isBlank(payload.accessUsername)
+        ? { ...payload, accessUsername: basePerson.accessUsername }
+        : payload;
+    await this.assertUniqueAccessUsername(
+      tenantId,
+      typeof effectivePayload.accessUsername === "string"
+        ? effectivePayload.accessUsername
+        : null,
+      basePerson?.id,
+    );
     const nextData = this.buildPersonCreateData(
       tenantId,
-      payload,
+      effectivePayload,
       userId,
       targetBranchCode,
     );
@@ -1220,7 +1307,7 @@ export class SharedProfilesService {
       where: { id: basePerson.id },
       data: this.buildPersonUpdateData(
         tenantId,
-        payload,
+        effectivePayload,
         userId,
         targetBranchCode,
       ),
@@ -1331,7 +1418,7 @@ export class SharedProfilesService {
     exclude?: { kind: SharedProfileKind; id: string },
   ) {
     const normalizedCpf = this.normalizeDocument(cpf);
-    if (!normalizedCpf) return null;
+    if (!isValidCpf(normalizedCpf)) return null;
 
     const person = await this.findPersonByCpf(tenantId, normalizedCpf);
     if (person) {
@@ -1977,6 +2064,50 @@ export class SharedProfilesService {
     userId?: string | null,
     previousCpf?: string | null,
   ) {
+    const personById = sourceRecord.personId
+      ? await this.findPersonById(sourceRecord.personId)
+      : null;
+    const personByCpf = sourceRecord.cpf
+      ? await this.findPersonByCpf(tenantId, sourceRecord.cpf)
+      : null;
+    const existingPerson = personByCpf || personById;
+
+    if (existingPerson) {
+      const preserve = <T>(incoming: T | null | undefined, current: T | null | undefined) =>
+        incoming === null || incoming === undefined || (typeof incoming === "string" && !incoming.trim())
+          ? current
+          : incoming;
+
+      sourceRecord = {
+        ...existingPerson,
+        ...sourceRecord,
+        personId: existingPerson.id,
+        name: preserve(sourceRecord.name, existingPerson.name),
+        birthDate: preserve(sourceRecord.birthDate, existingPerson.birthDate),
+        rg: preserve(sourceRecord.rg, existingPerson.rg),
+        cpf: preserve(sourceRecord.cpf, existingPerson.cpf),
+        cnpj: preserve(sourceRecord.cnpj, existingPerson.cnpj),
+        nickname: preserve(sourceRecord.nickname, existingPerson.nickname),
+        corporateName: preserve(sourceRecord.corporateName, existingPerson.corporateName),
+        phone: preserve(sourceRecord.phone, existingPerson.phone),
+        whatsapp: preserve(sourceRecord.whatsapp, existingPerson.whatsapp),
+        cellphone1: preserve(sourceRecord.cellphone1, existingPerson.cellphone1),
+        cellphone2: preserve(sourceRecord.cellphone2, existingPerson.cellphone2),
+        email: preserve(sourceRecord.email, existingPerson.email),
+        accessUsername: preserve(
+          sourceRecord.accessUsername,
+          existingPerson.accessUsername,
+        ),
+        zipCode: preserve(sourceRecord.zipCode, existingPerson.zipCode),
+        street: preserve(sourceRecord.street, existingPerson.street),
+        number: preserve(sourceRecord.number, existingPerson.number),
+        city: preserve(sourceRecord.city, existingPerson.city),
+        state: preserve(sourceRecord.state, existingPerson.state),
+        neighborhood: preserve(sourceRecord.neighborhood, existingPerson.neighborhood),
+        complement: preserve(sourceRecord.complement, existingPerson.complement),
+      };
+    }
+
     const person = await this.upsertSharedPerson(
       tenantId,
       sourceRecord,

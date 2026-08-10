@@ -52,47 +52,19 @@ export class GuardiansService {
   }
 
   private normalizeAccessUsername(value?: string | null): string | null {
-    const normalized = String(value || "").normalize("NFKC").trim().toUpperCase();
-    if (normalized && !/^\S{3,160}$/u.test(normalized)) {
-      throw new BadRequestException(
-        "Informe o login utilizado com 3 a 160 caracteres e sem espaços.",
-      );
-    }
-    return normalized || null;
+    return this.sharedProfilesService.normalizeAccessUsername(value) || null;
   }
 
   private async assertUniqueAccessUsername(
     tenantId: string,
     accessUsername?: string | null,
-    excludeGuardianId?: string,
+    excludePersonId?: string | null,
   ) {
-    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
-    if (!normalizedUsername) return;
-    const [guardian, teacher, student] = await Promise.all([
-      this.prisma.guardian.findFirst({
-        where: {
-          tenantId,
-          accessUsername: normalizedUsername,
-          ...(excludeGuardianId ? { id: { not: excludeGuardianId } } : {}),
-        },
-        select: { id: true, person: { select: { name: true } } },
-      }),
-      this.prisma.teacher.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername },
-        select: { id: true },
-      }),
-      this.prisma.student.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername },
-        select: { id: true },
-      }),
-    ]);
-    if (guardian || teacher || student) {
-      throw new ConflictException(
-        guardian
-          ? `O login utilizado já está cadastrado para o responsável ${guardian.person?.name || "informado"}.`
-          : "O login utilizado já pertence a outro perfil de acesso desta escola.",
-      );
-    }
+    await this.sharedProfilesService.assertUniqueAccessUsername(
+      tenantId,
+      accessUsername,
+      excludePersonId,
+    );
   }
 
   private async assertUniqueGuardianCpf(
@@ -143,6 +115,7 @@ export class GuardiansService {
       "cellphone1",
       "cellphone2",
       "email",
+      "accessUsername",
       "password",
       "resetPasswordToken",
       "resetPasswordExpires",
@@ -317,6 +290,7 @@ export class GuardiansService {
         createDto,
         currentUser,
       );
+      this.sharedProfilesService.assertValidCpfIfProvided(sanitizedDto.cpf);
 
       sanitizedDto.accessUsername = this.normalizeAccessUsername(
         sanitizedDto.accessUsername,
@@ -354,9 +328,16 @@ export class GuardiansService {
 
       const tenantId = getTenantContext()!.tenantId;
       await this.assertUniqueGuardianCpf(tenantId, sanitizedDto.cpf);
+      const existingSharedProfile = sanitizedDto.cpf
+        ? await this.sharedProfilesService.findSharedProfileByCpf(
+            tenantId,
+            sanitizedDto.cpf,
+          )
+        : null;
       await this.assertUniqueAccessUsername(
         tenantId,
         sanitizedDto.accessUsername,
+        (existingSharedProfile as { personId?: string | null } | null)?.personId,
       );
 
       let hashedPassword = undefined;
@@ -483,19 +464,28 @@ export class GuardiansService {
       },
     });
 
-    return filterRoleBranchRecordsForCurrentBranch(guardians)
-      .sort((left, right) =>
+    const visibleGuardians = filterRoleBranchRecordsForCurrentBranch(guardians).sort(
+      (left, right) =>
         String(left.person?.name || "").localeCompare(
           String(right.person?.name || ""),
           "pt-BR",
         ),
-      )
-      .map((guardian) =>
-        sanitizeGuardianSummaryForViewer(
-          this.mapGuardianAccess(guardian),
-          currentUser,
-        ),
+    );
+    const emailVerificationByEmail =
+      await this.sharedProfilesService.getEmailVerificationMap(
+        visibleGuardians.map((guardian) => guardian.person?.email),
       );
+
+    return visibleGuardians.map((guardian) => {
+      const email = this.sharedProfilesService.normalizeEmail(guardian.person?.email);
+      return sanitizeGuardianSummaryForViewer(
+        {
+          ...this.mapGuardianAccess(guardian),
+          emailVerified: email ? emailVerificationByEmail.get(email) === true : false,
+        },
+        currentUser,
+      );
+    });
   }
 
   async findOne(id: string, currentUser?: ICurrentUser) {
@@ -643,6 +633,7 @@ export class GuardiansService {
         updateDto,
         currentUser,
       );
+      this.sharedProfilesService.assertValidCpfIfProvided(sanitizedDto.cpf);
 
       if (Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")) {
         sanitizedDto.accessUsername = this.normalizeAccessUsername(
@@ -652,7 +643,7 @@ export class GuardiansService {
       const accessUsernameForSync =
         Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
           ? sanitizedDto.accessUsername
-          : currentGuardian.accessUsername;
+          : currentGuardian.person?.accessUsername || currentGuardian.accessUsername;
 
       await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
         getTenantContext()!.tenantId,
@@ -694,7 +685,12 @@ export class GuardiansService {
           "Informe o login utilizado ao cadastrar uma senha de acesso do responsável.",
         );
       }
-      if (accessUsernameForSync && !currentGuardian.accessUsername && !sanitizedDto.password) {
+      if (
+        accessUsernameForSync &&
+        !currentGuardian.person?.accessUsername &&
+        !currentGuardian.accessUsername &&
+        !sanitizedDto.password
+      ) {
         throw new BadRequestException(
           "Informe a senha inicial ao liberar o primeiro acesso do responsável.",
         );
@@ -702,7 +698,7 @@ export class GuardiansService {
       await this.assertUniqueAccessUsername(
         getTenantContext()!.tenantId,
         accessUsernameForSync,
-        id,
+        currentGuardian.personId,
       );
 
       if (
@@ -907,7 +903,7 @@ export class GuardiansService {
     guardian: Awaited<ReturnType<GuardiansService["findGuardianEntity"]>>,
     enabled: boolean,
   ) {
-    const login = guardian.accessUsername?.trim();
+    const login = (guardian.person?.accessUsername || guardian.accessUsername)?.trim();
     const email = guardian.person?.email?.trim();
     if (!login || !email) return;
 

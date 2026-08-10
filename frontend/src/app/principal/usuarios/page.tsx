@@ -22,6 +22,9 @@ import {
     formatPhoneInput,
     getDashboardAuthContext,
     hasDashboardPermission,
+    isValidCnpj,
+    isValidCpf,
+    requestPasswordReset,
     type TenantBranchSummary,
 } from '@/app/lib/dashboard-crud-utils';
 import {
@@ -54,6 +57,7 @@ type UserRecord = {
     id: string;
     name: string;
     email: string;
+    emailVerified?: boolean | null;
     accessUsername?: string | null;
     role: UserRole;
     accessProfile?: AccessProfileCode | null;
@@ -368,11 +372,18 @@ function UserDetails({ user }: { user: UserRecord }) {
                 {
                     title: 'Acesso',
                     items: [
-                        { label: 'Usuário de acesso', value: user.accessUsername || user.email },
+                        { label: 'Usuário de acesso', value: user.accessUsername || 'Não informado' },
                         { label: 'E-mail de confirmação', value: user.email },
+                        { label: 'E-mail confirmado', value: user.email ? (user.emailVerified ? 'CONFIRMADO' : 'PENDENTE') : 'SEM E-MAIL', tone: user.emailVerified ? undefined : ('danger' as const) },
                         { label: 'Papel', value: ROLE_LABELS[user.role] || user.role },
-                        { label: 'Perfil', value: String(user.accessProfile || 'PADRÃO').replaceAll('_', ' ') },
                         { label: 'Filiais', value: formatUserBranches(user) },
+                        { label: 'Senha', value: 'Não exibida por segurança' },
+                    ],
+                },
+                {
+                    title: 'Autoridades',
+                    items: [
+                        { label: 'Perfil', value: String(user.accessProfile || 'PADRÃO').replaceAll('_', ' ') },
                         { label: 'Permissões', value: permissionLabels || 'Perfil padrão' },
                     ],
                 },
@@ -384,6 +395,26 @@ function UserDetails({ user }: { user: UserRecord }) {
                         { label: 'Endereço', value: [user.street, user.number, user.neighborhood, user.city, user.state].filter(Boolean).join(', ') || 'Não informado' },
                     ],
                 },
+            ]}
+            tabs={[
+                { label: 'Dados básicos', sectionTitles: ['Dados básicos'] },
+                {
+                    label: 'Acesso',
+                    sectionTitles: ['Acesso', 'Autoridades'],
+                    actions: user.emailVerified ? [{
+                        id: 'request-password-reset',
+                        label: 'Redefinir senha por e-mail',
+                        onClick: async () => {
+                            try {
+                                const result = await requestPasswordReset(user.email);
+                                showSuccessMessage(result?.message || 'Link de redefinição enviado para o e-mail confirmado.');
+                            } catch (error) {
+                                showErrorMessage(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição.');
+                            }
+                        },
+                    }] : [],
+                },
+                { label: 'Contato e endereço', sectionTitles: ['Contato e endereço'] },
             ]}
         />
     );
@@ -598,6 +629,14 @@ export default function UsuariosPage() {
         }
         if (!formData.name.trim()) {
             showErrorMessage('Informe o nome completo do funcionário/usuário.');
+            return;
+        }
+        if (formData.cpf.trim() && !isValidCpf(formData.cpf)) {
+            showErrorMessage('CPF inválido. Informe um CPF válido.');
+            return;
+        }
+        if (formData.cnpj.trim() && !isValidCnpj(formData.cnpj)) {
+            showErrorMessage('CNPJ inválido. Informe um CNPJ válido.');
             return;
         }
         if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
@@ -857,13 +896,15 @@ export default function UsuariosPage() {
                                                 {visibleColumns.map((column) => (
                                                     <td key={column.key} className={`max-w-[280px] px-5 py-4 font-semibold text-slate-700 ${column.key === 'name' ? 'whitespace-nowrap font-black text-slate-900' : ''}`}>
                                                         {column.key === 'name' ? (
-                                                            <span className="inline-flex items-center gap-2 whitespace-nowrap" title={column.getValue(user)}>
+                                                            <span className="inline-flex items-start gap-2 whitespace-nowrap" title={column.getValue(user)}>
                                                                 <span
-                                                                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${user.canceledAt ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                                                    className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${user.canceledAt ? 'bg-red-500' : 'bg-emerald-500'}`}
                                                                     title={user.canceledAt ? 'USUÁRIO INATIVO' : 'USUÁRIO ATIVO'}
                                                                     aria-label={user.canceledAt ? 'Usuário inativo' : 'Usuário ativo'}
                                                                 />
-                                                                {column.getValue(user)}
+                                                                <span className="flex min-w-0 flex-col">
+                                                                    <span>{column.getValue(user)}</span>
+                                                                </span>
                                                             </span>
                                                         ) : column.key === 'role' ? <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">{column.getValue(user)}</span> : <span className="block truncate" title={column.getValue(user)}>{column.getValue(user)}</span>}
                                                     </td>
@@ -1115,15 +1156,15 @@ export default function UsuariosPage() {
                                     <p className="mt-2 text-xs font-medium text-slate-500">Forneça as credenciais para que o funcionário/usuário acesse o sistema da escola.</p>
                                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                                         <label className="block">
-                                            <span className="mb-1 block text-xs font-bold text-slate-600">Nome Usuário Usado na Tela de Login (Não deve conter espaços)</span>
+                                            <span className="mb-1 block text-xs font-bold text-slate-600">Usuário de acesso da pessoa (sem espaços)</span>
                                             <input
                                                 type="text"
                                                 value={formData.accessUsername}
                                                 onChange={(event) => updateFormField('accessUsername', event.target.value.toUpperCase())}
-                                                placeholder="USUÁRIO OU E-MAIL"
+                                                placeholder="USUÁRIO DE ACESSO"
                                                 className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                                             />
-                                            <span className="mt-1 block text-xs font-medium text-slate-500">Se não informar outro usuário, o e-mail será usado no login.</span>
+                                            <span className="mt-1 block text-xs font-medium text-slate-500">Fica salvo na pessoa e é compartilhado entre todos os perfis dela. O e-mail é usado apenas para confirmação e recuperação.</span>
                                         </label>
                                         <label className="block md:col-span-2">
                                             <span className="mb-1 block text-xs font-bold text-slate-600">E-mail para confirmação e recuperação *</span>
@@ -1133,10 +1174,9 @@ export default function UsuariosPage() {
                                                 onChange={(event) => updateFormField('email', event.target.value.toUpperCase())}
                                                 placeholder="E-mail para contato e recuperação"
                                                 required
-                                                disabled={Boolean(editingUserId)}
-                                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                                             />
-                                            <span className="mt-1 block text-xs font-medium text-slate-500">Obrigatório para confirmação e recuperação da conta.</span>
+                                            <span className="mt-1 block text-xs font-medium text-slate-500">Obrigatório para confirmação e recuperação da conta. Se o CPF já existir, o cadastro administrativo será vinculado à mesma pessoa.</span>
                                         </label>
                                     </div>
                                     <div className="mt-4 grid gap-4 md:grid-cols-2">

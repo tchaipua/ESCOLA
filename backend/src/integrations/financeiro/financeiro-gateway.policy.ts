@@ -127,6 +127,7 @@ export function expectedFinanceiroBinaryContentType(
   path: string,
 ) {
   if (method.toUpperCase() !== "GET") return null;
+  if (path === "s3-control/object/view") return "s3-object" as const;
   if (/^s3-control\/product-images\/[A-Za-z0-9_-]{1,128}\/download$/.test(path)) {
     return "image/*" as const;
   }

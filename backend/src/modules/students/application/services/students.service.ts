@@ -124,47 +124,19 @@ export class StudentsService {
   }
 
   private normalizeAccessUsername(value?: string | null): string | null {
-    const normalized = String(value || "").normalize("NFKC").trim().toUpperCase();
-    if (normalized && !/^\S{3,160}$/u.test(normalized)) {
-      throw new BadRequestException(
-        "Informe o login utilizado com 3 a 160 caracteres e sem espaços.",
-      );
-    }
-    return normalized || null;
+    return this.sharedProfilesService.normalizeAccessUsername(value) || null;
   }
 
   private async assertUniqueAccessUsername(
     tenantId: string,
     accessUsername?: string | null,
-    excludeStudentId?: string,
+    excludePersonId?: string | null,
   ) {
-    const normalizedUsername = this.normalizeAccessUsername(accessUsername);
-    if (!normalizedUsername) return;
-    const [student, teacher, guardian] = await Promise.all([
-      this.prisma.student.findFirst({
-        where: {
-          tenantId,
-          accessUsername: normalizedUsername,
-          ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
-        },
-        select: { id: true, person: { select: { name: true } } },
-      }),
-      this.prisma.teacher.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername },
-        select: { id: true },
-      }),
-      this.prisma.guardian.findFirst({
-        where: { tenantId, accessUsername: normalizedUsername },
-        select: { id: true },
-      }),
-    ]);
-    if (student || teacher || guardian) {
-      throw new ConflictException(
-        student
-          ? `O login utilizado já está cadastrado para o aluno ${student.person?.name || "informado"}.`
-          : "O login utilizado já pertence a outro perfil de acesso desta escola.",
-      );
-    }
+    await this.sharedProfilesService.assertUniqueAccessUsername(
+      tenantId,
+      accessUsername,
+      excludePersonId,
+    );
   }
 
   private async assertUniqueStudentCpf(
@@ -215,6 +187,7 @@ export class StudentsService {
       "cellphone1",
       "cellphone2",
       "email",
+      "accessUsername",
       "password",
       "resetPasswordToken",
       "resetPasswordExpires",
@@ -553,6 +526,7 @@ export class StudentsService {
       createDto,
       currentUser,
     );
+    this.sharedProfilesService.assertValidCpfIfProvided(sanitizedDto.cpf);
 
     sanitizedDto.accessUsername = this.normalizeAccessUsername(
       sanitizedDto.accessUsername,
@@ -584,9 +558,16 @@ export class StudentsService {
     );
 
     await this.assertUniqueStudentCpf(this.tenantId(), sanitizedDto.cpf);
+    const existingSharedProfile = sanitizedDto.cpf
+      ? await this.sharedProfilesService.findSharedProfileByCpf(
+          this.tenantId(),
+          sanitizedDto.cpf,
+        )
+      : null;
     await this.assertUniqueAccessUsername(
       this.tenantId(),
       sanitizedDto.accessUsername,
+      (existingSharedProfile as { personId?: string | null } | null)?.personId,
     );
 
     // 1. Completa Endereços faltantes batendo na API Externa ViaCEP
@@ -751,16 +732,28 @@ export class StudentsService {
       orderBy: [{ canceledAt: "asc" }, { updatedAt: "desc" }],
     });
 
-    return filterRoleBranchRecordsForCurrentBranch(students)
-      .sort((left, right) =>
+    const visibleStudents = filterRoleBranchRecordsForCurrentBranch(students).sort(
+      (left, right) =>
         String(left.person?.name || "").localeCompare(
           String(right.person?.name || ""),
           "pt-BR",
         ),
-      )
-      .map((student) =>
-        sanitizeStudentForViewer(this.mapStudentAccess(student), currentUser),
+    );
+    const emailVerificationByEmail =
+      await this.sharedProfilesService.getEmailVerificationMap(
+        visibleStudents.map((student) => student.person?.email),
       );
+
+    return visibleStudents.map((student) => {
+      const email = this.sharedProfilesService.normalizeEmail(student.person?.email);
+      return sanitizeStudentForViewer(
+        {
+          ...this.mapStudentAccess(student),
+          emailVerified: email ? emailVerificationByEmail.get(email) === true : false,
+        },
+        currentUser,
+      );
+    });
   }
 
   async findOne(id: string, currentUser?: ICurrentUser) {
@@ -1162,6 +1155,7 @@ export class StudentsService {
       updateDto,
       currentUser,
     );
+    this.sharedProfilesService.assertValidCpfIfProvided(sanitizedDto.cpf);
     const branchSelection = await resolveRoleBranchSelection(
       this.prisma,
       this.tenantId(),
@@ -1186,7 +1180,7 @@ export class StudentsService {
     const accessUsernameForSync =
       Object.prototype.hasOwnProperty.call(sanitizedDto, "accessUsername")
         ? sanitizedDto.accessUsername
-        : currentStudent.accessUsername;
+        : currentStudent.person?.accessUsername || currentStudent.accessUsername;
     await this.sharedProfilesService.hydrateMissingFieldsFromCpf(
       this.tenantId(),
       sanitizedDto,
@@ -1231,7 +1225,12 @@ export class StudentsService {
         "Informe o login utilizado ao cadastrar uma senha de acesso do aluno.",
       );
     }
-    if (accessUsernameForSync && !currentStudent.accessUsername && !sanitizedDto.password) {
+    if (
+      accessUsernameForSync &&
+      !currentStudent.person?.accessUsername &&
+      !currentStudent.accessUsername &&
+      !sanitizedDto.password
+    ) {
       throw new BadRequestException(
         "Informe a senha inicial ao liberar o primeiro acesso do aluno.",
       );
@@ -1239,7 +1238,7 @@ export class StudentsService {
     await this.assertUniqueAccessUsername(
       this.tenantId(),
       accessUsernameForSync,
-      id,
+      currentStudent.personId,
     );
 
     let hashedPassword: string | undefined;
@@ -1601,7 +1600,7 @@ export class StudentsService {
     student: Awaited<ReturnType<StudentsService["findStudentEntity"]>>,
     enabled: boolean,
   ) {
-    const login = student.accessUsername?.trim();
+    const login = (student.person?.accessUsername || student.accessUsername)?.trim();
     const email = student.person?.email?.trim();
     if (!login || !email) return;
 

@@ -604,7 +604,7 @@ export default function LoginPage() {
                   </svg>
                 </div>
                 <input
-                  type="text" // Mantemos type text pro placeholder, mas a API lê como e-mail corporativo
+                  type="text"
                   placeholder="Usuário"
                   className="flex-1 px-4 outline-none text-slate-700 placeholder:text-slate-400 font-medium text-[15px] min-w-0"
                   value={email}
@@ -798,11 +798,22 @@ export default function LoginPage() {
         </div>
       )}
 
-      {/* MODAL MÁGICO DE MÚLTIPLAS ESCOLAS (DESEMPATE) */}
-      {multipleSchools && (
-        <div data-system-message-ignore className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
-          <div className={`bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200 ${isMasterLogin ? 'max-w-5xl' : 'max-w-md'}`}>
-            <div className="bg-[#2272c7] p-6 text-center">
+       {/* MODAL MÁGICO DE MÚLTIPLAS ESCOLAS (DESEMPATE) */}
+       {multipleSchools && (
+         <div data-system-message-ignore className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
+           <div className={`bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200 ${isMasterLogin ? 'max-w-5xl' : 'max-w-md'}`}>
+            <div className="relative bg-[#2272c7] px-6 pb-6 pt-20 text-center sm:pt-6">
+              <button
+                type="button"
+                onClick={() => setMultipleSchools(null)}
+                aria-label="Voltar ao login"
+                className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#183b73] shadow-[0_10px_20px_rgba(15,23,42,0.18)] transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+                Voltar ao login
+              </button>
               <div className="w-16 h-16 overflow-hidden rounded-full bg-white p-1 mx-auto mb-3 border border-white/50 shadow-lg">
                 <img
                   src="/logo-msinfor.jpg"
@@ -814,7 +825,7 @@ export default function LoginPage() {
               <p className="text-blue-100 text-sm font-medium opacity-90">
                 {isMasterLogin
                   ? 'Selecione a empresa que deseja acessar com o usuário MSINFOR.'
-                  : 'Seu e-mail está associado a mais de uma instituição. Selecione onde deseja entrar:'}
+                  : 'Seu usuário de acesso está associado a mais de uma instituição. Selecione onde deseja entrar:'}
               </p>
             </div>
 
@@ -848,7 +859,7 @@ export default function LoginPage() {
                                 disabled={loading}
                                 aria-label={`Selecionar empresa ${company.name}`}
                                 title={`Selecionar ${company.name}`}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#2272c7] text-white shadow-sm transition hover:bg-[#185b9e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2272c7] disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <path d="M5 12.5 9.5 17 19 7.5" />
@@ -918,23 +929,17 @@ export default function LoginPage() {
               )}
 
               <div className="mt-6 border-t border-slate-100 pt-4">
-                <div className="flex items-center gap-4">
+                <div>
                   <ScreenNameCopy
                     screenId={SCHOOL_SELECTION_SCREEN_ID}
                     label="Popup"
                     disableMargin
                     compact
-                    className="min-w-0 flex-1"
+                    className="w-full"
                     originText="Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\page.tsx"
                     auditText="Popup de seleção de empresa exibido após a autenticação MSINFOR quando existem múltiplos vínculos. A seleção apenas define o tenant global que será reenviado ao endpoint de login para concluir a sessão."
                     sqlText="A consulta das empresas é preparada pelo MSINFOR Central. O sistema Escola não consulta o banco de outra escola e não permite escolher tenant fora da lista retornada pela autenticação."
                   />
-                <button
-                  onClick={() => setMultipleSchools(null)}
-                  className="shrink-0 rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                >
-                  Voltar ao Login
-                </button>
                 </div>
               </div>
             </div>
@@ -953,7 +958,7 @@ export default function LoginPage() {
               </div>
               <h2 className="text-xl font-bold text-white mb-1">Escolha Como Entrar</h2>
               <p className="text-blue-100 text-sm font-medium opacity-90">
-                Este e-mail está cadastrado em mais de um tipo de acesso. Selecione qual perfil deseja usar agora.
+                Este usuário de acesso está cadastrado em mais de um tipo de acesso. Selecione qual perfil deseja usar agora.
               </p>
             </div>
 
@@ -1011,11 +1016,11 @@ export default function LoginPage() {
         </div>
       )}
 
-      {multipleBranchOptions && (
-        <div data-system-message-ignore className="fixed inset-0 z-[66] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-[#2272c7] p-6 text-center">
-              <div className="w-16 h-16 overflow-hidden rounded-full bg-white p-1 mx-auto mb-3 border border-white/50 shadow-lg">
+       {multipleBranchOptions && (
+         <div data-system-message-ignore className="fixed inset-0 z-[66] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
+           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+             <div className="relative bg-[#2272c7] px-6 pb-6 pt-6 text-center">
+               <div className="w-16 h-16 overflow-hidden rounded-full bg-white p-1 mx-auto mb-3 border border-white/50 shadow-lg">
                 <img
                   src="/logo-msinfor.jpg"
                   alt="Logotipo MSINFOR Sistemas"
@@ -1023,10 +1028,21 @@ export default function LoginPage() {
                 />
               </div>
               <h2 className="text-xl font-bold text-white mb-1">Escolha a Filial</h2>
-              <p className="text-blue-100 text-sm font-medium opacity-90">
-                {multipleBranchOptions.tenant.name}
-              </p>
-            </div>
+               <p className="text-blue-100 text-sm font-medium opacity-90">
+                 {multipleBranchOptions.tenant.name}
+               </p>
+               <button
+                 type="button"
+                 onClick={() => setMultipleBranchOptions(null)}
+                 aria-label="Voltar ao login"
+                 className="mx-auto mt-4 inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#183b73] shadow-[0_10px_20px_rgba(15,23,42,0.22)] transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+               >
+                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                   <path d="m15 18-6-6 6-6" />
+                 </svg>
+                 Voltar ao login
+               </button>
+             </div>
 
             <div className="p-6">
               <div className="space-y-3 max-h-[45vh] overflow-y-auto custom-scrollbar pr-1">
@@ -1072,17 +1088,11 @@ export default function LoginPage() {
                   label="Popup"
                   disableMargin
                   compact
-                  className="mb-3"
+                  className="w-full"
                   originText="Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\page.tsx"
                   auditText="Popup de seleção de filial apresentado após a autenticação quando o acesso possui mais de uma filial liberada. A escolha é reenviada ao backend para concluir a sessão no tenant e na filial autorizados."
                   sqlText="A lista de filiais vem da configuração ativa do MSINFOR Central e é filtrada pelo vínculo do usuário. O sistema Escola não permite selecionar filial fora dos códigos autorizados."
                 />
-                <button
-                  onClick={() => setMultipleBranchOptions(null)}
-                  className="w-full py-3 text-slate-500 hover:text-slate-800 font-bold text-sm bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
-                >
-                  Voltar ao Login
-                </button>
               </div>
             </div>
           </div>

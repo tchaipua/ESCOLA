@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
@@ -13,7 +14,7 @@ import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 import StatusConfirmationModal from '@/app/components/status-confirmation-modal';
-import { showErrorMessage } from '@/app/components/system-message-provider';
+import { showErrorMessage, showSuccessMessage } from '@/app/components/system-message-provider';
 import { TenantBranchSelect } from '@/app/components/tenant-branch-select';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
 import {
@@ -21,7 +22,6 @@ import {
     fetchEmailUsageByEmail,
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
-    fetchSharedPersonProfileByEmail,
     fetchTenantBranches,
     formatCnpj,
     formatCnpjInput,
@@ -38,6 +38,7 @@ import {
     mergeSharedPersonIntoForm,
     normalizeCnpj,
     normalizeDocumentDigits,
+    requestPasswordReset,
     type EmailUsageRecord,
     type SharedNameSuggestion,
     type TenantBranchSummary,
@@ -63,7 +64,11 @@ type GuardianStudentLink = {
     id: string;
     kinship?: string | null;
     kinshipDescription?: string | null;
-    student?: { id: string; name: string } | null;
+    student?: {
+        id: string;
+        name?: string | null;
+        person?: { name?: string | null } | null;
+    } | null;
 };
 
 type EmailUsageAlert = {
@@ -89,6 +94,7 @@ type GuardianRecord = {
     cellphone2?: string | null;
     accessUsername?: string | null;
     email?: string | null;
+    emailVerified?: boolean | null;
     telegramChatId?: string | null;
     telegramUsername?: string | null;
     telegramOptInAt?: string | null;
@@ -179,7 +185,6 @@ const GUARDIAN_COLUMNS: ConfigurableGridColumn<GuardianRecord, GuardianColumnKey
     { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
     { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
     { key: 'contact', label: 'Contato', getValue: (row) => row.whatsapp || row.phone || row.cellphone1 || row.cellphone2 || '---', visibleByDefault: true },
-    { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
     { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
     { key: 'cellphone2', label: 'Telefone 2', getValue: (row) => row.cellphone2 || '---', visibleByDefault: false },
     { key: 'zipCode', label: 'CEP', getValue: (row) => row.zipCode || '---', visibleByDefault: false },
@@ -407,6 +412,10 @@ function formatGuardianAccessProfile(value?: AccessProfileCode | null) {
     return value ? value.replaceAll('_', ' ') : 'PADRÃO';
 }
 
+function getGuardianStudentName(link?: GuardianStudentLink | null) {
+    return String(link?.student?.name || link?.student?.person?.name || '').trim();
+}
+
 function formatGuardianPermissions(permissions?: string[]) {
     const permissionLabels = permissions
         ?.map((permission) => PERMISSION_OPTIONS.find((option) => option.value === permission)?.label || permission)
@@ -415,14 +424,14 @@ function formatGuardianPermissions(permissions?: string[]) {
 }
 
 function formatGuardianStudents(guardian: GuardianRecord) {
-    const students = guardian.students?.map((item) => item.student?.name).filter(Boolean) || [];
+    const students = guardian.students?.map(getGuardianStudentName).filter(Boolean) || [];
     return students.length > 0 ? students.join(' | ') : 'Sem alunos vinculados';
 }
 
 function formatGuardianStudentLinks(guardian: GuardianRecord) {
     const students = guardian.students
         ?.map((item) => {
-            const studentName = item.student?.name || 'Aluno';
+            const studentName = getGuardianStudentName(item) || 'Aluno';
             const kinship = item.kinship === 'OUTROS' && item.kinshipDescription
                 ? item.kinshipDescription
                 : item.kinship || 'SEM PARENTESCO';
@@ -446,10 +455,16 @@ function normalizeSystemRoleLabel(role: string) {
     return key.replaceAll('_', ' ');
 }
 
+function buildExistingSystemRoleBadges(roles?: string[]) {
+    return Array.from(new Set(
+        (roles || [])
+            .map((role) => normalizeSystemRoleLabel(role))
+            .filter((role): role is string => Boolean(role)),
+    ));
+}
+
 function buildSystemRoleBadges(roles?: string[]) {
-    const normalizedRoles = (roles || [])
-        .map((role) => normalizeSystemRoleLabel(role))
-        .filter((role): role is string => Boolean(role));
+    const normalizedRoles = buildExistingSystemRoleBadges(roles);
 
     if (!normalizedRoles.includes('RESPONSAVEL')) {
         normalizedRoles.unshift('RESPONSAVEL');
@@ -459,9 +474,11 @@ function buildSystemRoleBadges(roles?: string[]) {
 }
 
 export default function ResponsaveisPage() {
+    const router = useRouter();
     const [guardians, setGuardians] = useState<GuardianRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [returnToPessoas, setReturnToPessoas] = useState(false);
     const [activeTab, setActiveTab] = useState(1);
     const [editingGuardianId, setEditingGuardianId] = useState<string | null>(null);
     const [currentRole, setCurrentRole] = useState<string | null>(null);
@@ -472,6 +489,7 @@ export default function ResponsaveisPage() {
     const [formData, setFormData] = useState<GuardianFormState>(EMPTY_FORM);
     const [isPwaPasswordVisible, setIsPwaPasswordVisible] = useState(false);
     const [isPwaPasswordConfirmationVisible, setIsPwaPasswordConfirmationVisible] = useState(false);
+    const requestedEditGuardianIdRef = useRef<string | null>(null);
     const [selectedGuardianForStudents, setSelectedGuardianForStudents] = useState<GuardianRecord | null>(null);
     const [sortState, setSortState] = useState<GridSortState<GuardianColumnKey>>(DEFAULT_SORT);
     const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
@@ -624,16 +642,15 @@ export default function ResponsaveisPage() {
         setGuardianPage((current) => Math.min(Math.max(current, 1), guardianTotalPages));
     }, [guardianTotalPages]);
 
-    const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
+    const resolvePersonSystemRoles = async (cpf?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
-        const normalizedEmail = String(email || '').trim().toUpperCase();
 
         try {
-            const [cpfProfile, emailProfile] = await Promise.all([
-                normalizedCpf.length === 11 ? fetchSharedPersonProfileByCpf(normalizedCpf) : Promise.resolve(null),
-                normalizedEmail.includes('@') ? fetchSharedPersonProfileByEmail(normalizedEmail) : Promise.resolve(null),
-            ]);
-            setPersonSystemRoles(buildSystemRoleBadges([...(cpfProfile?.roles || []), ...(emailProfile?.roles || [])]));
+            const cpfProfile = normalizedCpf.length === 11
+                ? await fetchSharedPersonProfileByCpf(normalizedCpf)
+                : null;
+            const roles = buildSystemRoleBadges(cpfProfile?.roles || []);
+            setPersonSystemRoles(roles.length ? roles : ['RESPONSAVEL']);
         } catch {
             setPersonSystemRoles(['RESPONSAVEL']);
         }
@@ -766,6 +783,25 @@ export default function ResponsaveisPage() {
         setIsPwaPasswordConfirmationVisible(false);
     };
 
+    const buildPessoasReturnUrl = () => {
+        const currentQuery = new URLSearchParams(window.location.search);
+        const restoreQuery = new URLSearchParams();
+        const search = currentQuery.get('returnSearch');
+        const role = currentQuery.get('returnRole');
+        if (search !== null) restoreQuery.set('restoreSearch', search);
+        if (role !== null) restoreQuery.set('restoreRole', role);
+        const queryString = restoreQuery.toString();
+        return `/principal/pessoas${queryString ? `?${queryString}` : ''}`;
+    };
+
+    const closeModalAndReturn = () => {
+        if (returnToPessoas) {
+            router.push(buildPessoasReturnUrl());
+            return;
+        }
+        closeModal();
+    };
+
     const openModal = () => {
         setEditingGuardianId(null);
         setActiveTab(1);
@@ -831,9 +867,25 @@ export default function ResponsaveisPage() {
         setOriginalGuardianAccessUsername(guardian.accessUsername || '');
         setIsPwaPasswordVisible(false);
         setIsPwaPasswordConfirmationVisible(false);
-        void resolvePersonSystemRoles(guardian.cpf, guardian.email);
+        void resolvePersonSystemRoles(guardian.cpf);
         setIsModalOpen(true);
     };
+
+    useEffect(() => {
+        const query = new URLSearchParams(window.location.search);
+        const requestedGuardianId = query.get('edit');
+        if (query.get('returnTo') === 'PRINCIPAL_PESSOAS') setReturnToPessoas(true);
+        if (!requestedGuardianId || isLoading || isModalOpen || requestedEditGuardianIdRef.current === requestedGuardianId) return;
+
+        const requestedGuardian = guardians.find((guardian) => guardian.id === requestedGuardianId);
+        if (!requestedGuardian) return;
+
+        requestedEditGuardianIdRef.current = requestedGuardianId;
+        handleEdit(requestedGuardian);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('edit');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }, [guardians, isLoading, isModalOpen]);
 
     const handleOpenStudentsModal = (guardian: GuardianRecord) => {
         setSelectedGuardianForStudents(guardian);
@@ -861,11 +913,18 @@ export default function ResponsaveisPage() {
                 }
 
                 const profileName = String(profile.name || 'PESSOA JÁ CADASTRADA').trim().toUpperCase();
-                setGuardianCpfConflictAlert({
-                    name: profileName,
-                    cpf: formatCpf(formData.cpf),
-                });
-                setGuardianCpfConflictRoles(buildSystemRoleBadges(profile.roles));
+                const existingRoles = buildExistingSystemRoleBadges(profile.roles);
+                setPersonSystemRoles(Array.from(new Set([...existingRoles, 'RESPONSAVEL'])));
+                if (existingRoles.includes('RESPONSAVEL')) {
+                    setGuardianCpfConflictAlert({
+                        name: profileName,
+                        cpf: formatCpf(formData.cpf),
+                    });
+                    setGuardianCpfConflictRoles(existingRoles);
+                } else {
+                    setGuardianCpfConflictAlert(null);
+                    setGuardianCpfConflictRoles([]);
+                }
             } catch (error) {
                 showErrorMessage(errorMessage(error, 'Não foi possível validar o CPF informado.'));
             }
@@ -889,17 +948,23 @@ export default function ResponsaveisPage() {
                     profile,
                 ) as unknown as GuardianFormState
             ));
-            const resolvedRoles = buildSystemRoleBadges(profile.roles);
+            const existingRoles = buildExistingSystemRoleBadges(profile.roles);
+            const resolvedRoles = Array.from(new Set([...existingRoles, 'RESPONSAVEL']));
             setPersonSystemRoles(resolvedRoles);
             setExistingCpfAlert({
                 name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
                 roles: resolvedRoles,
             });
-            setGuardianCpfConflictAlert({
-                name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
-                cpf: formatCpf(formData.cpf),
-            });
-            setGuardianCpfConflictRoles(resolvedRoles);
+            if (existingRoles.includes('RESPONSAVEL')) {
+                setGuardianCpfConflictAlert({
+                    name: String(profile.name || 'PESSOA JÁ CADASTRADA'),
+                    cpf: formatCpf(formData.cpf),
+                });
+                setGuardianCpfConflictRoles(existingRoles);
+            } else {
+                setGuardianCpfConflictAlert(null);
+                setGuardianCpfConflictRoles([]);
+            }
         } catch (error) {
             showErrorMessage(errorMessage(error, 'Não foi possível reaproveitar os dados deste CPF.'));
             setExistingCpfAlert(null);
@@ -1059,14 +1124,48 @@ export default function ResponsaveisPage() {
                     items: [
                         { label: 'Alunos vinculados', value: formatGuardianStudentLinks(guardian) },
                         { label: 'Total de vínculos', value: String(guardian.students?.length || 0) },
-                        ...(guardianFieldAccess.access ? [{ label: 'Permissões específicas', value: formatGuardianPermissions(guardian.permissions) }] : []),
                     ],
                 },
+                ...(guardianFieldAccess.access ? [
+                    {
+                        title: 'Acesso PWA',
+                        items: [
+                            { label: 'Status do acesso', value: guardian.accessUsername ? 'APP LIBERADO' : 'SEM ACESSO' },
+                            { label: 'Usuário de acesso', value: guardian.accessUsername || 'Não informado' },
+                            { label: 'E-mail para recuperação', value: guardian.email || 'Não informado' },
+                            { label: 'E-mail confirmado', value: guardian.email ? (guardian.emailVerified ? 'CONFIRMADO' : 'PENDENTE') : 'SEM E-MAIL', tone: guardian.emailVerified ? undefined : ('danger' as const) },
+                            { label: 'Senha de acesso', value: 'Não exibida por segurança' },
+                        ],
+                    },
+                    {
+                        title: 'Autoridades',
+                        items: [
+                            { label: 'Perfil de acesso', value: formatGuardianAccessProfile(guardian.accessProfile) },
+                            { label: 'Permissões', value: formatGuardianPermissions(guardian.permissions) },
+                        ],
+                    },
+                ] : []),
             ]}
             tabs={[
                 { label: 'Cadastro', sectionTitles: ['Cadastro'] },
                 { label: 'Contato e endereço', sectionTitles: ['Contato', 'Endereço'] },
                 { label: 'Vínculos', sectionTitles: ['Vínculos'] },
+                ...(guardianFieldAccess.access ? [{
+                    label: 'Acesso PWA',
+                    sectionTitles: ['Acesso PWA', 'Autoridades'],
+                    actions: guardian.emailVerified ? [{
+                        id: 'request-password-reset',
+                        label: 'Redefinir senha por e-mail',
+                        onClick: async () => {
+                            try {
+                                const result = await requestPasswordReset(guardian.email || '');
+                                showSuccessMessage(result?.message || 'Link de redefinição enviado para o e-mail confirmado.');
+                            } catch (error) {
+                                showErrorMessage(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição.');
+                            }
+                        },
+                    }] : [],
+                }] : []),
             ]}
             contextLabel="PRINCIPAL_RESPONSAVEIS_POPUP"
         />
@@ -1244,7 +1343,7 @@ export default function ResponsaveisPage() {
                     {guardian.students?.length ? `${guardian.students.length} aluno(s)` : 'Nenhum vínculo'}
                 </div>
                 <div className={`text-[13px] ${guardian.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
-                    {guardian.students?.slice(0, 2).map((link) => link.student?.name).filter(Boolean).join(', ') || 'Sem alunos relacionados'}
+                    {guardian.students?.slice(0, 2).map(getGuardianStudentName).filter(Boolean).join(', ') || 'Sem alunos relacionados'}
                 </div>
             </td>
         );
@@ -1363,6 +1462,7 @@ export default function ResponsaveisPage() {
                 title: wasEditing ? 'Responsável salvo com sucesso' : 'Responsável inserido com sucesso',
                 message: wasEditing ? 'O responsável foi alterado e a lista já foi atualizada.' : 'O responsável foi inserido e a lista já foi atualizada.',
             });
+            if (returnToPessoas) router.push(buildPessoasReturnUrl());
         } catch (error) {
             showErrorMessage(errorMessage(error, 'Erro ao salvar responsável.'));
         }
@@ -1627,7 +1727,7 @@ export default function ResponsaveisPage() {
                             title={editingGuardianId ? `Editar responsável: ${formData.name || 'RESPONSAVEL'}` : 'Cadastrar responsável'}
                             eyebrow="Escola · Cadastros"
                             description="Preencha os dados do responsável e confirme para salvar."
-                            onClose={closeModal}
+                            onClose={closeModalAndReturn}
                             schoolName={currentTenantBranding?.schoolName}
                             logoUrl={currentTenantBranding?.logoUrl}
                         />
@@ -1853,17 +1953,17 @@ export default function ResponsaveisPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>Login utilizado</label>
+                                                <label className={labelClass}>Usuário de acesso da pessoa (sem espaços)</label>
                                                 <input
                                                     type="text"
                                                     minLength={3}
                                                     maxLength={160}
                                                     pattern="\S{3,160}"
-                                                    title="Use de 3 a 160 caracteres, sem espaços. Pode ser um e-mail."
+                                                    title="Use de 3 a 160 caracteres, sem espaços."
                                                     value={formData.accessUsername}
                                                     onChange={(event) => setFormData((current) => ({ ...current, accessUsername: event.target.value.toUpperCase() }))}
                                                     className={`${inputClass} bg-white`}
-                                                    placeholder="USUÁRIO, CPF OU E-MAIL"
+                                                    placeholder="USUÁRIO DE ACESSO"
                                                 />
                                             </div>
                                             <div>
@@ -2065,7 +2165,7 @@ export default function ResponsaveisPage() {
                                 <div className="space-y-3">
                                     {selectedGuardianForStudents.students.map((link) => (
                                         <div key={link.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                            <div className="text-sm font-bold text-slate-800">{link.student?.name || 'ALUNO NÃO IDENTIFICADO'}</div>
+                                            <div className="text-sm font-bold text-slate-800">{getGuardianStudentName(link) || 'ALUNO NÃO IDENTIFICADO'}</div>
                                             <div className="mt-1 text-xs font-bold text-violet-700">
                                                 {link.kinship === 'OUTROS' && link.kinshipDescription ? link.kinshipDescription : (link.kinship || 'SEM PARENTESCO')}
                                             </div>
@@ -2112,7 +2212,7 @@ export default function ResponsaveisPage() {
                                     CPF JÁ CADASTRADO
                                 </p>
                                 <p className="!max-w-none !text-[14px] !font-semibold !leading-snug">
-                                    O CPF INFORMADO JÁ ESTÁ CADASTRADO PARA OUTRA PESSOA NO SISTEMA.
+                                    O PAPEL RESPONSÁVEL JÁ ESTÁ CADASTRADO PARA ESTA PESSOA.
                                 </p>
                                 <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
                                     CPF INFORMADO: {guardianCpfConflictAlert.cpf}
@@ -2132,11 +2232,8 @@ export default function ResponsaveisPage() {
                                         ))}
                                     </div>
                                 ) : null}
-                                <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug">
-                                    NÃO É POSSÍVEL PROSSEGUIR COM ESTE CADASTRO.
-                                </p>
                                 <p className="!max-w-none !text-[13px] !font-black uppercase !leading-snug !text-red-700">
-                                    MUITO CUIDADO: CASO DESEJE PROSSEGUIR COM ESTE CADASTRO, DEIXE O CPF EM BRANCO.
+                                    NÃO É POSSÍVEL CADASTRAR O MESMO PAPEL DUAS VEZES.
                                 </p>
                             </div>
                         </div>

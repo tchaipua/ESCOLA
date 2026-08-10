@@ -8,6 +8,7 @@ import ScreenNameCopy from '@/app/components/screen-name-copy';
 type GridRecordPopoverItem = {
     label: string;
     value: string;
+    tone?: 'danger';
 };
 
 type GridRecordPopoverSection = {
@@ -15,10 +16,18 @@ type GridRecordPopoverSection = {
     items: GridRecordPopoverItem[];
 };
 
+export type GridRecordPopoverAction = {
+    id: string;
+    label: string;
+    onClick: () => Promise<void> | void;
+    disabled?: boolean;
+};
+
 type GridRecordPopoverTab = {
     label: string;
     sectionTitles?: string[];
     showDisciplines?: boolean;
+    actions?: GridRecordPopoverAction[];
 };
 
 type GridRecordPopoverProps = {
@@ -79,6 +88,8 @@ export default function GridRecordPopover({
         ? visibleSections.filter((section) => activeTab.sectionTitles?.includes(section.title || ''))
         : visibleSections;
     const shouldShowDisciplines = activeTab ? Boolean(activeTab.showDisciplines) : visibleDisciplines.length > 0;
+    const activeTabActions = activeTab?.actions || [];
+    const [runningActionId, setRunningActionId] = useState<string | null>(null);
     useEffect(() => {
         if (!isOpen) return undefined;
 
@@ -226,11 +237,11 @@ export default function GridRecordPopover({
 
                                             <div className={isSchoolRecordDetail ? 'grid grid-cols-1 gap-4 md:grid-cols-2' : 'grid grid-cols-1 gap-1.5 md:grid-cols-3 xl:grid-cols-4'}>
                                                 {section.items.map((item) => (
-                                                    <div key={`${sectionIndex}-${item.label}`} className={isSchoolRecordDetail ? 'rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5' : 'rounded-lg border border-slate-100 bg-white px-2 py-1.5 shadow-sm'}>
-                                                        <div className={isSchoolRecordDetail ? 'text-[10px] font-bold text-slate-700' : 'text-[9px] font-black uppercase tracking-[0.1em] text-slate-400'}>
+                                                    <div key={`${sectionIndex}-${item.label}`} className={isSchoolRecordDetail ? item.tone === 'danger' ? 'rounded-lg border border-red-300 bg-red-100 px-3 py-2.5' : 'rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5' : 'rounded-lg border border-slate-100 bg-white px-2 py-1.5 shadow-sm'}>
+                                                        <div className={isSchoolRecordDetail ? item.tone === 'danger' ? 'text-[10px] font-bold text-red-800' : 'text-[10px] font-bold text-slate-700' : 'text-[9px] font-black uppercase tracking-[0.1em] text-slate-400'}>
                                                             {item.label}
                                                         </div>
-                                                        <div className={isSchoolRecordDetail ? 'mt-1 break-words text-sm font-medium text-slate-800' : 'mt-0.5 break-words text-[11px] font-semibold text-slate-700'}>
+                                                        <div className={isSchoolRecordDetail ? item.tone === 'danger' ? 'mt-1 break-words text-sm font-bold text-red-900' : 'mt-1 break-words text-sm font-medium text-slate-800' : 'mt-0.5 break-words text-[11px] font-semibold text-slate-700'}>
                                                             {item.value}
                                                         </div>
                                                     </div>
@@ -239,6 +250,31 @@ export default function GridRecordPopover({
                                         </section>
                                     ))}
                                 </div>
+                                {activeTabActions.length ? (
+                                    <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+                                        {activeTabActions.map((action) => {
+                                            const isRunning = runningActionId === action.id;
+                                            return (
+                                                <button
+                                                    key={action.id}
+                                                    type="button"
+                                                    disabled={action.disabled || runningActionId !== null}
+                                                    onClick={async () => {
+                                                        setRunningActionId(action.id);
+                                                        try {
+                                                            await action.onClick();
+                                                        } finally {
+                                                            setRunningActionId(null);
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                >
+                                                    {isRunning ? 'Enviando...' : action.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                ) : null}
                                 {contextLabel && !isSchoolRecordDetail ? (
                                     <div className="text-right">
                                         <ScreenNameCopy screenId={contextLabel} className="justify-end" disableMargin compact={compactFooter} />

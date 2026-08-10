@@ -3,10 +3,37 @@ import {
     getStoredToken,
     type StoredSessionProfile,
 } from '@/app/lib/auth-storage';
+import { getEscolaCsrfToken } from '@/app/lib/csrf-fetch';
 
 export const MASTER_ROLE = 'SOFTHOUSE_ADMIN';
 export const CASHIER_ONLY_HOME_ROUTE = '/principal/financeiro/vendas';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+
+export async function requestPasswordReset(email: string) {
+    const normalizedEmail = String(email || '').trim().toUpperCase();
+    if (!normalizedEmail) throw new Error('E-mail não informado para redefinição de senha.');
+
+    const response = await fetch(`${API_BASE_URL}/auth/request-password-reset`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json',
+            ...(getEscolaCsrfToken() ? { 'x-msinfor-csrf': getEscolaCsrfToken() } : {}),
+        },
+        body: JSON.stringify({ email: normalizedEmail }),
+    });
+    const data = await response.json().catch(() => null) as { message?: string; status?: string } | null;
+
+    if (!response.ok) {
+        throw new Error(data?.message || 'Não foi possível solicitar a redefinição de senha.');
+    }
+
+    if (data?.status === 'CENTRAL_IDENTITY_REQUIRED') {
+        throw new Error(data.message || 'A redefinição de senha desta conta é feita no MSINFOR Central.');
+    }
+
+    return data;
+}
 
 export type DashboardAuthContext = {
     token: string | null;

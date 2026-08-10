@@ -22,6 +22,7 @@ Toda a documentacao-base do projeto fica em `DOCUMENTACAO/AI`.
 
 ## Regras imutaveis
 
+- Restricao de escopo: neste projeto, somente o login da Escola pode ser aberto ou executado. Os logins da Central MSINFOR, do Petshop e de qualquer outro sistema ou ramo atual/futuro sao proibidos; quando solicitados, responder com erro de permissao, sem realizar navegacao.
 - Multi-tenant obrigatorio por `schoolId`.
 - Nao existe delete fisico em dados de negocio.
 - Auditoria obrigatoria em toda mutacao.

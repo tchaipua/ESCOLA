@@ -1,6 +1,7 @@
 'use client';
 
-import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
@@ -19,7 +20,6 @@ import {
     fetchEmailUsageByEmail,
     fetchSharedPersonNameSuggestions,
     fetchSharedPersonProfileByCpf,
-    fetchSharedPersonProfileByEmail,
     fetchTenantBranches,
     formatCepInput,
     formatCnpj,
@@ -36,6 +36,7 @@ import {
     mergeSharedPersonIntoForm,
     normalizeCnpj,
     normalizeDocumentDigits,
+    requestPasswordReset,
     readImageFileAsDataUrl,
     type EmailUsageRecord,
     type SharedNameSuggestion,
@@ -171,6 +172,7 @@ type StudentRecord = {
     cellphone2?: string | null;
     accessUsername?: string | null;
     email?: string | null;
+    emailVerified?: boolean | null;
     telegramChatId?: string | null;
     telegramUsername?: string | null;
     telegramOptInAt?: string | null;
@@ -341,7 +343,7 @@ const STUDENT_COLUMNS: ConfigurableGridColumn<StudentRecord, StudentColumnKey>[]
     { key: 'cpf', label: 'CPF', getValue: (row) => row.cpf || '---', visibleByDefault: true },
     { key: 'rg', label: 'RG', getValue: (row) => row.rg || '---', visibleByDefault: false },
     { key: 'cnpj', label: 'CNPJ', getValue: (row) => row.cnpj || '---', visibleByDefault: false },
-    { key: 'contact', label: 'Contato / Login', getValue: (row) => row.accessUsername || row.email || row.whatsapp || row.phone || row.cellphone1 || '---', visibleByDefault: true },
+    { key: 'contact', label: 'Contato', getValue: (row) => row.whatsapp || row.phone || row.cellphone1 || row.cellphone2 || '---', visibleByDefault: true },
     { key: 'email', label: 'Login utilizado', getValue: (row) => row.accessUsername || row.email || '---', visibleByDefault: false },
     { key: 'phone', label: 'Telefone', getValue: (row) => row.phone || '---', visibleByDefault: false },
     { key: 'whatsapp', label: 'WhatsApp', getValue: (row) => row.whatsapp || '---', visibleByDefault: false },
@@ -813,9 +815,11 @@ function getFormBillingPayerLabel(studentName: string, payerType: BillingPayerTy
 }
 
 export default function AlunosPage() {
+    const router = useRouter();
     const [students, setStudents] = useState<StudentRecord[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [returnToPessoas, setReturnToPessoas] = useState(false);
     const [activeTab, setActiveTab] = useState(1);
     const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
     const [originalStudentCpf, setOriginalStudentCpf] = useState('');
@@ -874,6 +878,7 @@ export default function AlunosPage() {
     const [studentStatusToggleTarget, setStudentStatusToggleTarget] = useState<StudentRecord | null>(null);
     const [studentStatusToggleAction, setStudentStatusToggleAction] = useState<'activate' | 'deactivate' | null>(null);
     const [isProcessingStudentToggle, setIsProcessingStudentToggle] = useState(false);
+    const requestedEditStudentIdRef = useRef<string | null>(null);
     const [personSystemRoles, setPersonSystemRoles] = useState<string[]>(['ALUNO']);
     const [nameSuggestions, setNameSuggestions] = useState<SharedNameSuggestion[]>([]);
     const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -1053,16 +1058,15 @@ export default function AlunosPage() {
         setStudentPage((current) => Math.min(Math.max(current, 1), studentTotalPages));
     }, [studentTotalPages]);
 
-    const resolvePersonSystemRoles = async (cpf?: string | null, email?: string | null) => {
+    const resolvePersonSystemRoles = async (cpf?: string | null) => {
         const normalizedCpf = String(cpf || '').replace(/\D/g, '');
-        const normalizedEmail = String(email || '').trim().toUpperCase();
 
         try {
-            const [cpfProfile, emailProfile] = await Promise.all([
-                normalizedCpf.length === 11 ? fetchSharedPersonProfileByCpf(normalizedCpf) : Promise.resolve(null),
-                normalizedEmail.includes('@') ? fetchSharedPersonProfileByEmail(normalizedEmail) : Promise.resolve(null),
-            ]);
-            setPersonSystemRoles(buildSystemRoleBadges([...(cpfProfile?.roles || []), ...(emailProfile?.roles || [])]));
+            const cpfProfile = normalizedCpf.length === 11
+                ? await fetchSharedPersonProfileByCpf(normalizedCpf)
+                : null;
+            const roles = buildSystemRoleBadges(cpfProfile?.roles || []);
+            setPersonSystemRoles(roles.length ? roles : ['ALUNO']);
         } catch {
             setPersonSystemRoles(['ALUNO']);
         }
@@ -1326,6 +1330,25 @@ export default function AlunosPage() {
         setPhotoError(null);
         setIsPwaPasswordVisible(false);
         setIsPwaPasswordConfirmationVisible(false);
+    };
+
+    const buildPessoasReturnUrl = () => {
+        const currentQuery = new URLSearchParams(window.location.search);
+        const restoreQuery = new URLSearchParams();
+        const search = currentQuery.get('returnSearch');
+        const role = currentQuery.get('returnRole');
+        if (search !== null) restoreQuery.set('restoreSearch', search);
+        if (role !== null) restoreQuery.set('restoreRole', role);
+        const queryString = restoreQuery.toString();
+        return `/principal/pessoas${queryString ? `?${queryString}` : ''}`;
+    };
+
+    const closeModalAndReturn = () => {
+        if (returnToPessoas) {
+            router.push(buildPessoasReturnUrl());
+            return;
+        }
+        closeModal();
     };
 
     const toggleExportColumn = (column: StudentExportColumnKey) => {
@@ -1613,9 +1636,7 @@ export default function AlunosPage() {
             return (
                 <td key={columnKey} className="px-6 py-4">
                     <div className={`text-sm font-medium ${student.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
-                        {studentFieldAccess.access
-                            ? (student.accessUsername || student.email || <span className="italic text-slate-400">Sem login</span>)
-                            : (studentFieldAccess.contact ? (student.whatsapp || student.phone || student.cellphone1 || student.cellphone2 || 'Sem contato') : '---')}
+                        {studentFieldAccess.contact ? (student.whatsapp || student.phone || student.cellphone1 || student.cellphone2 || 'Sem contato') : '---'}
                     </div>
                     {studentFieldAccess.contact ? (
                         <div className={`text-[13px] ${student.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
@@ -1743,7 +1764,7 @@ export default function AlunosPage() {
             setShowNameSuggestions(false);
             setIsLoadingNameSuggestions(false);
             setNameSuggestionError(null);
-            void resolvePersonSystemRoles(detail.cpf, detail.email);
+        void resolvePersonSystemRoles(detail.cpf);
             resetGuardianSection();
             setPhotoError(null);
             setIsPwaPasswordVisible(false);
@@ -1775,6 +1796,23 @@ export default function AlunosPage() {
     const handleEdit = (student: StudentRecord) => {
         void openStudentModal(student, 1);
     };
+
+    useEffect(() => {
+        const query = new URLSearchParams(window.location.search);
+        const requestedStudentId = query.get('edit');
+        if (query.get('returnTo') === 'PRINCIPAL_PESSOAS') setReturnToPessoas(true);
+        if (!requestedStudentId || isLoading || isModalOpen || requestedEditStudentIdRef.current === requestedStudentId) return;
+
+        const requestedStudent = students.find((student) => student.id === requestedStudentId);
+        if (!requestedStudent) return;
+
+        requestedEditStudentIdRef.current = requestedStudentId;
+        void openStudentModal(requestedStudent, 1).finally(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('edit');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        });
+    }, [isLoading, isModalOpen, students]);
 
     const handleCpfBlur = async () => {
         const formattedCpf = formatCpf(formData.cpf);
@@ -2132,6 +2170,7 @@ export default function AlunosPage() {
             await fetchStudents();
             setSaveSuccessPopup(null);
             showSuccessMessage(wasEditing ? 'O aluno foi alterado e a lista já foi atualizada.' : 'O aluno foi inserido e a lista já foi atualizada.');
+            if (returnToPessoas) router.push(buildPessoasReturnUrl());
         } catch (error) {
             setSaveError(errorMessage(error, 'Erro ao salvar aluno.'));
         }
@@ -2271,6 +2310,45 @@ export default function AlunosPage() {
                     items: [
                         { label: 'Anotações', value: student.notes || 'Sem observações cadastradas' },
                     ],
+                }] : []),
+                ...(studentFieldAccess.access ? [
+                    {
+                        title: 'Acesso PWA',
+                        items: [
+                            { label: 'Status do acesso', value: student.accessUsername ? 'APP LIBERADO' : 'SEM ACESSO' },
+                            { label: 'Login utilizado', value: student.accessUsername || student.email || 'Não informado' },
+                            { label: 'E-mail para recuperação', value: student.email || 'Não informado' },
+                            { label: 'E-mail confirmado', value: student.email ? (student.emailVerified ? 'CONFIRMADO' : 'PENDENTE') : 'SEM E-MAIL', tone: student.emailVerified ? undefined : ('danger' as const) },
+                            { label: 'Senha de acesso', value: 'Não exibida por segurança' },
+                        ],
+                    },
+                    {
+                        title: 'Autoridades',
+                        items: [
+                            { label: 'Perfil de acesso', value: formatStudentAccessProfile(student.accessProfile) },
+                            { label: 'Permissões', value: formatStudentPermissions(student.permissions) },
+                        ],
+                    },
+                ] : []),
+            ]}
+            tabs={[
+                { label: 'Cadastro', sectionTitles: ['Cadastro', 'Acadêmico', 'Observações'], showDisciplines: false },
+                { label: 'Endereço', sectionTitles: ['Endereço'] },
+                ...(studentFieldAccess.access ? [{
+                    label: 'Acesso PWA',
+                    sectionTitles: ['Acesso PWA', 'Autoridades'],
+                    actions: student.emailVerified ? [{
+                        id: 'request-password-reset',
+                        label: 'Redefinir senha por e-mail',
+                        onClick: async () => {
+                            try {
+                                const result = await requestPasswordReset(student.email || '');
+                                showSuccessMessage(result?.message || 'Link de redefinição enviado para o e-mail confirmado.');
+                            } catch (error) {
+                                showErrorMessage(error instanceof Error ? error.message : 'Não foi possível enviar o link de redefinição.');
+                            }
+                        },
+                    }] : [],
                 }] : []),
             ]}
             contextLabel="PRINCIPAL_ALUNOS_POPUP"
@@ -2633,7 +2711,7 @@ export default function AlunosPage() {
                             title={editingStudentId ? `Editar aluno: ${formData.name || 'ALUNO'}` : 'Cadastrar aluno'}
                             eyebrow="Escola · Cadastros"
                             description="Preencha os dados do aluno e confirme para salvar."
-                            onClose={closeModal}
+                            onClose={closeModalAndReturn}
                             schoolName={currentTenantBranding?.schoolName}
                             logoUrl={currentTenantBranding?.logoUrl}
                         />
@@ -2656,7 +2734,7 @@ export default function AlunosPage() {
                             {[
                                 { id: 1, label: '1. DADOS BÁSICOS' },
                                 { id: 2, label: '2. ENDEREÇO' },
-                                { id: 3, label: '3. CREDENCIAIS DE ACESSO' },
+                                { id: 3, label: '3. ACESSO PWA (APP)' },
                                 { id: 4, label: '4. RESPONSÁVEIS', disabled: !editingStudentId },
                                 { id: 5, label: '5. FINANCEIRO' },
                                 { id: 6, label: '6. FOTOS' },
@@ -2920,15 +2998,18 @@ export default function AlunosPage() {
                             ) : null}
                             {activeTab === 3 ? (
                                 studentFieldAccess.access ? (
-                                    <div className="space-y-6">
-                                    <div className="mx-auto max-w-4xl rounded-xl border border-slate-200 bg-slate-50 p-6">
-                                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                                        <h4 className="text-xs uppercase tracking-wider font-bold text-blue-800 pb-1.5 border-b border-blue-50">Configurações de Acesso ao App</h4>
+                                        <div className="grid grid-cols-1 gap-3 max-w-7xl mx-auto mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200 md:grid-cols-2">
                                             <div className="md:col-span-2">
-                                                <label className={labelClass}>Perfil pré-definido do aluno</label>
+                                                <h5 className="text-center text-sm font-semibold text-slate-600 mb-2">Forneça as credenciais para que o aluno acesse chamadas e notas via PWA.</h5>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Perfil pré-definido do aluno</label>
                                                 <select
                                                     value={formData.accessProfile}
                                                     onChange={(event) => handleStudentProfileChange(event.target.value as AccessProfileCode)}
-                                                    className={`${inputClass} bg-white`}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
                                                 >
                                                     {getProfilesForRole('ALUNO').map((profile) => (
                                                         <option key={profile.code} value={profile.code}>{profile.label}</option>
@@ -2939,31 +3020,37 @@ export default function AlunosPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>Login utilizado</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário de acesso da pessoa (sem espaços)</label>
                                                 <input
                                                     type="text"
                                                     minLength={3}
                                                     maxLength={160}
                                                     pattern="\S{3,160}"
-                                                    title="Use de 3 a 160 caracteres, sem espaços. Pode ser um e-mail."
+                                                    title="Use de 3 a 160 caracteres, sem espaços."
                                                     value={formData.accessUsername}
                                                     onChange={(event) => setFormData((current) => ({ ...current, accessUsername: event.target.value.toUpperCase() }))}
-                                                    className={`${inputClass} bg-white`}
-                                                    placeholder="USUÁRIO, CPF OU E-MAIL"
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+                                                    placeholder="USUÁRIO DE ACESSO"
                                                 />
+                                                <div className="mt-1 text-xs font-medium text-slate-500">
+                                                    Fica salvo na pessoa e é compartilhado entre todos os perfis dela.
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label className={labelClass}>E-mail para confirmação e recuperação</label>
+                                            <div className="md:col-span-2">
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">E-mail para confirmação e recuperação</label>
                                                 <input
                                                     type="email"
                                                     value={formData.email}
                                                     onChange={(event) => setFormData((current) => ({ ...current, email: event.target.value.toUpperCase() }))}
                                                     onBlur={handleEmailUsageBlur}
-                                                    className={`${inputClass} bg-white`}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
                                                 />
+                                                <div className="mt-1 text-xs font-medium text-slate-500">
+                                                    Obrigatório quando usuário, senha e confirmação forem informados.
+                                                </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>{originalStudentAccessUsername ? 'Nova senha (deixe em branco para manter)' : 'Senha inicial'}</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">{originalStudentAccessUsername ? 'Nova senha (deixe em branco para manter)' : 'Senha de acesso PWA'}</label>
                                                 <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                                                     <input
                                                         type={isPwaPasswordVisible ? 'text' : 'password'}
@@ -2973,6 +3060,7 @@ export default function AlunosPage() {
                                                         onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))}
                                                         className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
                                                         autoComplete="new-password"
+                                                        placeholder={originalStudentAccessUsername ? 'Preencha somente para trocar a senha' : 'Defina a senha do aluno'}
                                                     />
                                                     <button type="button" onClick={() => setIsPwaPasswordVisible((current) => !current)} className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500" aria-label={isPwaPasswordVisible ? 'Ocultar senha' : 'Mostrar senha'}>
                                                         {isPwaPasswordVisible ? (
@@ -2984,7 +3072,7 @@ export default function AlunosPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>Confirmação de senha</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Confirmar senha de acesso PWA</label>
                                                 <div className="flex overflow-hidden rounded-lg border border-slate-300 bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
                                                     <input
                                                         type={isPwaPasswordConfirmationVisible ? 'text' : 'password'}
@@ -2993,6 +3081,7 @@ export default function AlunosPage() {
                                                         onChange={(event) => setFormData((current) => ({ ...current, passwordConfirmation: event.target.value }))}
                                                         className="min-w-0 flex-1 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 outline-none"
                                                         autoComplete="new-password"
+                                                        placeholder="Repita a senha de acesso"
                                                     />
                                                     <button type="button" onClick={() => setIsPwaPasswordConfirmationVisible((current) => !current)} className="flex w-12 shrink-0 items-center justify-center border-l border-slate-200 text-slate-500" aria-label={isPwaPasswordConfirmationVisible ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
                                                         {isPwaPasswordConfirmationVisible ? (
@@ -3004,20 +3093,20 @@ export default function AlunosPage() {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className={labelClass}>Telegram Chat ID</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Telegram Chat ID</label>
                                                 <input
                                                     value={formData.telegramChatId}
                                                     onChange={(event) => setFormData((current) => ({ ...current, telegramChatId: event.target.value.trim() }))}
-                                                    className={`${inputClass} bg-white`}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
                                                     placeholder="Ex.: 123456789"
                                                 />
                                             </div>
                                             <div>
-                                                <label className={labelClass}>Usuário Telegram</label>
+                                                <label className="text-xs font-bold text-slate-600 mb-1 block">Usuário Telegram</label>
                                                 <input
                                                     value={formData.telegramUsername}
                                                     onChange={(event) => setFormData((current) => ({ ...current, telegramUsername: event.target.value.toUpperCase() }))}
-                                                    className={`${inputClass} bg-white`}
+                                                    className="w-full bg-white border border-slate-300 text-slate-900 font-medium rounded-lg px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-sm"
                                                     placeholder="Ex.: @USUARIO"
                                                 />
                                             </div>
@@ -3031,9 +3120,7 @@ export default function AlunosPage() {
                                                 Telegram ativo para notificações
                                             </label>
                                         </div>
-                                    </div>
-
-                                    {editingStudentId ? <div className="mx-auto max-w-4xl rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-medium text-violet-700">Depois de salvar os dados deste aluno, você também pode usar a aba RESPONSÁVEIS para lançar quem responde por ele.</div> : null}
+                                        {editingStudentId ? <div className="mx-auto max-w-7xl rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm font-medium text-violet-700">Depois de salvar os dados deste aluno, você também pode usar a aba RESPONSÁVEIS para lançar quem responde por ele.</div> : null}
                                     </div>
                                 ) : (
                                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm font-medium text-amber-700">

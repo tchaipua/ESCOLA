@@ -98,7 +98,7 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto extends PartialType(CreateUserDto) {
-  @ApiPropertyOptional({ description: "Login do sistema não pode ser trocado durante a edição" })
+  @ApiPropertyOptional({ description: "Novo e-mail central da pessoa e do login administrativo" })
   @IsEmail()
   @IsOptional()
   email?: string;
