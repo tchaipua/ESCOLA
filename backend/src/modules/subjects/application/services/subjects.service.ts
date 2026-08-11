@@ -11,6 +11,7 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 type FindAllOptions = {
   activeOnly?: boolean;
@@ -18,7 +19,10 @@ type FindAllOptions = {
 
 @Injectable()
 export class SubjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private normalizeName(name: string) {
     return name.trim().toUpperCase();
@@ -114,14 +118,23 @@ export class SubjectsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.subject.updateMany({
+    const subject = await this.findOne(id);
+    const result = await this.prisma.subject.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: getTenantContext()!.userId,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "SUBJECT_INACTIVATED",
+      title: "DISCIPLINA INATIVADA",
+      message: `A DISCIPLINA ${subject.name} FOI INATIVADA.`,
+      sourceType: "SUBJECT_STATUS",
+      sourceId: id,
+      metadata: { subjectId: id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
@@ -141,6 +154,16 @@ export class SubjectsService {
             updatedBy: getTenantContext()!.userId,
           },
     });
+    if (!active) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SUBJECT_INACTIVATED",
+        title: "DISCIPLINA INATIVADA",
+        message: `A DISCIPLINA ${updatedSubject.name} FOI INATIVADA.`,
+        sourceType: "SUBJECT_STATUS",
+        sourceId: id,
+        metadata: { subjectId: id },
+      }).catch(() => undefined);
+    }
 
     return {
       message: active

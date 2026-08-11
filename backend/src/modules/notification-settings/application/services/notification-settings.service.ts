@@ -11,6 +11,8 @@ import { getTenantContext } from "../../../../common/tenant/tenant.context";
 import { SharedProfilesService } from "../../../shared-profiles/application/services/shared-profiles.service";
 import { GlobalSettingsService } from "../../../global-settings/application/services/global-settings.service";
 import { UpdatePersonNotificationSettingsDto } from "../dto/update-person-notification-settings.dto";
+import { NotificationPreferencesService } from "../../../notification-preferences/application/services/notification-preferences.service";
+import { UpdateNotificationPreferencesDto } from "../../../notification-preferences/application/dto/update-notification-preferences.dto";
 
 type NotificationUserRow = {
   id: string;
@@ -35,7 +37,23 @@ export class NotificationSettingsService {
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly globalSettingsService: GlobalSettingsService,
+    private readonly notificationPreferencesService: NotificationPreferencesService,
   ) {}
+
+  listNotificationEvents() {
+    return this.notificationPreferencesService.listEventDefinitions();
+  }
+
+  getPersonNotificationPreferences(personId: string) {
+    return this.notificationPreferencesService.getPersonPreferences(personId);
+  }
+
+  updatePersonNotificationPreferences(
+    personId: string,
+    dto: UpdateNotificationPreferencesDto,
+  ) {
+    return this.notificationPreferencesService.updatePersonPreferences(personId, dto);
+  }
 
   private tenantId() {
     return getTenantContext()!.tenantId;

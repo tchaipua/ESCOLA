@@ -1062,6 +1062,17 @@ export class LessonEventsService {
         action: "DELETE",
       });
 
+    void this.notificationsService
+      .dispatchConfiguredEventNotification({
+        eventType: "LESSON_EVENT_CANCELED",
+        title: "AVISO DA AGENDA CANCELADO",
+        message: `O AVISO ${currentEvent.title} FOI CANCELADO NA AGENDA ESCOLAR.`,
+        sourceType: "LESSON_EVENT_STATUS",
+        sourceId: id,
+        metadata: { lessonEventId: id, eventType: currentEvent.eventType },
+      })
+      .catch(() => undefined);
+
     const removedEvent = await this.prisma.lessonEvent.update({
       where: { id },
       data: {

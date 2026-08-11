@@ -494,3 +494,38 @@ Para cada decisao, registrar:
 - Alternativas consideradas: sincronizacao bidirecional; fallback por coluna
   local; acesso direto ao banco Central; exclusao imediata das colunas legadas.
 - Status: aceita
+
+## DEC-0048
+
+- Data: 2026-08-11
+- Contexto: a Escola precisava notificar usuários específicos quando cadastros
+  fossem inativados, cancelados ou tivessem vínculos removidos.
+- Decisão: persistir preferências individualmente por pessoa e por tipo de
+  evento em `notification_preferences`, com canais independentes para sistema,
+  e-mail e Telegram. O catálogo fica no código da Escola e não é configurado
+  por perfil global.
+- Impacto: os fluxos de status/cancelamento continuam com soft delete e
+  auditoria; o despacho respeita o `tenantId`, usa a pessoa mestre e não cria
+  acesso à Central, ao Petshop ou a qualquer outro ramo.
+- Alternativas consideradas: regra única por perfil, colunas adicionais em
+  `people` e preferências sem tenant. Foram rejeitadas por perderem controle
+  individual, aumentarem acoplamento do cadastro mestre ou violarem isolamento.
+- Status: aceita
+
+## DEC-0049
+
+- Data: 2026-08-11
+- Contexto: o SQLite local registrava a migration histórica
+  `20260720110000_add_storage_explorer_audit_events`, mas o arquivo não estava
+  mais presente no repositório; o deploy ficava impedido mesmo sem existir
+  tabela ou consumidor legado correspondente no schema atual.
+- Decisão: restaurar o diretório histórico como migration de compatibilidade
+  sem operações SQL, preservando o nome já aplicado e evitando reaplicar uma
+  estrutura removida. A migration funcional de preferências segue depois dela
+  na cadeia normal do Prisma.
+- Impacto: o histórico local volta a ser reconhecido pelo Prisma, sem alteração
+  de dados de negócio; o `migrate deploy` continua versionado e idempotente.
+- Alternativas consideradas: apagar o registro de `_prisma_migrations`, marcar
+  a migration como revertida ou executar a migration nova por SQL ad-hoc. Foram
+  rejeitadas por perderem rastreabilidade ou deixarem a cadeia inconsistente.
+- Status: aceita

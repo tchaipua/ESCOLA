@@ -6,6 +6,7 @@ import type { ICurrentUser } from "../../../../common/decorators/current-user.de
 import { ListMyNotificationsDto } from "../dto/list-my-notifications.dto";
 import { DEFAULT_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
+import type { NotificationEventType } from "../../../notification-preferences/application/notification-event-definitions";
 
 type RecipientType = "USER" | "TEACHER" | "STUDENT" | "GUARDIAN";
 
@@ -155,6 +156,23 @@ type TelegramConfiguration = {
   telegramEnabled?: boolean | null;
   telegramBotToken?: string | null;
   telegramBotUsername?: string | null;
+};
+
+type ConfiguredEventNotificationPayload = {
+  eventType: NotificationEventType;
+  title: string;
+  message: string;
+  sourceType?: string;
+  sourceId?: string | null;
+  actionUrl?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+type ConfiguredEventRecipient = NotificationRecipient & {
+  personId: string;
+  sendInternal: boolean;
+  sendEmail: boolean;
+  sendTelegram: boolean;
 };
 
 @Injectable()
@@ -763,6 +781,270 @@ export class NotificationsService {
 
     const count = results.filter(Boolean).length;
     return { sent: count > 0, count };
+  }
+
+  private escapeEmailHtml(value: string) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  private async buildConfiguredEventRecipients(
+    eventType: NotificationEventType,
+  ): Promise<ConfiguredEventRecipient[]> {
+    const preferences = await this.prisma.notificationPreference.findMany({
+      where: {
+        tenantId: this.tenantId(),
+        eventType,
+        enabled: true,
+        canceledAt: null,
+        person: { canceledAt: null },
+      },
+      include: {
+        person: {
+          include: {
+            users: {
+              where: { tenantId: this.tenantId(), canceledAt: null },
+              select: { id: true },
+            },
+            teachers: {
+              where: { tenantId: this.tenantId(), canceledAt: null },
+              select: { id: true },
+            },
+            students: {
+              where: { tenantId: this.tenantId(), canceledAt: null },
+              select: { id: true },
+            },
+            guardians: {
+              where: { tenantId: this.tenantId(), canceledAt: null },
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    const recipients: ConfiguredEventRecipient[] = [];
+    for (const preference of preferences) {
+      const person = preference.person;
+      const common = {
+        personId: person.id,
+        name: person.name || "PESSOA",
+        email: person.email,
+        telegramChatId: this.getOptedInTelegramChatId(person),
+        sendInternal: preference.sendInternal,
+        sendEmail: preference.sendEmail,
+        sendTelegram: preference.sendTelegram,
+      };
+
+      if (preference.sendInternal) {
+        for (const role of [
+          ["USER", person.users],
+          ["TEACHER", person.teachers],
+          ["STUDENT", person.students],
+          ["GUARDIAN", person.guardians],
+        ] as const) {
+          const recipientType = role[0] as RecipientType;
+          for (const record of role[1]) {
+            recipients.push({
+              ...common,
+              recipientType,
+              recipientId: record.id,
+            });
+          }
+        }
+      }
+
+      if (preference.sendEmail || preference.sendTelegram) {
+        recipients.push({
+          ...common,
+          recipientType: "USER",
+          recipientId: `PERSON:${person.id}`,
+        });
+      }
+    }
+
+    return recipients;
+  }
+
+  private async sendConfiguredEventEmails(
+    recipients: ConfiguredEventRecipient[],
+    payload: ConfiguredEventNotificationPayload,
+  ) {
+    const tenant = await this.getTenantSmtpConfiguration();
+    if (!tenant?.smtpHost || !tenant.smtpPort || !tenant.smtpEmail) return 0;
+    if (tenant.smtpAuthenticate && !tenant.smtpPassword) return 0;
+
+    const uniqueRecipients = Array.from(
+      new Map(
+        recipients
+          .filter(
+            (recipient) =>
+              recipient.sendEmail &&
+              recipient.email?.trim() &&
+              this.isTemporarilyAllowedEmail(recipient.email),
+          )
+          .map((recipient) => [recipient.personId, recipient]),
+      ).values(),
+    );
+    if (!uniqueRecipients.length) return 0;
+
+    const transporter = nodemailer.createTransport({
+      host: tenant.smtpHost,
+      port: tenant.smtpPort,
+      secure: tenant.smtpSecure || false,
+      connectionTimeout: (tenant.smtpTimeout || 60) * 1000,
+      auth: tenant.smtpAuthenticate
+        ? { user: tenant.smtpEmail, pass: tenant.smtpPassword || "" }
+        : undefined,
+    });
+
+    let count = 0;
+    for (const [index, recipient] of uniqueRecipients.entries()) {
+      if (index > 0) await this.waitForEmailSendInterval();
+      try {
+        await transporter.sendMail({
+          from: `"${tenant.smtpSenderName || tenant.name}" <${tenant.smtpEmail}>`,
+          to: recipient.email!,
+          replyTo: tenant.smtpReplyTo || tenant.smtpEmail || undefined,
+          subject: payload.title,
+          text: `${payload.message}\n\nACESSE O SISTEMA PARA ACOMPANHAR MAIS DETALHES.`,
+          html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b"><h2>${this.escapeEmailHtml(payload.title)}</h2><p>${this.escapeEmailHtml(payload.message)}</p><p>Acesse o sistema para acompanhar mais detalhes.</p></div>`,
+        });
+        count += 1;
+        if (payload.sourceId) {
+          await this.prisma.notification.updateMany({
+            where: {
+              tenantId: this.tenantId(),
+              sourceType: payload.sourceType || "STATUS_EVENT",
+              sourceId: payload.sourceId,
+              canceledAt: null,
+              recipientId: {
+                in: recipients
+                  .filter((item) => item.personId === recipient.personId)
+                  .map((item) => item.recipientId),
+              },
+            },
+            data: { emailedAt: new Date(), updatedBy: this.userId() },
+          });
+        }
+      } catch {
+        continue;
+      }
+    }
+    return count;
+  }
+
+  private async sendConfiguredEventTelegram(
+    recipients: ConfiguredEventRecipient[],
+    payload: ConfiguredEventNotificationPayload,
+  ) {
+    const uniqueRecipients = Array.from(
+      new Map(
+        recipients
+          .filter(
+            (recipient) =>
+              recipient.sendTelegram && recipient.telegramChatId?.trim(),
+          )
+          .map((recipient) => [recipient.personId, recipient]),
+      ).values(),
+    );
+    if (!uniqueRecipients.length) return 0;
+
+    const config = await this.getTenantTelegramConfiguration();
+    if (!config?.telegramBotToken || config.telegramEnabled === false) return 0;
+
+    const results = await Promise.all(
+      uniqueRecipients.map(async (recipient) => {
+        try {
+          const response = await fetch(
+            `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: recipient.telegramChatId,
+                text: `${payload.title}\n\n${payload.message}\n\nACESSE O SISTEMA PARA ACOMPANHAR MAIS DETALHES.`,
+              }),
+            },
+          );
+          const body = await response.json().catch(() => null);
+          if (!response.ok || body?.ok !== true) throw new Error("Falha no Telegram.");
+          if (payload.sourceId) {
+            await this.prisma.notification.updateMany({
+              where: {
+                tenantId: this.tenantId(),
+                sourceType: payload.sourceType || "STATUS_EVENT",
+                sourceId: payload.sourceId,
+                canceledAt: null,
+                recipientId: {
+                  in: recipients
+                    .filter((item) => item.personId === recipient.personId)
+                    .map((item) => item.recipientId),
+                },
+              },
+              data: {
+                telegramSentAt: new Date(),
+                telegramStatus: "SENT",
+                telegramError: null,
+                updatedBy: this.userId(),
+              },
+            });
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      }),
+    );
+    return results.filter(Boolean).length;
+  }
+
+  async dispatchConfiguredEventNotification(
+    payload: ConfiguredEventNotificationPayload,
+  ) {
+    const recipients = await this.buildConfiguredEventRecipients(payload.eventType);
+    const internalRecipients = recipients.filter(
+      (recipient) => recipient.sendInternal && !recipient.recipientId.startsWith("PERSON:"),
+    );
+    if (internalRecipients.length) {
+      await this.prisma.notification.createMany({
+        data: internalRecipients.map((recipient) => ({
+          tenantId: this.tenantId(),
+          recipientType: recipient.recipientType,
+          recipientId: recipient.recipientId,
+          category: "CADASTRO_STATUS",
+          title: this.normalizeText(payload.title),
+          message: this.normalizeText(payload.message),
+          actionUrl: payload.actionUrl || "/dashboard/notificacoes",
+          sourceType: payload.sourceType || "STATUS_EVENT",
+          sourceId: payload.sourceId || null,
+          metadata: JSON.stringify({
+            eventType: payload.eventType,
+            ...(payload.metadata || {}),
+          }),
+          createdBy: this.userId(),
+          updatedBy: this.userId(),
+        })),
+      });
+    }
+
+    const hasEmail = recipients.some(
+      (recipient) => recipient.sendEmail && recipient.email?.trim(),
+    );
+    if (hasEmail) {
+      this.runEmailJobInBackground(() => this.sendConfiguredEventEmails(recipients, payload));
+    }
+    const telegramCount = await this.sendConfiguredEventTelegram(recipients, payload);
+    return {
+      notificationsCreated: internalRecipients.length,
+      emailQueued: hasEmail,
+      telegramSent: telegramCount > 0,
+      telegramCount,
+    };
   }
 
   private buildAssessmentNotificationTitle(

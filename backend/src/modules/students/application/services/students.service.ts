@@ -37,6 +37,7 @@ import {
 } from "../../../../common/auth/entity-visibility";
 import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class StudentsService {
@@ -46,6 +47,7 @@ export class StudentsService {
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private async normalizeLegacyTableDateTimes(
@@ -1422,6 +1424,7 @@ export class StudentsService {
         tenantId: this.tenantId(),
         canceledAt: null,
       },
+      include: { person: true },
     });
 
     if (!student) {
@@ -1467,6 +1470,17 @@ export class StudentsService {
         },
       });
 
+      void this.notificationsService
+        .dispatchConfiguredEventNotification({
+          eventType: "ENROLLMENT_CANCELED",
+          title: "MATRÍCULA CANCELADA",
+          message: `A MATRÍCULA DO ALUNO ${student.person?.name || studentId} FOI CANCELADA.`,
+          sourceType: "ENROLLMENT_STATUS",
+          sourceId: currentEnrollment.id,
+          metadata: { enrollmentId: currentEnrollment.id, studentId, status: "CANCELADO" },
+        })
+        .catch(() => undefined);
+
       return { enrollment: null };
     }
 
@@ -1492,6 +1506,7 @@ export class StudentsService {
       throw new NotFoundException("Turma + Série inválida para esta escola.");
     }
 
+    let canceledEnrollmentId: string | null = null;
     const enrollment = await this.prisma.$transaction(async (tx) => {
       const currentEnrollment = await tx.enrollment.findFirst({
         where: {
@@ -1517,6 +1532,7 @@ export class StudentsService {
       }
 
       if (currentEnrollment) {
+        canceledEnrollmentId = currentEnrollment.id;
         await tx.enrollment.update({
           where: { id: currentEnrollment.id },
           data: {
@@ -1549,6 +1565,19 @@ export class StudentsService {
       });
     });
 
+    if (canceledEnrollmentId) {
+      void this.notificationsService
+        .dispatchConfiguredEventNotification({
+          eventType: "ENROLLMENT_CANCELED",
+          title: "MATRÍCULA CANCELADA",
+          message: `A MATRÍCULA ANTERIOR DO ALUNO ${student.person?.name || studentId} FOI CANCELADA POR TRANSFERÊNCIA DE TURMA.`,
+          sourceType: "ENROLLMENT_STATUS",
+          sourceId: canceledEnrollmentId,
+          metadata: { enrollmentId: canceledEnrollmentId, studentId, status: "CANCELADO", reason: "TRANSFERENCIA_DE_TURMA" },
+        })
+        .catch(() => undefined);
+    }
+
     return { enrollment };
   }
 
@@ -1565,6 +1594,16 @@ export class StudentsService {
     });
 
     await this.synchronizeStudentStatus(student, false);
+    void this.notificationsService
+      .dispatchConfiguredEventNotification({
+        eventType: "STUDENT_INACTIVATED",
+        title: "ALUNO INATIVADO",
+        message: `O ALUNO ${student.person?.name || id} FOI INATIVADO.`,
+        sourceType: "STUDENT_STATUS",
+        sourceId: id,
+        metadata: { studentId: id },
+      })
+      .catch(() => undefined);
     return result;
   }
 
@@ -1587,6 +1626,18 @@ export class StudentsService {
     });
 
     await this.synchronizeStudentStatus(student, active);
+    if (!active && !student.canceledAt) {
+      void this.notificationsService
+        .dispatchConfiguredEventNotification({
+          eventType: "STUDENT_INACTIVATED",
+          title: "ALUNO INATIVADO",
+          message: `O ALUNO ${student.person?.name || id} FOI INATIVADO.`,
+          sourceType: "STUDENT_STATUS",
+          sourceId: id,
+          metadata: { studentId: id },
+        })
+        .catch(() => undefined);
+    }
 
     return {
       message: active

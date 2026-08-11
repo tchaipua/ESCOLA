@@ -9,6 +9,7 @@ import { CreateLessonCalendarDto } from "../dto/create-lesson-calendar.dto";
 import { UpdateLessonCalendarItemDto } from "../dto/update-lesson-calendar-item.dto";
 import { UpdateLessonCalendarDto } from "../dto/update-lesson-calendar.dto";
 import { getVisibleBranchCodes } from "../../../../common/tenant/branch.constants";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 type NormalizedPeriod = {
   periodType: "AULA" | "INTERVALO";
@@ -79,7 +80,10 @@ function getSchoolYearPeriodClosureTitle(periodType: string) {
 
 @Injectable()
 export class LessonCalendarsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private static readonly DAY_ORDER = [
     "DOMINGO",
@@ -1367,7 +1371,7 @@ export class LessonCalendarsService {
       throw new NotFoundException("Grade anual não encontrada.");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.lessonCalendarPeriod.updateMany({
         where: {
           lessonCalendarId: id,
@@ -1406,6 +1410,15 @@ export class LessonCalendarsService {
 
       return { success: true };
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "LESSON_CALENDAR_INACTIVATED",
+      title: "GRADE ANUAL INATIVADA",
+      message: `A GRADE ANUAL ${id} FOI INATIVADA.`,
+      sourceType: "LESSON_CALENDAR_STATUS",
+      sourceId: id,
+      metadata: { lessonCalendarId: id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
@@ -1420,7 +1433,7 @@ export class LessonCalendarsService {
       throw new NotFoundException("Grade anual não encontrada.");
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const commonWhere = {
         lessonCalendarId: id,
         tenantId: this.tenantId(),
@@ -1478,5 +1491,16 @@ export class LessonCalendarsService {
         lessonCalendar: updatedCalendar,
       };
     });
+    if (!active && !current.canceledAt) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "LESSON_CALENDAR_INACTIVATED",
+        title: "GRADE ANUAL INATIVADA",
+        message: `A GRADE ANUAL ${id} FOI INATIVADA.`,
+        sourceType: "LESSON_CALENDAR_STATUS",
+        sourceId: id,
+        metadata: { lessonCalendarId: id },
+      }).catch(() => undefined);
+    }
+    return result;
   }
 }

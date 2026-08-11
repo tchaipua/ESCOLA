@@ -6,10 +6,14 @@ import {
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { CreateEnrollmentDto } from "../dto/create-enrollment.dto";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class EnrollmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async create(createDto: CreateEnrollmentDto) {
     const { studentId, seriesClassId, status } = createDto;
@@ -83,7 +87,7 @@ export class EnrollmentsService {
     return this.prisma.enrollment.findMany({
       where: { canceledAt: null },
       include: {
-        student: true,
+        student: { include: { person: true } },
         class: true,
         seriesClass: {
           include: {
@@ -101,7 +105,7 @@ export class EnrollmentsService {
     const enrollment = await this.prisma.enrollment.findFirst({
       where: { id, canceledAt: null },
       include: {
-        student: true,
+        student: { include: { person: true } },
         class: true,
         seriesClass: {
           include: {
@@ -117,22 +121,34 @@ export class EnrollmentsService {
   }
 
   async updateStatus(id: string, newStatus: string) {
-    await this.findOne(id);
+    const enrollment = await this.findOne(id);
+    const normalizedStatus = newStatus.toUpperCase();
 
-    return this.prisma.enrollment.update({
+    const result = await this.prisma.enrollment.update({
       where: { id },
       data: {
-        status: newStatus.toUpperCase(),
+        status: normalizedStatus,
         updatedBy: getTenantContext()!.userId,
       },
     });
+    if (normalizedStatus === "CANCELADO" || normalizedStatus === "TRANSFERIDO") {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: normalizedStatus === "TRANSFERIDO" ? "ENROLLMENT_TRANSFERRED" : "ENROLLMENT_CANCELED",
+        title: normalizedStatus === "TRANSFERIDO" ? "MATRÍCULA TRANSFERIDA" : "MATRÍCULA CANCELADA",
+        message: `A MATRÍCULA DO ALUNO ${enrollment.student.person?.name || enrollment.studentId} FOI ${normalizedStatus}.`,
+        sourceType: "ENROLLMENT_STATUS",
+        sourceId: id,
+        metadata: { enrollmentId: id, studentId: enrollment.studentId, status: normalizedStatus },
+      }).catch(() => undefined);
+    }
+    return result;
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const enrollment = await this.findOne(id);
 
     // Soft Delete da Diretiva
-    return this.prisma.enrollment.updateMany({
+    const result = await this.prisma.enrollment.updateMany({
       where: { id },
       data: {
         status: "CANCELADO",
@@ -140,5 +156,14 @@ export class EnrollmentsService {
         canceledBy: getTenantContext()!.userId,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "ENROLLMENT_CANCELED",
+      title: "MATRÍCULA CANCELADA",
+      message: `A MATRÍCULA DO ALUNO ${enrollment.student.person?.name || enrollment.studentId} FOI CANCELADA.`,
+      sourceType: "ENROLLMENT_STATUS",
+      sourceId: id,
+      metadata: { enrollmentId: id, studentId: enrollment.studentId, status: "CANCELADO" },
+    }).catch(() => undefined);
+    return result;
   }
 }

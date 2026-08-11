@@ -37,6 +37,7 @@ import {
 } from "../../../../common/tenant/role-branch-accesses";
 import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class GuardiansService {
@@ -45,6 +46,7 @@ export class GuardiansService {
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly studentsService: StudentsService,
     private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private normalizeDocument(value?: string | null): string {
@@ -861,6 +863,16 @@ export class GuardiansService {
     });
 
     await this.synchronizeGuardianStatus(guardian, false);
+    void this.notificationsService
+      .dispatchConfiguredEventNotification({
+        eventType: "GUARDIAN_INACTIVATED",
+        title: "RESPONSÁVEL INATIVADO",
+        message: `O RESPONSÁVEL ${guardian.person?.name || id} FOI INATIVADO.`,
+        sourceType: "GUARDIAN_STATUS",
+        sourceId: id,
+        metadata: { guardianId: id },
+      })
+      .catch(() => undefined);
     return result;
   }
 
@@ -890,6 +902,18 @@ export class GuardiansService {
     });
 
     await this.synchronizeGuardianStatus(guardian, active);
+    if (!active && !guardian.canceledAt) {
+      void this.notificationsService
+        .dispatchConfiguredEventNotification({
+          eventType: "GUARDIAN_INACTIVATED",
+          title: "RESPONSÁVEL INATIVADO",
+          message: `O RESPONSÁVEL ${guardian.person?.name || id} FOI INATIVADO.`,
+          sourceType: "GUARDIAN_STATUS",
+          sourceId: id,
+          metadata: { guardianId: id },
+        })
+        .catch(() => undefined);
+    }
 
     return {
       message: active
@@ -995,7 +1019,7 @@ export class GuardiansService {
 
     await this.assertGuardianIsNotBillingPayer(guardianId, "remover o vínculo");
 
-    return this.prisma.guardianStudent.updateMany({
+    const result = await this.prisma.guardianStudent.updateMany({
       where: {
         guardianId,
         studentId,
@@ -1008,5 +1032,16 @@ export class GuardiansService {
         updatedBy: userId,
       },
     });
+    void this.notificationsService
+      .dispatchConfiguredEventNotification({
+        eventType: "GUARDIAN_STUDENT_UNLINKED",
+        title: "RESPONSÁVEL DESVINCULADO DO ALUNO",
+        message: `O VÍNCULO ENTRE O RESPONSÁVEL ${guardianId} E O ALUNO ${studentId} FOI REMOVIDO.`,
+        sourceType: "GUARDIAN_STUDENT_LINK",
+        sourceId: existingLink.id,
+        metadata: { guardianId, studentId },
+      })
+      .catch(() => undefined);
+    return result;
   }
 }

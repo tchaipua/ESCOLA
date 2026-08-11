@@ -1147,3 +1147,32 @@ Observacao estrutural obrigatoria:
 - Recuperacao e redefinicao de senha possuem limites mais restritos.
 - Rotas administrativas legadas falham antes de qualquer operacao de negocio.
 - Quando excedido, o backend responde `429 Too Many Requests`.
+
+## Preferências individuais de eventos de inativação e cancelamento
+
+As preferências pertencem à Escola atual e são gravadas por `tenantId` e
+`personId`. Cada pessoa possui sua própria matriz de eventos e canais.
+
+### GET `/notification-settings/events`
+
+- Autenticação: cookie de sessão HttpOnly da Escola;
+- Permissão: `ADMIN`, `SECRETARIA` ou `COORDENACAO`;
+- Uso: retorna o catálogo de eventos configuráveis e seus agrupamentos.
+
+### GET `/notification-settings/users/:personId/preferences`
+
+- Autenticação: cookie de sessão HttpOnly da Escola;
+- Permissão: `ADMIN`, `SECRETARIA` ou `COORDENACAO`;
+- Isolamento: a pessoa precisa pertencer ao `tenantId` da sessão;
+- Uso: retorna a preferência salva ou o padrão desabilitado para cada evento.
+
+### PATCH `/notification-settings/users/:personId/preferences`
+
+- Autenticação: cookie de sessão HttpOnly da Escola;
+- Permissão: `ADMIN`, `SECRETARIA` ou `COORDENACAO`;
+- Corpo: lista de `eventType`, `enabled`, `sendInternal`, `sendEmail` e
+  `sendTelegram`;
+- Auditoria: toda alteração registra `createdBy`/`updatedBy` e nunca remove
+  fisicamente a preferência;
+- Uso: controla avisos de inativação, cancelamento e remoção de vínculos para
+  a pessoa selecionada.

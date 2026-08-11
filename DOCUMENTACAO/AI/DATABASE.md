@@ -403,3 +403,25 @@ Regra oficial:
 - O schema PostgreSQL esta em `backend/prisma/postgresql/schema.prisma` e seu baseline fica fora de `backend/prisma/migrations`.
 - O SQL RLS manual descobre tabelas com `tenantId`, habilita `ENABLE/FORCE ROW LEVEL SECURITY` e aplica `USING`/`WITH CHECK`.
 - RLS nao entra no deploy automatico ate a identidade Central, o papel sem `BYPASSRLS` e o contexto por `set_config(..., true)` na mesma transacao estarem implementados e testados.
+
+## Reconciliação do histórico de migrations
+
+- O SQLite local registrava `20260720110000_add_storage_explorer_audit_events`, mas o diretório histórico não estava presente no repositório.
+- A migration foi restaurada como marcador de compatibilidade, sem reaplicar o objeto legado, que não existe no schema atual nem possui consumidor ativo.
+- Com o histórico reconciliado, `prisma migrate deploy` aplicou `20260811100000_add_notification_preferences`; `prisma migrate status` e `prisma migrate diff` confirmam o banco atualizado.
+
+## `notification_preferences`
+
+Tabela local da Escola para preferências individuais de eventos. Possui
+`tenantId`, `personId`, `eventType`, `enabled` e os canais `sendInternal`,
+`sendEmail` e `sendTelegram`, além dos campos obrigatórios de auditoria e
+soft delete.
+
+Regra atual:
+
+- a chave única é `tenantId + personId + eventType`;
+- a pessoa é a identidade mestre em `people`;
+- o disparo interno alcança somente os vínculos ativos de usuário, professor,
+  aluno e responsável da mesma escola;
+- SMTP e Telegram continuam sendo lidos da configuração efetiva do MSINFOR
+  Central; a tabela não armazena segredos.

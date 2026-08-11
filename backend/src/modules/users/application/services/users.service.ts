@@ -34,6 +34,7 @@ import type {
   CreateUserDto,
   UpdateUserDto,
 } from "../dto/user-access.dto";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 const USER_ROLES = ["ADMIN", "SECRETARIA", "COORDENACAO"] as const;
 type UserRole = (typeof USER_ROLES)[number];
@@ -68,6 +69,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private normalizeEmail(value?: string | null) {
@@ -572,7 +574,7 @@ export class UsersService {
   async updateStatus(id: string, active: boolean, currentUser: ICurrentUser) {
     const target = await this.prisma.user.findFirst({
       where: { id, tenantId: currentUser.tenantId },
-      select: { id: true, canceledAt: true },
+      select: { id: true, name: true, canceledAt: true },
     });
     if (!target) throw new NotFoundException("Usuário de acesso não encontrado.");
     if (target.id === currentUser.userId && !active) {
@@ -587,6 +589,18 @@ export class UsersService {
         updatedBy: currentUser.userId,
       },
     });
+    if (!active && !target.canceledAt) {
+      void this.notificationsService
+        .dispatchConfiguredEventNotification({
+          eventType: "USER_INACTIVATED",
+          title: "USUÁRIO DE ACESSO INATIVADO",
+          message: `O USUÁRIO DE ACESSO ${target.name} FOI INATIVADO.`,
+          sourceType: "USER_STATUS",
+          sourceId: target.id,
+          metadata: { targetUserId: target.id },
+        })
+        .catch(() => undefined);
+    }
     return { message: active ? "Usuário ativado com sucesso." : "Usuário inativado com sucesso." };
   }
 }

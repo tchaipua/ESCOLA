@@ -17,10 +17,14 @@ import {
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
 import { CreateSeriesClassDto } from "../dto/create-series-class.dto";
 import { UpdateSeriesClassDto } from "../dto/update-series-class.dto";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class SeriesClassesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private tenantId() {
     return getTenantContext()!.tenantId;
@@ -519,7 +523,7 @@ export class SeriesClassesService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const seriesClass = await this.findOne(id);
 
     const activeEnrollments = await this.prisma.enrollment.count({
       where: {
@@ -534,13 +538,22 @@ export class SeriesClassesService {
       );
     }
 
-    return this.prisma.seriesClass.updateMany({
+    const result = await this.prisma.seriesClass.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: this.userId(),
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "SERIES_CLASS_INACTIVATED",
+      title: "VÍNCULO SÉRIE X TURMA INATIVADO",
+      message: `O VÍNCULO ${seriesClass.series?.name || "SÉRIE"} - ${seriesClass.class?.name || "TURMA"} FOI INATIVADO.`,
+      sourceType: "SERIES_CLASS_STATUS",
+      sourceId: id,
+      metadata: { seriesClassId: id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
@@ -575,6 +588,17 @@ export class SeriesClassesService {
             updatedBy: this.userId(),
           },
     });
+    if (!active) {
+      const updatedSeriesClass = await this.findOne(id);
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SERIES_CLASS_INACTIVATED",
+        title: "VÍNCULO SÉRIE X TURMA INATIVADO",
+        message: `O VÍNCULO ${updatedSeriesClass.series?.name || "SÉRIE"} - ${updatedSeriesClass.class?.name || "TURMA"} FOI INATIVADO.`,
+        sourceType: "SERIES_CLASS_STATUS",
+        sourceId: id,
+        metadata: { seriesClassId: id },
+      }).catch(() => undefined);
+    }
 
     return {
       message: active

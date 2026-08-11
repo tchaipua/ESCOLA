@@ -18,6 +18,11 @@ const configurationPrograms = [
         image: '/principal/pessoas.svg',
     },
     {
+        href: '/principal/notificacoes/configurar-usuarios',
+        title: 'Configura notificações por usuário',
+        image: '/principal/notificacoes.svg',
+    },
+    {
         href: '/principal/disciplinas',
         title: 'Disciplinas',
         image: '/principal/grade.svg',

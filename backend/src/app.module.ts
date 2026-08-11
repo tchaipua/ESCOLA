@@ -23,6 +23,7 @@ import { UserPreferencesModule } from "./modules/user-preferences/user-preferenc
 import { GlobalSettingsModule } from "./modules/global-settings/global-settings.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { NotificationSettingsModule } from "./modules/notification-settings/notification-settings.module";
+import { NotificationPreferencesModule } from "./modules/notification-preferences/notification-preferences.module";
 import { LessonEventsModule } from "./modules/lesson-events/lesson-events.module";
 import { LessonAssessmentsModule } from "./modules/lesson-assessments/lesson-assessments.module";
 import { LessonAttendancesModule } from "./modules/lesson-attendances/lesson-attendances.module";
@@ -75,6 +76,7 @@ import { CookieCsrfGuard } from "./common/guards/cookie-csrf.guard";
     GlobalSettingsModule,
     NotificationsModule,
     NotificationSettingsModule,
+    NotificationPreferencesModule,
     LessonEventsModule,
     LessonAssessmentsModule,
     LessonAttendancesModule,

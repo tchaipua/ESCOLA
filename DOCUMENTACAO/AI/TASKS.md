@@ -114,6 +114,12 @@
 - 2026-07-24: [x] Sessão da Escola convertida para cookie HttpOnly exclusivo:
   login sem token no JSON, Bearer recusado, nenhum JWT no storage e CSRF
   obrigatório nas mutações autenticadas.
+- 2026-08-11: [x] Preferências individuais de notificações por evento e canal
+  implementadas na Escola, com disparos para inativações, cancelamentos e
+  remoções de vínculos, mantendo tenant, soft delete e auditoria.
+- 2026-08-11: [x] Histórico SQLite reconciliado: migration histórica ausente
+  restaurada como marcador de compatibilidade e migration de preferências
+  aplicada com `prisma migrate deploy`.
 - 2026-07-24: [x] Runtime PostgreSQL protegido por credencial distinta do
   migrator e auditoria de role sem owner/superuser/DDL/BYPASSRLS.
 - 2026-07-24: [ ] Concluir no MSINFOR Central identidade administrativa com MFA e sessao auditada; a Escola nao aceita mais master local.

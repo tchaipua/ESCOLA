@@ -1338,7 +1338,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showSalesParametersButton =
         pathname === '/principal/financeiro/vendas' || pathname === '/principal/financeiro/vendas-2';
     const showPrincipalHeroHeader = pathname === '/principal';
-    const showNotificationsHeroHeader = pathname === '/principal/notificacoes';
+    const showNotificationsHeroHeader = pathname === '/principal/notificacoes' || pathname === '/principal/notificacoes/configurar-usuarios';
     const showPeopleHeroHeader = pathname === '/principal/pessoas';
     const showUsuariosHeroHeader = pathname === '/principal/usuarios';
     const showCommunicationsHeroHeader = pathname === '/principal/comunicacoes';
@@ -1536,12 +1536,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return pathname.startsWith('/principal/financeiro') && !hasSpecificFinanceItem;
     };
     const hasAllNotificationsRead = unreadSummary?.count === 0;
-    const notificationsButtonTitle = hasAllNotificationsRead
-        ? 'TODAS NOTIFICAÇÕES FORAM LIDAS'
-        : 'ABRIR NOTIFICAÇÕES';
+    const notificationsButtonTitle = unreadSummary === null
+        ? 'VERIFICANDO NOTIFICAÇÕES'
+        : hasAllNotificationsRead
+            ? 'SEM NOTIFICAÇÕES'
+            : `EXISTEM ${unreadSummary.count} NOTIFICAÇÕES NÃO LIDAS`;
     const notificationsButtonClassName = hasAllNotificationsRead
         ? 'relative p-2 text-emerald-600 hover:text-emerald-700 transition-colors'
-        : 'relative p-2 text-slate-400 hover:text-blue-600 transition-colors';
+        : 'relative p-2 text-red-600 hover:text-red-700 transition-colors';
     const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showUsuariosHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showSchoolYearConfigHeroHeader || showGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader || showConfiguraEscolaHeroHeader
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';

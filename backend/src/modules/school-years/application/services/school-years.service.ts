@@ -15,6 +15,7 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 const SCHOOL_HOLIDAY_TYPES = [
   "NACIONAL",
@@ -150,7 +151,10 @@ function dedupeAndSortHolidays(holidays: ImportedHoliday[]) {
 
 @Injectable()
 export class SchoolYearsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private tenantId() {
     return getTenantContext()!.tenantId;
@@ -311,7 +315,7 @@ export class SchoolYearsService {
       dto.holidays || [],
     );
 
-    return runWithTenantBranchScope(targetBranchCode, async () =>
+    const result = await runWithTenantBranchScope(targetBranchCode, async () =>
       this.prisma.$transaction(async (tx) => {
         const existingHolidays = await tx.schoolHoliday.findMany({
           where: {
@@ -414,9 +418,23 @@ export class SchoolYearsService {
           orderBy: [{ date: "asc" }, { name: "asc" }],
         });
 
-        return savedHolidays.map((holiday) => this.mapSchoolHoliday(holiday));
+        return {
+          holidays: savedHolidays.map((holiday) => this.mapSchoolHoliday(holiday)),
+          canceledCount: cancelIds.length,
+        };
       }),
     );
+    if (result.canceledCount > 0) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SCHOOL_HOLIDAY_CANCELED",
+        title: "FERIADO ESCOLAR CANCELADO",
+        message: `${result.canceledCount} FERIADO(S) ESCOLAR(ES) FORAM CANCELADOS NO ANO ${dto.year}.`,
+        sourceType: "SCHOOL_HOLIDAY_STATUS",
+        sourceId: `YEAR:${dto.year}`,
+        metadata: { year: dto.year, canceledCount: result.canceledCount },
+      }).catch(() => undefined);
+    }
+    return result.holidays;
   }
 
   private normalizeSchoolHolidays(
@@ -616,7 +634,7 @@ export class SchoolYearsService {
       currentYear.branchCode,
     );
 
-    return runWithTenantBranchScope(targetBranchCode, async () => {
+    const result = await runWithTenantBranchScope(targetBranchCode, async () => {
     if (
       typeof updateDto.year === "number" &&
       updateDto.year !== currentYear.year
@@ -689,11 +707,22 @@ export class SchoolYearsService {
       });
     });
     });
+    if (updateDto.isActive === false && currentYear.isActive) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SCHOOL_YEAR_DEACTIVATED",
+        title: "ANO LETIVO DESATIVADO",
+        message: `O ANO LETIVO ${currentYear.year} FOI DESATIVADO.`,
+        sourceType: "SCHOOL_YEAR_STATUS",
+        sourceId: id,
+        metadata: { schoolYearId: id, year: currentYear.year },
+      }).catch(() => undefined);
+    }
+    return result;
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.schoolYear.updateMany({
+    const schoolYear = await this.findOne(id);
+    const result = await this.prisma.schoolYear.updateMany({
       where: {
         id,
         tenantId: this.tenantId(),
@@ -704,5 +733,14 @@ export class SchoolYearsService {
         isActive: false,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "SCHOOL_YEAR_CANCELED",
+      title: "ANO LETIVO CANCELADO",
+      message: `O ANO LETIVO ${schoolYear.year} FOI CANCELADO.`,
+      sourceType: "SCHOOL_YEAR_STATUS",
+      sourceId: id,
+      metadata: { schoolYearId: id, year: schoolYear.year },
+    }).catch(() => undefined);
+    return result;
   }
 }

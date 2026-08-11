@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { AssignSubjectDto } from "../dto/assign-subject.dto";
 import { UpdateTeacherSubjectDto } from "../dto/update-teacher-subject.dto";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 import {
   getTenantContext,
   runWithTenantBranchScope,
@@ -15,7 +16,10 @@ import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenan
 
 @Injectable()
 export class TeacherSubjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private tenantId() {
     return getTenantContext()!.tenantId;
@@ -302,6 +306,10 @@ export class TeacherSubjectsService {
         tenantId: this.tenantId(),
         canceledAt: null,
       },
+      include: {
+        teacher: { include: { person: true } },
+        subject: true,
+      },
     });
 
     if (!assignment) {
@@ -310,7 +318,7 @@ export class TeacherSubjectsService {
       );
     }
 
-    return this.prisma.teacherSubject.updateMany({
+    const result = await this.prisma.teacherSubject.updateMany({
       where: {
         teacherId,
         subjectId,
@@ -321,6 +329,15 @@ export class TeacherSubjectsService {
         canceledBy: getTenantContext()!.userId,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "TEACHER_SUBJECT_UNASSIGNED",
+      title: "DISCIPLINA REMOVIDA DO PROFESSOR",
+      message: `A DISCIPLINA ${assignment.subject?.name || subjectId} FOI REMOVIDA DO PROFESSOR ${assignment.teacher?.person?.name || teacherId}.`,
+      sourceType: "TEACHER_SUBJECT_LINK",
+      sourceId: assignment.id,
+      metadata: { teacherId, subjectId, teacherSubjectId: assignment.id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async update(

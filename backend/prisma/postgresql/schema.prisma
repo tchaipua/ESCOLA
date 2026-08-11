@@ -81,6 +81,7 @@ model Tenant {
   lessonAssessmentGrades      LessonAssessmentGrade[]
   lessonAttendances           LessonAttendance[]
   notifications               Notification[]
+  notificationPreferences     NotificationPreference[]
   communicationCampaigns      CommunicationCampaign[]
   userPreferences             UserPreference[]
   branches                    TenantBranch[]
@@ -479,6 +480,7 @@ model Person {
   students  Student[]
   guardians Guardian[]
   users     User[]
+  notificationPreferences NotificationPreference[]
 
   @@unique([tenantId, cpfDigits])
   @@unique([tenantId, telegramChatId])
@@ -1227,6 +1229,32 @@ model Notification {
   @@index([recipientType, recipientId])
   @@index([readAt])
   @@map("notifications")
+}
+
+model NotificationPreference {
+  id            String   @id @default(uuid())
+  tenantId      String
+  personId      String
+  eventType     String
+  enabled       Boolean  @default(false)
+  sendInternal  Boolean  @default(false)
+  sendEmail     Boolean  @default(false)
+  sendTelegram  Boolean  @default(false)
+
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+  updatedAt  DateTime  @updatedAt
+  updatedBy  String?
+  canceledAt DateTime?
+  canceledBy String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, personId, eventType])
+  @@index([tenantId, personId])
+  @@index([tenantId, eventType, enabled])
+  @@map("notification_preferences")
 }
 
 model CommunicationCampaign {

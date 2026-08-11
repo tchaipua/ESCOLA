@@ -13,12 +13,14 @@ import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenan
 import { LessonCalendarsService } from "../../../lesson-calendars/application/services/lesson-calendars.service";
 import { CreateClassScheduleItemDto } from "../dto/create-class-schedule-item.dto";
 import { UpdateClassScheduleItemDto } from "../dto/update-class-schedule-item.dto";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class ClassScheduleItemsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lessonCalendarsService: LessonCalendarsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private static readonly DAY_ORDER: Record<string, number> = {
@@ -822,7 +824,7 @@ export class ClassScheduleItemsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const item = await this.findOne(id);
 
     try {
       await this.prisma.classScheduleItem.update({
@@ -834,6 +836,14 @@ export class ClassScheduleItemsService {
         },
       });
 
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SCHEDULE_ITEM_INACTIVATED",
+        title: "ITEM DA GRADE INATIVADO",
+        message: `O ITEM DA GRADE DE ${item.dayOfWeek} ${item.startTime} - ${item.endTime} FOI INATIVADO.`,
+        sourceType: "SCHEDULE_ITEM_STATUS",
+        sourceId: id,
+        metadata: { scheduleItemId: id },
+      }).catch(() => undefined);
       return {
         message: "Lançamento da grade inativado com sucesso.",
       };
@@ -873,6 +883,16 @@ export class ClassScheduleItemsService {
     });
 
     const updatedItem = await this.findOne(id);
+    if (!active) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SCHEDULE_ITEM_INACTIVATED",
+        title: "ITEM DA GRADE INATIVADO",
+        message: `O ITEM DA GRADE DE ${updatedItem.dayOfWeek} ${updatedItem.startTime} - ${updatedItem.endTime} FOI INATIVADO.`,
+        sourceType: "SCHEDULE_ITEM_STATUS",
+        sourceId: id,
+        metadata: { scheduleItemId: id },
+      }).catch(() => undefined);
+    }
 
     return {
       message: active

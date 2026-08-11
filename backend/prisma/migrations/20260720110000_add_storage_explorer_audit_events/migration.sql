@@ -1,0 +1,6 @@
+-- Migration historica ja aplicada em bancos locais existentes.
+--
+-- O objeto legado do explorador de armazenamento nao faz parte do schema
+-- atual da Escola e nao possui modelo, consumidor ou tabela remanescente.
+-- Este marcador preserva a continuidade do historico do Prisma sem
+-- reaplicar uma estrutura removida em bancos que ja registraram a migration.

@@ -11,10 +11,14 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class ClassesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private normalizeName(name: string) {
     return name.trim().toUpperCase();
@@ -146,7 +150,7 @@ export class ClassesService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const classEntity = await this.findOne(id);
 
     const activeSeriesClasses = await this.prisma.seriesClass.count({
       where: {
@@ -161,13 +165,22 @@ export class ClassesService {
       );
     }
 
-    return this.prisma.class.updateMany({
+    const result = await this.prisma.class.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: getTenantContext()!.userId,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "CLASS_INACTIVATED",
+      title: "TURMA INATIVADA",
+      message: `A TURMA ${classEntity.name} FOI INATIVADA.`,
+      sourceType: "CLASS_STATUS",
+      sourceId: id,
+      metadata: { classId: id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
@@ -211,6 +224,16 @@ export class ClassesService {
             updatedBy: getTenantContext()!.userId,
           },
     });
+    if (!active) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "CLASS_INACTIVATED",
+        title: "TURMA INATIVADA",
+        message: `A TURMA ${updatedClass.name} FOI INATIVADA.`,
+        sourceType: "CLASS_STATUS",
+        sourceId: id,
+        metadata: { classId: id },
+      }).catch(() => undefined);
+    }
 
     return {
       message: active

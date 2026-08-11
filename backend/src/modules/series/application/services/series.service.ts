@@ -11,10 +11,14 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class SeriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private normalizeText(value?: string | null) {
     return String(value || "")
@@ -154,7 +158,7 @@ export class SeriesService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const series = await this.findOne(id);
 
     const activeLinks = await this.prisma.seriesClass.count({
       where: {
@@ -169,13 +173,22 @@ export class SeriesService {
       );
     }
 
-    return this.prisma.series.updateMany({
+    const result = await this.prisma.series.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: getTenantContext()!.userId,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "SERIES_INACTIVATED",
+      title: "SÉRIE INATIVADA",
+      message: `A SÉRIE ${series.name} FOI INATIVADA.`,
+      sourceType: "SERIES_STATUS",
+      sourceId: id,
+      metadata: { seriesId: id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
@@ -210,6 +223,16 @@ export class SeriesService {
             updatedBy: getTenantContext()!.userId,
           },
     });
+    if (!active) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SERIES_INACTIVATED",
+        title: "SÉRIE INATIVADA",
+        message: `A SÉRIE ${updatedSeries.name} FOI INATIVADA.`,
+        sourceType: "SERIES_STATUS",
+        sourceId: id,
+        metadata: { seriesId: id },
+      }).catch(() => undefined);
+    }
 
     return {
       message: active

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Configuração de notificações por usuário">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#dbeafe"/>
+      <stop offset="1" stop-color="#eff6ff"/>
+    </linearGradient>
+    <linearGradient id="bell" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#bg)"/>
+  <circle cx="320" cy="176" r="116" fill="#ffffff" opacity=".82"/>
+  <path d="M320 82c-42 0-76 34-76 76v34c0 13-5 26-14 36l-18 20h216l-18-20c-9-10-14-23-14-36v-34c0-42-34-76-76-76z" fill="url(#bell)"/>
+  <path d="M274 270c8 22 25 34 46 34s38-12 46-34" fill="none" stroke="#1e40af" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="462" cy="92" r="34" fill="#16a34a"/>
+  <path d="m446 92 11 11 22-25" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

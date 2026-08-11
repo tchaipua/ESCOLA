@@ -3,9 +3,10 @@ import { GuardiansService } from "./application/services/guardians.service";
 import { GuardiansController } from "./infrastructure/controllers/guardians.controller";
 import { SharedProfilesModule } from "../shared-profiles/shared-profiles.module";
 import { StudentsModule } from "../students/students.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [SharedProfilesModule, StudentsModule],
+  imports: [SharedProfilesModule, StudentsModule, NotificationsModule],
   controllers: [GuardiansController],
   providers: [GuardiansService],
   exports: [GuardiansService],

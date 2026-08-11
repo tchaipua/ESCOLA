@@ -36,6 +36,7 @@ import { CentralIdentityProvisioningService } from "../../../../integrations/msi
 import { SHARED_BRANCH_CODE } from "../../../../common/tenant/branch.constants";
 import { listTenantBranches } from "../../../../common/tenant/tenant-branches";
 import { isCentralIdentityEnabled } from "../../../../common/security/security-config";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class TeachersService {
@@ -45,6 +46,7 @@ export class TeachersService {
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private async normalizeLegacyTeacherDateTimes(tenantId: string) {
@@ -916,6 +918,16 @@ export class TeachersService {
     });
 
     await this.synchronizeTeacherStatus(teacher, false);
+    void this.notificationsService
+      .dispatchConfiguredEventNotification({
+        eventType: "TEACHER_INACTIVATED",
+        title: "PROFESSOR INATIVADO",
+        message: `O PROFESSOR ${teacher.person?.name || id} FOI INATIVADO.`,
+        sourceType: "TEACHER_STATUS",
+        sourceId: id,
+        metadata: { teacherId: id },
+      })
+      .catch(() => undefined);
     return result;
   }
 
@@ -942,6 +954,18 @@ export class TeachersService {
     });
 
     await this.synchronizeTeacherStatus(teacher, active);
+    if (!active && !teacher.canceledAt) {
+      void this.notificationsService
+        .dispatchConfiguredEventNotification({
+          eventType: "TEACHER_INACTIVATED",
+          title: "PROFESSOR INATIVADO",
+          message: `O PROFESSOR ${teacher.person?.name || id} FOI INATIVADO.`,
+          sourceType: "TEACHER_STATUS",
+          sourceId: id,
+          metadata: { teacherId: id },
+        })
+        .catch(() => undefined);
+    }
 
     const updatedTeacher = await this.findTeacherEntity(id);
 

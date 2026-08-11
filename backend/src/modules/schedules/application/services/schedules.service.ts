@@ -11,10 +11,14 @@ import {
   runWithTenantBranchScope,
 } from "../../../../common/tenant/tenant.context";
 import { resolveWritableTenantBranchCode } from "../../../../common/tenant/tenant-branches";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @Injectable()
 export class SchedulesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   private isInterval(lessonNumber: number) {
     return Number(lessonNumber) === 0;
@@ -215,14 +219,23 @@ export class SchedulesService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.schedule.updateMany({
+    const schedule = await this.findOne(id);
+    const result = await this.prisma.schedule.updateMany({
       where: { id },
       data: {
         canceledAt: new Date(),
         canceledBy: getTenantContext()!.userId,
       },
     });
+    void this.notificationsService.dispatchConfiguredEventNotification({
+      eventType: "SCHEDULE_INACTIVATED",
+      title: "HORÁRIO BASE INATIVADO",
+      message: `O HORÁRIO BASE ${schedule.id} FOI INATIVADO.`,
+      sourceType: "SCHEDULE_STATUS",
+      sourceId: id,
+      metadata: { scheduleId: id },
+    }).catch(() => undefined);
+    return result;
   }
 
   async setActiveStatus(id: string, active: boolean) {
@@ -242,6 +255,16 @@ export class SchedulesService {
             updatedBy: getTenantContext()!.userId,
           },
     });
+    if (!active) {
+      void this.notificationsService.dispatchConfiguredEventNotification({
+        eventType: "SCHEDULE_INACTIVATED",
+        title: "HORÁRIO BASE INATIVADO",
+        message: `O HORÁRIO BASE ${updatedSchedule.id} FOI INATIVADO.`,
+        sourceType: "SCHEDULE_STATUS",
+        sourceId: id,
+        metadata: { scheduleId: id },
+      }).catch(() => undefined);
+    }
 
     return {
       message: active
