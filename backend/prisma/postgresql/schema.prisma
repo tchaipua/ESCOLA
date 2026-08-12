@@ -607,6 +607,7 @@ model Series {
   name       String
   code       String?
   sortOrder  Int?
+  nextSeriesId String?
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -617,8 +618,11 @@ model Series {
 
   tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   seriesClasses SeriesClass[]
+  nextSeries   Series?       @relation("SeriesProgression", fields: [nextSeriesId], references: [id], onDelete: SetNull)
+  previousSeries Series[]    @relation("SeriesProgression")
 
   @@index([tenantId])
+  @@index([nextSeriesId])
   @@map("series")
 }
 

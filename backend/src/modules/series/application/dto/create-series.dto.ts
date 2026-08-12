@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
 } from "class-validator";
@@ -34,9 +35,17 @@ export class CreateSeriesDto {
   @MaxLength(20)
   code?: string;
 
-  @ApiPropertyOptional({ description: "Ordem de aprendizado da série" })
+  @ApiPropertyOptional({ description: "Ordem de exibição da série" })
   @IsInt()
   @Min(0)
   @IsOptional()
   sortOrder?: number;
+
+  @ApiPropertyOptional({
+    description: "ID da próxima série padrão. Nulo para série concluinte.",
+    nullable: true,
+  })
+  @IsUUID()
+  @IsOptional()
+  nextSeriesId?: string | null;
 }

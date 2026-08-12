@@ -37,7 +37,8 @@ type SeriesRecord = {
     branchCode?: number | null;
     name: string;
     code?: string | null;
-    sortOrder?: number | null;
+    nextSeriesId?: string | null;
+    nextSeries?: { id: string; name: string } | null;
     canceledAt?: string | null;
     studentCount?: number | null;
 };
@@ -74,10 +75,10 @@ const EMPTY_FORM = {
     branchCode: 1,
     name: '',
     code: '',
-    sortOrder: '',
+    nextSeriesId: '',
 };
 
-type SeriesColumnKey = 'name' | 'code' | 'sortOrder' | 'studentCount';
+type SeriesColumnKey = 'name' | 'code' | 'nextSeries' | 'studentCount';
 type SeriesExportColumnKey = SeriesColumnKey;
 type SeriesColumnFilters = Record<SeriesColumnKey, string>;
 
@@ -85,13 +86,11 @@ const SERIES_COLUMNS: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>[] = 
     { key: 'name', label: 'Série', getValue: (row) => row.name || '---', visibleByDefault: true },
     { key: 'code', label: 'Código', getValue: (row) => row.code || '---', visibleByDefault: true },
     {
-        key: 'sortOrder',
-        label: 'Ordem de aprendizado',
-        getValue: (row) => row.sortOrder !== null && row.sortOrder !== undefined ? String(row.sortOrder) : '---',
-        getSortValue: (row) => row.sortOrder ?? -1,
+        key: 'nextSeries',
+        label: 'Próxima série padrão',
+        getValue: (row) => row.nextSeries?.name || 'Nenhuma (série concluinte)',
+        getSortValue: (row) => row.nextSeries?.name || '',
         visibleByDefault: true,
-        aggregateOptions: ['sum', 'avg', 'min', 'max', 'count'],
-        getAggregateValue: (row) => row.sortOrder ?? null,
     },
     {
         key: 'studentCount',
@@ -144,11 +143,11 @@ function matchesSeriesGridFilter(values: unknown[], filter: string) {
 function getSeriesColumnFilterValues(row: SeriesRecord, columnKey: SeriesColumnKey) {
     const column = SERIES_COLUMNS.find((item) => item.key === columnKey);
     const baseValue = column?.getValue(row) || '';
-    return [baseValue, row.name, row.code, row.sortOrder, row.studentCount, row.canceledAt ? 'INATIVO' : 'ATIVO'];
+    return [baseValue, row.name, row.code, row.nextSeries?.name, row.nextSeriesId, row.studentCount, row.canceledAt ? 'INATIVO' : 'ATIVO'];
 }
 
 function getSeriesGridConfigStorageKey(tenantId: string | null) {
-    return `dashboard:series:grid-config:${tenantId || 'default'}`;
+    return `dashboard:series:grid-config:v2:${tenantId || 'default'}`;
 }
 
 function getSeriesExportConfigStorageKey(tenantId: string | null) {
@@ -156,7 +155,7 @@ function getSeriesExportConfigStorageKey(tenantId: string | null) {
 }
 
 const DEFAULT_SORT: GridSortState<SeriesColumnKey> = {
-    column: 'sortOrder',
+    column: 'name',
     direction: 'asc',
 };
 const SERIES_STUDENTS_MODAL_SCREEN_ID = 'PRINCIPAL_SERIES_STUDENTS_MODAL';
@@ -177,11 +176,11 @@ function getSeriesAuditOrderBy(column: SeriesColumnKey) {
     const orderColumns: Record<SeriesColumnKey, string> = {
         name: 'SE.name',
         code: 'SE.code',
-        sortOrder: 'SE.sortOrder',
+        nextSeries: 'SE.nextSeriesId',
         studentCount: 'studentCount',
     };
 
-    return orderColumns[column] || 'SE.sortOrder';
+    return orderColumns[column] || 'SE.name';
 }
 
 function buildSeriesAuditSql(params: SeriesAuditParams) {
@@ -303,6 +302,10 @@ export default function SeriesPage() {
     const canView = hasDashboardPermission(currentRole, currentPermissions, 'VIEW_SERIES');
     const canManage = hasDashboardPermission(currentRole, currentPermissions, 'MANAGE_SERIES');
     const currentTenantBranding = useMemo(() => readCachedTenantBranding(currentTenantId), [currentTenantId]);
+    const seriesFilterOptions = useMemo(
+        () => [...series].sort((left, right) => left.name.localeCompare(right.name, 'pt-BR')),
+        [series],
+    );
     const orderedSeriesColumns = useMemo(
         () => columnOrder.map((key) => SERIES_COLUMNS.find((column) => column.key === key)).filter((column): column is ConfigurableGridColumn<SeriesRecord, SeriesColumnKey> => !!column),
         [columnOrder],
@@ -532,7 +535,7 @@ export default function SeriesPage() {
                 body: JSON.stringify({
                     name: formData.name,
                     code: formData.code || undefined,
-                    sortOrder: formData.sortOrder ? Number(formData.sortOrder) : undefined,
+                    nextSeriesId: formData.nextSeriesId || null,
                     branchCode: tenantBranches.length <= 1 ? currentBranchCode : formData.branchCode,
                 }),
             });
@@ -560,7 +563,7 @@ export default function SeriesPage() {
             branchCode: typeof item.branchCode === 'number' ? item.branchCode : currentBranchCode,
             name: item.name || '',
             code: item.code || '',
-            sortOrder: item.sortOrder !== null && item.sortOrder !== undefined ? String(item.sortOrder) : '',
+            nextSeriesId: item.nextSeriesId || '',
         });
         setIsModalOpen(true);
     };
@@ -650,7 +653,7 @@ export default function SeriesPage() {
             badges={[
                 item.canceledAt ? 'INATIVA' : 'ATIVA',
                 item.code || 'SEM CÓDIGO',
-                item.sortOrder !== null && item.sortOrder !== undefined ? `ORDEM ${item.sortOrder}` : 'SEM ORDEM',
+                item.nextSeries?.name ? `PRÓXIMA: ${item.nextSeries.name}` : 'SEM PRÓXIMA SÉRIE',
             ]}
             sections={[
                 {
@@ -658,7 +661,7 @@ export default function SeriesPage() {
                     items: [
                         { label: 'Série', value: item.name || 'Não informada' },
                         { label: 'Código', value: item.code || 'Não informado' },
-                        { label: 'Ordem de aprendizado', value: item.sortOrder !== null && item.sortOrder !== undefined ? String(item.sortOrder) : 'Não informada' },
+                        { label: 'Próxima série padrão', value: item.nextSeries?.name || 'Nenhuma (série concluinte)' },
                         { label: 'Status', value: item.canceledAt ? 'INATIVA' : 'ATIVA' },
                         { label: 'Resumo', value: item.code ? `${item.name} (${item.code})` : item.name || 'Não informada' },
                     ],
@@ -769,28 +772,115 @@ export default function SeriesPage() {
         </button>
     );
 
-    const renderSeriesColumnHeader = (column: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>) => (
-        <GridColumnFilterHeader
-            label={column.label}
-            align={column.align}
-            isOpen={activeSeriesFilterColumn === column.key}
-            isActive={Boolean(seriesColumnFilters[column.key]?.trim()) || sortState.column === column.key}
-            filterValue={seriesColumnFilterDrafts[column.key] || ''}
-            onToggle={() => openSeriesColumnFilter(activeSeriesFilterColumn === column.key ? null : column.key)}
-            onSort={(direction) => {
-                setSortState({ column: column.key, direction });
-                setActiveSeriesFilterColumn(null);
-            }}
-            onFilterValueChange={(value) =>
-                setSeriesColumnFilterDrafts((current) => ({
-                    ...current,
-                    [column.key]: value,
-                }))
-            }
-            onApply={() => applySeriesColumnFilter(column.key)}
-            onClear={() => clearSeriesColumnFilter(column.key)}
-        />
-    );
+    const renderSeriesColumnHeader = (column: ConfigurableGridColumn<SeriesRecord, SeriesColumnKey>) => {
+        if (column.key !== 'name') {
+            return (
+                <GridColumnFilterHeader
+                    label={column.label}
+                    align={column.align}
+                    isOpen={activeSeriesFilterColumn === column.key}
+                    isActive={Boolean(seriesColumnFilters[column.key]?.trim()) || sortState.column === column.key}
+                    filterValue={seriesColumnFilterDrafts[column.key] || ''}
+                    onToggle={() => openSeriesColumnFilter(activeSeriesFilterColumn === column.key ? null : column.key)}
+                    onSort={(direction) => {
+                        setSortState({ column: column.key, direction });
+                        setActiveSeriesFilterColumn(null);
+                    }}
+                    onFilterValueChange={(value) =>
+                        setSeriesColumnFilterDrafts((current) => ({
+                            ...current,
+                            [column.key]: value,
+                        }))
+                    }
+                    onApply={() => applySeriesColumnFilter(column.key)}
+                    onClear={() => clearSeriesColumnFilter(column.key)}
+                />
+            );
+        }
+
+        const isOpen = activeSeriesFilterColumn === column.key;
+        const isActive = Boolean(seriesColumnFilters[column.key]?.trim()) || sortState.column === column.key;
+        const filterValue = seriesColumnFilterDrafts[column.key] || '';
+
+        return (
+            <div className={`relative flex items-center gap-2 ${column.align === 'right' ? 'justify-end' : column.align === 'center' ? 'justify-center' : 'justify-start'}`}>
+                <span>{column.label}</span>
+                <button
+                    type="button"
+                    onClick={() => openSeriesColumnFilter(isOpen ? null : column.key)}
+                    aria-label={`Filtrar ${column.label}`}
+                    title={`Filtrar ${column.label}`}
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                        isActive || isOpen
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-400 hover:border-blue-200 hover:text-blue-600'
+                    }`}
+                >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7" strokeWidth={1.8} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m20 20-3.5-3.5" />
+                    </svg>
+                </button>
+                {isOpen ? (
+                    <div className="absolute left-0 top-full z-40 mt-2 w-[292px] rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl">
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Ordenar coluna</div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'asc' });
+                                    setActiveSeriesFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Crescente
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'desc' });
+                                    setActiveSeriesFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Decrescente
+                            </button>
+                        </div>
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Filtrar série</div>
+                            <select
+                                value={filterValue}
+                                onChange={(event) => setSeriesColumnFilterDrafts((current) => ({
+                                    ...current,
+                                    name: event.target.value,
+                                }))}
+                                className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            >
+                                <option value="">Todas as séries</option>
+                                {seriesFilterOptions.map((item) => (
+                                    <option key={item.id} value={item.name}>{item.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => applySeriesColumnFilter(column.key)}
+                                className="mt-3 h-9 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 transition hover:bg-blue-100"
+                            >
+                                Filtrar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => clearSeriesColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Limpar
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
 
     const renderSeriesGridCell = (item: SeriesRecord, columnKey: SeriesColumnKey) => {
         if (columnKey === 'name') {
@@ -816,7 +906,10 @@ export default function SeriesPage() {
                 </td>
             );
         }
-        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${item.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>{item.sortOrder ?? '---'}</td>;
+        if (columnKey === 'nextSeries') {
+            return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${item.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>{item.nextSeries?.name || '---'}</td>;
+        }
+        return <td key={columnKey} className={`px-6 py-4 text-sm font-medium ${item.canceledAt ? 'text-rose-700' : 'text-slate-600'}`}>---</td>;
     };
 
     return (
@@ -1150,17 +1243,37 @@ export default function SeriesPage() {
                         />
 
                         <form onSubmit={handleSave} className="p-6 space-y-5">
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                <input required value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value.toUpperCase() }))} placeholder="Nome da série" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
-                                <input value={formData.code} onChange={(event) => setFormData((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="Código curto" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
-                                <input value={formData.sortOrder} onChange={(event) => setFormData((current) => ({ ...current, sortOrder: event.target.value }))} placeholder="Ordem de aprendizado" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <label className="flex min-w-0 flex-col gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                    Nome da série
+                                    <input required value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value.toUpperCase() }))} placeholder="Ex.: 1º ANO" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium tracking-normal text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
+                                </label>
+                                <label className="flex min-w-0 flex-col gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                    Código curto
+                                    <input value={formData.code} onChange={(event) => setFormData((current) => ({ ...current, code: event.target.value.toUpperCase() }))} placeholder="Ex.: 1A" className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium tracking-normal text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />
+                                </label>
+                                <label className="flex min-w-0 flex-col gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500 md:col-span-2">
+                                    Próxima série padrão
+                                    <select
+                                        value={formData.nextSeriesId}
+                                        onChange={(event) => setFormData((current) => ({ ...current, nextSeriesId: event.target.value }))}
+                                        className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-medium tracking-normal text-slate-900 outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                    >
+                                        <option value="">Nenhuma (série concluinte)</option>
+                                        {seriesFilterOptions
+                                            .filter((item) => item.id !== editingId && !item.canceledAt)
+                                            .map((item) => (
+                                                <option key={item.id} value={item.id}>{item.name}{item.code ? ` · ${item.code}` : ''}</option>
+                                            ))}
+                                    </select>
+                                </label>
                                 <TenantBranchSelect
                                     branches={tenantBranches}
                                     value={formData.branchCode}
                                     onChange={(branchCode) => setFormData((current) => ({ ...current, branchCode }))}
                                     variant="pills"
                                     label="Filiais"
-                                    containerClassName="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 md:col-span-3"
+                                    containerClassName="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 md:col-span-2"
                                 />
                             </div>
 

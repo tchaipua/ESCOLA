@@ -57,8 +57,54 @@ export class SeriesService {
 
     if (existing) {
       throw new ConflictException(
-        "A ordem de aprendizado informada ja esta em uso por outra serie nesta escola.",
+        "A ordem de exibição informada já está em uso por outra série nesta escola.",
       );
+    }
+  }
+
+  private async ensureValidNextSeries(
+    nextSeriesId: string | null | undefined,
+    currentSeriesId?: string,
+  ) {
+    if (!nextSeriesId) return;
+    if (nextSeriesId === currentSeriesId) {
+      throw new ConflictException(
+        "A próxima série padrão não pode ser a própria série.",
+      );
+    }
+
+    const visitedSeriesIds = new Set<string>();
+    let candidateSeriesId: string | null = nextSeriesId;
+
+    while (candidateSeriesId) {
+      if (candidateSeriesId === currentSeriesId) {
+        throw new ConflictException(
+          "A configuração da próxima série criaria um ciclo de progressão.",
+        );
+      }
+      if (visitedSeriesIds.has(candidateSeriesId)) {
+        throw new ConflictException(
+          "A configuração da próxima série contém um ciclo de progressão.",
+        );
+      }
+      visitedSeriesIds.add(candidateSeriesId);
+
+      const nextSeries: { id: string; nextSeriesId: string | null } | null =
+        await this.prisma.series.findFirst({
+          where: {
+            id: candidateSeriesId,
+            tenantId: getTenantContext()!.tenantId,
+            canceledAt: null,
+          },
+          select: { id: true, nextSeriesId: true },
+        });
+      if (!nextSeries) {
+        throw new NotFoundException(
+          "A próxima série padrão não foi encontrada ou está inativa.",
+        );
+      }
+
+      candidateSeriesId = nextSeries.nextSeriesId;
     }
   }
 
@@ -71,23 +117,25 @@ export class SeriesService {
     );
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
-    const name = this.normalizeText(createDto.name);
-    const code = createDto.code
-      ? this.normalizeText(createDto.code)
-      : undefined;
-    await this.ensureUniqueSeries(name);
-    await this.ensureUniqueSortOrder(createDto.sortOrder);
+      const name = this.normalizeText(createDto.name);
+      const code = createDto.code
+        ? this.normalizeText(createDto.code)
+        : undefined;
+      await this.ensureUniqueSeries(name);
+      await this.ensureUniqueSortOrder(createDto.sortOrder);
+      await this.ensureValidNextSeries(createDto.nextSeriesId);
 
-    return this.prisma.series.create({
-      data: {
-        tenantId: getTenantContext()!.tenantId,
-        name,
-        code,
-        sortOrder: createDto.sortOrder,
-        branchCode: targetBranchCode,
-        createdBy: getTenantContext()!.userId,
-      },
-    });
+      return this.prisma.series.create({
+        data: {
+          tenantId: getTenantContext()!.tenantId,
+          name,
+          code,
+          sortOrder: createDto.sortOrder,
+          nextSeriesId: createDto.nextSeriesId || null,
+          branchCode: targetBranchCode,
+          createdBy: getTenantContext()!.userId,
+        },
+      });
     });
   }
 
@@ -95,6 +143,11 @@ export class SeriesService {
     return this.prisma.series.findMany({
       where: {
         tenantId: getTenantContext()!.tenantId,
+      },
+      include: {
+        nextSeries: {
+          select: { id: true, name: true },
+        },
       },
       orderBy: [{ canceledAt: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     });
@@ -107,6 +160,9 @@ export class SeriesService {
         tenantId: getTenantContext()!.tenantId,
       },
       include: {
+        nextSeries: {
+          select: { id: true, name: true },
+        },
         seriesClasses: {
           where: { canceledAt: null },
           include: {
@@ -130,30 +186,37 @@ export class SeriesService {
     );
 
     return runWithTenantBranchScope(targetBranchCode, async () => {
-    const nextName = updateDto.name
-      ? this.normalizeText(updateDto.name)
-      : currentSeries.name;
-    const nextSortOrder =
-      updateDto.sortOrder !== undefined
-        ? updateDto.sortOrder
-        : currentSeries.sortOrder;
+      const nextName = updateDto.name
+        ? this.normalizeText(updateDto.name)
+        : currentSeries.name;
+      const nextSortOrder =
+        updateDto.sortOrder !== undefined
+          ? updateDto.sortOrder
+          : currentSeries.sortOrder;
+      const nextSeriesId =
+        updateDto.nextSeriesId !== undefined
+          ? updateDto.nextSeriesId || null
+          : currentSeries.nextSeriesId;
 
-    await this.ensureUniqueSeries(nextName, id);
-    await this.ensureUniqueSortOrder(nextSortOrder ?? undefined, id);
+      await this.ensureUniqueSeries(nextName, id);
+      await this.ensureUniqueSortOrder(nextSortOrder ?? undefined, id);
+      await this.ensureValidNextSeries(nextSeriesId, id);
 
-    return this.prisma.series.update({
-      where: { id },
-      data: {
-        name: updateDto.name ? nextName : undefined,
-        code:
-          updateDto.code !== undefined
-            ? this.normalizeText(updateDto.code) || null
-            : undefined,
-        sortOrder: updateDto.sortOrder,
-        branchCode: targetBranchCode,
-        updatedBy: getTenantContext()!.userId,
-      },
-    });
+      return this.prisma.series.update({
+        where: { id },
+        data: {
+          name: updateDto.name ? nextName : undefined,
+          code:
+            updateDto.code !== undefined
+              ? this.normalizeText(updateDto.code) || null
+              : undefined,
+          sortOrder: updateDto.sortOrder,
+          nextSeriesId:
+            updateDto.nextSeriesId !== undefined ? nextSeriesId : undefined,
+          branchCode: targetBranchCode,
+          updatedBy: getTenantContext()!.userId,
+        },
+      });
     });
   }
 

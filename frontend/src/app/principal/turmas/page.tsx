@@ -501,6 +501,11 @@ export default function TurmasPage() {
         const primaryKeys = new Set(primarySeriesClassColumns.map((column) => column.key));
         return visibleSeriesClassColumns.filter((column) => !primaryKeys.has(column.key));
     }, [primarySeriesClassColumns, visibleSeriesClassColumns]);
+    const classFilterOptions = useMemo(
+        () => Array.from(new Set(links.map((item) => item.class?.name).filter((name): name is string => Boolean(name && name.trim()))))
+            .sort((left, right) => left.localeCompare(right, 'pt-BR')),
+        [links],
+    );
     const filteredLinks = useMemo(() => {
         const term = searchTerm.trim().toUpperCase();
         const activeColumnFilters = (Object.entries(seriesClassColumnFilters) as Array<[SeriesClassColumnKey, string]>)
@@ -1095,28 +1100,164 @@ export default function TurmasPage() {
         </button>
     );
 
-    const renderSeriesClassColumnHeader = (column: ConfigurableGridColumn<SeriesClassRecord, SeriesClassColumnKey>) => (
-        <GridColumnFilterHeader
-            label={column.label}
-            align={column.align}
-            isOpen={activeSeriesClassFilterColumn === column.key}
-            isActive={Boolean(seriesClassColumnFilters[column.key]?.trim()) || sortState.column === column.key}
-            filterValue={seriesClassColumnFilterDrafts[column.key] || ''}
-            onToggle={() => openSeriesClassColumnFilter(activeSeriesClassFilterColumn === column.key ? null : column.key)}
-            onSort={(direction) => {
-                setSortState({ column: column.key, direction });
-                setActiveSeriesClassFilterColumn(null);
-            }}
-            onFilterValueChange={(value) =>
-                setSeriesClassColumnFilterDrafts((current) => ({
-                    ...current,
-                    [column.key]: value,
-                }))
-            }
-            onApply={() => applySeriesClassColumnFilter(column.key)}
-            onClear={() => clearSeriesClassColumnFilter(column.key)}
-        />
-    );
+    const renderSeriesClassColumnHeader = (column: ConfigurableGridColumn<SeriesClassRecord, SeriesClassColumnKey>) => {
+        const isOpen = activeSeriesClassFilterColumn === column.key;
+        const isActive = Boolean(seriesClassColumnFilters[column.key]?.trim()) || sortState.column === column.key;
+        const filterValue = seriesClassColumnFilterDrafts[column.key] || '';
+        const selectedSeriesColumnFilter = column.key === 'series'
+            ? series.find((item) => item.name === filterValue)?.id || ''
+            : '';
+
+        if (column.key !== 'series' && column.key !== 'shift' && column.key !== 'className') {
+            return (
+                <GridColumnFilterHeader
+                    label={column.label}
+                    align={column.align}
+                    isOpen={isOpen}
+                    isActive={isActive}
+                    filterValue={filterValue}
+                    onToggle={() => openSeriesClassColumnFilter(isOpen ? null : column.key)}
+                    onSort={(direction) => {
+                        setSortState({ column: column.key, direction });
+                        setActiveSeriesClassFilterColumn(null);
+                    }}
+                    onFilterValueChange={(value) =>
+                        setSeriesClassColumnFilterDrafts((current) => ({
+                            ...current,
+                            [column.key]: value,
+                        }))
+                    }
+                    onApply={() => applySeriesClassColumnFilter(column.key)}
+                    onClear={() => clearSeriesClassColumnFilter(column.key)}
+                />
+            );
+        }
+
+        return (
+            <div className={`relative flex items-center gap-2 ${column.align === 'right' ? 'justify-end' : column.align === 'center' ? 'justify-center' : 'justify-start'}`}>
+                <span>{column.label}</span>
+                <button
+                    type="button"
+                    onClick={() => openSeriesClassColumnFilter(isOpen ? null : column.key)}
+                    aria-label={`Filtrar ${column.label}`}
+                    title={`Filtrar ${column.label}`}
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                        isActive || isOpen
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-400 hover:border-blue-200 hover:text-blue-600'
+                    }`}
+                >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <circle cx="11" cy="11" r="7" strokeWidth={1.8} />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m20 20-3.5-3.5" />
+                    </svg>
+                </button>
+                {isOpen ? (
+                    <div className={`absolute top-full z-40 mt-2 w-[292px] rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl ${column.align === 'right' ? 'right-0' : 'left-0'}`}>
+                        <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Ordenar coluna</div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'asc' });
+                                    setActiveSeriesClassFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Crescente
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSortState({ column: column.key, direction: 'desc' });
+                                    setActiveSeriesClassFilterColumn(null);
+                                }}
+                                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Decrescente
+                            </button>
+                        </div>
+                        <div className="mt-3 border-t border-slate-100 pt-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Filtrar {column.label}</div>
+                            {column.key === 'series' ? (
+                                <select
+                                    value={selectedSeriesColumnFilter}
+                                    onChange={(event) => {
+                                        const selectedSeries = series.find((item) => item.id === event.target.value);
+                                        setSeriesClassColumnFilterDrafts((current) => ({
+                                            ...current,
+                                            series: selectedSeries?.name || '',
+                                        }));
+                                    }}
+                                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                >
+                                    <option value="">Todas as séries</option>
+                                    {series.map((item) => (
+                                        <option key={item.id} value={item.id}>{item.name}</option>
+                                    ))}
+                                </select>
+                            ) : column.key === 'className' ? (
+                                <select
+                                    value={filterValue}
+                                    onChange={(event) => setSeriesClassColumnFilterDrafts((current) => ({
+                                        ...current,
+                                        className: event.target.value,
+                                    }))}
+                                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-700 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                >
+                                    <option value="">Todas as turmas</option>
+                                    {classFilterOptions.map((className) => (
+                                        <option key={className} value={className}>{className}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <div className="mt-2 grid grid-cols-3 gap-2">
+                                    {SHIFT_OPTIONS.map((option) => {
+                                        const selected = filterValue === option.value;
+                                        const tone = option.value === 'MANHA'
+                                            ? selected
+                                                ? 'border-amber-400 bg-amber-100 text-amber-800'
+                                                : 'border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-400 hover:bg-amber-100'
+                                            : option.value === 'TARDE'
+                                                ? selected
+                                                    ? 'border-orange-400 bg-orange-100 text-orange-800'
+                                                    : 'border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-400 hover:bg-orange-100'
+                                                : selected
+                                                    ? 'border-indigo-400 bg-indigo-100 text-indigo-800'
+                                                    : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-400 hover:bg-indigo-100';
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => setSeriesClassColumnFilterDrafts((current) => ({ ...current, shift: selected ? '' : option.value }))}
+                                                className={`rounded-xl border px-2 py-3 text-[10px] font-black uppercase tracking-[0.08em] transition ${tone}`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => applySeriesClassColumnFilter(column.key)}
+                                className="mt-3 h-9 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 transition hover:bg-blue-100"
+                            >
+                                Filtrar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => clearSeriesClassColumnFilter(column.key)}
+                                className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-100"
+                            >
+                                Limpar
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    };
 
     const openStudentsModal = async (item: SeriesClassRecord) => {
         setClassStudentsModalOpen(true);
