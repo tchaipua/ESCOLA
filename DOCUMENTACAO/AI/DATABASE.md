@@ -97,6 +97,15 @@ Padrao minimo para entidades de negocio:
 
 ## Cadastro mestre de pessoa
 
+### `users`
+
+Tabela de acesso administrativo. Guarda papel, permissões, senha legada e o
+vínculo `personId`, mas não repete o e-mail cadastral. Nome, e-mail, documentos,
+contatos e endereço são sempre resolvidos pela pessoa vinculada em `people`.
+
+Cadastros sem CPF continuam válidos. Quando não há CPF, o sistema não deve
+deduzir que duas pessoas são iguais apenas por nome ou e-mail.
+
 ### `people`
 
 Tabela mestre para identidade compartilhada por escola.
@@ -242,6 +251,10 @@ A regra aplicada agora e:
 - a senha valida do ecossistema passa a ser a da tabela global por `email`
 - a verificacao de e-mail passa a ser global por `email`
 - os campos de senha legados deixam de ser o ponto oficial de controle
+- `people.email` é o único e-mail cadastral da pessoa dentro da Escola
+- `email_credentials.email` é somente a chave técnica global de autenticação,
+  não uma segunda ficha de pessoa
+- `users`, `teachers`, `students` e `guardians` não armazenam cópia do e-mail
 
 ## Soft delete
 

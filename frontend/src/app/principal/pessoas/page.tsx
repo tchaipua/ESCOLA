@@ -135,10 +135,7 @@ WHERE P.tenantId = ${toSqlLiteral(params.tenantId || '')}
       FROM users U
       WHERE U.tenantId = P.tenantId
         AND U.role IN ('ADMIN', 'SECRETARIA', 'COORDENACAO')
-        AND (
-          U.personId = P.id
-          OR (U.personId IS NULL AND UPPER(COALESCE(U.email, '')) = UPPER(COALESCE(P.email, '')))
-        )
+        AND U.personId = P.id
         AND (
           ${toSqlLiteral(roleFilter)} = 'FUNCIONARIOS'
           OR U.role = 'ADMIN'

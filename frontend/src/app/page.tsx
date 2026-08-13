@@ -33,7 +33,7 @@ function getCentralUrl(): string | null {
     target.username = '';
     target.password = '';
     target.search = '';
-    target.hash = 'caller=ESCOLA';
+    target.hash = '';
     return target.toString();
   } catch {
     return process.env.NODE_ENV === 'production' ? null : DEFAULT_CENTRAL_URL;
@@ -514,7 +514,7 @@ export default function LoginPage() {
       });
       return;
     }
-    window.location.assign(centralUrl);
+    window.open(centralUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleChooseTeacherDevice = (mode: 'PRINCIPAL' | 'PWA') => {

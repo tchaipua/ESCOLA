@@ -8,6 +8,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
 export const PRINCIPAL_PROGRAM_HEADER_RIGHT_INSET_CLASS = 'lg:pr-[360px] xl:pr-[390px]';
 export const PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS =
@@ -36,20 +39,50 @@ function compactHeaderActionClassName(value: unknown) {
     .replaceAll('rounded-2xl', 'rounded-xl');
 }
 
-function compactHeaderActionNode(node: ReactNode): ReactNode {
+function notificationHeaderActionClassName(value: unknown, unreadCount: number | null) {
+  if (typeof value !== 'string' || unreadCount === null) return value;
+
+  if (unreadCount === 0) {
+    return value
+      .replaceAll('border-white/20', 'border-emerald-300/80')
+      .replaceAll('bg-white/10', 'bg-emerald-500')
+      .replaceAll('hover:bg-white/20', 'hover:bg-emerald-600');
+  }
+
+  if (unreadCount > 0) {
+    return value
+      .replaceAll('border-white/20', 'border-red-300/80')
+      .replaceAll('bg-white/10', 'bg-red-500')
+      .replaceAll('hover:bg-white/20', 'hover:bg-red-600');
+  }
+
+  return value;
+}
+
+function compactHeaderActionNode(node: ReactNode, unreadCount: number | null, isCompact: boolean): ReactNode {
   return Children.map(node, (child) => {
     if (!isValidElement(child)) return child;
 
     const props = child.props as {
       className?: unknown;
       children?: ReactNode;
+      title?: unknown;
+      'aria-label'?: unknown;
     };
     const nextProps: {
       className?: unknown;
       children?: ReactNode;
     } = {};
-    const compactClassName = compactHeaderActionClassName(props.className);
-    const compactChildren = props.children ? compactHeaderActionNode(props.children) : props.children;
+    const isNotificationAction = props.title === 'Abrir notificações' || props['aria-label'] === 'Abrir notificações';
+    const notificationClassName = isNotificationAction
+      ? notificationHeaderActionClassName(props.className, unreadCount)
+      : props.className;
+    const compactClassName = isCompact
+      ? compactHeaderActionClassName(notificationClassName)
+      : notificationClassName;
+    const compactChildren = props.children
+      ? compactHeaderActionNode(props.children, unreadCount, isCompact)
+      : props.children;
 
     if (compactClassName !== props.className) {
       nextProps.className = compactClassName;
@@ -75,14 +108,51 @@ export default function PrincipalProgramHeader({
   density = 'compact',
 }: PrincipalProgramHeaderProps) {
   const [resolvedLogoUrl, setResolvedLogoUrl] = useState<string | null>(null);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number | null>(null);
   const isCompact = density === 'compact';
-  const renderedSecondaryAction = isCompact
-    ? compactHeaderActionNode(secondaryAction)
-    : secondaryAction;
+  const renderedSecondaryAction = compactHeaderActionNode(secondaryAction, unreadNotificationsCount, isCompact);
 
   useEffect(() => {
     setResolvedLogoUrl(logoUrl || null);
   }, [logoUrl]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUnreadNotifications = async () => {
+      try {
+        const { token, userId } = getDashboardAuthContext();
+        if (!token || !userId) {
+          if (active) setUnreadNotificationsCount(null);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/notifications/my/unread-summary`, { headers: {} });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.message || 'Não foi possível consultar as notificações.');
+
+        if (active) {
+          setUnreadNotificationsCount(typeof data?.count === 'number' ? data.count : null);
+        }
+      } catch {
+        if (active) setUnreadNotificationsCount(null);
+      }
+    };
+
+    const refreshUnreadNotifications = () => {
+      void loadUnreadNotifications();
+    };
+
+    void loadUnreadNotifications();
+    window.addEventListener('notifications-updated', refreshUnreadNotifications);
+    window.addEventListener('focus', refreshUnreadNotifications);
+
+    return () => {
+      active = false;
+      window.removeEventListener('notifications-updated', refreshUnreadNotifications);
+      window.removeEventListener('focus', refreshUnreadNotifications);
+    };
+  }, []);
 
   return (
     <div

@@ -60,6 +60,7 @@ async function main() {
     const operator = await prisma.user.findFirst({
       where: { tenantId: tenant.id, role: "ADMIN", canceledAt: null },
       orderBy: { createdAt: "asc" },
+      include: { person: { select: { email: true } } },
     });
     assert(operator, "Administrador local da escola TCHA não encontrado.");
     const currentUser: ICurrentUser = {
@@ -69,7 +70,7 @@ async function main() {
       role: "ADMIN",
       permissions: [],
       name: operator.name,
-      email: operator.email,
+      email: operator.person?.email,
       branchAccessCodes: [1],
       canAccessAllBranches: true,
       isMaster: false,
@@ -78,7 +79,7 @@ async function main() {
     };
 
     let user = await prisma.user.findFirst({
-      where: { tenantId: tenant.id, email: QA_ADMIN.login },
+      where: { tenantId: tenant.id, person: { email: QA_ADMIN.login } },
     });
     if (!user) {
       await auth.register(
@@ -91,7 +92,7 @@ async function main() {
         currentUser,
       );
       user = await prisma.user.findFirst({
-        where: { tenantId: tenant.id, email: QA_ADMIN.login },
+        where: { tenantId: tenant.id, person: { email: QA_ADMIN.login } },
       });
     }
     assert(user, "O administrador local de QA não foi criado.");

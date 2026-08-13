@@ -101,6 +101,7 @@ export type CentralCommerceConfiguration = {
   stockExpirationControlMode: string;
   stockGridControlMode: string;
   stockNegativeControlMode: string;
+  notifyMinimumStockOnMovement: boolean;
   allowSaleUnitPriceEdit: boolean;
   allowSaleItemDiscount: boolean;
   groupSameProduct: boolean;
@@ -676,6 +677,10 @@ function validatedTenantConfiguration(
         stockNegativeControlMode: mapMode(
           commerce.stockNegativeControlMode,
           "effective.commerce.stockNegativeControlMode",
+        ),
+        notifyMinimumStockOnMovement: validatedBoolean(
+          commerce.notifyMinimumStockOnMovement,
+          "effective.commerce.notifyMinimumStockOnMovement",
         ),
         allowSaleUnitPriceEdit: validatedBoolean(
           commerce.allowSaleUnitPriceEdit,

@@ -879,11 +879,12 @@ export class PeopleService {
               canceledBy: string | null;
             }>
           >`
-            SELECT id, name, email, personId, role, accessProfile, canceledAt, canceledBy
-            FROM users
-            WHERE tenantId = ${tenantId}
-              AND branchCode IN (${Prisma.join(this.visibleBranchCodes())})
-              AND canceledAt IS NULL
+            SELECT u.id, u.name, p.email, u.personId, u.role, u.accessProfile, u.canceledAt, u.canceledBy
+            FROM users u
+            LEFT JOIN people p ON p.id = u.personId AND p.tenantId = u.tenantId
+            WHERE u.tenantId = ${tenantId}
+              AND u.branchCode IN (${Prisma.join(this.visibleBranchCodes())})
+              AND u.canceledAt IS NULL
           `,
         ]);
 

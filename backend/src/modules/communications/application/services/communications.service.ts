@@ -190,7 +190,7 @@ export class CommunicationsService {
           select: {
             id: true,
             name: true,
-            email: true,
+            person: { select: { email: true } },
           },
         });
 
@@ -199,7 +199,7 @@ export class CommunicationsService {
             recipientType: "USER",
             recipientId: user.id,
             name: user.name,
-            email: user.email,
+            email: user.person?.email,
           }),
         );
       }

@@ -307,7 +307,6 @@ model User {
   branchCode            Int     @default(1)
   personId              String?
   name                  String
-  email                 String
   accessUsername        String?
   password              String?
   photoUrl              String?

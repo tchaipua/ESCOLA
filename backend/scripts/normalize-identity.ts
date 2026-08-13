@@ -283,12 +283,13 @@ async function linkUsersToPeople(
   const users = await db.user.findMany({
     where: { tenantId, canceledAt: null },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    include: { person: { select: { email: true } } },
   });
   const peopleById = new Map(people.map((person) => [person.id, person]));
 
   for (const user of users) {
     let person = findPersonForUser(user, people);
-    const email = validEmail(user.email);
+    const email = validEmail(user.person?.email);
     const name = upper(user.name) || "PESSOA SEM NOME";
     const login = upper(user.accessUsername) || null;
 
@@ -356,13 +357,11 @@ async function linkUsersToPeople(
     if (!APPLY || !person) continue;
 
     const effectiveName = upper(person.name) || name;
-    const effectiveEmail = validEmail(person.email) || user.email;
     await db.user.update({
       where: { id: user.id },
       data: {
         personId: person.id,
         name: effectiveName,
-        email: effectiveEmail,
         accessUsername: null,
         password: null,
         resetPasswordToken: null,

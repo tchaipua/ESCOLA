@@ -998,11 +998,23 @@ export class TenantsService {
         },
       });
 
+      const adminPerson = await tx.person.create({
+        data: {
+          tenantId: newTenant.id,
+          branchCode: DEFAULT_BRANCH_CODE,
+          name: createTenantDto.adminName,
+          email: createTenantDto.adminEmail,
+          createdBy: this.masterAuditUser,
+          updatedBy: this.masterAuditUser,
+        },
+        select: { id: true },
+      });
+
       const newAdmin = await tx.user.create({
         data: {
           tenantId: newTenant.id,
+          personId: adminPerson.id,
           name: createTenantDto.adminName,
-          email: createTenantDto.adminEmail,
           password: adminPasswordHash,
           role: "ADMIN",
           createdBy: this.masterAuditUser,
@@ -1010,12 +1022,16 @@ export class TenantsService {
         },
       });
 
-      return { tenant: newTenant, admin: newAdmin };
+      return {
+        tenant: newTenant,
+        admin: newAdmin,
+        adminEmail: createTenantDto.adminEmail,
+      };
     });
 
     await this.runAsMasterTenantContext(result.admin.tenantId, async () => {
       await this.sharedProfilesService.updateEmailCredentialPassword(
-        result.admin.email,
+        result.adminEmail,
         hashedPassword,
         this.masterAuditUser,
       );
@@ -1024,13 +1040,17 @@ export class TenantsService {
         result.admin.tenantId,
         {
           name: result.admin.name,
-          email: result.admin.email,
+          email: result.adminEmail,
+          personId: result.admin.personId,
         },
         this.masterAuditUser,
       );
     });
 
-    return result;
+    return {
+      tenant: result.tenant,
+      admin: { ...result.admin, email: result.adminEmail },
+    };
   }
 
   async findAll() {
@@ -1043,7 +1063,10 @@ export class TenantsService {
         },
         users: {
           where: { role: "ADMIN" },
-          select: { name: true, email: true },
+          select: {
+            name: true,
+            person: { select: { email: true } },
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -1055,6 +1078,7 @@ export class TenantsService {
         telegramBotToken,
         storageProviderSecretAccessKey,
         branches,
+        users,
         ...tenant
       } = record;
       const defaultBranch = branches[0]
@@ -1070,6 +1094,10 @@ export class TenantsService {
         ),
         logoUrl: defaultBranch?.logoUrl ?? null,
         document: defaultBranch?.document ?? null,
+        users: users.map((user) => ({
+          name: user.name,
+          email: user.person?.email ?? null,
+        })),
         defaultBranch,
       };
     });
@@ -1426,6 +1454,8 @@ export class TenantsService {
             | "YES"
             | "BY_PRODUCT"
             | undefined,
+          notifyMinimumStockOnMovement:
+            commerce?.notifyMinimumStockOnMovement === true,
           allowSaleUnitPriceEdit: commerce?.allowSaleUnitPriceEdit,
           allowSaleItemDiscount: commerce?.allowSaleItemDiscount,
           groupSameProduct: commerce?.groupSameProduct,
@@ -2000,20 +2030,20 @@ export class TenantsService {
         select: {
           id: true,
           name: true,
-          email: true,
           role: true,
           updatedAt: true,
           updatedBy: true,
+          person: { select: { email: true } },
           tenant: { select: { id: true, name: true } },
         },
       }) as Promise<
         Array<{
           id: string;
           name: string;
-          email: string | null;
           role: string;
           updatedAt: Date;
           updatedBy?: string | null;
+          person?: { email?: string | null } | null;
           tenant: { id: string; name: string };
         }>
       >,
@@ -2054,12 +2084,16 @@ export class TenantsService {
         (record: {
           id: string;
           name: string;
-          email: string | null;
           role: string;
           updatedAt: Date;
           updatedBy?: string | null;
+          person?: { email?: string | null } | null;
           tenant: { id: string; name: string };
-        }) => this.mapUserEmailUsage(record),
+        }) =>
+          this.mapUserEmailUsage({
+            ...record,
+            email: record.person?.email ?? null,
+          }),
       ),
       ...teachers.map(
         (record) =>
@@ -2118,6 +2152,7 @@ export class TenantsService {
           select: {
             id: true,
             tenantId: true,
+            personId: true,
             role: true,
             tenant: { select: { name: true } },
           },
@@ -2133,8 +2168,14 @@ export class TenantsService {
           userId: this.masterAuditUser,
         });
 
-        await this.prisma.user.update({
-          where: { id: recordId },
+        if (!user.personId) {
+          throw new BadRequestException(
+            "O usuário não possui uma pessoa central vinculada.",
+          );
+        }
+
+        await this.prisma.person.update({
+          where: { id: user.personId },
           data: {
             email: newEmail,
             password: null,
@@ -2398,7 +2439,6 @@ export class TenantsService {
       id: string;
       tenantId: string;
       name: string;
-      email: string;
       photoUrl?: string | null;
       complementaryProfiles?: string | null;
       role: string;
@@ -2411,6 +2451,7 @@ export class TenantsService {
       canceledAt?: Date | null;
     },
     sharedPerson?: {
+      email?: string | null;
       birthDate?: Date | null;
       rg?: string | null;
       cpf?: string | null;
@@ -2441,7 +2482,7 @@ export class TenantsService {
       id: record.id,
       tenantId: record.tenantId,
       name: record.name,
-      email: record.email,
+      email: sharedPerson?.email || null,
       photoUrl: record.photoUrl || null,
       complementaryProfiles: normalizeComplementaryAccessProfiles(
         record.complementaryProfiles,
@@ -2507,8 +2548,8 @@ export class TenantsService {
             select: {
               id: true,
               tenantId: true,
+              personId: true,
               name: true,
-              email: true,
               photoUrl: true,
               complementaryProfiles: true,
               role: true,
@@ -2523,68 +2564,16 @@ export class TenantsService {
               createdAt: true,
               updatedAt: true,
               canceledAt: true,
+              person: true,
             },
           }),
         ]),
     );
 
-    const normalizedUserEmails = new Set(
-      users.map((user) => this.normalizeEmail(user.email)).filter(Boolean),
-    );
-    const sharedPeople =
-      normalizedUserEmails.size > 0
-        ? await this.runAsMasterTenantContext(tenantId, () =>
-            this.prisma.person.findMany({
-              where: {
-                tenantId,
-                canceledAt: null,
-                email: { not: null },
-              },
-              select: {
-                email: true,
-                birthDate: true,
-                rg: true,
-                cpf: true,
-                cnpj: true,
-                nickname: true,
-                corporateName: true,
-                phone: true,
-                whatsapp: true,
-                cellphone1: true,
-                cellphone2: true,
-                zipCode: true,
-                street: true,
-                number: true,
-                city: true,
-                state: true,
-                neighborhood: true,
-                complement: true,
-                updatedAt: true,
-              },
-            }),
-          )
-        : [];
-
-    const sharedPersonByEmail = new Map(
-      sharedPeople
-        .filter((person) =>
-          normalizedUserEmails.has(this.normalizeEmail(person.email)),
-        )
-        .sort(
-          (left, right) => right.updatedAt.getTime() - left.updatedAt.getTime(),
-        )
-        .map((person) => [this.normalizeEmail(person.email), person] as const),
-    );
-
     return {
       tenant,
       branches: branches.map(mapTenantBranchSummary),
-      users: users.map((user) =>
-        this.mapAccessUser(
-          user,
-          sharedPersonByEmail.get(this.normalizeEmail(user.email)) || null,
-        ),
-      ),
+      users: users.map((user) => this.mapAccessUser(user, user.person)),
     };
   }
 
@@ -2686,11 +2675,54 @@ export class TenantsService {
       hashedPassword = await bcrypt.hash(password, salt);
     }
 
+    const sharedPerson = await this.runAsMasterTenantContext(
+      tenantId,
+      async () => {
+        if (hashedPassword) {
+          await this.sharedProfilesService.updateEmailCredentialPassword(
+            email,
+            hashedPassword,
+            this.masterAuditUser,
+          );
+        } else {
+          await this.sharedProfilesService.ensureEmailCredential(email, {
+            userId: this.masterAuditUser,
+          });
+        }
+        return this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
+          tenantId,
+          {
+            name,
+            email,
+            birthDate,
+            rg,
+            cpf,
+            cnpj,
+            nickname,
+            corporateName,
+            phone,
+            whatsapp,
+            cellphone1,
+            cellphone2,
+            zipCode,
+            street,
+            number,
+            city,
+            state,
+            neighborhood,
+            complement,
+          },
+          this.masterAuditUser,
+          cpf || null,
+        );
+      },
+    );
+
     const user = await this.prisma.user.create({
       data: {
         tenantId,
+        personId: sharedPerson.id,
         name,
-        email,
         password: null,
         photoUrl,
         complementaryProfiles:
@@ -2711,8 +2743,8 @@ export class TenantsService {
       select: {
         id: true,
         tenantId: true,
+        personId: true,
         name: true,
-        email: true,
         password: true,
         photoUrl: true,
         complementaryProfiles: true,
@@ -2733,49 +2765,9 @@ export class TenantsService {
       branchAccessCodes,
     );
 
-    await this.runAsMasterTenantContext(tenantId, async () => {
-      if (hashedPassword) {
-        await this.sharedProfilesService.updateEmailCredentialPassword(
-          email,
-          hashedPassword,
-          this.masterAuditUser,
-        );
-      } else {
-        await this.sharedProfilesService.ensureEmailCredential(email, {
-          userId: this.masterAuditUser,
-        });
-      }
-      await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
-        tenantId,
-        {
-          name,
-          email,
-          birthDate,
-          rg,
-          cpf,
-          cnpj,
-          nickname,
-          corporateName,
-          phone,
-          whatsapp,
-          cellphone1,
-          cellphone2,
-          zipCode,
-          street,
-          number,
-          city,
-          state,
-          neighborhood,
-          complement,
-        },
-        this.masterAuditUser,
-        cpf || null,
-      );
-    });
-
     return {
       message: "Usuário de acesso criado com sucesso.",
-      user: this.mapAccessUser({ ...user, branchAccesses }),
+      user: this.mapAccessUser({ ...user, branchAccesses }, sharedPerson),
     };
   }
 
@@ -2790,8 +2782,8 @@ export class TenantsService {
         select: {
           id: true,
           tenantId: true,
+          personId: true,
           name: true,
-          email: true,
           photoUrl: true,
           complementaryProfiles: true,
           role: true,
@@ -2802,6 +2794,7 @@ export class TenantsService {
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
             select: { branchCode: true, isDefault: true },
           },
+          person: true,
         },
       }),
     );
@@ -2956,7 +2949,7 @@ export class TenantsService {
     );
 
     let hashedPassword: string | undefined;
-    const normalizedCurrentEmail = this.normalizeEmail(user.email);
+    const normalizedCurrentEmail = this.normalizeEmail(user.person?.email);
     const normalizedIncomingEmail = email ?? normalizedCurrentEmail;
     const shouldResolvePasswordForEmailChange =
       Boolean(normalizedIncomingEmail) &&
@@ -2971,7 +2964,6 @@ export class TenantsService {
       where: { id: userId },
       data: {
         name,
-        email,
         password:
           hashedPassword || shouldResolvePasswordForEmailChange
             ? null
@@ -2991,8 +2983,8 @@ export class TenantsService {
       select: {
         id: true,
         tenantId: true,
+        personId: true,
         name: true,
-        email: true,
         photoUrl: true,
         complementaryProfiles: true,
         role: true,
@@ -3012,8 +3004,8 @@ export class TenantsService {
       branchAccessCodes,
     );
 
-    const emailForPasswordSync = email || user.email;
-    await this.runAsMasterTenantContext(tenantId, async () => {
+    const emailForPasswordSync = email || user.person?.email;
+    const sharedPerson = await this.runAsMasterTenantContext(tenantId, async () => {
       if (emailForPasswordSync) {
         if (hashedPassword) {
           await this.sharedProfilesService.updateEmailCredentialPassword(
@@ -3029,11 +3021,12 @@ export class TenantsService {
         }
       }
 
-      await this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
+      return this.sharedProfilesService.syncSharedProfileFromAdministrativeUser(
         tenantId,
         {
+          personId: user.personId || undefined,
           name: name !== undefined ? name : user.name,
-          email: email !== undefined ? email : user.email,
+          email: email !== undefined ? email : user.person?.email,
           birthDate,
           rg,
           cpf,
@@ -3059,7 +3052,10 @@ export class TenantsService {
 
     return {
       message: "Usuário de acesso atualizado com sucesso.",
-      user: this.mapAccessUser({ ...updated, branchAccesses }),
+      user: this.mapAccessUser(
+        { ...updated, branchAccesses },
+        sharedPerson,
+      ),
     };
   }
 
@@ -3447,6 +3443,7 @@ export class TenantsService {
     }> = [];
     let finalAdminEmailForPassword: string | undefined;
     let adminProfileSyncPayload: {
+      personId?: string | null;
       name?: string | null;
       email?: string | null;
     } | null = null;
@@ -3455,8 +3452,9 @@ export class TenantsService {
       let adminUser:
         | {
             id: string;
+            personId: string | null;
             name: string;
-            email: string;
+            person: { email: string | null } | null;
           }
         | null
         | undefined;
@@ -3512,14 +3510,15 @@ export class TenantsService {
           orderBy: { createdAt: "asc" },
           select: {
             id: true,
+            personId: true,
             name: true,
-            email: true,
+            person: { select: { email: true } },
           },
         });
 
         if (adminUser) {
           const normalizedCurrentAdminEmail = this.normalizeEmail(
-            adminUser.email,
+            adminUser.person?.email,
           );
           const normalizedIncomingAdminEmail = updateTenantDto.adminEmail
             ? this.normalizeEmail(updateTenantDto.adminEmail)
@@ -3532,7 +3531,6 @@ export class TenantsService {
             where: { id: adminUser.id },
             data: {
               name: updateTenantDto.adminName || undefined,
-              email: updateTenantDto.adminEmail || undefined,
               password:
                 hashedPassword || shouldResolvePasswordForAdminEmailChange
                   ? null
@@ -3542,10 +3540,11 @@ export class TenantsService {
           });
 
           finalAdminEmailForPassword =
-            updateTenantDto.adminEmail || adminUser.email;
+            updateTenantDto.adminEmail || adminUser.person?.email || undefined;
           adminProfileSyncPayload = {
+            personId: adminUser.personId,
             name: updateTenantDto.adminName || adminUser.name,
-            email: updateTenantDto.adminEmail || adminUser.email,
+            email: updateTenantDto.adminEmail || adminUser.person?.email,
           };
 
           if (
@@ -3604,10 +3603,10 @@ export class TenantsService {
           select: {
             id: true,
             name: true,
-            email: true,
             role: true,
             updatedAt: true,
             updatedBy: true,
+            person: { select: { email: true } },
             tenant: { select: { id: true, name: true } },
           },
         });
@@ -3615,7 +3614,10 @@ export class TenantsService {
           throw new NotFoundException(
             "Registro de usuário não encontrado após atualização.",
           );
-        return this.mapUserEmailUsage(record);
+        return this.mapUserEmailUsage({
+          ...record,
+          email: record.person?.email ?? null,
+        });
       }
       case "TEACHER": {
         const record = await this.prisma.teacher.findFirst({

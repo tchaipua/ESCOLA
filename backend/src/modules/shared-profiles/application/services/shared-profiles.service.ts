@@ -707,7 +707,7 @@ export class SharedProfilesService {
           ...tenantScope,
           ...(exclude?.kind === "USER" ? { id: { not: exclude.id } } : {}),
         },
-        select: { id: true, email: true },
+        select: { id: true, person: { select: { email: true } } },
       }),
       prismaClient.teacher.findMany({
         where: {
@@ -736,9 +736,12 @@ export class SharedProfilesService {
       people: this.filterByNormalizedEmail(people, normalizedEmail).map(
         ({ id }) => ({ id }),
       ),
-      users: this.filterByNormalizedEmail(users, normalizedEmail).map(
-        ({ id }) => ({ id }),
-      ),
+      users: users
+        .filter(
+          (record: { person?: { email?: string | null } | null }) =>
+            this.normalizeEmail(record.person?.email) === normalizedEmail,
+        )
+        .map(({ id }: { id: string }) => ({ id })),
       teachers: teachers
         .filter(
           (record: { person?: { email?: string | null } | null }) =>
@@ -965,9 +968,9 @@ export class SharedProfilesService {
       where: {
         tenantId,
         canceledAt: null,
+        person: { email: normalizedEmail },
       },
       select: {
-        email: true,
         role: true,
       },
     });
@@ -975,7 +978,6 @@ export class SharedProfilesService {
     return Array.from(
       new Set(
         users
-          .filter((user) => this.normalizeEmail(user.email) === normalizedEmail)
           .map((user) => this.getAdministrativeRoleLabel(user.role))
           .filter((role): role is string => Boolean(role)),
       ),
@@ -1028,8 +1030,7 @@ export class SharedProfilesService {
     const normalizedEmail = this.normalizeEmail(email);
     if (!normalizedEmail) return [] as SharedEmailAccountSource[];
 
-    const [people, users] = await Promise.all([
-      this.prisma.person.findMany({
+    const people = await this.prisma.person.findMany({
         where: {
           tenantId,
           email: { not: null },
@@ -1041,26 +1042,9 @@ export class SharedProfilesService {
           password: true,
           updatedAt: true,
         },
-      }),
-      this.prisma.user.findMany({
-        where: {
-          tenantId,
-          canceledAt: null,
-          ...(exclude?.kind === "USER" ? { id: { not: exclude.id } } : {}),
-        },
-        select: {
-          id: true,
-          email: true,
-          password: true,
-          updatedAt: true,
-        },
-      }),
-    ]);
+      });
 
-    return [
-      ...people.map((record) => ({ kind: "PERSON" as const, record })),
-      ...users.map((record) => ({ kind: "USER" as const, record })),
-    ].filter(
+    return people.map((record) => ({ kind: "PERSON" as const, record })).filter(
       ({ record }) => this.normalizeEmail(record.email) === normalizedEmail,
     );
   }
@@ -1614,7 +1598,7 @@ export class SharedProfilesService {
           id: true,
           name: true,
           role: true,
-          email: true,
+          person: { select: { id: true, email: true } },
           updatedAt: true,
         },
         take: usersPoolSize,
@@ -1782,8 +1766,8 @@ export class SharedProfilesService {
     users.forEach((record) => {
       const administrativeRole = this.getAdministrativeRoleLabel(record.role);
       upsertSuggestion({
-        id: `USER:${record.id}`,
-        name: record.name || record.email || "USUARIO",
+        id: record.person?.id ? `PERSON:${record.person.id}` : `USER:${record.id}`,
+        name: record.name || record.person?.email || "USUARIO",
         roles: administrativeRole ? [administrativeRole] : [],
         cpf: null,
         cnpj: null,
@@ -1791,7 +1775,7 @@ export class SharedProfilesService {
         whatsapp: null,
         cellphone1: null,
         cellphone2: null,
-        email: record.email ?? null,
+        email: record.person?.email ?? null,
         active: true,
         updatedAt: record.updatedAt,
       });
@@ -2134,9 +2118,9 @@ export class SharedProfilesService {
           select: {
             id: true,
             name: true,
-            email: true,
             updatedAt: true,
             updatedBy: true,
+            person: { select: { name: true, email: true } },
             tenant: { select: { id: true, name: true } },
           },
         }),

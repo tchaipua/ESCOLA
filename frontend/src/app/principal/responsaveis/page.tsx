@@ -1081,6 +1081,12 @@ export default function ResponsaveisPage() {
             modalVariant="school-record-detail"
             compactFooter
             buttonClassName="inline-flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-slate-800 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+            buttonIcon={
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                    <circle cx="12" cy="12" r="3" />
+                </svg>
+            }
             badges={[
                 guardian.canceledAt ? 'INATIVO' : 'ATIVO',
                 ...(guardianFieldAccess.access ? [guardian.email ? 'APP LIBERADO' : 'SEM ACESSO', formatGuardianAccessProfile(guardian.accessProfile)] : []),
@@ -1339,7 +1345,16 @@ export default function ResponsaveisPage() {
 
         return (
             <td key={columnKey} className="px-6 py-4">
-                <div className={`text-sm font-medium ${guardian.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
+                <div className={`flex items-center gap-2 text-sm font-medium ${guardian.canceledAt ? 'text-rose-800' : 'text-slate-700'}`}>
+                    <svg
+                        className="h-4 w-4 shrink-0"
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        aria-hidden="true"
+                    >
+                        <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5" />
+                    </svg>
                     {guardian.students?.length ? `${guardian.students.length} aluno(s)` : 'Nenhum vínculo'}
                 </div>
                 <div className={`text-[13px] ${guardian.canceledAt ? 'text-rose-500' : 'text-slate-400'}`}>
@@ -1597,8 +1612,14 @@ export default function ResponsaveisPage() {
                                                     <div className="flex justify-end gap-2">
                                                         {renderGuardianInfoButton(guardian)}
                                                         <GridRowActionIconButton title="Abrir alunos do responsável" onClick={() => handleOpenStudentsModal(guardian)} tone="violet" visualStyle="outlined">
-                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5V4H2v16h5m10 0v-2a4 4 0 00-4-4H11a4 4 0 00-4 4v2m10 0H7m10 0h-2m-8 0H5m6-10a4 4 0 110-8 4 4 0 010 8z" />
+                                                            <svg
+                                                                className="h-4 w-4"
+                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                viewBox="0 0 16 16"
+                                                                fill="currentColor"
+                                                                aria-hidden="true"
+                                                            >
+                                                                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5" />
                                                             </svg>
                                                         </GridRowActionIconButton>
                                                         {canManageGuardians ? (
@@ -1614,8 +1635,9 @@ export default function ResponsaveisPage() {
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                                                         </svg>
                                                                     ) : (
-                                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636l-12.728 12.728M6 6l12 12" />
+                                                                        <svg className="h-6 w-6" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                                                            <path d="M4.54.146A.5.5 0 0 1 4.893 0h6.214a.5.5 0 0 1 .353.146l4.394 4.394a.5.5 0 0 1 .146.353v6.214a.5.5 0 0 1-.146.353l-4.394 4.394a.5.5 0 0 1-.353.146H4.893a.5.5 0 0 1-.353-.146L.146 11.46A.5.5 0 0 1 0 11.107V4.893a.5.5 0 0 1 .146-.353zM5.1 1 1 5.1v5.8L5.1 15h5.8l4.1-4.1V5.1L10.9 1z" />
+                                                                            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708" />
                                                                         </svg>
                                                                     )}
                                                                 </GridRowActionIconButton>

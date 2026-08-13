@@ -529,3 +529,25 @@ Para cada decisao, registrar:
   a migration como revertida ou executar a migration nova por SQL ad-hoc. Foram
   rejeitadas por perderem rastreabilidade ou deixarem a cadeia inconsistente.
 - Status: aceita
+
+## DEC-0050
+
+- Data: 2026-08-13
+- Contexto: o e-mail cadastral de usuários administrativos existia em
+  `users.email` e `people.email`, permitindo divergências e lançamentos em
+  duplicidade.
+- Decisão: remover fisicamente `users.email` e tratar `people.email` como a
+  única fonte cadastral. Todo `User` passa a resolver nome e e-mail pela
+  `Person` vinculada. Na migração, `people.email` prevalece em conflitos; o
+  valor legado de `users.email` só preenche pessoas sem e-mail. Usuários ainda
+  sem `personId` recebem uma pessoa mestre antes da remoção da coluna.
+  `email_credentials.email` permanece exclusivamente como chave técnica global
+  de autenticação e não representa um segundo cadastro de pessoa. CPF continua
+  opcional; registros sem CPF não são mesclados por e-mail ou nome.
+- Impacto: o dado cadastral é lançado uma vez, alterações passam a refletir em
+  todos os papéis e acessos e cadastros sem documento continuam possíveis.
+- Alternativas consideradas: sincronizar duas colunas por aplicação; manter o
+  e-mail apenas em `users`; tornar e-mail chave de identidade. Foram rejeitadas
+  por manter duplicidade, excluir papéis não administrativos ou unir pessoas
+  distintas que compartilham um endereço eletrônico.
+- Status: aceita

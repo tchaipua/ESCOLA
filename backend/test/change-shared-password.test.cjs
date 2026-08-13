@@ -14,8 +14,10 @@ function createAuthPrisma({ email = "GERAL@ESCOLA.COM", modelType = "user" } = {
   const buildFindFirst = (expectedModel) => async ({ select }) =>
     expectedModel === modelType &&
     select &&
-    Object.prototype.hasOwnProperty.call(select, "email")
-      ? { email }
+    Object.prototype.hasOwnProperty.call(select, "person")
+      ? expectedModel === "user"
+        ? { role: "ADMIN", person: { email } }
+        : { person: { email } }
       : null;
 
   return {

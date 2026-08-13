@@ -101,6 +101,11 @@ E-mail não é chave de identidade, pois pode ser compartilhado.
 - credencial compartilhada (`email` + `password`)
 - trilha de auditoria
 
+O acesso administrativo em `User` aponta para `Person` por `personId` e não
+possui e-mail próprio. `email_credentials.email` permanece apenas como índice
+técnico da credencial compartilhada. Cadastros sem CPF são permitidos e não são
+mesclados automaticamente por nome ou e-mail.
+
 ### Papeis operacionais
 
 As tabelas abaixo continuam existindo porque guardam comportamento e operacao especifica de cada papel:

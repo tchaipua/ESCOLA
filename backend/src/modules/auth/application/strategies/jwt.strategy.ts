@@ -105,7 +105,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           complementaryProfiles: true,
           permissions: true,
           cashierOnly: true,
-          email: true,
+          person: { select: { name: true, email: true } },
           branchAccesses: {
             where: { canceledAt: null },
             orderBy: [{ isDefault: "desc" }, { branchCode: "asc" }],
@@ -276,12 +276,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: validatedRole,
       name: validatedName || null,
       email:
-        user && typeof user.email === "string" && user.email.trim()
-          ? user.email
-          : "person" in account &&
-              typeof account.person?.email === "string" &&
-              account.person.email.trim()
-            ? account.person.email
+        "person" in account &&
+        typeof account.person?.email === "string" &&
+        account.person.email.trim()
+          ? account.person.email
           : null,
       modelType,
       cashierOnly: user ? Boolean(user.cashierOnly) : false,

@@ -74,6 +74,7 @@ async function main() {
         canceledAt: null,
       },
       orderBy: { createdAt: "asc" },
+      include: { person: { select: { email: true } } },
     });
     assert(admin, "Nenhum administrador ativo foi encontrado na escola TCHA.");
 
@@ -84,7 +85,7 @@ async function main() {
       role: "ADMIN",
       permissions: [],
       name: admin.name,
-      email: admin.email,
+      email: admin.person?.email,
       branchAccessCodes: [1],
       canAccessAllBranches: false,
       isMaster: false,

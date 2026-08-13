@@ -163,6 +163,7 @@ export type FinanceiroSourceIntegrationSettingsPayload = {
   stockExpirationControlMode?: "NO" | "YES" | "BY_PRODUCT";
   stockGridControlMode?: "NO" | "YES" | "BY_PRODUCT";
   stockNegativeControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  notifyMinimumStockOnMovement?: boolean;
   allowSaleUnitPriceEdit?: boolean;
   allowSaleItemDiscount?: boolean;
   groupSameProduct?: boolean;
@@ -498,6 +499,8 @@ export class FinanceiroService {
         commerce?.stockExpirationControlMode || "NO",
       stockGridControlMode: commerce?.stockGridControlMode || "NO",
       stockNegativeControlMode: commerce?.stockNegativeControlMode || "NO",
+      notifyMinimumStockOnMovement:
+        commerce?.notifyMinimumStockOnMovement === true,
       companyName:
         company.tradeName ||
         company.legalName ||

@@ -372,7 +372,7 @@ export default function DashboardPage() {
         ? 'TODAS NOTIFICAÇÕES FORAM LIDAS'
         : `EXISTE ${effectiveUnreadNotificationsCount || 0} NOTIFICAÇÕES PARA SEREM LIDAS`;
     const notificationsButtonClassName = hasAllNotificationsRead
-        ? 'flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300/60 bg-emerald-500/20 text-emerald-200 shadow-lg backdrop-blur-sm transition hover:bg-emerald-500/30'
+        ? 'flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-300/80 bg-emerald-500 text-white shadow-lg shadow-emerald-900/35 backdrop-blur-sm transition hover:bg-emerald-600'
         : effectiveUnreadNotificationsCount && effectiveUnreadNotificationsCount > 0
             ? 'flex h-11 min-w-[72px] items-center justify-center gap-1.5 rounded-2xl border border-red-300/80 bg-red-500 px-3 text-white shadow-lg shadow-red-900/35 backdrop-blur-sm transition hover:bg-red-400 animate-pulse'
             : 'flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20';

@@ -21,6 +21,53 @@ type SalesScreenParameters = {
     requirePasswordToRemoveSaleItems: boolean;
 };
 const FINANCEIRO_API_BASE_URL = '/api/financeiro';
+const EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_SCREEN_ID = 'PRINCIPAL_FINANCEIRO_EMPRESA_FILIAIS';
+const EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_ORIGIN =
+    'Origem: Sistema Financeiro - caminho físico: C:\\Sistemas\\IA\\Financeiro\\frontend\\src\\app\\empresas\\page.tsx';
+const EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_AUDIT = `--- LOGICA DA TELA ---
+Consulta das filiais financeiras sincronizadas para a empresa atual.
+
+TABELAS PRINCIPAIS:
+- companies (CO) - empresa financeira vinculada ao sistema de origem
+- company_branches (CB) - filiais espelhadas e seus parâmetros operacionais
+
+RELACIONAMENTOS:
+- company_branches.companyId = companies.id
+
+METRICAS / CAMPOS EXIBIDOS:
+- código, nome, CNPJ e situação da filial
+- ações de visualização e edição dos parâmetros da filial
+
+FILTROS APLICADOS AGORA:
+- empresa e tenant resolvidos pela sessão autenticada da Escola
+- status e filtros de código/nome aplicados no grid interno do Financeiro
+
+ORDENACAO:
+- branchCode ASC quando não houver ordenação escolhida no grid
+
+OBSERVACAO:
+- os parâmetros de empresa e filial continuam sob isolamento da empresa autenticada.`;
+const EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_SQL = `SELECT
+  CB.id,
+  CB.companyId,
+  CB.branchCode,
+  CB.name,
+  CB.fiscalDocument,
+  CB.isActive,
+  CB.isDefault,
+  CB.inventoryControlType,
+  CB.quantityPrecision,
+  CB.stockClassificationMode,
+  CB.allowSaleUnitPriceEdit,
+  CB.allowSaleItemDiscount
+FROM company_branches CB
+INNER JOIN companies CO
+  ON CO.id = CB.companyId
+ AND CO.canceledAt IS NULL
+WHERE CB.canceledAt IS NULL
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+ORDER BY CB.branchCode ASC;`;
 
 type CurrentTenant = {
     id: string;
@@ -1335,6 +1382,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const showFinanceiroModuleNav = pathname.startsWith('/principal/financeiro');
     const showFinanceiroParcelasScreen = pathname.startsWith('/principal/financeiro/parcelas');
     const showFinanceiroVendasScreen = pathname === '/principal/financeiro/vendas';
+    const isFinanceiroEmpresaRoute = pathname === '/principal/financeiro/empresa';
     const showSalesParametersButton =
         pathname === '/principal/financeiro/vendas' || pathname === '/principal/financeiro/vendas-2';
     const showPrincipalHeroHeader = pathname === '/principal';
@@ -1541,9 +1589,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         : hasAllNotificationsRead
             ? 'SEM NOTIFICAÇÕES'
             : `EXISTEM ${unreadSummary.count} NOTIFICAÇÕES NÃO LIDAS`;
+    const hasUnreadNotifications = unreadSummary !== null && unreadSummary.count > 0;
     const notificationsButtonClassName = hasAllNotificationsRead
-        ? 'relative p-2 text-emerald-600 hover:text-emerald-700 transition-colors'
-        : 'relative p-2 text-red-600 hover:text-red-700 transition-colors';
+        ? 'relative flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-300/80 bg-emerald-500 text-white shadow-md shadow-emerald-900/25 transition hover:bg-emerald-600'
+        : hasUnreadNotifications
+            ? 'relative flex h-10 w-10 items-center justify-center rounded-xl border border-red-300/80 bg-red-500 text-white shadow-md shadow-red-900/35 transition hover:bg-red-600'
+            : 'relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/20 bg-white/10 text-white shadow-md transition hover:bg-white/20';
     const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showUsuariosHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showSchoolYearConfigHeroHeader || showGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader || showConfiguraEscolaHeroHeader
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
@@ -2249,13 +2300,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                 FILIAL: <span className="text-slate-700">{currentBranchFooterLabel}</span>
                             </span>
                         ) : null}
-                        {/* padrão: exibimos o identificador da tela e o botão de copiar no rodapé */}
                         <ScreenNameCopy
-                            screenId={screenContextLabel}
+                            screenId={isFinanceiroEmpresaRoute ? EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_SCREEN_ID : screenContextLabel}
                             className={`flex-1 justify-end text-right ${showFinanceiroVendasScreen ? 'text-[10px]' : 'text-[11px]'}`}
-                            originText={currentScreenAuditOverride?.originText}
-                            auditText={currentScreenAuditOverride?.auditText}
-                            sqlText={currentScreenAuditOverride?.sqlText}
+                            originText={isFinanceiroEmpresaRoute ? EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_ORIGIN : currentScreenAuditOverride?.originText}
+                            auditText={isFinanceiroEmpresaRoute ? EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_AUDIT : currentScreenAuditOverride?.auditText}
+                            sqlText={isFinanceiroEmpresaRoute ? EMBEDDED_FINANCEIRO_EMPRESA_FILIAIS_SQL : currentScreenAuditOverride?.sqlText}
                             disableMargin={showFinanceiroVendasScreen}
                         />
                     </div>

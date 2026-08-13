@@ -211,11 +211,13 @@ export class AuthService {
               ],
               canceledAt: null,
             }
-          : { email: { in: loginVariants }, canceledAt: null },
+          : {
+              person: { email: { in: loginVariants } },
+              canceledAt: null,
+            },
         select: {
           ...baseSelect,
           name: true,
-          email: true,
           accessUsername: true,
           person: { select: { name: true, email: true, password: true, accessUsername: true } },
           password: true,
@@ -307,7 +309,7 @@ export class AuthService {
       ...users.map((u) => ({
         ...u,
         name: u.person?.name ?? u.name,
-        email: u.person?.email ?? u.email,
+        email: u.person?.email ?? null,
         accessUsername: u.person?.accessUsername ?? u.accessUsername ?? null,
         modelType: "user" as const,
         branchAccessCodes: Array.from(
@@ -475,10 +477,16 @@ export class AuthService {
     const where = { id: userId, tenantId };
     switch (modelType) {
       case "user":
-        return this.prisma.user.findFirst({
-          where,
-          select: { email: true, role: true },
-        });
+        return this.prisma.user
+          .findFirst({
+            where,
+            select: { role: true, person: { select: { email: true } } },
+          })
+          .then((record) =>
+            record
+              ? { email: record.person?.email ?? null, role: record.role }
+              : null,
+          );
       case "teacher":
         return this.prisma.teacher
           .findFirst({
@@ -531,11 +539,7 @@ export class AuthService {
   ): Promise<Array<{ password: string | null }>> {
     const normalizedEmail = this.normalizeComparableEmail(email);
     const crossTenantPrisma = this.getCrossTenantPrisma();
-    const [users, teachers, students, guardians, people] = await Promise.all([
-      crossTenantPrisma.user.findMany({
-        where: {},
-        select: { email: true, password: true },
-      }),
+    const [teachers, students, guardians, people] = await Promise.all([
       crossTenantPrisma.teacher.findMany({
         where: {
           person: { email: { not: null } },
@@ -569,7 +573,7 @@ export class AuthService {
       }),
     );
 
-    return [...people, ...users, ...roleCandidates]
+    return [...people, ...roleCandidates]
       .filter(
         (account) =>
           this.normalizeComparableEmail(account.email) === normalizedEmail,
@@ -1216,7 +1220,14 @@ export class AuthService {
     const existing = await prismaClient.user.findFirst({
       where: {
         tenantId,
-        email: { in: this.normalizeEmailVariants("MSINFOR") },
+        OR: [
+          { accessUsername: { in: this.normalizeEmailVariants("MSINFOR") } },
+          {
+            person: {
+              accessUsername: { in: this.normalizeEmailVariants("MSINFOR") },
+            },
+          },
+        ],
         canceledAt: null,
       },
       select: { id: true, role: true },
@@ -1227,12 +1238,24 @@ export class AuthService {
       );
     }
     if (!existing) {
-      await prismaClient.user.create({
+      const person = await prismaClient.person.create({
         data: {
           tenantId,
           branchCode: DEFAULT_BRANCH_CODE,
           name: "MSINFOR",
-          email: "MSINFOR",
+          accessUsername: "MSINFOR",
+          createdBy: "CENTRAL_MASTER_PROJECTION",
+          updatedBy: "CENTRAL_MASTER_PROJECTION",
+        },
+        select: { id: true },
+      });
+      await prismaClient.user.create({
+        data: {
+          tenantId,
+          branchCode: DEFAULT_BRANCH_CODE,
+          personId: person.id,
+          name: "MSINFOR",
+          accessUsername: "MSINFOR",
           password: null,
           role: "ADMIN",
           accessProfile: getDefaultAccessProfileForRole("ADMIN"),
@@ -1646,11 +1669,13 @@ export class AuthService {
           { accessProfile: "ADMINISTRADOR" },
         ],
       },
-      select: { email: true },
+      select: { person: { select: { email: true } } },
     });
 
     for (const administrator of administrators) {
-      const credential = await this.loadEmailCredential(administrator.email);
+      const credential = await this.loadEmailCredential(
+        administrator.person?.email,
+      );
       if (credential?.passwordHash && await bcrypt.compare(normalizedPassword, credential.passwordHash)) {
         return { status: "SUCCESS" };
       }
@@ -1718,9 +1743,9 @@ export class AuthService {
       select: {
         id: true,
         name: true,
-        email: true,
         role: true,
         permissions: true,
+        person: { select: { email: true } },
       },
     });
 
@@ -1734,11 +1759,13 @@ export class AuthService {
         permissions.includes("MANAGE_FINANCIAL") ||
         permissions.includes("CLOSE_CASHIER");
 
-      if (!isSupervisor || !supervisor.email) {
+      if (!isSupervisor || !supervisor.person?.email) {
         continue;
       }
 
-      const credential = await this.loadEmailCredential(supervisor.email);
+      const credential = await this.loadEmailCredential(
+        supervisor.person.email,
+      );
       if (!credential?.passwordHash) {
         continue;
       }
@@ -1861,24 +1888,40 @@ export class AuthService {
       hashedPassword = await bcrypt.hash(normalizedPassword, salt);
     }
 
-    const newUser = await this.prisma.user.create({
-      data: {
-        name: registerDto.name.trim().toUpperCase(),
-        email: normalizedEmail,
-        password: null,
-        tenantId: tenantId_forced,
-        role: normalizedRole || "SECRETARIA",
-        complementaryProfiles:
-          normalizedRole === "ADMIN"
-            ? null
-            : serializeComplementaryAccessProfiles(complementaryProfiles),
-        accessProfile:
-          accessProfile || getDefaultAccessProfileForRole(normalizedRole),
-        permissions:
-          normalizedRole === "ADMIN"
-            ? null
-            : serializePermissions(effectivePermissions),
-      },
+    const newUser = await this.prisma.$transaction(async (tx) => {
+      const person = await tx.person.create({
+        data: {
+          tenantId: tenantId_forced,
+          branchCode: currentUser.branchCode || DEFAULT_BRANCH_CODE,
+          name: registerDto.name.trim().toUpperCase(),
+          email: normalizedEmail,
+          createdBy: currentUser.userId,
+          updatedBy: currentUser.userId,
+        },
+        select: { id: true },
+      });
+
+      return tx.user.create({
+        data: {
+          name: registerDto.name.trim().toUpperCase(),
+          personId: person.id,
+          password: null,
+          tenantId: tenantId_forced,
+          role: normalizedRole || "SECRETARIA",
+          complementaryProfiles:
+            normalizedRole === "ADMIN"
+              ? null
+              : serializeComplementaryAccessProfiles(complementaryProfiles),
+          accessProfile:
+            accessProfile || getDefaultAccessProfileForRole(normalizedRole),
+          permissions:
+            normalizedRole === "ADMIN"
+              ? null
+              : serializePermissions(effectivePermissions),
+          createdBy: currentUser.userId,
+          updatedBy: currentUser.userId,
+        },
+      });
     });
 
     if (hashedPassword) {

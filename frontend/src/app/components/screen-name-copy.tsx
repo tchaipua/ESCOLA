@@ -201,7 +201,7 @@ OBSERVACAO:
   T.name,
   T.createdAt,
   U.name AS adminName,
-  U.email AS adminEmail,
+  P.email AS adminEmail,
   TB.logoUrl,
   TB.document,
   TB.branchCode,
@@ -214,6 +214,9 @@ LEFT JOIN tenant_branches TB
 LEFT JOIN users U
   ON U.tenantId = T.id
  AND U.role = 'ADMIN'
+LEFT JOIN people P
+  ON P.id = U.personId
+ AND P.tenantId = U.tenantId
 WHERE T.canceledAt IS NULL
 ORDER BY T.createdAt DESC;`,
   },

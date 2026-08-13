@@ -83,6 +83,7 @@ async function main() {
     const operator = await prisma.user.findFirst({
       where: { tenantId: tenant.id, role: "ADMIN", canceledAt: null },
       orderBy: { createdAt: "asc" },
+      include: { person: { select: { email: true } } },
     });
     assert(operator, "Administrador local da escola não encontrado.");
 
@@ -93,7 +94,7 @@ async function main() {
       role: "ADMIN",
       permissions: [],
       name: operator.name,
-      email: operator.email,
+      email: operator.person?.email,
       branchAccessCodes: [1],
       canAccessAllBranches: true,
       isMaster: false,

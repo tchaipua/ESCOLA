@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
@@ -41,6 +41,7 @@ type GridRecordPopoverProps = {
     contextLabel?: string;
     subjectBadges?: string[];
     buttonClassName?: string;
+    buttonIcon?: ReactNode;
     modalVariant?: 'default' | 'school-record-detail';
     compactFooter?: boolean;
     tabs?: GridRecordPopoverTab[];
@@ -65,6 +66,7 @@ export default function GridRecordPopover({
     contextLabel,
     subjectBadges,
     buttonClassName,
+    buttonIcon,
     modalVariant = 'default',
     compactFooter = false,
     tabs,
@@ -116,11 +118,12 @@ export default function GridRecordPopover({
                 aria-label={buttonLabel}
                 title={buttonLabel}
             >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.75 19.25h14.5A1.75 1.75 0 0 0 21 17.5v-11A1.75 1.75 0 0 0 19.25 4.75H4.75A1.75 1.75 0 0 0 3 6.5v11c0 .966.784 1.75 1.75 1.75Z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 9.25h4.5m-4.5 3.5h9m-9 3.5h6" />
-                    <circle cx="16.5" cy="8.5" r="1.25" />
-                </svg>
+                {buttonIcon || (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                        <circle cx="12" cy="12" r="3" />
+                    </svg>
+                )}
             </button>
 
             {isOpen ? (

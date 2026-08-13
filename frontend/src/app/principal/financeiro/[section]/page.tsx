@@ -310,6 +310,7 @@ export function PrincipalFinanceiroSectionPageContent({
   const canManageFiscalEmission =
     authContext.role === 'ADMIN' ||
     authContext.permissions.includes('MANAGE_FINANCIAL');
+  const [financeUnreadNotificationsCount, setFinanceUnreadNotificationsCount] = useState<number | null>(null);
   const tenantBranding = readCachedTenantBranding(authContext.tenantId);
   const financeBranding = useMemo(
     () => {
@@ -333,6 +334,47 @@ export function PrincipalFinanceiroSectionPageContent({
     });
     return () => window.clearTimeout(timer);
   }, [params]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUnreadNotifications = async () => {
+      try {
+        if (!authContext.token || !authContext.userId) {
+          if (active) setFinanceUnreadNotificationsCount(null);
+          return;
+        }
+
+        const response = await fetch(`${API_BASE_URL}/notifications/my/unread-summary`, {
+          headers: {},
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(data?.message || 'Não foi possível carregar as notificações.');
+        }
+
+        if (active) {
+          setFinanceUnreadNotificationsCount(typeof data?.count === 'number' ? data.count : null);
+        }
+      } catch {
+        if (active) setFinanceUnreadNotificationsCount(null);
+      }
+    };
+
+    const refreshUnreadNotifications = () => {
+      void loadUnreadNotifications();
+    };
+
+    void loadUnreadNotifications();
+    window.addEventListener('notifications-updated', refreshUnreadNotifications);
+    window.addEventListener('focus', refreshUnreadNotifications);
+
+    return () => {
+      active = false;
+      window.removeEventListener('notifications-updated', refreshUnreadNotifications);
+      window.removeEventListener('focus', refreshUnreadNotifications);
+    };
+  }, [authContext.token, authContext.userId]);
 
   const sectionConfig = useMemo(() => {
     if (!section) return null;
@@ -712,6 +754,11 @@ export function PrincipalFinanceiroSectionPageContent({
     : isCompactFinanceHeader
       ? 'h-9 w-9 rounded-xl'
       : 'h-11 w-11 rounded-2xl';
+  const financeNotificationsButtonClass = financeUnreadNotificationsCount === 0
+    ? 'border-emerald-300/80 bg-emerald-500 text-white shadow-lg shadow-emerald-900/35 transition hover:bg-emerald-600'
+    : financeUnreadNotificationsCount !== null && financeUnreadNotificationsCount > 0
+      ? 'border-red-300/80 bg-red-500 text-white shadow-lg shadow-red-900/35 transition hover:bg-red-600'
+      : 'border-white/20 bg-white/10 text-white shadow-lg transition hover:bg-white/20';
   const financeHeaderLogoClass = isTightFinanceSection
     ? 'h-12 w-12 rounded-xl'
     : isCompactFinanceHeader
@@ -854,7 +901,7 @@ export function PrincipalFinanceiroSectionPageContent({
                   onClick={() => {
                     window.dispatchEvent(new Event('msinfor-financeiro-open-notifications'));
                   }}
-                  className={`flex items-center justify-center border border-white/20 bg-white/10 text-white shadow-lg backdrop-blur-sm transition hover:bg-white/20 ${financeHeaderButtonClass}`}
+                  className={`flex items-center justify-center backdrop-blur-sm ${financeNotificationsButtonClass} ${financeHeaderButtonClass}`}
                   title="Abrir notificações"
                   aria-label="Abrir notificações"
                 >
