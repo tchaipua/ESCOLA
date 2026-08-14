@@ -15,11 +15,67 @@ import {
 import { NotificationsService } from "../../application/services/notifications.service";
 import { ListMyNotificationsDto } from "../../application/dto/list-my-notifications.dto";
 import { MarkNotificationsReadDto } from "../../application/dto/mark-notifications-read.dto";
+import { NotificationChatService } from "../../application/services/notification-chat.service";
+import { SendNotificationChatMessageDto } from "../../application/dto/send-notification-chat-message.dto";
+import { AddNotificationChatParticipantDto } from "../../application/dto/add-notification-chat-participant.dto";
 
 @ApiTags("Notificações")
 @Controller("notifications")
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly notificationChatService: NotificationChatService,
+  ) {}
+
+  @Get(":id/chat")
+  @ApiOperation({ summary: "Abre o chat privado de uma notificação" })
+  getChat(@Param("id") id: string, @CurrentUser() currentUser: ICurrentUser) {
+    return this.notificationChatService.getChat(id, currentUser);
+  }
+
+  @Get(":id/chat/candidates")
+  @ApiOperation({ summary: "Pesquisa participantes para o chat" })
+  searchChatCandidates(
+    @Param("id") id: string,
+    @Query("search") search: string,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationChatService.searchCandidates(id, currentUser, search);
+  }
+
+  @Post(":id/chat/messages")
+  @ApiOperation({ summary: "Envia uma mensagem no chat da notificação" })
+  sendChatMessage(
+    @Param("id") id: string,
+    @Body() dto: SendNotificationChatMessageDto,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationChatService.sendMessage(id, currentUser, dto.message);
+  }
+
+  @Post(":id/chat/participants")
+  @ApiOperation({ summary: "Adiciona uma pessoa ao chat da notificação" })
+  addChatParticipant(
+    @Param("id") id: string,
+    @Body() dto: AddNotificationChatParticipantDto,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationChatService.addParticipant(
+      id,
+      currentUser,
+      dto.participantType,
+      dto.participantId,
+    );
+  }
+
+  @Post(":id/chat/read")
+  @ApiOperation({ summary: "Marca o chat da notificação como lido" })
+  markChatRead(
+    @Param("id") id: string,
+    @CurrentUser() currentUser: ICurrentUser,
+  ) {
+    return this.notificationChatService.markRead(id, currentUser);
+  }
 
   @Get("my")
   @ApiOperation({ summary: "Lista as notificações do usuário logado" })

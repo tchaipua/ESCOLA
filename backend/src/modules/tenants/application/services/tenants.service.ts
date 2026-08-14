@@ -1454,6 +1454,11 @@ export class TenantsService {
             | "YES"
             | "BY_PRODUCT"
             | undefined,
+          stockClassificationMode: commerce?.stockClassificationMode as
+            | "NONE"
+            | "GROUP_ONLY"
+            | "GROUP_AND_SUBGROUP"
+            | undefined,
           notifyMinimumStockOnMovement:
             commerce?.notifyMinimumStockOnMovement === true,
           allowSaleUnitPriceEdit: commerce?.allowSaleUnitPriceEdit,

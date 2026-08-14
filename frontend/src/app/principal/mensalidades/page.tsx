@@ -16,6 +16,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const MENSALIDADES_SCREEN_ID = 'PRINCIPAL_MENSALIDADES';
 const CONFIRMATION_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_CONFIRMAR_EFETUAR_LANCAMENTOS';
 const ALERT_SCREEN_ID = 'POPUP_PRINCIPAL_MENSALIDADES_ALERTA_GERAL';
+const MENSALIDADES_SOURCE_PATH = 'C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\mensalidades\\page.tsx';
 
 const LAUNCH_TYPE_OPTIONS = [
     { value: 'MENSALIDADE', label: 'MENSALIDADE' },
@@ -269,6 +270,19 @@ OBSERVACAO SOBRE O FILTRO DA EMPRESA / ESCOLA:
 - os parametros acima refletem os campos visiveis do formulario e o historico carregado`;
 }
 
+function useRuntimeTooltipPath(path: string) {
+    const [isVps, setIsVps] = useState(false);
+
+    useEffect(() => {
+        const hostname = window.location.hostname.toLowerCase();
+        setIsVps(!['localhost', '127.0.0.1', '::1'].includes(hostname));
+    }, []);
+
+    return isVps
+        ? path.replace(/\\/g, '/').replace(/^[A-Za-z]:\/Sistemas\/IA\//i, '')
+        : path;
+}
+
 export default function PrincipalMensalidadesPage() {
     const [bootstrapData, setBootstrapData] = useState<BootstrapResponse | null>(null);
     const [formState, setFormState] = useState<FormState>(() => createDefaultFormState());
@@ -280,6 +294,7 @@ export default function PrincipalMensalidadesPage() {
     const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
     const [alertModal, setAlertModal] = useState<AlertModalState | null>(null);
     const [auditScreenId, setAuditScreenId] = useState<string | null>(null);
+    const tooltipPath = useRuntimeTooltipPath(MENSALIDADES_SOURCE_PATH);
     const router = useRouter();
 
     const authContext = isClientReady ? getDashboardAuthContext() : EMPTY_AUTH_CONTEXT;
@@ -919,7 +934,7 @@ export default function PrincipalMensalidadesPage() {
                                         <button
                                             type="button"
                                             onClick={() => void handleCopyPopupScreenName(CONFIRMATION_SCREEN_ID)}
-                                            title="Copiar nome da tela"
+                                            title={tooltipPath}
                                             aria-label={`Copiar o identificador ${CONFIRMATION_SCREEN_ID}`}
                                             className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 active:scale-95"
                                         >
@@ -1024,7 +1039,7 @@ export default function PrincipalMensalidadesPage() {
                                         <button
                                             type="button"
                                             onClick={() => void handleCopyPopupScreenName(ALERT_SCREEN_ID)}
-                                            title="Copiar nome da tela"
+                                            title={tooltipPath}
                                             aria-label={`Copiar o identificador ${ALERT_SCREEN_ID}`}
                                             className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
                                         >

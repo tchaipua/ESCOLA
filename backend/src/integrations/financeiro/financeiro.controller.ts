@@ -89,15 +89,23 @@ export function assertSafeMultipartBody(
 export class FinanceiroController {
   constructor(private readonly financeiroService: FinanceiroService) {}
 
+  private async getBrowserContext(currentUser: ICurrentUser) {
+    const context = await this.financeiroService.buildRuntimeContext(
+      currentUser,
+    );
+    const { centralTenantId: _centralTenantId, ...browserContext } = context;
+    return browserContext;
+  }
+
   @Get("context")
   getContext(@CurrentUser() currentUser: ICurrentUser) {
-    return this.financeiroService.buildRuntimeContext(currentUser);
+    return this.getBrowserContext(currentUser);
   }
 
   // O rewrite same-origin usa este caminho para evitar expor a API interna.
   @Get("gateway/context")
   getGatewayContext(@CurrentUser() currentUser: ICurrentUser) {
-    return this.financeiroService.buildRuntimeContext(currentUser);
+    return this.getBrowserContext(currentUser);
   }
 
   @All("gateway/*path")

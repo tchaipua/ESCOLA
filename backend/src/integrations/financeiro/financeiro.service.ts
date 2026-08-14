@@ -163,6 +163,7 @@ export type FinanceiroSourceIntegrationSettingsPayload = {
   stockExpirationControlMode?: "NO" | "YES" | "BY_PRODUCT";
   stockGridControlMode?: "NO" | "YES" | "BY_PRODUCT";
   stockNegativeControlMode?: "NO" | "YES" | "BY_PRODUCT";
+  stockClassificationMode?: "NONE" | "GROUP_ONLY" | "GROUP_AND_SUBGROUP";
   notifyMinimumStockOnMovement?: boolean;
   allowSaleUnitPriceEdit?: boolean;
   allowSaleItemDiscount?: boolean;
@@ -376,6 +377,7 @@ const AUTHORITY_FIELDS = new Set([
   "permissions",
   "companyName",
   "companyDocument",
+  "centralTenantId",
 ]);
 const AUTHORITY_FIELDS_LOWERCASE = new Set(
   Array.from(AUTHORITY_FIELDS, (field) => field.toLowerCase()),
@@ -444,6 +446,9 @@ function canonicalizeDeclaredContext(
       case "companyDocument":
         result[key] = context.companyDocument || undefined;
         break;
+      case "centralTenantId":
+        result[key] = context.centralTenantId;
+        break;
       case "companyId":
       case "branchId":
       case "tenantId":
@@ -492,6 +497,7 @@ export class FinanceiroService {
       sourceSystem: SOURCE_SYSTEM,
       sourceTenantId: currentUser.tenantId.toUpperCase(),
       sourceBranchCode: branchCode,
+      centralTenantId: String(central.tenant.id || "").trim(),
       stockControlMode: commerce?.stockControlMode || "NO",
       stockIntegerQuantityMode: commerce?.stockIntegerQuantityMode || "NO",
       stockLotControlMode: commerce?.stockLotControlMode || "NO",
@@ -499,6 +505,8 @@ export class FinanceiroService {
         commerce?.stockExpirationControlMode || "NO",
       stockGridControlMode: commerce?.stockGridControlMode || "NO",
       stockNegativeControlMode: commerce?.stockNegativeControlMode || "NO",
+      stockClassificationMode:
+        commerce?.stockClassificationMode || "GROUP_ONLY",
       notifyMinimumStockOnMovement:
         commerce?.notifyMinimumStockOnMovement === true,
       companyName:
@@ -553,6 +561,7 @@ export class FinanceiroService {
       cashierDisplayName: context.cashierDisplayName,
       companyName: context.companyName,
       companyDocument: context.companyDocument || "",
+      centralTenantId: context.centralTenantId,
     };
     const replacementByLowercase = new Map(
       Object.entries(replacements).map(([key, value]) => [
@@ -579,6 +588,29 @@ export class FinanceiroService {
     const gatewayPath = input.path.startsWith("/")
       ? input.path
       : `/${input.path}`;
+    const isCentralBranchEditorLaunch =
+      /^\/companies\/[^/]+\/branches\/[^/]+\/central-editor-launch$/i.test(
+        gatewayPath,
+      );
+    if (isCentralBranchEditorLaunch && input.bodyBytes) {
+      throw new BadRequestException(
+        "A abertura da manutenção da filial exige uma requisição JSON.",
+      );
+    }
+    const canonicalBody =
+      input.body !== undefined
+        ? canonicalizeDeclaredContext(input.body, context)
+        : undefined;
+    const forwardedBody = isCentralBranchEditorLaunch
+      ? {
+          ...(canonicalBody &&
+          typeof canonicalBody === "object" &&
+          !Array.isArray(canonicalBody)
+            ? canonicalBody
+            : {}),
+          centralTenantId: context.centralTenantId,
+        }
+      : canonicalBody;
     const requiresBranchInQuery = [
       "/s3-control",
       "/supertef",
@@ -591,6 +623,7 @@ export class FinanceiroService {
     const protectedQueryReplacements = [
       replacementByLowercase.get("sourcesystem")!,
       replacementByLowercase.get("sourcetenantid")!,
+      replacementByLowercase.get("centraltenantid")!,
       ...(requiresBranchInQuery
         ? [replacementByLowercase.get("sourcebranchcode")!]
         : []),
@@ -625,8 +658,8 @@ export class FinanceiroService {
             bodyBytes: input.bodyBytes,
             contentType: input.contentType,
           }
-        : input.body !== undefined
-          ? { json: canonicalizeDeclaredContext(input.body, context) }
+        : forwardedBody !== undefined
+          ? { json: forwardedBody }
           : {}),
       headers,
       ...(expectedBinaryContentType

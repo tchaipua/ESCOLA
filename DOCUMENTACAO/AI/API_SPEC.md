@@ -99,6 +99,7 @@ Central quando o novo contrato autenticado estiver concluido.
   - `stockExpirationControlMode`
   - `stockGridControlMode`
   - `stockNegativeControlMode`
+- A classificação do estoque pertence à configuração comercial da Central e aceita `NONE`, `GROUP_ONLY` ou `GROUP_AND_SUBGROUP` em `stockClassificationMode`.
 
 ### PUT `/tenants/:id/branches/:branchId`
 
@@ -1105,6 +1106,7 @@ Observacao estrutural obrigatoria:
 - Autorização: leitura recebe `FINANCE_ACCESS`; mutações allowlisted recebem `MANAGE_FINANCIAL`; somente `ADMIN`/`SOFTHOUSE_ADMIN` recebe `FINANCE_ADMIN`; rotas mutáveis desconhecidas falham fechadas;
 - Downloads permitidos, com limite de 10 MiB: DANFE/XML de NF-e e DANFSe/XML de NFS-e;
 - Proibido: encaminhar `Authorization`, cookies, `x-api-key`, autoridade de tenant/filial, papel ou permissões do navegador ao Financeiro.
+- O BFF injeta o UUID global `centralTenantId` somente no tráfego backend a backend; após salvar empresa/filial na Central, o Financeiro atualiza imediatamente seu espelho e devolve qualquer falha à interface.
 
 ## Configuracoes globais MSINFOR Central
 
@@ -1176,3 +1178,17 @@ As preferências pertencem à Escola atual e são gravadas por `tenantId` e
   fisicamente a preferência;
 - Uso: controla avisos de inativação, cancelamento e remoção de vínculos para
   a pessoa selecionada.
+
+## Chat das notificações
+
+Todas as rotas exigem a sessão HttpOnly da Escola e validam escola, filial,
+notificação e participação na conversa.
+
+- `GET /notifications/:id/chat`: retorna contexto, participantes e somente as mensagens visíveis ao usuário;
+- `POST /notifications/:id/chat/messages`: inicia a dupla privada quando necessário e envia mensagem de até 2.000 caracteres;
+- `GET /notifications/:id/chat/candidates?search=`: pesquisa pessoas ativas da mesma escola e filial;
+- `POST /notifications/:id/chat/participants`: adiciona uma pessoa; apenas os dois participantes iniciais podem convidar;
+- `POST /notifications/:id/chat/read`: atualiza a leitura do participante sem alterar a leitura dos demais.
+
+Participantes convidados começam com `historyVisibleFrom` na hora do convite e
+não recebem mensagens anteriores.

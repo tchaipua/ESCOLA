@@ -1500,17 +1500,89 @@ export class NotificationsService {
       .trim()
       .toUpperCase();
 
-    return this.prisma.notification.findMany({
+    const notifications = await this.prisma.notification.findMany({
       where: {
         tenantId: currentUser.tenantId,
-        recipientType,
-        recipientId,
         canceledAt: null,
-        ...(normalizedStatus === "UNREAD" ? { readAt: null } : {}),
-        ...(normalizedStatus === "READ" ? { readAt: { not: null } } : {}),
+        OR: [
+          { recipientType, recipientId },
+          {
+            conversations: {
+              some: {
+                canceledAt: null,
+                participants: {
+                  some: {
+                    participantType: recipientType,
+                    participantId: recipientId,
+                    canceledAt: null,
+                  },
+                },
+              },
+            },
+          },
+        ],
       },
-      orderBy: [{ readAt: "asc" }, { createdAt: "desc" }],
+      include: {
+        conversations: {
+          where: {
+            canceledAt: null,
+            participants: {
+              some: {
+                participantType: recipientType,
+                participantId: recipientId,
+                canceledAt: null,
+              },
+            },
+          },
+          include: {
+            participants: {
+              where: {
+                participantType: recipientType,
+                participantId: recipientId,
+                canceledAt: null,
+              },
+            },
+            messages: {
+              where: { canceledAt: null },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { createdAt: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
     });
+    return notifications
+      .map(({ conversations, ...notification }) => {
+        const chatUnread = conversations.some((conversation) => {
+          const participant = conversation.participants[0];
+          const latestMessage = conversation.messages[0];
+          return Boolean(
+            participant &&
+              latestMessage &&
+              (!participant.lastReadAt ||
+                participant.lastReadAt < latestMessage.createdAt),
+          );
+        });
+        const direct =
+          notification.recipientType === recipientType &&
+          notification.recipientId === recipientId;
+        const unread = (direct && !notification.readAt) || chatUnread;
+        return { ...notification, chatUnread, unread };
+      })
+      .filter((notification) =>
+        normalizedStatus === "UNREAD"
+          ? notification.unread
+          : normalizedStatus === "READ"
+            ? !notification.unread
+            : true,
+      )
+      .sort(
+        (left, right) =>
+          Number(right.unread) - Number(left.unread) ||
+          right.createdAt.getTime() - left.createdAt.getTime(),
+      );
   }
 
   async getUnreadSummary(currentUser: ICurrentUser) {

@@ -101,6 +101,7 @@ export type CentralCommerceConfiguration = {
   stockExpirationControlMode: string;
   stockGridControlMode: string;
   stockNegativeControlMode: string;
+  stockClassificationMode: string;
   notifyMinimumStockOnMovement: boolean;
   allowSaleUnitPriceEdit: boolean;
   allowSaleItemDiscount: boolean;
@@ -652,6 +653,19 @@ function validatedTenantConfiguration(
     }
     return mode;
   };
+  const mapClassificationMode = (value: unknown, field: string) => {
+    const mode = validatedCode(value, field);
+    if (
+      !(["NONE", "GROUP_ONLY", "GROUP_AND_SUBGROUP"] as const).includes(
+        mode as any,
+      )
+    ) {
+      throw new BadGatewayException(
+        `Resposta de configuração inválida da Central (${field}).`,
+      );
+    }
+    return mode;
+  };
   const mappedCommerce: CentralCommerceConfiguration | null = commerce
     ? {
         stockControlMode: mapMode(
@@ -677,6 +691,10 @@ function validatedTenantConfiguration(
         stockNegativeControlMode: mapMode(
           commerce.stockNegativeControlMode,
           "effective.commerce.stockNegativeControlMode",
+        ),
+        stockClassificationMode: mapClassificationMode(
+          commerce.stockClassificationMode,
+          "effective.commerce.stockClassificationMode",
         ),
         notifyMinimumStockOnMovement: validatedBoolean(
           commerce.notifyMinimumStockOnMovement,

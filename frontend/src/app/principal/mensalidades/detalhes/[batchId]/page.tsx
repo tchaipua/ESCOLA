@@ -23,6 +23,20 @@ import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const SCREEN_ID = 'PRINCIPAL_MENSALIDADES_DETALHES_LANCAMENTO';
 const COPY_FEEDBACK_TIMEOUT = 1800;
+const SCREEN_SOURCE_PATH = 'C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\principal\\mensalidades\\detalhes\\[batchId]\\page.tsx';
+
+function useRuntimeTooltipPath(path: string) {
+    const [isVps, setIsVps] = useState(false);
+
+    useEffect(() => {
+        const hostname = window.location.hostname.toLowerCase();
+        setIsVps(!['localhost', '127.0.0.1', '::1'].includes(hostname));
+    }, []);
+
+    return isVps
+        ? path.replace(/\\/g, '/').replace(/^[A-Za-z]:\/Sistemas\/IA\//i, '')
+        : path;
+}
 
 type HistoryDetailsResponse = {
     batch: {
@@ -512,6 +526,7 @@ export default function PrincipalMensalidadesDetalhesPage() {
         () => ({ ...buildDefaultExportColumns(problemGridColumns) }),
     );
     const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const tooltipPath = useRuntimeTooltipPath(SCREEN_SOURCE_PATH);
 
     const authContext = isClientReady ? getDashboardAuthContext() : EMPTY_AUTH_CONTEXT;
     const canViewFinancial = isClientReady && hasAnyDashboardPermission(authContext.role, authContext.permissions, ['VIEW_FINANCIAL', 'MANAGE_MONTHLY_FEES']);
@@ -835,7 +850,7 @@ export default function PrincipalMensalidadesDetalhesPage() {
                                     <button
                                         type="button"
                                         onClick={() => void handleCopyScreenName(SCREEN_ID)}
-                                        title="Copiar nome da tela"
+                                        title={tooltipPath}
                                         aria-label={`Copiar o identificador ${SCREEN_ID}`}
                                         className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/25 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                                     >
@@ -1083,7 +1098,7 @@ export default function PrincipalMensalidadesDetalhesPage() {
                         <button
                             type="button"
                             onClick={() => void handleCopyScreenName(SCREEN_ID)}
-                            title="Copiar nome da tela"
+                            title={tooltipPath}
                             aria-label={`Copiar o identificador ${SCREEN_ID}`}
                             className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 active:scale-95"
                         >

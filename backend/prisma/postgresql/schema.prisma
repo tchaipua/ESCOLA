@@ -31,7 +31,7 @@ model Tenant {
   smtpAuthType                   String?
   smtpEmail                      String?
   smtpPassword                   String?
-  telegramEnabled                Boolean   @default(false)
+  telegramEnabled                Boolean  @default(false)
   telegramBotToken               String?
   telegramBotUsername            String?
   storageProviderAccessKeyId     String?
@@ -55,117 +55,121 @@ model Tenant {
   canceledAt DateTime?
   canceledBy String?
 
-  users                       User[]
-  people                      Person[]
-  schoolYears                 SchoolYear[]
-  schoolYearPeriods           SchoolYearPeriod[]
-  schoolHolidays              SchoolHoliday[]
-  classes                     Class[]
-  series                      Series[]
-  seriesClasses               SeriesClass[]
-  students                    Student[]
-  enrollments                 Enrollment[]
-  guardians                   Guardian[]
-  guardianStudents            GuardianStudent[]
-  teachers                    Teacher[]
-  subjects                    Subject[]
-  teacherSubjects             TeacherSubject[]
-  teacherSubjectRateHistories TeacherSubjectRateHistory[]
-  schedules                   Schedule[]
-  classScheduleItems          ClassScheduleItem[]
-  lessonCalendars             LessonCalendar[]
-  lessonCalendarPeriods       LessonCalendarPeriod[]
-  lessonCalendarItems         LessonCalendarItem[]
-  lessonEvents                LessonEvent[]
-  lessonAssessments           LessonAssessment[]
-  lessonAssessmentGrades      LessonAssessmentGrade[]
-  lessonAttendances           LessonAttendance[]
-  notifications               Notification[]
-  notificationPreferences     NotificationPreference[]
-  communicationCampaigns      CommunicationCampaign[]
-  userPreferences             UserPreference[]
-  branches                    TenantBranch[]
-  financeSourceParameterAuditEvents FinanceSourceParameterAuditEvent[]
-  telegramProcessedUpdates          TelegramProcessedUpdate[]
-  telegramPendingActions            TelegramPendingAction[]
-  userBranchAccesses          UserBranchAccess[]
-  teacherBranchAccesses       TeacherBranchAccess[]
-  studentBranchAccesses       StudentBranchAccess[]
-  guardianBranchAccesses      GuardianBranchAccess[]
+  users                                User[]
+  people                               Person[]
+  schoolYears                          SchoolYear[]
+  schoolYearPeriods                    SchoolYearPeriod[]
+  schoolHolidays                       SchoolHoliday[]
+  classes                              Class[]
+  series                               Series[]
+  seriesClasses                        SeriesClass[]
+  students                             Student[]
+  enrollments                          Enrollment[]
+  guardians                            Guardian[]
+  guardianStudents                     GuardianStudent[]
+  teachers                             Teacher[]
+  subjects                             Subject[]
+  teacherSubjects                      TeacherSubject[]
+  teacherSubjectRateHistories          TeacherSubjectRateHistory[]
+  schedules                            Schedule[]
+  classScheduleItems                   ClassScheduleItem[]
+  lessonCalendars                      LessonCalendar[]
+  lessonCalendarPeriods                LessonCalendarPeriod[]
+  lessonCalendarItems                  LessonCalendarItem[]
+  lessonEvents                         LessonEvent[]
+  lessonAssessments                    LessonAssessment[]
+  lessonAssessmentGrades               LessonAssessmentGrade[]
+  lessonAttendances                    LessonAttendance[]
+  notifications                        Notification[]
+  notificationPreferences              NotificationPreference[]
+  notificationConversations            NotificationConversation[]
+  notificationConversationParticipants NotificationConversationParticipant[]
+  notificationConversationMessages     NotificationConversationMessage[]
+  notificationConversationAuditEvents  NotificationConversationAuditEvent[]
+  communicationCampaigns               CommunicationCampaign[]
+  userPreferences                      UserPreference[]
+  branches                             TenantBranch[]
+  financeSourceParameterAuditEvents    FinanceSourceParameterAuditEvent[]
+  telegramProcessedUpdates             TelegramProcessedUpdate[]
+  telegramPendingActions               TelegramPendingAction[]
+  userBranchAccesses                   UserBranchAccess[]
+  teacherBranchAccesses                TeacherBranchAccess[]
+  studentBranchAccesses                StudentBranchAccess[]
+  guardianBranchAccesses               GuardianBranchAccess[]
 
   @@map("tenants")
 }
 
 model TenantBranch {
-  id                             String    @id @default(uuid())
-  tenantId                       String
-  branchCode                     Int
-  name                           String
-  logoUrl                        String?
-  document                       String?
-  rg                             String?
-  cpf                            String?
-  cnpj                           String?
-  nickname                       String?
-  corporateName                  String?
-  phone                          String?
-  whatsapp                       String?
-  cellphone1                     String?
-  cellphone2                     String?
-  email                          String?
-  emailVerified                  Boolean   @default(false)
-  emailVerifiedAt                DateTime?
-  emailVerificationToken         String?
-  emailVerificationExpires       DateTime?
-  zipCode                        String?
-  street                         String?
-  number                         String?
-  city                           String?
-  state                          String?
-  neighborhood                   String?
-  complement                     String?
-  stockControlMode               String    @default("BY_PRODUCT")
-  stockIntegerQuantityMode       String    @default("BY_PRODUCT")
-  stockLotControlMode            String    @default("BY_PRODUCT")
-  stockExpirationControlMode     String    @default("BY_PRODUCT")
-  stockGridControlMode           String    @default("BY_PRODUCT")
-  stockNegativeControlMode       String    @default("BY_PRODUCT")
-  allowSaleUnitPriceEdit         Boolean   @default(true)
-  allowSaleItemDiscount          Boolean   @default(true)
-  groupSameProduct               Boolean   @default(true)
-  allowProductImageEdit          Boolean   @default(true)
-  requirePasswordToRemoveSaleItems Boolean @default(false)
-  smtpHost                       String?
-  smtpPort                       Int?
-  smtpTimeout                    Int?
-  smtpAuthenticate               Boolean?
-  smtpSecure                     Boolean?
-  smtpAuthType                   String?
-  smtpEmail                      String?
-  smtpPassword                   String?
-  telegramEnabled                Boolean?
-  telegramBotToken               String?
-  telegramBotUsername            String?
-  telegramHeaderImageUrl         String?
-  storageProviderAccessKeyId     String?
-  storageProviderSecretAccessKey String?
-  storageBucketName              String?
-  storageFolderName              String?
-  storageDefaultAcl              String?
-  storageDefaultExpiration       Int?
-  storageRegion                  String?
-  storageEndpoint                String?
-  storageCustomEndpoint          String?
-  storageCapacityGb              Float?
-  storageImagesFolderName        String?
-  storageDescription             String?
-  isActive                       Boolean   @default(true)
-  createdAt                      DateTime  @default(now())
-  createdBy                      String?
-  updatedAt                      DateTime  @updatedAt
-  updatedBy                      String?
-  canceledAt                     DateTime?
-  canceledBy                     String?
+  id                               String    @id @default(uuid())
+  tenantId                         String
+  branchCode                       Int
+  name                             String
+  logoUrl                          String?
+  document                         String?
+  rg                               String?
+  cpf                              String?
+  cnpj                             String?
+  nickname                         String?
+  corporateName                    String?
+  phone                            String?
+  whatsapp                         String?
+  cellphone1                       String?
+  cellphone2                       String?
+  email                            String?
+  emailVerified                    Boolean   @default(false)
+  emailVerifiedAt                  DateTime?
+  emailVerificationToken           String?
+  emailVerificationExpires         DateTime?
+  zipCode                          String?
+  street                           String?
+  number                           String?
+  city                             String?
+  state                            String?
+  neighborhood                     String?
+  complement                       String?
+  stockControlMode                 String    @default("BY_PRODUCT")
+  stockIntegerQuantityMode         String    @default("BY_PRODUCT")
+  stockLotControlMode              String    @default("BY_PRODUCT")
+  stockExpirationControlMode       String    @default("BY_PRODUCT")
+  stockGridControlMode             String    @default("BY_PRODUCT")
+  stockNegativeControlMode         String    @default("BY_PRODUCT")
+  allowSaleUnitPriceEdit           Boolean   @default(true)
+  allowSaleItemDiscount            Boolean   @default(true)
+  groupSameProduct                 Boolean   @default(true)
+  allowProductImageEdit            Boolean   @default(true)
+  requirePasswordToRemoveSaleItems Boolean   @default(false)
+  smtpHost                         String?
+  smtpPort                         Int?
+  smtpTimeout                      Int?
+  smtpAuthenticate                 Boolean?
+  smtpSecure                       Boolean?
+  smtpAuthType                     String?
+  smtpEmail                        String?
+  smtpPassword                     String?
+  telegramEnabled                  Boolean?
+  telegramBotToken                 String?
+  telegramBotUsername              String?
+  telegramHeaderImageUrl           String?
+  storageProviderAccessKeyId       String?
+  storageProviderSecretAccessKey   String?
+  storageBucketName                String?
+  storageFolderName                String?
+  storageDefaultAcl                String?
+  storageDefaultExpiration         Int?
+  storageRegion                    String?
+  storageEndpoint                  String?
+  storageCustomEndpoint            String?
+  storageCapacityGb                Float?
+  storageImagesFolderName          String?
+  storageDescription               String?
+  isActive                         Boolean   @default(true)
+  createdAt                        DateTime  @default(now())
+  createdBy                        String?
+  updatedAt                        DateTime  @updatedAt
+  updatedBy                        String?
+  canceledAt                       DateTime?
+  canceledBy                       String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -266,12 +270,12 @@ model EmailCredential {
   email                    String    @unique
   centralIdentityAccountId String?   @unique
   passwordHash             String?
-  emailVerified        Boolean   @default(false)
-  verifiedAt           DateTime?
-  verificationToken    String?
-  verificationExpires  DateTime?
-  resetPasswordToken   String?
-  resetPasswordExpires DateTime?
+  emailVerified            Boolean   @default(false)
+  verifiedAt               DateTime?
+  verificationToken        String?
+  verificationExpires      DateTime?
+  resetPasswordToken       String?
+  resetPasswordExpires     DateTime?
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -284,15 +288,15 @@ model EmailCredential {
 }
 
 model AuthSession {
-  id               String   @id @default(uuid())
-  jti              String   @unique
+  id               String    @id @default(uuid())
+  jti              String    @unique
   tenantId         String
   userId           String
   modelType        String
   branchCode       Int
   identityProvider String
   expiresAt        DateTime
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
   canceledAt       DateTime?
   canceledBy       String?
 
@@ -474,11 +478,11 @@ model Person {
   canceledAt DateTime?
   canceledBy String?
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  teachers  Teacher[]
-  students  Student[]
-  guardians Guardian[]
-  users     User[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  teachers                Teacher[]
+  students                Student[]
+  guardians               Guardian[]
+  users                   User[]
   notificationPreferences NotificationPreference[]
 
   @@unique([tenantId, cpfDigits])
@@ -600,12 +604,12 @@ model Class {
 }
 
 model Series {
-  id         String  @id @default(uuid())
-  tenantId   String
-  branchCode Int     @default(1)
-  name       String
-  code       String?
-  sortOrder  Int?
+  id           String  @id @default(uuid())
+  tenantId     String
+  branchCode   Int     @default(1)
+  name         String
+  code         String?
+  sortOrder    Int?
   nextSeriesId String?
 
   createdAt  DateTime  @default(now())
@@ -615,10 +619,10 @@ model Series {
   canceledAt DateTime?
   canceledBy String?
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  seriesClasses SeriesClass[]
-  nextSeries   Series?       @relation("SeriesProgression", fields: [nextSeriesId], references: [id], onDelete: SetNull)
-  previousSeries Series[]    @relation("SeriesProgression")
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  seriesClasses  SeriesClass[]
+  nextSeries     Series?       @relation("SeriesProgression", fields: [nextSeriesId], references: [id], onDelete: SetNull)
+  previousSeries Series[]      @relation("SeriesProgression")
 
   @@index([tenantId])
   @@index([nextSeriesId])
@@ -632,7 +636,7 @@ model SeriesClass {
   seriesId   String
   classId    String
 
-  smtpEnabled      Boolean @default(false)
+  smtpEnabled      Boolean  @default(false)
   smtpHost         String?
   smtpPort         Int?
   smtpTimeout      Int?
@@ -670,10 +674,10 @@ model SeriesClass {
 // (F-RE) RESPONSÁVEIS
 // ==========================================
 model Guardian {
-  id         String  @id @default(uuid())
-  tenantId   String
-  branchCode Int     @default(1)
-  personId   String?
+  id             String  @id @default(uuid())
+  tenantId       String
+  branchCode     Int     @default(1)
+  personId       String?
   accessUsername String?
 
   accessProfile String?
@@ -692,9 +696,9 @@ model Guardian {
   billingStudents Student[]              @relation("StudentBillingGuardian")
   branchAccesses  GuardianBranchAccess[]
 
+  @@unique([tenantId, accessUsername])
   @@index([tenantId])
   @@index([personId])
-  @@unique([tenantId, accessUsername])
   @@map("guardians")
 }
 
@@ -702,10 +706,10 @@ model Guardian {
 // (F-AL) ALUNOS
 // ==========================================
 model Student {
-  id         String  @id @default(uuid())
-  tenantId   String
-  branchCode Int     @default(1)
-  personId   String?
+  id             String  @id @default(uuid())
+  tenantId       String
+  branchCode     Int     @default(1)
+  personId       String?
   accessUsername String?
 
   photoUrl          String?
@@ -732,10 +736,10 @@ model Student {
   lessonAttendances      LessonAttendance[]
   branchAccesses         StudentBranchAccess[]
 
+  @@unique([tenantId, accessUsername])
   @@index([tenantId])
   @@index([personId])
   @@index([billingGuardianId])
-  @@unique([tenantId, accessUsername])
   @@map("students")
 }
 
@@ -802,10 +806,10 @@ model Enrollment {
 // (F-PR) PROFESSORES
 // ==========================================
 model Teacher {
-  id         String  @id @default(uuid())
-  tenantId   String
-  branchCode Int     @default(1)
-  personId   String?
+  id             String  @id @default(uuid())
+  tenantId       String
+  branchCode     Int     @default(1)
+  personId       String?
   accessUsername String?
 
   accessProfile String?
@@ -826,9 +830,9 @@ model Teacher {
   lessonAttendances LessonAttendance[]
   branchAccesses    TeacherBranchAccess[]
 
+  @@unique([tenantId, accessUsername])
   @@index([tenantId])
   @@index([personId])
-  @@unique([tenantId, accessUsername])
   @@map("teachers")
 }
 
@@ -1200,24 +1204,24 @@ model LessonAttendance {
 }
 
 model Notification {
-  id            String    @id @default(uuid())
-  tenantId      String
-  branchCode    Int       @default(1)
-  recipientType String
-  recipientId   String
-  category      String
-  title         String
-  message       String
-  actionUrl     String?
-  sourceType    String?
-  sourceId      String?
-  readAt        DateTime?
-  readBy        String?
-  emailedAt     DateTime?
+  id             String    @id @default(uuid())
+  tenantId       String
+  branchCode     Int       @default(1)
+  recipientType  String
+  recipientId    String
+  category       String
+  title          String
+  message        String
+  actionUrl      String?
+  sourceType     String?
+  sourceId       String?
+  readAt         DateTime?
+  readBy         String?
+  emailedAt      DateTime?
   telegramSentAt DateTime?
   telegramStatus String?
   telegramError  String?
-  metadata      String?
+  metadata       String?
 
   createdAt  DateTime  @default(now())
   createdBy  String?
@@ -1226,7 +1230,8 @@ model Notification {
   canceledAt DateTime?
   canceledBy String?
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tenant        Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversations NotificationConversation[]
 
   @@index([tenantId])
   @@index([recipientType, recipientId])
@@ -1234,15 +1239,110 @@ model Notification {
   @@map("notifications")
 }
 
+model NotificationConversation {
+  id             String    @id @default(uuid())
+  tenantId       String
+  branchCode     Int       @default(1)
+  notificationId String
+  ownerType      String
+  ownerId        String
+  createdAt      DateTime  @default(now())
+  createdBy      String?
+  updatedAt      DateTime  @updatedAt
+  updatedBy      String?
+  closedAt       DateTime?
+  closedBy       String?
+  canceledAt     DateTime?
+  canceledBy     String?
+
+  tenant       Tenant                                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  notification Notification                          @relation(fields: [notificationId], references: [id], onDelete: Restrict)
+  participants NotificationConversationParticipant[]
+  messages     NotificationConversationMessage[]
+  auditEvents  NotificationConversationAuditEvent[]
+
+  @@unique([tenantId, notificationId, ownerType, ownerId])
+  @@index([tenantId, branchCode, canceledAt])
+  @@index([notificationId, canceledAt])
+  @@map("notification_conversations")
+}
+
+model NotificationConversationParticipant {
+  id                 String    @id @default(uuid())
+  tenantId           String
+  conversationId     String
+  participantType    String
+  participantId      String
+  participantName    String
+  historyVisibleFrom DateTime  @default(now())
+  joinedAt           DateTime  @default(now())
+  invitedBy          String?
+  canInvite          Boolean   @default(false)
+  lastReadAt         DateTime?
+  createdAt          DateTime  @default(now())
+  createdBy          String?
+  updatedAt          DateTime  @updatedAt
+  updatedBy          String?
+  canceledAt         DateTime?
+  canceledBy         String?
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation NotificationConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@unique([conversationId, participantType, participantId])
+  @@index([tenantId, participantType, participantId, canceledAt])
+  @@map("notification_conversation_participants")
+}
+
+model NotificationConversationMessage {
+  id             String    @id @default(uuid())
+  tenantId       String
+  conversationId String
+  senderType     String
+  senderId       String
+  senderName     String
+  content        String
+  createdAt      DateTime  @default(now())
+  createdBy      String?
+  updatedAt      DateTime  @updatedAt
+  updatedBy      String?
+  canceledAt     DateTime?
+  canceledBy     String?
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation NotificationConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, conversationId, createdAt])
+  @@map("notification_conversation_messages")
+}
+
+model NotificationConversationAuditEvent {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conversationId String
+  action         String
+  actorType      String
+  actorId        String
+  metadata       String?
+  createdAt      DateTime @default(now())
+  createdBy      String?
+
+  tenant       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation NotificationConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, conversationId, createdAt])
+  @@map("notification_conversation_audit_events")
+}
+
 model NotificationPreference {
-  id            String   @id @default(uuid())
-  tenantId      String
-  personId      String
-  eventType     String
-  enabled       Boolean  @default(false)
-  sendInternal  Boolean  @default(false)
-  sendEmail     Boolean  @default(false)
-  sendTelegram  Boolean  @default(false)
+  id           String  @id @default(uuid())
+  tenantId     String
+  personId     String
+  eventType    String
+  enabled      Boolean @default(false)
+  sendInternal Boolean @default(false)
+  sendEmail    Boolean @default(false)
+  sendTelegram Boolean @default(false)
 
   createdAt  DateTime  @default(now())
   createdBy  String?

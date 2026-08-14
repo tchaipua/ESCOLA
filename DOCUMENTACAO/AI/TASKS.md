@@ -123,6 +123,9 @@
 - 2026-08-13: [x] E-mail cadastral normalizado em `people`: removida a cópia de
   `users`, preservada apenas a chave técnica em `email_credentials` e mantido o
   cadastro sem CPF.
+- 2026-08-14: [x] Chat privado por notificação implementado, com dupla inicial,
+  convite restrito à dupla, corte de histórico para convidados, isolamento por
+  escola/filial e auditoria append-only.
 - 2026-07-24: [x] Runtime PostgreSQL protegido por credencial distinta do
   migrator e auditoria de role sem owner/superuser/DDL/BYPASSRLS.
 - 2026-07-24: [ ] Concluir no MSINFOR Central identidade administrativa com MFA e sessao auditada; a Escola nao aceita mais master local.

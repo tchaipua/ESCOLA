@@ -6,6 +6,7 @@ import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import { getDashboardAuthContext } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding, type TenantBranding } from '@/app/lib/tenant-branding-cache';
 import { dispatchScreenAuditContext, formatTenantAuditValue, toSqlLiteral } from '@/app/lib/screen-audit-context';
+import NotificationChatModal from '@/app/components/notification-chat-modal';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const NOTIFICACOES_SCREEN_ID = 'PRINCIPAL_NOTIFICACOES';
@@ -17,6 +18,7 @@ type NotificationItem = {
     actionUrl?: string | null;
     category: string;
     readAt?: string | null;
+    chatUnread?: boolean;
     createdAt: string;
 };
 
@@ -79,6 +81,7 @@ export default function NotificationsPage() {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const { tenantId } = getDashboardAuthContext();
     const [tenantBranding, setTenantBranding] = useState<TenantBranding | null>(null);
+    const [chatNotificationId, setChatNotificationId] = useState<string | null>(null);
 
     const loadNotifications = async (status: FilterStatus) => {
         try {
@@ -284,9 +287,21 @@ export default function NotificationsPage() {
                                                     <div className="mt-4 text-xs font-bold uppercase tracking-[0.15em] text-slate-400">
                                                         {new Date(notification.createdAt).toLocaleString('pt-BR')}
                                                     </div>
+                                                    {notification.chatUnread ? (
+                                                        <div className="mt-3 inline-flex rounded-full bg-violet-100 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-violet-700">
+                                                            Nova mensagem no chat
+                                                        </div>
+                                                    ) : null}
                                                 </div>
 
                                                 <div className="flex flex-wrap gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setChatNotificationId(notification.id)}
+                                                        className="rounded-xl border border-violet-200 bg-white px-4 py-2 text-sm font-bold text-violet-700 transition hover:border-violet-400 hover:bg-violet-50"
+                                                    >
+                                                        Questionar
+                                                    </button>
                                                     {!notification.readAt ? (
                                                         <button
                                                             type="button"
@@ -315,6 +330,15 @@ export default function NotificationsPage() {
                     </div>
                 </div>
             </div>
+            {chatNotificationId ? (
+                <NotificationChatModal
+                    notificationId={chatNotificationId}
+                    currentUserId={getDashboardAuthContext().userId}
+                    schoolName={tenantBranding?.schoolName}
+                    logoUrl={tenantBranding?.logoUrl}
+                    onClose={() => setChatNotificationId(null)}
+                />
+            ) : null}
         </div>
     );
 }

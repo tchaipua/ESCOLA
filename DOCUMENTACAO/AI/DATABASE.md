@@ -438,3 +438,20 @@ Regra atual:
   aluno e responsável da mesma escola;
 - SMTP e Telegram continuam sendo lidos da configuração efetiva do MSINFOR
   Central; a tabela não armazena segredos.
+
+## Chat vinculado às notificações
+
+O chat permanece no banco operacional da Escola e usa quatro tabelas:
+
+- `notification_conversations`: uma conversa por notificação e destinatário proprietário;
+- `notification_conversation_participants`: participantes, data de entrada, corte de histórico, leitura e permissão de convite;
+- `notification_conversation_messages`: mensagens com remetente e soft delete;
+- `notification_conversation_audit_events`: trilha append-only de criação, envio, leitura e convite.
+
+Regras de isolamento:
+
+- todas as tabelas possuem `tenantId` e a conversa preserva `branchCode`;
+- não existe relacionamento com o banco da Central nem armazenamento de segredos;
+- os dois participantes iniciais recebem `canInvite = true`; convidados recebem `false`;
+- `historyVisibleFrom` impede que convidados consultem mensagens anteriores à entrada;
+- nenhuma operação do chat realiza exclusão física.

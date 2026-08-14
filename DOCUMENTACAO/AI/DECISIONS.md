@@ -551,3 +551,12 @@ Para cada decisao, registrar:
   por manter duplicidade, excluir papéis não administrativos ou unir pessoas
   distintas que compartilham um endereço eletrônico.
 - Status: aceita
+
+## DEC-0051
+
+- Data: 2026-08-14
+- Contexto: usuários precisam questionar uma notificação sem deslocar a conversa para um canal externo; algumas notificações podem envolver pessoas adicionais posteriormente.
+- Decisão: manter um chat operacional vinculado ao registro de notificação. A conversa nasce entre destinatário e remetente/responsável, e somente essa dupla pode convidar outras pessoas. O convidado vê apenas mensagens posteriores à própria entrada. Cada destinatário proprietário possui sua conversa, impedindo que uma notificação coletiva se torne um grupo compartilhado.
+- Impacto: mensagens, participantes e eventos de auditoria ficam no banco da Escola, isolados por `tenantId` e filial, com soft delete e trilha append-only. A Central não recebe dados do chat.
+- Alternativas consideradas: grupo único por notificação, histórico integral para convidados e centralização no MSINFOR Central. Foram rejeitadas por risco de vazamento entre destinatários, exposição retroativa e armazenamento operacional indevido na Central.
+- Status: aceita

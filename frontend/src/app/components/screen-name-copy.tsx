@@ -50,6 +50,27 @@ function buildOriginText(systemName: string, physicalPath: string) {
   return `Origem: ${systemName} - caminho físico: ${physicalPath}`;
 }
 
+function extractSourcePath(originText?: string) {
+  return originText?.match(/caminho\s+f[ií]sico\s*:\s*(.+)$/i)?.[1]?.trim();
+}
+
+function toLogicalTooltipPath(path: string) {
+  return path
+    .replace(/\\/g, "/")
+    .replace(/^[A-Za-z]:\/Sistemas\/IA\//i, "");
+}
+
+function useRuntimeTooltipPath(path?: string) {
+  const [isVps, setIsVps] = useState(false);
+
+  useEffect(() => {
+    const hostname = window.location.hostname.toLowerCase();
+    setIsVps(!["localhost", "127.0.0.1", "::1"].includes(hostname));
+  }, []);
+
+  return path ? (isVps ? toLogicalTooltipPath(path) : path) : undefined;
+}
+
 const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_ROOT', match: 'exact', physicalPath: escolaAppPath('principal', 'page.tsx') },
   { screenId: 'PRINCIPAL', match: 'exact', physicalPath: escolaAppPath('principal', 'page.tsx') },
@@ -556,6 +577,7 @@ export default function ScreenNameCopy({
     auditText: auditText || registeredAuditMetadata.auditText,
     sqlText: sqlText || registeredAuditMetadata.sqlText,
   };
+  const tooltipPath = useRuntimeTooltipPath(extractSourcePath(auditMetadata.originText));
   const [status, setStatus] = useState<CopyStatus>('idle');
   const [isAuditOpen, setIsAuditOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -620,7 +642,7 @@ export default function ScreenNameCopy({
       <button
         type="button"
         onClick={handleCopy}
-        title="Copiar nome da tela e abrir lógica usada"
+        title={tooltipPath || 'Copiar nome da tela e abrir lógica usada'}
         aria-label={`Copiar o identificador ${screenId}`}
         className="flex h-7 w-7 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 active:scale-95"
       >
