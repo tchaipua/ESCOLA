@@ -9,6 +9,7 @@ import { cacheTenantBranding, readCachedTenantBranding } from '@/app/lib/tenant-
 import { PRINCIPAL_PROGRAM_HEADER_RIGHT_OVERLAY_CLASS } from '@/app/components/principal-program-header';
 import MaintenanceModalFooter from '@/app/components/maintenance-modal-footer';
 import MaintenanceModalHeader from '@/app/components/maintenance-modal-header';
+import QuickAccessDialog from '@/app/components/quick-access-dialog';
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
@@ -344,6 +345,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [manuallyClosedSubmenu, setManuallyClosedSubmenu] = useState<'people' | 'school-config' | 'school-year' | null>(null);
     const [isFooterLogoOpen, setIsFooterLogoOpen] = useState(false);
     const [isExitConfirmationOpen, setIsExitConfirmationOpen] = useState(false);
+    const [isQuickAccessOpen, setIsQuickAccessOpen] = useState(false);
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [isSalesScreenParametersOpen, setIsSalesScreenParametersOpen] = useState(false);
     const [salesScreenParameters, setSalesScreenParameters] = useState<SalesScreenParameters>({
@@ -761,6 +763,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             if (event.key === 'Escape') {
                 setIsFooterLogoOpen(false);
                 setIsExitConfirmationOpen(false);
+                setIsQuickAccessOpen(false);
                 setIsChangePasswordOpen(false);
                 setIsColorThemeOpen(false);
                 setDraftSchoolColorTheme(schoolColorTheme);
@@ -779,7 +782,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (isFooterLogoOpen || isExitConfirmationOpen || isChangePasswordOpen || isColorThemeOpen || changePasswordAlertType) return;
+        if (isFooterLogoOpen || isExitConfirmationOpen || isQuickAccessOpen || isChangePasswordOpen || isColorThemeOpen || changePasswordAlertType) return;
 
         const cleanupTimers: number[] = [];
         const scheduleCleanup = () => {
@@ -797,7 +800,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 window.clearTimeout(timerId);
             });
         };
-    }, [pathname, isFooterLogoOpen, isExitConfirmationOpen, isChangePasswordOpen, isColorThemeOpen, changePasswordAlertType]);
+    }, [pathname, isFooterLogoOpen, isExitConfirmationOpen, isQuickAccessOpen, isChangePasswordOpen, isColorThemeOpen, changePasswordAlertType]);
 
     const handleLogout = () => {
         setIsExitConfirmationOpen(false);
@@ -1568,6 +1571,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             : showSummaryNav
                 ? [...topLinks, ...summaryLinks]
                 : [...topLinks, ...generalLinks];
+    const knownQuickAccessRoutes = Object.fromEntries(
+        filteredNavItems.map((item) => [deriveScreenContextLabel(item.href), item.href]),
+    );
     const isCurrentNavItem = (item: NavItem) => {
         const isExactOrChild = pathname === item.href || pathname.startsWith(`${item.href}/`);
         if (item.href !== '/principal/financeiro') {
@@ -1598,8 +1604,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const userMenuButtonClassName = showFinanceiroModuleNav || showPrincipalHeroHeader || showNotificationsHeroHeader || showPeopleHeroHeader || showUsuariosHeroHeader || showCommunicationsHeroHeader || showGuardiansHeroHeader || showSeriesHeroHeader || showClassesHeroHeader || showSchoolYearConfigHeroHeader || showGradeHeroHeader || showAnnualGradeHeroHeader || showStudentsHeroHeader || showMonthlyFeesHeroHeader || showTeachersHeroHeader || showSubjectsHeroHeader || showConfiguraEscolaHeroHeader
         ? 'flex items-center gap-3 rounded-2xl border border-white/20 bg-white px-3 py-2 shadow-lg transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400'
         : 'flex items-center gap-3 rounded-2xl px-3 py-2 hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400';
+    const isQuickAccessHeaderStack = showFinanceiroModuleNav || showCustomHeroHeader;
+    const quickAccessTrigger = !isCashierOnlyAccess ? (
+        <button
+            type="button"
+            onClick={() => setIsQuickAccessOpen(true)}
+            className="program-quick-access-trigger"
+            title="Abrir acesso rápido"
+            aria-label="Abrir acesso rápido"
+        >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+            </svg>
+        </button>
+    ) : null;
     const userMenuTrigger = (
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
+            {isQuickAccessHeaderStack ? (
+                <div className={`absolute top-full z-10 mt-3 ${showSalesParametersButton && currentRole === 'ADMIN' ? 'left-12' : 'left-0'}`}>
+                    {quickAccessTrigger}
+                </div>
+            ) : quickAccessTrigger}
             {showSalesParametersButton && currentRole === 'ADMIN' ? (
                 <button
                     type="button"
@@ -2811,6 +2836,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
                 </div>
             ) : null}
+
+            <QuickAccessDialog
+                open={isQuickAccessOpen}
+                onClose={() => setIsQuickAccessOpen(false)}
+                pathname={pathname}
+                currentScreenId={screenContextLabel}
+                knownScreenRoutes={knownQuickAccessRoutes}
+                currentTenant={currentTenant}
+            />
 
         </div>
     );

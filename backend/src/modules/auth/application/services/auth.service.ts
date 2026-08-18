@@ -53,6 +53,7 @@ import {
   MsInforCentralSettingsClient,
 } from "../../../../integrations/msinfor-central/msinfor-central-settings.client";
 import { CentralTenantConfigurationService } from "../../../../integrations/msinfor-central/central-tenant-configuration.service";
+import { FinanceiroService } from "../../../../integrations/financeiro/financeiro.service";
 
 type AccountModelType = "user" | "teacher" | "student" | "guardian";
 
@@ -89,6 +90,15 @@ type AccountLookup = {
   };
 };
 
+type LoginCashSessionPreflight = {
+  opened: boolean;
+  openingAmount: number;
+  cashierDisplayName: string;
+  branchLogoUrl: string | null;
+  branchName: string | null;
+  companyName: string | null;
+};
+
 type LoginAccountSelection = {
   accountId: string;
   accountType: AccountModelType;
@@ -104,6 +114,8 @@ type LoginAccountSelection = {
 };
 
 const AUTH_SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const LOGIN_CASHIER_BLOCK_MESSAGE =
+  "NÃO É POSSÍVEL ACESSAR O SISTEMA NA DATA DE HOJE. O CAIXA DO DIA ANTERIOR PRECISA SER FECHADO ANTES DE CONTINUAR.";
 
 @Injectable()
 export class AuthService {
@@ -114,6 +126,7 @@ export class AuthService {
     private readonly globalSettingsService: GlobalSettingsService,
     private readonly centralIdentity: MsInforCentralSettingsClient,
     private readonly centralConfiguration: CentralTenantConfigurationService,
+    private readonly financeiroService: FinanceiroService,
   ) {}
 
   private resolveCentralLocalRole(roleCode?: string | null) {
@@ -929,6 +942,7 @@ export class AuthService {
       forcedLocalTenantId?: string;
       exposedTenantId?: string;
       centralIdentityAccountId?: string;
+      canOperateCashier?: boolean;
     } = {},
   ) {
     const requestedBranchCode =
@@ -1061,6 +1075,27 @@ export class AuthService {
       };
     }
 
+    const cashSessionPreflight = await this.ensureCashSessionBeforeLogin(
+      userToLogin,
+      branchResolution.branchCode,
+      options,
+      branchResolution.allowedBranches.map((branch) => branch.branchCode),
+      {
+        branchLogoUrl:
+          branchResolution.allowedBranches.find(
+            (branch) => branch.branchCode === branchResolution.branchCode,
+          )?.logoUrl
+          || this.getTenantLogoUrl(userToLogin.tenant)
+          || null,
+        branchName:
+          branchResolution.allowedBranches.find(
+            (branch) => branch.branchCode === branchResolution.branchCode,
+          )?.name
+          || null,
+        companyName: userToLogin.tenant.name || null,
+      },
+    );
+
     const payload = {
       userId: userToLogin.id,
       tenantId: userToLogin.tenantId,
@@ -1069,6 +1104,10 @@ export class AuthService {
       permissions: userToLogin.permissions,
       cashierOnly:
         userToLogin.modelType === "user" ? Boolean(userToLogin.cashierOnly) : false,
+      canOperateCashier:
+        options.centralIdentityAccountId
+          ? options.canOperateCashier === true
+          : false,
       branchAccessCodes: branchResolution.allowedBranches.map(
         (branch) => branch.branchCode,
       ),
@@ -1092,8 +1131,156 @@ export class AuthService {
         identityProvider: options.centralIdentityAccountId
           ? "MSINFOR_CENTRAL"
           : "LOCAL",
+        canOperateCashier:
+          options.centralIdentityAccountId
+            ? options.canOperateCashier === true
+            : false,
       },
+      ...(cashSessionPreflight?.opened
+        ? {
+            cashSessionOpened: true,
+            cashSessionOpeningAmount: cashSessionPreflight.openingAmount,
+          }
+        : {}),
+      ...(cashSessionPreflight
+        ? {
+            cashSessionNotice: {
+              openingAmount: cashSessionPreflight.openingAmount,
+              openedAutomatically: cashSessionPreflight.opened,
+              cashierDisplayName: cashSessionPreflight.cashierDisplayName,
+              branchLogoUrl: cashSessionPreflight.branchLogoUrl,
+              branchName: cashSessionPreflight.branchName,
+              companyName: cashSessionPreflight.companyName,
+            },
+          }
+        : {}),
     };
+  }
+
+  private isDailyRequiredCashError(error: unknown) {
+    const candidate = error as {
+      message?: unknown;
+      response?: { code?: unknown; message?: unknown } | unknown;
+    } | null;
+    const response = candidate?.response;
+    const responseMessage =
+      response && typeof response === "object"
+        ? (response as { message?: unknown }).message
+        : response;
+    const messages = [candidate?.message, responseMessage]
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim().toUpperCase());
+    const code =
+      response && typeof response === "object"
+        ? String((response as { code?: unknown }).code || "")
+            .trim()
+            .toUpperCase()
+        : "";
+
+    return (
+      code === "CASH_SESSION_CLOSE_REQUIRED" ||
+      code === "CASH_SESSION_ALREADY_CLOSED" ||
+      messages.some((message) =>
+        message.includes("CAIXA DO DIA ANTERIOR PRECISA SER FECHADO") ||
+        message.includes("CAIXA DESTE OPERADOR JÁ FOI FECHADO"),
+      )
+    );
+  }
+
+  private async ensureCashSessionBeforeLogin(
+    account: AccountLookup,
+    branchCode: number,
+    options: {
+      centralIdentityAccountId?: string;
+      canOperateCashier?: boolean;
+    },
+    branchAccessCodes: number[],
+    branchContext: {
+      branchLogoUrl?: string | null;
+      branchName?: string | null;
+      companyName?: string | null;
+    } = {},
+  ): Promise<LoginCashSessionPreflight | null> {
+    // O pré-check pertence ao acesso da Escola. Uma identidade da Central só
+    // pode executá-lo quando a própria Central autorizou operação de caixa.
+    if (
+      options.centralIdentityAccountId &&
+      options.canOperateCashier !== true
+    ) {
+      return null;
+    }
+
+    const normalizedPermissions = new Set(
+      (account.permissions || []).map((permission) =>
+        String(permission).trim().toUpperCase(),
+      ),
+    );
+    const canOperateCashier =
+      account.modelType === "user" &&
+      (account.role.trim().toUpperCase() === "ADMIN" ||
+        normalizedPermissions.has("VIEW_CASHIER"));
+
+    if (!canOperateCashier) return null;
+
+    const currentUser: ICurrentUser = {
+      userId: account.id,
+      tenantId: account.tenantId,
+      branchCode,
+      role: account.role,
+      permissions: account.permissions,
+      name: account.name,
+      email: account.email,
+      cashierOnly: Boolean(account.cashierOnly),
+      canOperateCashier: options.centralIdentityAccountId
+        ? options.canOperateCashier === true
+        : true,
+      modelType: account.modelType,
+      branchAccessCodes,
+      canAccessAllBranches: this.canAccountAccessAllBranches(account),
+      identityProvider: options.centralIdentityAccountId
+        ? "MSINFOR_CENTRAL"
+        : "LOCAL",
+    };
+
+    try {
+      const openedSession = await this.financeiroService.ensureLoginCashSession(
+        currentUser,
+        {
+          requestedBy: account.id,
+          sourceSystem: "ESCOLA",
+          sourceTenantId: account.tenantId,
+          cashierUserId: account.id,
+          cashierDisplayName: String(
+            account.name || account.email || account.id,
+          )
+            .trim()
+            .toUpperCase(),
+          openingAmount: 0,
+        },
+      );
+      if (String(openedSession?.status || "").trim().toUpperCase() !== "OPEN") {
+        return null;
+      }
+      return {
+        opened: openedSession?.openedAutomatically === true,
+        openingAmount: Number(openedSession?.openingAmount || 0),
+        cashierDisplayName:
+          String(
+            openedSession?.cashierDisplayName
+              || account.name
+              || account.email
+              || account.id,
+          ).trim(),
+        branchLogoUrl: branchContext.branchLogoUrl || null,
+        branchName: branchContext.branchName || null,
+        companyName: branchContext.companyName || null,
+      };
+    } catch (error) {
+      if (this.isDailyRequiredCashError(error)) {
+        throw new ForbiddenException(LOGIN_CASHIER_BLOCK_MESSAGE);
+      }
+      throw error;
+    }
   }
 
   private getMaximumActiveSessions() {
@@ -1408,6 +1595,7 @@ export class AuthService {
         forcedLocalTenantId: localTenant.id,
         exposedTenantId: identity.tenantId,
         centralIdentityAccountId: identity.account.id,
+        canOperateCashier: identity.account.canOperateCashier,
       },
     );
   }

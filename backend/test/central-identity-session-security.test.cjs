@@ -75,6 +75,7 @@ async function testCentralIdentityUsesExactHmacBody() {
         account: {
           id: CENTRAL_ACCOUNT_ID,
           displayName: "Usuário Central",
+          canOperateCashier: false,
         },
         tenantId: CENTRAL_TENANT_ID,
         systemCode: "ESCOLA",
@@ -218,6 +219,7 @@ function createAuthHarness({
         account: {
           id: CENTRAL_ACCOUNT_ID,
           displayName: "Usuário Central",
+          canOperateCashier: false,
         },
         tenantId: CENTRAL_TENANT_ID,
         systemCode: "ESCOLA",
@@ -307,10 +309,12 @@ async function testCentralIdentityMapsServerSideAndIssuesRevocableSession() {
   assert.equal(result.status, "SUCCESS");
   assert.equal(result.user.tenantId, LOCAL_TENANT_ID);
   assert.equal(result.user.identityProvider, "MSINFOR_CENTRAL");
+  assert.equal(result.user.canOperateCashier, false);
   assert.equal(harness.sessions.length, 1);
   assert.match(harness.sessions[0].jti, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(harness.sessions[0].tenantId, LOCAL_TENANT_ID);
   assert.equal(harness.signedPayloads[0].tenantId, LOCAL_TENANT_ID);
+  assert.equal(harness.signedPayloads[0].canOperateCashier, false);
   assert.equal(
     harness.signedPayloads[0].jti,
     harness.sessions[0].jti,

@@ -560,3 +560,35 @@ Para cada decisao, registrar:
 - Impacto: mensagens, participantes e eventos de auditoria ficam no banco da Escola, isolados por `tenantId` e filial, com soft delete e trilha append-only. A Central não recebe dados do chat.
 - Alternativas consideradas: grupo único por notificação, histórico integral para convidados e centralização no MSINFOR Central. Foram rejeitadas por risco de vazamento entre destinatários, exposição retroativa e armazenamento operacional indevido na Central.
 - Status: aceita
+
+## DEC-0052
+
+- Data: 2026-08-17
+- Contexto: o usuário que entra na Escola não possui necessariamente o mesmo perfil operacional no Financeiro.
+- Decisão: a Escola continua dona da conta e do vínculo com a pessoa, mas o Financeiro mantém perfil e permissões por filial. A Escola envia somente uma projeção administrativa sem credenciais.
+- Impacto: `PRINCIPAL_USUARIOS` permanece como cadastro de acesso à Escola; `PRINCIPAL_FINANCEIRO_MSINFOR_USUARIOS_SISTEMA` passa a configurar exclusivamente acesso financeiro.
+- Status: substituída pela `DEC-0053`
+
+## DEC-0053
+
+- Data: 2026-08-17
+- Contexto: o operador não deve cadastrar primeiro um usuário administrativo na Escola ou no Projeto Inicial e depois completar o perfil no Financeiro.
+- Decisão: o cadastro operacional de usuário do sistema passa a existir somente em `PRINCIPAL_FINANCEIRO_MSINFOR_USUARIOS_SISTEMA`. Pelo CPF, o Financeiro localiza ou cria a pessoa e solicita ao sistema de origem uma projeção técnica local, necessária ao `VIEWUSUARIOS`, enquanto a credencial única é provisionada na Central. Perfis e permissões financeiras permanecem no Financeiro por empresa e filial. Professor, aluno, responsável e cliente continuam sendo cadastrados em seus módulos e podem receber somente o acesso PWA próprio da categoria.
+- Impacto: a Escola não oferece mais o cadastro administrativo como caminho de navegação. Se a pessoa já existir como professor, aluno ou responsável, o cadastro financeiro reutiliza seus dados pelo CPF; se nascer como usuário do sistema, um cadastro funcional futuro com o mesmo CPF reutiliza a mesma `Person`. Nenhum cliente é criado no banco financeiro.
+- Segurança: callback HMAC dedicado `SYSTEM_USERS_WRITE`, isolamento obrigatório por `tenantId`/`schoolId` e filial, senha enviada uma única vez ao provisionamento da identidade e nunca persistida no Financeiro, auditoria append-only e sem exclusão física.
+- Status: aceita
+
+## DEC-0054
+
+- Data: 2026-08-18
+- Contexto: o Master MSINFOR precisa trabalhar como caixa somente quando essa
+  opção estiver liberada na Central, sem transformar o Financeiro em dono da
+  identidade administrativa.
+- Decisão: a Central devolve `account.canOperateCashier` no contrato de
+  autenticação; a Escola valida o booleano, grava-o apenas na sessão/JWT
+  central e o envia ao Financeiro por marcadores HMAC assinados. O Financeiro
+  bloqueia as rotinas de caixa e mutações de venda/recebimento presencial
+  quando o marcador for negativo.
+- Impacto: a permissão passa a refletir no menu e no backend financeiro; contas
+  locais continuam regidas pelo RBAC financeiro próprio.
+- Status: aceita

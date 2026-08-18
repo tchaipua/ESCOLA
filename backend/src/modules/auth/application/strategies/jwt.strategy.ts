@@ -283,6 +283,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           : null,
       modelType,
       cashierOnly: user ? Boolean(user.cashierOnly) : false,
+      canOperateCashier:
+        authSession.identityProvider === "MSINFOR_CENTRAL" &&
+        payload.canOperateCashier === true,
       permissions: user
         ? resolveAccountPermissions({
             role: user.role,

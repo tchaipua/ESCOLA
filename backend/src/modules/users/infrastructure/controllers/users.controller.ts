@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, GoneException, Param, Patch, Post, UseGuards } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { UsersService } from "../../application/services/users.service";
 import { JwtAuthGuard } from "../../../../common/guards/jwt-auth.guard";
@@ -24,10 +24,12 @@ export class UsersController {
   @Post()
   @Permissions("MANAGE_USERS")
   async create(
-    @Body() createUserDto: CreateUserDto,
-    @CurrentUser() user: ICurrentUser,
+    @Body() _createUserDto: CreateUserDto,
+    @CurrentUser() _user: ICurrentUser,
   ) {
-    return this.usersService.create(createUserDto, user);
+    throw new GoneException(
+      "O CADASTRO DE USUÁRIO DO SISTEMA FOI TRANSFERIDO PARA O FINANCEIRO.",
+    );
   }
 
   @Get()
@@ -40,19 +42,25 @@ export class UsersController {
   @Permissions("MANAGE_USERS")
   async update(
     @Param("id") id: string,
-    @Body() updateUserDto: UpdateUserDto,
-    @CurrentUser() user: ICurrentUser,
+    @Body() _updateUserDto: UpdateUserDto,
+    @CurrentUser() _user: ICurrentUser,
   ) {
-    return this.usersService.update(id, updateUserDto, user);
+    void id;
+    throw new GoneException(
+      "A MANUTENÇÃO DE USUÁRIO DO SISTEMA FOI TRANSFERIDA PARA O FINANCEIRO.",
+    );
   }
 
   @Patch(":id/status")
   @Permissions("MANAGE_USERS")
   async updateStatus(
     @Param("id") id: string,
-    @Body() statusDto: UpdateUserStatusDto,
-    @CurrentUser() user: ICurrentUser,
+    @Body() _statusDto: UpdateUserStatusDto,
+    @CurrentUser() _user: ICurrentUser,
   ) {
-    return this.usersService.updateStatus(id, statusDto.active, user);
+    void id;
+    throw new GoneException(
+      "A MANUTENÇÃO DE USUÁRIO DO SISTEMA FOI TRANSFERIDA PARA O FINANCEIRO.",
+    );
   }
 }

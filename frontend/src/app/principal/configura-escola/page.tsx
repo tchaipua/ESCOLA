@@ -13,8 +13,8 @@ type TenantBranding = {
 
 const configurationPrograms = [
     {
-        href: '/principal/usuarios',
-        title: 'Funcionários e Usuários',
+        href: '/principal/financeiro/msinfor/usuarios-sistema',
+        title: 'Usuários do Sistema',
         image: '/principal/pessoas.svg',
     },
     {

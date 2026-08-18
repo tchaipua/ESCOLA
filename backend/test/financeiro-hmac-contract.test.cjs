@@ -12,6 +12,7 @@ const {
   authorizeFinanceiroGatewayRequest,
   expectedFinanceiroBinaryContentType,
   normalizeFinanceiroGatewayPath,
+  shouldInjectCentralTenantIdQuery,
 } = require("../dist/src/integrations/financeiro/financeiro-gateway.policy.js");
 const {
   assertSafeMultipartBody,
@@ -22,6 +23,12 @@ const {
 const {
   FinanceiroCallbackAuthGuard,
 } = require("../dist/src/integrations/financeiro/financeiro-callback-auth.guard.js");
+const {
+  FinanceiroIntegrationController,
+} = require("../dist/src/modules/tenants/infrastructure/controllers/financeiro-integration.controller.js");
+const {
+  getTenantContext,
+} = require("../dist/src/common/tenant/tenant.context.js");
 const {
   createFinanceiroCsrfToken,
   getFinanceiroCsrfCookieName,
@@ -237,6 +244,23 @@ function testGatewayDenyByDefaultAndDownloads() {
     ),
     null,
   );
+  assert.equal(
+    shouldInjectCentralTenantIdQuery("companies/company-1/branches"),
+    true,
+  );
+  assert.equal(
+    shouldInjectCentralTenantIdQuery(
+      "companies/company-1/branches/branch-1/central-configuration-refresh",
+    ),
+    true,
+  );
+  assert.equal(shouldInjectCentralTenantIdQuery("products"), false);
+  assert.equal(
+    shouldInjectCentralTenantIdQuery(
+      "companies/company-1/branches/branch-1/central-editor-launch",
+    ),
+    false,
+  );
 }
 
 function testMultipartGatewayIsFailClosed() {
@@ -364,6 +388,58 @@ function executionContext(request) {
   };
 }
 
+function systemUserCallbackRequest(scope = "SYSTEM_USERS_WRITE") {
+  const timestamp = String(Date.now());
+  const tenantId = "TENANT-A";
+  const userId = "finance-user";
+  const originalUrl =
+    "/api/v1/integrations/financeiro/system-users/resolve";
+  const body = {
+    document: "52998224725",
+    sourceSystem: "ESCOLA",
+    sourceTenantId: tenantId,
+    sourceBranchCode: 1,
+    requestedBy: userId,
+  };
+  const rawBody = Buffer.from(JSON.stringify(body));
+  const bodyHash = crypto.createHash("sha256").update(rawBody).digest("hex");
+  const nonce = crypto.randomBytes(24).toString("base64url");
+  const payload = [
+    "v1",
+    "FINANCEIRO",
+    "POST",
+    canonicalizeFinanceiroTarget(originalUrl),
+    timestamp,
+    nonce,
+    bodyHash,
+    tenantId,
+    "1",
+    userId,
+    scope,
+  ].join("\n");
+  return {
+    method: "POST",
+    originalUrl,
+    rawBody,
+    body,
+    headers: {
+      "x-msinfor-signature-version": "v1",
+      "x-msinfor-system-id": "FINANCEIRO",
+      "x-msinfor-tenant-id": tenantId,
+      "x-msinfor-branch-code": "1",
+      "x-msinfor-user-id": userId,
+      "x-msinfor-scopes": scope,
+      "x-msinfor-timestamp": timestamp,
+      "x-msinfor-nonce": nonce,
+      "x-msinfor-content-sha256": bodyHash,
+      "x-msinfor-signature": hmac(
+        process.env.SOURCE_SYSTEM_ESCOLA_HMAC_SECRET,
+        payload,
+      ),
+    },
+  };
+}
+
 function testCallbackReplayAndTamperProtection() {
   process.env.SOURCE_SYSTEM_ESCOLA_HMAC_SECRET = "g".repeat(48);
   const replay = new FinanceiroCallbackReplayService();
@@ -405,6 +481,60 @@ function testCallbackReplayAndTamperProtection() {
     declaredBody: body,
   });
   assert.equal(guard.canActivate(executionContext(corrected)), true);
+}
+
+function testSystemUserCallbackHasDedicatedScope() {
+  process.env.SOURCE_SYSTEM_ESCOLA_HMAC_SECRET = "g".repeat(48);
+  const guard = new FinanceiroCallbackAuthGuard(
+    new FinanceiroCallbackReplayService(),
+  );
+  assert.equal(
+    guard.canActivate(executionContext(systemUserCallbackRequest())),
+    true,
+  );
+  assert.throws(
+    () =>
+      guard.canActivate(
+        executionContext(
+          systemUserCallbackRequest("SOURCE_PARAMETERS_WRITE"),
+        ),
+      ),
+    /não autorizada/,
+  );
+}
+
+async function testSystemUserCallbackActivatesTenantContext() {
+  let observedContext;
+  const usersService = {
+    resolvePersonByCpfFromFinanceiro: async () => {
+      observedContext = getTenantContext();
+      return { found: false };
+    },
+  };
+  const controller = new FinanceiroIntegrationController({}, usersService, {
+    tenant: {
+      findMany: async () => [{ id: "tenant-a" }],
+    },
+  });
+  const callback = {
+    tenantId: "TENANT-A",
+    branchCode: 4,
+    userId: "finance-user",
+    timestamp: Date.now(),
+    nonce: crypto.randomBytes(24).toString("base64url"),
+  };
+  await controller.resolveSystemUserPerson(
+    { financeiroCallback: callback },
+    { document: "52998224725" },
+  );
+  assert.deepEqual(observedContext, {
+    userId: "finance-user",
+    tenantId: "tenant-a",
+    branchCode: 4,
+    role: "SOFTHOUSE_ADMIN",
+    isMaster: false,
+  });
+  assert.equal(getTenantContext(), undefined);
 }
 
 function testCsrfIsBoundToSession() {
@@ -493,10 +623,12 @@ async function main() {
     testGatewayDenyByDefaultAndDownloads();
     testMultipartGatewayIsFailClosed();
     testCallbackReplayAndTamperProtection();
+    testSystemUserCallbackHasDedicatedScope();
+    await testSystemUserCallbackActivatesTenantContext();
     testCsrfIsBoundToSession();
     await testCentralHmacAndNoLegacyKeyHeader();
     testIframeUrlContainsPresentationOnly();
-    console.log("financeiro-hmac-contract: 8 testes aprovados");
+    console.log("financeiro-hmac-contract: 10 testes aprovados");
   } finally {
     restore();
   }

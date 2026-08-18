@@ -144,3 +144,6 @@
 - 2026-05-17: Alerta residual de `npm audit` sobre Next/PostCSS pertence ao projeto `Financeiro`; a Escola apenas acompanha por consumir telas embutidas do Financeiro e nao requer alteracao tecnica local.
 - 2026-06-23: Confirmado e documentado que o `Financeiro` e um sistema/repositorio separado em `C:\Sistemas\IA\Financeiro`, integrado com a `Escola` por API/contrato tecnico.
 - 2026-06-23: `PRINCIPAL_GRADE` refatorada como cadastro de turmas com horario das aulas; todo lancamento da grade semanal fica obrigatoriamente vinculado a `seriesClassId`, e intervalos sao gravados em `class_schedule_items` com `teacherSubjectId = null`.
+- 2026-08-17: Concluída a sincronização sem senha dos usuários administrativos com os perfis e permissões por filial pertencentes ao Financeiro.
+- 2026-08-17: [x] Cadastro operacional de usuários do sistema centralizado no Financeiro, com busca/reuso por CPF, projeção técnica local para `VIEWUSUARIOS`, identidade Central, callback HMAC dedicado, isolamento por escola/filial e testes de contrato.
+- 2026-08-18: [x] Permissão `canOperateCashier` do Master recebida da Central, vinculada à sessão revogável e assinada no BFF para o Financeiro, com validação fail-closed.

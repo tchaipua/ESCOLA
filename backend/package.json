@@ -27,6 +27,7 @@
     "test:notification-chat": "npm run build && node test/notification-chat.test.cjs",
     "test:student-billing": "npm run build && node test/student-billing.test.cjs",
     "test:financial-cashier": "npm run build && node test/financial-cashier.test.cjs",
+    "test:auth-cash-login": "npm run build && node test/auth-cash-login.test.cjs",
     "test:change-shared-password": "npm run build && node test/change-shared-password.test.cjs",
     "test:class-schedule-overlap": "npm run build && node test/class-schedule-overlap.test.cjs",
     "test:cnpj-validation": "npm run build && node test/cnpj-validation.test.cjs",

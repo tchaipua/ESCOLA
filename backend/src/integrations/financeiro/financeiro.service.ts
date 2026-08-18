@@ -11,6 +11,7 @@ import {
 import {
   authorizeFinanceiroGatewayRequest,
   expectedFinanceiroBinaryContentType,
+  shouldInjectCentralTenantIdQuery,
 } from "./financeiro-gateway.policy";
 import { CentralTenantConfigurationService } from "../msinfor-central/central-tenant-configuration.service";
 
@@ -178,6 +179,16 @@ export type FinanceiroCustomerSyncResponse = {
   message: string;
 };
 
+export type FinanceiroAccessSyncResponse = {
+  synchronized: number;
+  deactivated: number;
+};
+
+function normalizeOptionalFinanceAccessEmail(value: unknown) {
+  const email = String(value || "").trim().toUpperCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : undefined;
+}
+
 export type FinanceiroExistingBusinessKeysResponse = {
   existingBusinessKeys: string[];
 };
@@ -265,6 +276,10 @@ export type FinanceiroCashSession = {
   movementCount: number;
   settlementCount: number;
   movements: FinanceiroCashMovement[];
+};
+
+export type FinanceiroLoginCashSessionResponse = FinanceiroCashSession & {
+  openedAutomatically?: boolean;
 };
 
 export type FinanceiroInstallmentFilterStatus =
@@ -375,6 +390,8 @@ const AUTHORITY_FIELDS = new Set([
   "role",
   "scopes",
   "permissions",
+  "canOperateCashier",
+  "identityProvider",
   "companyName",
   "companyDocument",
   "centralTenantId",
@@ -457,6 +474,8 @@ function canonicalizeDeclaredContext(
       case "role":
       case "scopes":
       case "permissions":
+      case "canOperateCashier":
+      case "identityProvider":
         // IDs internos e autorização são resolvidos pelo contexto HMAC.
         break;
     }
@@ -528,6 +547,11 @@ export class FinanceiroService {
         currentUser.name || currentUser.email || currentUser.userId,
       userRole: currentUser.role,
       permissions: [...(currentUser.permissions || [])],
+      identityProvider: currentUser.identityProvider || null,
+      canOperateCashier:
+        currentUser.identityProvider === "MSINFOR_CENTRAL"
+          ? currentUser.canOperateCashier === true
+          : true,
     };
   }
 
@@ -623,7 +647,9 @@ export class FinanceiroService {
     const protectedQueryReplacements = [
       replacementByLowercase.get("sourcesystem")!,
       replacementByLowercase.get("sourcetenantid")!,
-      replacementByLowercase.get("centraltenantid")!,
+      ...(shouldInjectCentralTenantIdQuery(gatewayPath)
+        ? [replacementByLowercase.get("centraltenantid")!]
+        : []),
       ...(requiresBranchInQuery
         ? [replacementByLowercase.get("sourcebranchcode")!]
         : []),
@@ -723,6 +749,44 @@ export class FinanceiroService {
     );
   }
 
+  async syncFinanceAccessSubjects(currentUser: ICurrentUser) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId: currentUser.tenantId,
+        canceledAt: null,
+      },
+      include: {
+        person: { select: { id: true, email: true } },
+        branchAccesses: {
+          where: { canceledAt: null },
+          select: { branchCode: true },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+    return this.request<FinanceiroAccessSyncResponse>(
+      currentUser,
+      "/finance-access/subjects/synchronize",
+      {
+        method: "POST",
+        json: {
+          subjects: users.map((user) => ({
+            externalUserId: user.id,
+            registeredPersonId: user.personId ? `PERSON:${user.personId}` : undefined,
+            displayName: user.name,
+            email: normalizeOptionalFinanceAccessEmail(user.person?.email),
+            sourceRole: user.role,
+            active: true,
+            branchCodes: Array.from(new Set([
+              user.branchCode,
+              ...user.branchAccesses.map((access) => access.branchCode),
+            ])).sort((left, right) => left - right),
+          })),
+        },
+      },
+    );
+  }
+
   async syncSourceIntegrationSettings(
     currentUser: ICurrentUser,
     payload: FinanceiroSourceIntegrationSettingsPayload,
@@ -817,6 +881,17 @@ export class FinanceiroService {
     return this.request<FinanceiroCashSession | null>(
       currentUser,
       `/cash-sessions/current?${query.toString()}`,
+    );
+  }
+
+  async ensureLoginCashSession(
+    currentUser: ICurrentUser,
+    payload: FinanceiroOpenCashSessionPayload,
+  ) {
+    return this.request<FinanceiroLoginCashSessionResponse>(
+      currentUser,
+      "/cash-sessions/login-check",
+      { method: "POST", json: payload },
     );
   }
 

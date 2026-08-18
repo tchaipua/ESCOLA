@@ -169,7 +169,7 @@ export type CentralIdentityMembership = {
 export type CentralIdentityDiscovery = {
   authenticated: true;
   status: "SINGLE_TENANT" | "MULTIPLE_TENANTS";
-  account: { id: string; displayName: string };
+  account: { id: string; displayName: string; canOperateCashier: boolean };
   systemCode: string;
   memberships: CentralIdentityMembership[];
   mfaRequired: false;
@@ -177,7 +177,7 @@ export type CentralIdentityDiscovery = {
 
 export type CentralIdentityResolution = {
   authenticated: true;
-  account: { id: string; displayName: string };
+  account: { id: string; displayName: string; canOperateCashier: boolean };
   tenantId: string;
   systemCode: string;
   databaseAlias: string;
@@ -218,7 +218,7 @@ function validatedUuid(value: unknown, field: string) {
 
 function validatedAccount(value: any) {
   const displayName = String(value?.displayName || "").trim();
-  if (!displayName || displayName.length > 200) {
+  if (!displayName || displayName.length > 200 || typeof value?.canOperateCashier !== "boolean") {
     throw new BadGatewayException(
       "Resposta de identidade inválida da Central (account).",
     );
@@ -226,6 +226,7 @@ function validatedAccount(value: any) {
   return {
     id: validatedUuid(value?.id, "account.id"),
     displayName,
+    canOperateCashier: value.canOperateCashier,
   };
 }
 

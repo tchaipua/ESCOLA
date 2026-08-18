@@ -6,9 +6,10 @@ import { FinanceiroIntegrationController } from "./infrastructure/controllers/fi
 import { GlobalSettingsModule } from "../global-settings/global-settings.module";
 import { FinanceiroModule } from "../../integrations/financeiro/financeiro.module";
 import { CentralOperationalSummaryGuard } from "../../common/guards/central-operational-summary.guard";
+import { UsersModule } from "../users/users.module";
 
 @Module({
-  imports: [SharedProfilesModule, GlobalSettingsModule, FinanceiroModule],
+  imports: [SharedProfilesModule, GlobalSettingsModule, FinanceiroModule, UsersModule],
   controllers: [TenantsController, FinanceiroIntegrationController],
   providers: [TenantsService, CentralOperationalSummaryGuard],
   exports: [TenantsService],

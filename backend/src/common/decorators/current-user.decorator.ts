@@ -9,6 +9,7 @@ export interface ICurrentUser {
   name?: string | null;
   email?: string | null;
   cashierOnly?: boolean;
+  canOperateCashier?: boolean;
   isMaster?: boolean;
   modelType?: "user" | "teacher" | "student" | "guardian" | "master";
   branchAccessCodes?: number[];

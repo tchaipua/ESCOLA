@@ -250,6 +250,25 @@ Respostas possiveis:
 }
 ```
 
+Quando o usuário possui operação de caixa autorizada, a resposta de sucesso
+também traz `cashSessionNotice` após a validação da empresa/filial. O campo
+`openedAutomatically` diferencia a abertura feita no login de um caixa que já
+estava aberto; `branchLogoUrl` é uma URL pública somente leitura resolvida pela
+Central, e `cashierDisplayName` identifica o usuário responsável pela abertura.
+
+```json
+{
+  "cashSessionNotice": {
+    "openingAmount": 0,
+    "openedAutomatically": true,
+    "cashierDisplayName": "USUARIO",
+    "branchLogoUrl": "https://central.example/logo-filial.png",
+    "branchName": "FILIAL 1",
+    "companyName": "ESCOLA"
+  }
+}
+```
+
 ### Multiplas escolas
 
 ```json
@@ -1106,6 +1125,9 @@ Observacao estrutural obrigatoria:
 - Autorização: leitura recebe `FINANCE_ACCESS`; mutações allowlisted recebem `MANAGE_FINANCIAL`; somente `ADMIN`/`SOFTHOUSE_ADMIN` recebe `FINANCE_ADMIN`; rotas mutáveis desconhecidas falham fechadas;
 - Downloads permitidos, com limite de 10 MiB: DANFE/XML de NF-e e DANFSe/XML de NFS-e;
 - Proibido: encaminhar `Authorization`, cookies, `x-api-key`, autoridade de tenant/filial, papel ou permissões do navegador ao Financeiro.
+- Para a identidade `MSINFOR_CENTRAL`, o contexto também carrega a decisão
+  validada `canOperateCashier`; o BFF nunca aceita esse campo do navegador e
+  assina sua projeção nos escopos HMAC consumidos pelo Financeiro.
 - O BFF injeta o UUID global `centralTenantId` somente no tráfego backend a backend; após salvar empresa/filial na Central, o Financeiro atualiza imediatamente seu espelho e devolve qualquer falha à interface.
 
 ## Configuracoes globais MSINFOR Central
@@ -1192,3 +1214,15 @@ notificação e participação na conversa.
 
 Participantes convidados começam com `historyVisibleFrom` na hora do convite e
 não recebem mensagens anteriores.
+
+## Sincronização de acessos financeiros
+
+`POST /financeiro/gateway/finance-access/source-sync` é uma operação local do BFF, permitida somente para `ADMIN`. A Escola consulta os usuários administrativos ativos do tenant, inclui suas filiais e referências `PERSON:<personId>` e envia a projeção sem senha ao Financeiro. Perfis e permissões financeiras não são gravados na tabela `users` da Escola.
+
+### Callbacks de usuário do sistema
+
+- `POST /integrations/financeiro/system-users/resolve`: consulta uma pessoa pelo CPF somente na escola autenticada e retorna seus dados e papéis existentes;
+- `POST /integrations/financeiro/system-users/upsert`: reutiliza ou cria a `Person`, mantém a projeção técnica local necessária ao `VIEWUSUARIOS`, provisiona/vincula a identidade Central e devolve os identificadores ao Financeiro;
+- Autorização: assinatura HMAC Financeiro → Escola com escopo único `SYSTEM_USERS_WRITE`, timestamp, nonce, hash do corpo, escola e filial vinculados;
+- Regra: o cadastro operacional e os perfis de usuário do sistema são mantidos na tela do Financeiro. A projeção local não constitui uma segunda tela de cadastro e não armazena a senha recebida após o vínculo Central;
+- Regra de identidade: CPF igual reutiliza a mesma pessoa, tanto quando o cadastro escolar nasceu primeiro quanto quando o usuário do sistema nasceu primeiro.

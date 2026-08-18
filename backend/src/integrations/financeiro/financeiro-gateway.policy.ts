@@ -67,6 +67,7 @@ const ADMIN_ONLY_PREFIXES = [
   "printing",
   "s3-control",
   "supertef",
+  "finance-access",
 ] as const;
 
 export const FINANCEIRO_ACCESS_PERMISSIONS = [
@@ -120,6 +121,16 @@ export function normalizeFinanceiroGatewayPath(
     throw new ForbiddenException("Rota financeira não autorizada.");
   }
   return segments.join("/");
+}
+
+export function shouldInjectCentralTenantIdQuery(path: string) {
+  const normalizedPath = String(path || "").replace(/^\/+/, "");
+  return (
+    /^companies\/[^/]+\/branches$/i.test(normalizedPath) ||
+    /^companies\/[^/]+\/branches\/[^/]+\/central-configuration-refresh$/i.test(
+      normalizedPath,
+    )
+  );
 }
 
 export function expectedFinanceiroBinaryContentType(

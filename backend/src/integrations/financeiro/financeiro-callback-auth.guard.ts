@@ -16,7 +16,8 @@ import { FinanceiroCallbackReplayService } from "./financeiro-callback-replay.se
 
 const VERSION = "v1";
 const SYSTEM_ID = "FINANCEIRO";
-const REQUIRED_SCOPE = "SOURCE_PARAMETERS_WRITE";
+const SOURCE_PARAMETERS_SCOPE = "SOURCE_PARAMETERS_WRITE";
+const SYSTEM_USERS_SCOPE = "SYSTEM_USERS_WRITE";
 const DUMMY_SECRET =
   "escola-callback-dummy-secret-for-timing-normalization-only";
 
@@ -68,6 +69,17 @@ function normalizeScopes(value: string) {
   ).sort();
 }
 
+function requiredScopeForRequest(request: Request) {
+  const target = canonicalizeFinanceiroTarget(request.originalUrl);
+  if (
+    request.method.toUpperCase() === "POST" &&
+    target.includes("/integrations/financeiro/system-users/")
+  ) {
+    return SYSTEM_USERS_SCOPE;
+  }
+  return SOURCE_PARAMETERS_SCOPE;
+}
+
 @Injectable()
 export class FinanceiroCallbackAuthGuard implements CanActivate {
   constructor(
@@ -91,6 +103,7 @@ export class FinanceiroCallbackAuthGuard implements CanActivate {
       readHeader(request, "x-msinfor-user-id"),
     );
     const scopes = normalizeScopes(readHeader(request, "x-msinfor-scopes"));
+    const requiredScope = requiredScopeForRequest(request);
     const timestampText = readHeader(request, "x-msinfor-timestamp");
     const timestamp = Number(timestampText);
     const nonce = readHeader(request, "x-msinfor-nonce");
@@ -114,7 +127,7 @@ export class FinanceiroCallbackAuthGuard implements CanActivate {
       !Number.isSafeInteger(timestamp) ||
       !/^[A-Za-z0-9_-]{32}$/.test(nonce) ||
       scopes.length !== 1 ||
-      scopes[0] !== REQUIRED_SCOPE
+      scopes[0] !== requiredScope
     ) {
       throw new UnauthorizedException("Integração financeira não autorizada.");
     }

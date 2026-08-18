@@ -139,6 +139,17 @@ export function resolveFinanceiroScopes(
   if (isAdministrator) {
     scopes.add("FINANCE_ADMIN");
   }
+  // A permissão do Master é assinada junto com os escopos HMAC. O Financeiro
+  // usa estes marcadores para não confundir ADMIN da origem com autorização
+  // para operar o caixa.
+  if (currentUser.identityProvider === "MSINFOR_CENTRAL") {
+    scopes.add("MASTER_IDENTITY");
+    scopes.add(
+      currentUser.canOperateCashier === true
+        ? "MASTER_CASHIER_ALLOWED"
+        : "MASTER_CASHIER_DENIED",
+    );
+  }
   return Array.from(scopes).sort();
 }
 

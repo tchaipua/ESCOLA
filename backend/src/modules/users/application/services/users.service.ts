@@ -35,6 +35,7 @@ import type {
   UpdateUserDto,
 } from "../dto/user-access.dto";
 import { NotificationsService } from "../../../notifications/application/services/notifications.service";
+import { CentralIdentityProvisioningService } from "../../../../integrations/msinfor-central/central-identity-provisioning.service";
 
 const USER_ROLES = ["ADMIN", "SECRETARIA", "COORDENACAO"] as const;
 type UserRole = (typeof USER_ROLES)[number];
@@ -70,6 +71,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly sharedProfilesService: SharedProfilesService,
     private readonly notificationsService: NotificationsService,
+    private readonly centralIdentityProvisioning: CentralIdentityProvisioningService,
   ) {}
 
   private normalizeEmail(value?: string | null) {
@@ -447,6 +449,163 @@ export class UsersService {
       }
       throw error;
     }
+  }
+
+  async resolvePersonByCpfFromFinanceiro(tenantId: string, cpf: string) {
+    if (!isValidCpf(cpf)) {
+      throw new BadRequestException("CPF inválido.");
+    }
+    const cpfDigits = String(cpf).replace(/\D/g, "");
+    const person = await this.prisma.person.findFirst({
+      where: { tenantId, cpfDigits, canceledAt: null },
+      include: {
+        teachers: { where: { canceledAt: null }, select: { id: true } },
+        students: { where: { canceledAt: null }, select: { id: true } },
+        guardians: { where: { canceledAt: null }, select: { id: true } },
+        users: {
+          where: { canceledAt: null },
+          select: { id: true, role: true, accessProfile: true },
+          take: 1,
+        },
+      },
+    });
+    if (!person) return { found: false };
+    const credential = person.email
+      ? await this.prisma.emailCredential.findFirst({
+          where: { email: person.email, canceledAt: null },
+          select: { centralIdentityAccountId: true },
+        })
+      : null;
+    const roles = [
+      ...(person.teachers.length ? ["PROFESSOR"] : []),
+      ...(person.students.length ? ["ALUNO"] : []),
+      ...(person.guardians.length ? ["RESPONSAVEL"] : []),
+      ...(person.users.length ? ["USUARIO_SISTEMA"] : []),
+    ];
+    return {
+      found: true,
+      registeredPersonId: `PERSON:${person.id}`,
+      sourceUserId: person.users[0]?.id || null,
+      centralIdentityAccountId:
+        credential?.centralIdentityAccountId || null,
+      name: person.name,
+      email: person.email,
+      login: person.accessUsername,
+      document: person.cpfDigits,
+      phone: person.phone || person.cellphone1,
+      whatsapp: person.whatsapp,
+      roles,
+    };
+  }
+
+  async upsertFromFinanceiro(
+    payload: Record<string, any>,
+    callback: { tenantId: string; branchCode: number; userId: string },
+  ) {
+    const cpf = String(payload.document || "").replace(/\D/g, "");
+    if (cpf && !isValidCpf(cpf)) {
+      throw new BadRequestException("CPF inválido.");
+    }
+    const role = this.normalizeRole(payload.sourceRole);
+    const expectedProfile = getDefaultAccessProfileForRole(role);
+    const sourceAccessProfile = normalizeAccessProfileCode(
+      payload.sourceAccessProfile,
+      role,
+    );
+    if (!sourceAccessProfile || sourceAccessProfile !== expectedProfile) {
+      throw new BadRequestException("Perfil do sistema incompatível com o papel informado.");
+    }
+    const branchAccessCodes = Array.from(
+      new Set(
+        (Array.isArray(payload.branchCodes) ? payload.branchCodes : [callback.branchCode])
+          .map((value: unknown) => Number(value))
+          .filter((value: number) => Number.isInteger(value) && value > 0),
+      ),
+    );
+    if (!branchAccessCodes.includes(callback.branchCode)) {
+      throw new BadRequestException("A filial autenticada deve fazer parte do acesso.");
+    }
+    const actor: ICurrentUser = {
+      userId: callback.userId,
+      tenantId: callback.tenantId,
+      branchCode: callback.branchCode,
+      role: "SOFTHOUSE_ADMIN",
+      permissions: ["MANAGE_USERS"],
+      branchAccessCodes: [callback.branchCode],
+      canAccessAllBranches: false,
+      identityProvider: "MSINFOR_CENTRAL",
+    };
+    const person = cpf
+      ? await this.prisma.person.findFirst({
+          where: { tenantId: callback.tenantId, cpfDigits: cpf, canceledAt: null },
+          include: { users: { where: { canceledAt: null }, take: 1 } },
+        })
+      : null;
+    const dto: CreateUserDto = {
+      name: String(payload.name || person?.name || "").trim(),
+      email: String(payload.email || person?.email || "").trim(),
+      accessUsername: String(payload.login || person?.accessUsername || "").trim(),
+      cpf: cpf || undefined,
+      phone: payload.phone,
+      whatsapp: payload.whatsapp,
+      role,
+      accessProfile: sourceAccessProfile,
+      branchAccessCodes,
+    };
+    const existingUser = person?.users[0];
+    let sourceUserId: string;
+    if (existingUser) {
+      await this.update(existingUser.id, dto, actor);
+      sourceUserId = existingUser.id;
+    } else {
+      const created = await this.create(dto, actor);
+      sourceUserId = created.userId;
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: sourceUserId, tenantId: callback.tenantId, canceledAt: null },
+      include: {
+        person: true,
+        branchAccesses: { where: { canceledAt: null }, select: { branchCode: true } },
+      },
+    });
+    if (!user?.person) {
+      throw new BadRequestException("Não foi possível projetar o usuário na Escola.");
+    }
+    const centralBranchCodes = role === "ADMIN"
+      ? (await listTenantBranches(this.prisma, callback.tenantId)).map((branch) => branch.branchCode)
+      : branchAccessCodes;
+    const synchronization = await this.centralIdentityProvisioning.synchronize({
+      tenantId: callback.tenantId,
+      login: String(payload.login).trim(),
+      email: String(payload.email).trim(),
+      displayName: user.person.name,
+      credential: String(payload.password || ""),
+      externalSubjectId: `PERSON:${user.person.id}`,
+      branchCodes: centralBranchCodes,
+      roleCode: sourceAccessProfile,
+      enabled: true,
+    }) as { account?: { id?: string }; enabled?: boolean };
+    const accountId = String(synchronization.account?.id || "").trim().toLowerCase();
+    if (!synchronization.enabled || !accountId) {
+      throw new BadRequestException("A Central não confirmou a identidade do usuário.");
+    }
+    await this.sharedProfilesService.bindCentralIdentity(
+      user.person.email || String(payload.email),
+      accountId,
+      callback.userId,
+    );
+    return {
+      sourceUserId: user.id,
+      centralIdentityAccountId: accountId,
+      registeredPersonId: `PERSON:${user.person.id}`,
+      displayName: user.person.name,
+      email: user.person.email,
+      login: user.person.accessUsername || String(payload.login).trim(),
+      sourceRole: user.role,
+      branchCodes: centralBranchCodes,
+      active: true,
+    };
   }
 
   async findAllByTenantId(tenantId: string) {

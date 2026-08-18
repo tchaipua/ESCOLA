@@ -51,7 +51,7 @@ function getVisibleSections(sections: GridRecordPopoverSection[]) {
     return sections
         .map((section) => ({
             ...section,
-            items: section.items.filter((item) => item.value.trim().length > 0),
+            items: section.items.filter((item) => String(item.value ?? '').trim().length > 0),
         }))
         .filter((section) => section.items.length > 0);
 }

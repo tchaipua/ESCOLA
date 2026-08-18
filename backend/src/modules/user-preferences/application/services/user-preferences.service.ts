@@ -8,10 +8,14 @@ export class UserPreferencesService {
 
   async findOne(currentUser: ICurrentUser, key: string) {
     const normalizedKey = key.trim();
+    const branchCode = Number.isInteger(currentUser.branchCode)
+      ? currentUser.branchCode
+      : 1;
 
     const preference = await this.prisma.userPreference.findFirst({
       where: {
         tenantId: currentUser.tenantId,
+        branchCode,
         userId: currentUser.userId,
         preferenceKey: normalizedKey,
         canceledAt: null,
@@ -33,10 +37,14 @@ export class UserPreferencesService {
 
   async upsert(currentUser: ICurrentUser, key: string, value: string) {
     const normalizedKey = key.trim();
+    const branchCode = Number.isInteger(currentUser.branchCode)
+      ? currentUser.branchCode
+      : 1;
 
     const existing = await this.prisma.userPreference.findFirst({
       where: {
         tenantId: currentUser.tenantId,
+        branchCode,
         userId: currentUser.userId,
         preferenceKey: normalizedKey,
       },
@@ -58,6 +66,7 @@ export class UserPreferencesService {
     return this.prisma.userPreference.create({
       data: {
         tenantId: currentUser.tenantId,
+        branchCode,
         userId: currentUser.userId,
         preferenceKey: normalizedKey,
         preferenceValue: value,

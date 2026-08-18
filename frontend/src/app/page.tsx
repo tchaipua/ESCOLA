@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getRememberPreference,
@@ -16,6 +16,30 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 const DEFAULT_CENTRAL_URL = 'http://localhost:3200';
 const SCHOOL_SELECTION_SCREEN_ID = 'LOGIN_SELECAO_EMPRESA_MSINFOR';
 const BRANCH_SELECTION_SCREEN_ID = 'LOGIN_SELECAO_FILIAL_MSINFOR';
+const CASH_SESSION_NOTICE_SCREEN_ID = 'LOGIN_CAIXA_ABERTO_ESCOLA';
+
+type LoginResponseData = {
+  user: unknown;
+  cashSessionOpened?: boolean;
+  cashSessionOpeningAmount?: number | string | null;
+  cashSessionNotice?: {
+    openingAmount?: number | string | null;
+    openedAutomatically?: boolean;
+    cashierDisplayName?: string | null;
+    branchLogoUrl?: string | null;
+    branchName?: string | null;
+    companyName?: string | null;
+  } | null;
+};
+
+type LoginCashSessionNotice = {
+  openingAmount: number;
+  openedAutomatically: boolean;
+  cashierDisplayName: string;
+  branchLogoUrl: string | null;
+  branchName: string | null;
+  companyName: string | null;
+};
 
 function getCentralUrl(): string | null {
   const configuredUrl =
@@ -188,6 +212,8 @@ export default function LoginPage() {
     branches: Array<{ id: string; branchCode: number; name: string; logoUrl?: string | null }>;
   } | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
+  const [cashSessionNotice, setCashSessionNotice] = useState<LoginCashSessionNotice | null>(null);
+  const pendingCashSessionContinue = useRef<(() => void) | null>(null);
 
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -266,6 +292,48 @@ export default function LoginPage() {
     return getHomeRouteForRole(role);
   };
 
+  const continueAfterCashSessionNotice = () => {
+    const onContinue = pendingCashSessionContinue.current;
+    pendingCashSessionContinue.current = null;
+    setCashSessionNotice(null);
+    onContinue?.();
+  };
+
+  const continueAfterSuccessfulLogin = (data: LoginResponseData, onContinue: () => void) => {
+    const legacyNotice = data?.cashSessionOpened === true
+      ? {
+          openingAmount: data.cashSessionOpeningAmount,
+          openedAutomatically: true,
+          cashierDisplayName: null,
+          branchLogoUrl: null,
+          branchName: null,
+          companyName: null,
+        }
+      : null;
+    const notice = data?.cashSessionNotice || legacyNotice;
+
+    if (!notice) {
+      onContinue();
+      return;
+    }
+
+    const openingAmount = Number(notice.openingAmount ?? 0);
+    pendingCashSessionContinue.current = onContinue;
+    setCashSessionNotice({
+      openingAmount: Number.isFinite(openingAmount) ? openingAmount : 0,
+      openedAutomatically: notice.openedAutomatically !== false,
+      cashierDisplayName: String(notice.cashierDisplayName || (data.user as any)?.name || '').trim(),
+      branchLogoUrl: notice.branchLogoUrl || null,
+      branchName: notice.branchName || null,
+      companyName: notice.companyName || null,
+    });
+  };
+
+  const finishSuccessfulLogin = (data: LoginResponseData, onContinue: () => void) => {
+    setStoredSessionProfile(data.user, rememberMe);
+    continueAfterSuccessfulLogin(data, onContinue);
+  };
+
   const isMasterLogin = email.trim().toUpperCase() === 'MSINFOR';
   const visibleMasterCompanies = useMemo(() => {
     const term = masterCompanySearch.trim().toLowerCase();
@@ -310,8 +378,9 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredSessionProfile(data.user, rememberMe);
-      router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
+      finishSuccessfulLogin(data, () => {
+        router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
+      });
 
     } catch (err: any) {
       const errorMsg = normalizeLoginErrorMessage(err.message || 'Erro de conexão com o servidor.');
@@ -353,8 +422,9 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredSessionProfile(data.user, rememberMe);
-      router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
+      finishSuccessfulLogin(data, () => {
+        router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
+      });
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar escola') });
     } finally {
@@ -406,16 +476,16 @@ export default function LoginPage() {
         setProfessorAccessSchoolName(professorAccount?.tenant?.name || 'SISTEMA ESCOLAR');
         setProfessorAccessSchoolLogoUrl(professorAccount?.tenant?.logoUrl || null);
         setPendingProfessorRouteRole(resolvedRole);
-        setStoredSessionProfile(data.user, rememberMe);
         setMultipleAccessOptions(null);
         setTeacherAccessMode('AUTO');
-        setIsProfessorDeviceModalOpen(true);
+        finishSuccessfulLogin(data, () => setIsProfessorDeviceModalOpen(true));
         return;
       }
 
-      setStoredSessionProfile(data.user, rememberMe);
       setMultipleAccessOptions(null);
-      router.push(resolveHomeRoute(resolvedRole, teacherAccessMode, data.user));
+      finishSuccessfulLogin(data, () => {
+        router.push(resolveHomeRoute(resolvedRole, teacherAccessMode, data.user));
+      });
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar o tipo de acesso.') });
     } finally {
@@ -455,9 +525,10 @@ export default function LoginPage() {
         return;
       }
 
-      setStoredSessionProfile(data.user, rememberMe);
       setMultipleBranchOptions(null);
-      router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
+      finishSuccessfulLogin(data, () => {
+        router.push(resolveHomeRoute(data?.user?.role || null, teacherAccessMode, data.user));
+      });
     } catch (err: any) {
       setErrorStatus({ message: normalizeLoginErrorMessage(err.message || 'Erro ao selecionar a filial.') });
     } finally {
@@ -728,6 +799,92 @@ export default function LoginPage() {
               >
                 Dispensar Aviso
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cashSessionNotice && (
+        <div
+          data-system-message-ignore
+          className="fixed inset-0 z-[82] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Caixa aberto"
+        >
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="bg-gradient-to-br from-green-800 to-green-600 px-6 py-6 text-white">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/60 bg-white p-1 shadow-lg">
+                  <img
+                    src={cashSessionNotice.branchLogoUrl || '/logo-msinfor.jpg'}
+                    alt={`Logotipo de ${cashSessionNotice.branchName || cashSessionNotice.companyName || 'empresa'}`}
+                    className="h-full w-full object-contain"
+                    onError={(event) => {
+                      if (event.currentTarget.src.endsWith('/logo-msinfor.jpg')) return;
+                      event.currentTarget.src = '/logo-msinfor.jpg';
+                    }}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-extrabold">
+                    {cashSessionNotice.openedAutomatically ? 'CAIXA ABERTO' : 'CAIXA JÁ ABERTO'}
+                  </h2>
+                  <p className="mt-1 text-sm font-medium text-green-100">
+                    {cashSessionNotice.openedAutomatically
+                      ? 'O CAIXA FOI ABERTO AUTOMATICAMENTE PARA ESTE OPERADOR.'
+                      : 'ESTE OPERADOR JÁ POSSUI UM CAIXA ABERTO NESTA FILIAL.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                <div className="text-xs font-extrabold uppercase tracking-[0.08em] text-green-700">
+                  USUÁRIO QUE ABRIU O CAIXA
+                </div>
+                <div className="mt-1 text-lg font-extrabold text-green-900">
+                  {cashSessionNotice.cashierDisplayName || 'NÃO INFORMADO'}
+                </div>
+                {cashSessionNotice.companyName || cashSessionNotice.branchName ? (
+                  <div className="mt-1 text-xs font-bold text-green-700">
+                    {[cashSessionNotice.companyName, cashSessionNotice.branchName]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                ) : null}
+              </div>
+
+              <div>
+                <div className="text-sm font-bold text-slate-500">VALOR INICIAL DO CAIXA</div>
+                <div className="mt-1 text-3xl font-extrabold text-green-700">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                    cashSessionNotice.openingAmount,
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={continueAfterCashSessionNotice}
+                className="w-full rounded-xl bg-[#2272c7] py-3 font-bold text-white shadow-md transition-colors hover:bg-[#1a5592]"
+              >
+                CONTINUAR PARA O SISTEMA
+              </button>
+
+              <div className="border-t border-slate-100 pt-3">
+                <ScreenNameCopy
+                  screenId={CASH_SESSION_NOTICE_SCREEN_ID}
+                  label="Popup"
+                  disableMargin
+                  compact
+                  className="w-full"
+                  originText="Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\page.tsx"
+                  auditText="Popup exibido após o login para informar a abertura ou a existência do caixa do operador, com empresa, filial, usuário responsável e valor inicial recebidos do Financeiro autenticado."
+                  sqlText="A tela não consulta o banco diretamente. O backend da Escola consulta o Financeiro com contexto HMAC assinado e entrega somente os campos operacionais necessários ao login."
+                />
+              </div>
             </div>
           </div>
         </div>

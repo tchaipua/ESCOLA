@@ -1,6 +1,7 @@
 import {
   All,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Req,
@@ -117,6 +118,12 @@ export class FinanceiroController {
   ) {
     const method = request.method.toUpperCase();
     const normalizedPath = normalizeFinanceiroGatewayPath(rawPath);
+    if (method === "POST" && normalizedPath === "finance-access/source-sync") {
+      if (!["ADMIN", "SOFTHOUSE_ADMIN"].includes(String(currentUser.role || "").toUpperCase())) {
+        throw new ForbiddenException("ESTA OPERAÇÃO EXIGE ADMINISTRADOR.");
+      }
+      return this.financeiroService.syncFinanceAccessSubjects(currentUser);
+    }
     const receivedContentType = String(
       request.headers["content-type"] || "",
     ).trim();

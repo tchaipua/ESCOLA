@@ -3,23 +3,89 @@ import {
   Controller,
   GoneException,
   Patch,
+  Post,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { Public } from "../../../../common/decorators/public.decorator";
+import { tenantContext } from "../../../../common/tenant/tenant.context";
 import {
   FinanceiroCallbackAuthGuard,
   type FinanceiroCallbackContext,
 } from "../../../../integrations/financeiro/financeiro-callback-auth.guard";
 import { ApplyFinanceSourceParametersDto } from "../../application/dto/finance-source-parameters.dto";
 import { TenantsService } from "../../application/services/tenants.service";
+import { UsersService } from "../../../users/application/services/users.service";
+import { PrismaService } from "../../../../prisma/prisma.service";
 
 @ApiTags("Integração Financeiro")
 @Controller("integrations/financeiro")
 export class FinanceiroIntegrationController {
-  constructor(private readonly tenantsService: TenantsService) {}
+  constructor(
+    private readonly tenantsService: TenantsService,
+    private readonly usersService: UsersService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  private async runInCallbackTenant<T>(
+    callback: FinanceiroCallbackContext,
+    operation: (canonicalTenantId: string) => Promise<T>,
+  ) {
+    const tenants = await this.prisma.tenant.findMany({
+      select: { id: true },
+    });
+    const canonicalTenantId = tenants.find(
+      (tenant) => tenant.id.toUpperCase() === callback.tenantId.toUpperCase(),
+    )?.id;
+    if (!canonicalTenantId) {
+      throw new UnauthorizedException("Integração financeira não autorizada.");
+    }
+    return tenantContext.run(
+      {
+        userId: callback.userId,
+        tenantId: canonicalTenantId,
+        branchCode: callback.branchCode,
+        role: "SOFTHOUSE_ADMIN",
+        isMaster: false,
+      },
+      () => operation(canonicalTenantId),
+    );
+  }
+
+  @Public()
+  @UseGuards(FinanceiroCallbackAuthGuard)
+  @Post("system-users/resolve")
+  resolveSystemUserPerson(
+    @Req() request: Request & { financeiroCallback?: FinanceiroCallbackContext },
+    @Body() payload: Record<string, unknown>,
+  ) {
+    const callback = request.financeiroCallback!;
+    return this.runInCallbackTenant(callback, (canonicalTenantId) =>
+      this.usersService.resolvePersonByCpfFromFinanceiro(
+        canonicalTenantId,
+        String(payload.document || ""),
+      ),
+    );
+  }
+
+  @Public()
+  @UseGuards(FinanceiroCallbackAuthGuard)
+  @Post("system-users/upsert")
+  upsertSystemUser(
+    @Req() request: Request & { financeiroCallback?: FinanceiroCallbackContext },
+    @Body() payload: Record<string, unknown>,
+  ) {
+    const callback = request.financeiroCallback!;
+    return this.runInCallbackTenant(callback, (canonicalTenantId) =>
+      this.usersService.upsertFromFinanceiro(payload, {
+        ...callback,
+        tenantId: canonicalTenantId,
+      }),
+    );
+  }
 
   @Public()
   @UseGuards(FinanceiroCallbackAuthGuard)

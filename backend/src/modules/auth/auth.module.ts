@@ -7,6 +7,7 @@ import { JwtStrategy } from "./application/strategies/jwt.strategy";
 import { PrismaModule } from "../../prisma/prisma.module";
 import { SharedProfilesModule } from "../shared-profiles/shared-profiles.module";
 import { GlobalSettingsModule } from "../global-settings/global-settings.module";
+import { FinanceiroModule } from "../../integrations/financeiro/financeiro.module";
 import { getJwtSecret } from "../../common/security/security-config";
 
 @Module({
@@ -14,6 +15,7 @@ import { getJwtSecret } from "../../common/security/security-config";
     PrismaModule,
     SharedProfilesModule,
     GlobalSettingsModule,
+    FinanceiroModule,
     PassportModule,
     JwtModule.register({
       secret: getJwtSecret(),
