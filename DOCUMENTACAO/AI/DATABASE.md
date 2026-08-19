@@ -455,3 +455,7 @@ Regras de isolamento:
 - os dois participantes iniciais recebem `canInvite = true`; convidados recebem `false`;
 - `historyVisibleFrom` impede que convidados consultem mensagens anteriores à entrada;
 - nenhuma operação do chat realiza exclusão física.
+
+## Recebimentos de notificações financeiras
+
+`financeiro_notification_receipts` registra, por `tenantId` e `deliveryId`, o usuário administrativo, a filial, o evento e o resultado separado dos canais interno, e-mail e Telegram. A chave única garante idempotência do callback; o aviso visível continua na tabela `notifications`, com categoria `FINANCEIRO`. O recibo possui auditoria e não admite exclusão física.

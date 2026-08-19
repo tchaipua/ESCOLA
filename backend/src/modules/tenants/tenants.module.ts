@@ -7,9 +7,10 @@ import { GlobalSettingsModule } from "../global-settings/global-settings.module"
 import { FinanceiroModule } from "../../integrations/financeiro/financeiro.module";
 import { CentralOperationalSummaryGuard } from "../../common/guards/central-operational-summary.guard";
 import { UsersModule } from "../users/users.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 @Module({
-  imports: [SharedProfilesModule, GlobalSettingsModule, FinanceiroModule, UsersModule],
+  imports: [SharedProfilesModule, GlobalSettingsModule, FinanceiroModule, UsersModule, NotificationsModule],
   controllers: [TenantsController, FinanceiroIntegrationController],
   providers: [TenantsService, CentralOperationalSummaryGuard],
   exports: [TenantsService],

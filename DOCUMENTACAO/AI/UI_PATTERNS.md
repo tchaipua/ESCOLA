@@ -518,6 +518,26 @@ Referencia aprovada:
   - nao criar coluna com titulo `Semaforo` nem pill textual `ATIVO`/`INATIVO` na linha
 - preservar os botoes e controles ja aprovados da tela, alterando apenas a estrutura necessaria para cumprir este padrao
 
+### PAT-015.3 - Filtro padrao de coluna com formato data
+
+- toda coluna do grid que representar uma data deve declarar o tipo de filtro `date-range`
+- o popover deve manter ordenacao, `Filtrar` e `Limpar` no mesmo padrao das demais colunas
+- acima dos campos `De` e `Até`, exibir um combobox `Período`
+- o combobox deve iniciar visualmente no mes atual e oferecer 12 meses anteriores e 6 meses posteriores, em uppercase no formato `AGOSTO/2026`
+- manter a opcao `PERÍODO PERSONALIZADO` para informar datas fora das opcoes mensais
+- `De` e `Até` devem usar entrada de data e filtrar o intervalo de forma inclusiva
+- o filtro deve ser aplicado na busca da tela, ordenacao, exportacao e totalizadores do grid
+- a largura do popover deve acomodar os dois campos de data sem cortar o calendario nativo
+
+Componente compartilhado:
+
+- `frontend/src/app/components/grid-column-filter-header.tsx`
+
+Telas que adotaram o padrao nesta atualizacao:
+
+- `frontend/src/app/principal/configura-ano-letivo/page.tsx`
+- `frontend/src/app/principal/responsaveis/page.tsx`
+
 ### PAT-016 - Mensagem padrao de erro operacional
 
 - popup centralizado com fundo escurecido e desfoque leve no conteudo atras

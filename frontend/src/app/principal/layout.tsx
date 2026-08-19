@@ -818,6 +818,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (
             embeddedScreenContextLabel ===
                 'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO' ||
+            embeddedScreenContextLabel ===
+                'PRINCIPAL_FINANCEIRO_ESTOQUE_GRUPOS_SUBGRUPOS' ||
+            embeddedScreenContextLabel ===
+                'PRINCIPAL_FINANCEIRO_ESTOQUE_PRODUTOS' ||
             embeddedScreenContextLabel === 'PRINCIPAL_FINANCEIRO_ESTOQUE'
         ) {
             const financeFrame = document.querySelector<HTMLIFrameElement>(

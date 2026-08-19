@@ -112,6 +112,8 @@ const SCREEN_ORIGIN_RULES: ScreenOriginRule[] = [
   { screenId: 'PRINCIPAL_FINANCEIRO_RESUMO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('resumo', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_IMAGENS_PRODUTOS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'imagens-produtos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_HISTORICO_MOVIMENTACAO', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'historico-movimentacao', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_GRUPOS_SUBGRUPOS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'grupos', 'page.tsx') },
+  { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_PRODUTOS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('produtos', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('estoque', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_LOTES_PARCELAS', match: 'exact', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'lotes', '[batchId]', 'page.tsx') },
   { screenId: 'PRINCIPAL_FINANCEIRO_LOTES', match: 'prefix', systemName: 'Sistema Financeiro', physicalPath: financeiroAppPath('recebiveis', 'lotes', 'page.tsx') },

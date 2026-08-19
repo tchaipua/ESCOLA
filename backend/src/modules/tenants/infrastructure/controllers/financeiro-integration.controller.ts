@@ -20,6 +20,7 @@ import { ApplyFinanceSourceParametersDto } from "../../application/dto/finance-s
 import { TenantsService } from "../../application/services/tenants.service";
 import { UsersService } from "../../../users/application/services/users.service";
 import { PrismaService } from "../../../../prisma/prisma.service";
+import { NotificationsService } from "../../../notifications/application/services/notifications.service";
 
 @ApiTags("Integração Financeiro")
 @Controller("integrations/financeiro")
@@ -28,7 +29,25 @@ export class FinanceiroIntegrationController {
     private readonly tenantsService: TenantsService,
     private readonly usersService: UsersService,
     private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
   ) {}
+
+  @Public()
+  @UseGuards(FinanceiroCallbackAuthGuard)
+  @Post("financial-notifications")
+  @ApiOperation({ summary: "Recebe uma notificação financeira assinada" })
+  receiveFinancialNotification(
+    @Req() request: Request & { financeiroCallback?: FinanceiroCallbackContext },
+    @Body() payload: Record<string, unknown>,
+  ) {
+    const callback = request.financeiroCallback!;
+    return this.runInCallbackTenant(callback, (canonicalTenantId) =>
+      this.notificationsService.processFinanceiroNotification(payload, {
+        ...callback,
+        tenantId: canonicalTenantId,
+      }),
+    );
+  }
 
   private async runInCallbackTenant<T>(
     callback: FinanceiroCallbackContext,

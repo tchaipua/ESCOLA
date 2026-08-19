@@ -266,6 +266,7 @@ export type FinanceiroCashSession = {
   totalReceivedAmount: number;
   expectedClosingAmount: number;
   declaredClosingAmount?: number | null;
+  cashClosingMode: string;
   openedAt: string;
   closedAt?: string | null;
   notes?: string | null;

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import * as nodemailer from "nodemailer";
 import { PrismaService } from "../../../../prisma/prisma.service";
 import { getTenantContext } from "../../../../common/tenant/tenant.context";
@@ -325,6 +325,158 @@ export class NotificationsService {
       telegramBotToken: telegram.botToken,
       telegramBotUsername: telegram.botUsername || null,
     };
+  }
+
+  async processFinanceiroNotification(
+    payload: Record<string, unknown>,
+    callback: { tenantId: string; branchCode: number; userId: string },
+  ) {
+    const allowedEvents = new Set([
+      "RECEIVABLE_INSTALLMENT_CANCELED",
+      "RECEIVABLE_MOVEMENT_CANCELED",
+      "RECEIVABLE_INSTALLMENT_AMOUNT_CHANGED",
+      "RECEIVABLE_INSTALLMENT_DUE_DATE_CHANGED",
+      "RECEIVABLE_SETTLEMENT_REVERSED",
+      "PAYABLE_INSTALLMENT_CANCELED",
+      "PAYABLE_MOVEMENT_CANCELED",
+      "PAYABLE_INSTALLMENT_AMOUNT_CHANGED",
+      "PAYABLE_INSTALLMENT_DUE_DATE_CHANGED",
+      "PAYABLE_SETTLEMENT_REVERSED",
+      "CASH_MOVEMENT_CANCELED",
+    ]);
+    const deliveryId = String(payload.deliveryId || "").trim();
+    const eventType = String(payload.eventType || "").trim().toUpperCase();
+    const recipientUserId = String(payload.recipientUserId || "").trim();
+    const title = this.normalizeText(String(payload.title || ""));
+    const message = this.normalizeText(String(payload.message || ""));
+    if (!deliveryId || deliveryId.length > 128 || !allowedEvents.has(eventType) ||
+        !recipientUserId || !title || !message || title.length > 200 || message.length > 2000) {
+      throw new BadRequestException("NOTIFICAÇÃO FINANCEIRA INVÁLIDA.");
+    }
+    const user = await this.prisma.user.findFirst({
+      where: { id: recipientUserId, tenantId: callback.tenantId, canceledAt: null },
+      include: {
+        person: true,
+        branchAccesses: { where: { branchCode: callback.branchCode, canceledAt: null } },
+      },
+    });
+    if (!user || (user.branchCode !== callback.branchCode && !user.branchAccesses.length)) {
+      throw new ForbiddenException("DESTINATÁRIO NÃO PERTENCE À FILIAL INFORMADA.");
+    }
+    const existing = await this.prisma.financeiroNotificationReceipt.findUnique({
+      where: { tenantId_deliveryId: { tenantId: callback.tenantId, deliveryId } },
+    });
+    if (existing?.processedAt) {
+      return {
+        deliveryId, internalStatus: existing.internalStatus,
+        emailStatus: existing.emailStatus, telegramStatus: existing.telegramStatus,
+        processedAt: existing.processedAt.toISOString(),
+      };
+    }
+    const sendInternal = payload.sendInternal === true;
+    const sendEmail = payload.sendEmail === true;
+    const sendTelegram = payload.sendTelegram === true;
+    const receipt = await this.prisma.financeiroNotificationReceipt.upsert({
+      where: { tenantId_deliveryId: { tenantId: callback.tenantId, deliveryId } },
+      create: {
+        tenantId: callback.tenantId, branchCode: callback.branchCode,
+        deliveryId, eventType, recipientUserId,
+        internalStatus: sendInternal ? "PENDING" : "SKIPPED",
+        emailStatus: sendEmail ? "PENDING" : "SKIPPED",
+        telegramStatus: sendTelegram ? "PENDING" : "SKIPPED",
+        createdBy: callback.userId, updatedBy: callback.userId,
+      },
+      update: { updatedBy: callback.userId },
+    });
+    let notificationId = receipt.notificationId;
+    let internalStatus = receipt.internalStatus;
+    let emailStatus = receipt.emailStatus;
+    let telegramStatus = receipt.telegramStatus;
+    const errors: string[] = [];
+    if (sendInternal && !notificationId) {
+      try {
+        const notification = await this.prisma.notification.create({ data: {
+          tenantId: callback.tenantId, branchCode: callback.branchCode,
+          recipientType: "USER", recipientId: user.id, category: "FINANCEIRO",
+          title, message,
+          actionUrl: String(payload.actionUrl || "/principal/notificacoes").slice(0, 500),
+          sourceType: "FINANCIAL_EVENT", sourceId: deliveryId,
+          metadata: JSON.stringify({ eventType, deliveryId, ...(typeof payload.metadata === "object" && payload.metadata ? payload.metadata : {}) }),
+          createdBy: callback.userId, updatedBy: callback.userId,
+        } });
+        notificationId = notification.id;
+        internalStatus = "SENT";
+      } catch (error) {
+        internalStatus = "ERROR";
+        errors.push(error instanceof Error ? error.message : "FALHA NA NOTIFICAÇÃO INTERNA");
+      }
+    }
+    if (sendEmail && emailStatus !== "SENT") {
+      const simulationOverride = String(payload.simulationEmailOverride || "").trim();
+      const targetEmail = simulationOverride || user.person?.email || String(payload.recipientEmail || "").trim();
+      if (simulationOverride &&
+          (process.env.NODE_ENV === "production" || simulationOverride.toUpperCase() !== "TCHAIPUA@GMAIL.COM")) {
+        throw new ForbiddenException("E-MAIL DE SIMULAÇÃO NÃO AUTORIZADO.");
+      }
+      try {
+        const smtp = await this.getTenantSmtpConfiguration();
+        if (!this.isTemporarilyAllowedEmail(targetEmail) || !smtp?.smtpHost || !smtp.smtpPort || !smtp.smtpEmail ||
+            (smtp.smtpAuthenticate && !smtp.smtpPassword)) {
+          emailStatus = "SKIPPED";
+        } else {
+          const transporter = nodemailer.createTransport({
+            host: smtp.smtpHost, port: smtp.smtpPort, secure: smtp.smtpSecure || false,
+            connectionTimeout: (smtp.smtpTimeout || 60) * 1000,
+            auth: smtp.smtpAuthenticate ? { user: smtp.smtpEmail, pass: smtp.smtpPassword || "" } : undefined,
+          });
+          await transporter.sendMail({
+            from: `"${smtp.smtpSenderName || smtp.name}" <${smtp.smtpEmail}>`,
+            to: targetEmail, replyTo: smtp.smtpReplyTo || smtp.smtpEmail || undefined,
+            subject: title, text: `${message}\n\nACESSE O SISTEMA PARA ACOMPANHAR MAIS DETALHES.`,
+            html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b"><h2>${this.escapeEmailHtml(title)}</h2><p>${this.escapeEmailHtml(message)}</p><p>Acesse o sistema para acompanhar mais detalhes.</p></div>`,
+          });
+          emailStatus = "SENT";
+          if (notificationId) await this.prisma.notification.update({
+            where: { id: notificationId }, data: { emailedAt: new Date(), updatedBy: callback.userId },
+          });
+        }
+      } catch (error) {
+        emailStatus = "ERROR";
+        errors.push(error instanceof Error ? error.message : "FALHA NO E-MAIL");
+      }
+    }
+    if (sendTelegram && telegramStatus !== "SENT") {
+      const chatId = this.getOptedInTelegramChatId(user.person || undefined);
+      const telegram = await this.getTenantTelegramConfiguration();
+      if (!chatId || !telegram?.telegramBotToken || telegram.telegramEnabled === false) {
+        telegramStatus = "SKIPPED";
+      } else {
+        try {
+          const response = await fetch(`https://api.telegram.org/bot${telegram.telegramBotToken}/sendMessage`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text: `${title}\n\n${message}\n\nACESSE O SISTEMA PARA ACOMPANHAR MAIS DETALHES.` }),
+          });
+          const body = await response.json().catch(() => null);
+          if (!response.ok || body?.ok !== true) throw new Error("FALHA NO TELEGRAM.");
+          telegramStatus = "SENT";
+          if (notificationId) await this.prisma.notification.update({
+            where: { id: notificationId }, data: { telegramSentAt: new Date(), telegramStatus: "SENT", telegramError: null, updatedBy: callback.userId },
+          });
+        } catch (error) {
+          telegramStatus = "ERROR";
+          errors.push(error instanceof Error ? error.message : "FALHA NO TELEGRAM");
+        }
+      }
+    }
+    const processedAt = new Date();
+    await this.prisma.financeiroNotificationReceipt.update({
+      where: { id: receipt.id }, data: {
+        notificationId, internalStatus, emailStatus, telegramStatus,
+        lastError: errors.length ? errors.join(" | ").slice(0, 2000) : null,
+        processedAt, updatedBy: callback.userId,
+      },
+    });
+    return { deliveryId, internalStatus, emailStatus, telegramStatus, processedAt: processedAt.toISOString() };
   }
 
   private buildNotificationTitle(payload: LessonEventNotificationPayload) {

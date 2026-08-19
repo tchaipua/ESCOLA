@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
-import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
+import GridColumnFilterHeader, { matchesGridDateRange } from '@/app/components/grid-column-filter-header';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridStandardFooter from '@/app/components/grid-standard-footer';
 import { type GridStatusFilterValue } from '@/app/components/grid-status-filter';
@@ -661,7 +661,9 @@ export default function ConfiguraAnoLetivoPage() {
             ].join(' ')).includes(normalizedSearch))
             : filteredByStatus;
         const filteredByColumns = filteredBySearch.filter((row) => (
-            SCHOOL_YEAR_GRID_COLUMN_KEYS.every((key) => matchesGridFilter(row[key], schoolYearGridFilters[key]))
+            SCHOOL_YEAR_GRID_COLUMN_KEYS.every((key) => key === 'startDate' || key === 'endDate'
+                ? matchesGridDateRange(row[key], schoolYearGridFilters[key])
+                : matchesGridFilter(row[key], schoolYearGridFilters[key]))
         ));
         return sortGridRows(filteredByColumns, SCHOOL_YEAR_GRID_COLUMNS, schoolYearGridSort);
     }, [schoolYearGridFilters, schoolYearGridRows, schoolYearGridSearch, schoolYearGridSort, schoolYearGridStatusFilter]);
@@ -1443,6 +1445,7 @@ export default function ConfiguraAnoLetivoPage() {
                                                             ) : (
                                                                 <GridColumnFilterHeader
                                                                     label={column.label}
+                                                                    filterType={column.key === 'startDate' || column.key === 'endDate' ? 'date-range' : 'text'}
                                                                     align={column.key === 'totalClassDays' ? 'right' : 'left'}
                                                                     isOpen={activeSchoolYearFilterColumn === column.key}
                                                                     isActive={Boolean(schoolYearGridFilters[column.key])}

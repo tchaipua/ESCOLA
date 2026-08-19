@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
-import GridColumnFilterHeader from '@/app/components/grid-column-filter-header';
+import GridColumnFilterHeader, { matchesGridDateRange } from '@/app/components/grid-column-filter-header';
 import GridColumnConfigModal from '@/app/components/grid-column-config-modal';
 import GridExportModal from '@/app/components/grid-export-modal';
 import GridRecordPopover from '@/app/components/grid-record-popover';
@@ -232,7 +232,8 @@ function normalizeGuardianGridDigits(value: unknown) {
     return String(value ?? '').replace(/\D/g, '');
 }
 
-function matchesGuardianGridFilter(values: unknown[], filter: string) {
+function matchesGuardianGridFilter(values: unknown[], filter: string, isDate = false) {
+    if (isDate) return values.some((value) => matchesGridDateRange(value, filter));
     const normalizedFilter = normalizeGuardianGridFilterValue(filter);
     const filterDigits = normalizeGuardianGridDigits(filter);
 
@@ -581,7 +582,7 @@ export default function ResponsaveisPage() {
                 [guardian.name, guardian.accessUsername, guardian.email, guardian.cpf, guardian.whatsapp, guardian.phone]
                     .some((value) => String(value || '').toUpperCase().includes(term));
             const matchesColumnFilters = activeColumnFilters.every(([columnKey, filter]) =>
-                matchesGuardianGridFilter(getGuardianColumnFilterValues(guardian, columnKey), filter),
+                matchesGuardianGridFilter(getGuardianColumnFilterValues(guardian, columnKey), filter, columnKey === 'birthDate'),
             );
             return matchesStatus && matchesSearch && matchesColumnFilters;
         });
@@ -1283,6 +1284,7 @@ export default function ResponsaveisPage() {
             isOpen={activeGuardianFilterColumn === column.key}
             isActive={Boolean(guardianColumnFilters[column.key]?.trim()) || sortState.column === column.key}
             filterValue={guardianColumnFilterDrafts[column.key] || ''}
+            filterType={column.key === 'birthDate' ? 'date-range' : 'text'}
             onToggle={() => openGuardianColumnFilter(activeGuardianFilterColumn === column.key ? null : column.key)}
             onSort={(direction) => {
                 setSortState({ column: column.key, direction });

@@ -33,6 +33,7 @@
     "test:cnpj-validation": "npm run build && node test/cnpj-validation.test.cjs",
     "test:security-containment": "npm run build && node test/security-containment.test.cjs",
     "test:financeiro-hmac": "npm run build && node test/financeiro-hmac-contract.test.cjs",
+    "test:financial-notifications": "npm run build && node test/financial-notifications-contract.test.cjs",
     "test:central-identity": "npm run build && node test/central-identity-session-security.test.cjs",
     "test:central-company-config": "npm run build && node test/central-company-configuration.test.cjs",
     "test:telegram-security": "npm run build && node test/telegram-webhook-security.test.cjs",

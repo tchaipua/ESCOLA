@@ -599,3 +599,17 @@ Sempre que um novo padrao for aprovado ou um padrao existente mudar de comportam
   - `DOCUMENTACAO/AI/UI_PATTERNS.md`
   - `frontend/src/app/lib/ui-standards.ts`
 - Status: aprovado
+
+### UIP-0042
+
+- Data: 2026-08-19
+- Padrao: filtro mensal e por intervalo em colunas de data do grid
+- Contexto: foi solicitado consolidar nas telas da Escola o mesmo filtro por período já aprovado no Projeto Inicial, evitando filtros textuais para colunas que representam datas.
+- Alteracao: criado o `PAT-015.3`; o componente `grid-column-filter-header.tsx` agora oferece combobox do mês atual, 12 meses anteriores e 6 posteriores, período personalizado e campos `De`/`Até`; as colunas de data das telas de ano letivo e responsáveis passaram a usar esse contrato.
+- Componentes/Telas:
+  - `frontend/src/app/components/grid-column-filter-header.tsx`
+  - `frontend/src/app/principal/configura-ano-letivo/page.tsx`
+  - `frontend/src/app/principal/responsaveis/page.tsx`
+  - `DOCUMENTACAO/AI/UI_PATTERNS.md`
+  - `DOCUMENTACAO/AI/UI_PATTERN_CHANGELOG.md`
+- Status: aprovado

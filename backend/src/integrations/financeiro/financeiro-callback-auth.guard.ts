@@ -18,6 +18,7 @@ const VERSION = "v1";
 const SYSTEM_ID = "FINANCEIRO";
 const SOURCE_PARAMETERS_SCOPE = "SOURCE_PARAMETERS_WRITE";
 const SYSTEM_USERS_SCOPE = "SYSTEM_USERS_WRITE";
+const FINANCIAL_NOTIFICATIONS_SCOPE = "FINANCIAL_NOTIFICATIONS_WRITE";
 const DUMMY_SECRET =
   "escola-callback-dummy-secret-for-timing-normalization-only";
 
@@ -71,6 +72,12 @@ function normalizeScopes(value: string) {
 
 function requiredScopeForRequest(request: Request) {
   const target = canonicalizeFinanceiroTarget(request.originalUrl);
+  if (
+    request.method.toUpperCase() === "POST" &&
+    target.includes("/integrations/financeiro/financial-notifications")
+  ) {
+    return FINANCIAL_NOTIFICATIONS_SCOPE;
+  }
   if (
     request.method.toUpperCase() === "POST" &&
     target.includes("/integrations/financeiro/system-users/")

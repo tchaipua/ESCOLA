@@ -93,6 +93,8 @@ type AccountLookup = {
 type LoginCashSessionPreflight = {
   opened: boolean;
   openingAmount: number;
+  cashClosingMode: string;
+  openedAt: string;
   cashierDisplayName: string;
   branchLogoUrl: string | null;
   branchName: string | null;
@@ -1147,6 +1149,7 @@ export class AuthService {
             cashSessionNotice: {
               openingAmount: cashSessionPreflight.openingAmount,
               openedAutomatically: cashSessionPreflight.opened,
+              openedAt: cashSessionPreflight.openedAt,
               cashierDisplayName: cashSessionPreflight.cashierDisplayName,
               branchLogoUrl: cashSessionPreflight.branchLogoUrl,
               branchName: cashSessionPreflight.branchName,
@@ -1261,9 +1264,19 @@ export class AuthService {
       if (String(openedSession?.status || "").trim().toUpperCase() !== "OPEN") {
         return null;
       }
+      const openedAt = String(openedSession?.openedAt || "").trim();
+      if (!openedAt || Number.isNaN(Date.parse(openedAt))) {
+        throw new ServiceUnavailableException(
+          "O FINANCEIRO NÃO RETORNOU A DATA E HORA DE ABERTURA DO CAIXA.",
+        );
+      }
       return {
         opened: openedSession?.openedAutomatically === true,
         openingAmount: Number(openedSession?.openingAmount || 0),
+        cashClosingMode: String(openedSession?.cashClosingMode || "MANUAL")
+          .trim()
+          .toUpperCase(),
+        openedAt,
         cashierDisplayName:
           String(
             openedSession?.cashierDisplayName

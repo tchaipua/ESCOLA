@@ -1074,6 +1074,53 @@ WHERE SM.canceledAt IS NULL
 ORDER BY SM.occurredAt DESC;`,
   },
   {
+    screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_PRODUTOS',
+    match: 'exact',
+    originPath: 'produtos/page.tsx',
+    description:
+      'Tela exclusiva de consulta e manutenção dos produtos vinculados ao estoque financeiro.',
+    tables: [
+      'companies (CO) - empresa financeira',
+      'products (PR) - cadastro dos produtos do estoque',
+      'product_stock_balances (PSB) - saldo físico por filial',
+    ],
+    relationships: [
+      'products.companyId = companies.id',
+      'product_stock_balances.productId = products.id',
+      'product_stock_balances.companyId = companies.id',
+    ],
+    metrics: [
+      'nome, código interno, unidade e código de barras',
+      'estoque físico por produto e filial',
+      'situação cadastral e ações operacionais disponíveis',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'filial atual por sourceBranchCode',
+      'status ativo, inativo ou todos',
+      'pesquisa e filtros por produto e código interno',
+      'registros sem cancelamento lógico',
+    ],
+    order: 'ordenação escolhida pelo usuário na grade; padrão por nome do produto',
+    endpoints: ['GET /products', 'POST/PATCH /products', 'POST /products/{productId}/stock-movements'],
+    sqlText: `SELECT
+  PR.id,
+  PR.name,
+  PR.internalCode,
+  PR.barcode,
+  PR.unitCode,
+  PR.status,
+  CO.name AS companyName
+FROM products PR
+INNER JOIN companies CO
+  ON CO.id = PR.companyId
+ AND CO.canceledAt IS NULL
+WHERE PR.canceledAt IS NULL
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+ORDER BY PR.name ASC;`,
+  },
+  {
     screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE',
     match: 'prefix',
     originPath: 'estoque/page.tsx',
@@ -1130,6 +1177,72 @@ WHERE CO.canceledAt IS NULL
   AND (:sourceBranchCode IS NULL OR CB.branchCode = :sourceBranchCode)
 GROUP BY CO.id, CO.name, CB.branchCode, CB.name, CB.inventoryControlType, CB.quantityPrecision
 ORDER BY CB.branchCode ASC;`,
+  },
+  {
+    screenId: 'PRINCIPAL_FINANCEIRO_ESTOQUE_GRUPOS_SUBGRUPOS',
+    match: 'exact',
+    originPath: 'estoque/grupos/page.tsx',
+    description:
+      'Tela exclusiva de cadastro e consulta de grupos e subgrupos da classificacao de estoque por filial.',
+    tables: [
+      'companies (CO) - empresa financeira',
+      'product_groups (PG) - grupos de produtos',
+      'product_subgroups (PSG) - subgrupos vinculados aos grupos',
+    ],
+    relationships: [
+      'product_groups.companyId = companies.id',
+      'product_subgroups.groupId = product_groups.id',
+      'product_subgroups.companyId = companies.id',
+    ],
+    metrics: [
+      'tipo da classificacao: grupo ou subgrupo',
+      'nome, grupo pai e codigo',
+      'quantidade de subgrupos e produtos relacionados',
+      'situacao e data da ultima alteracao',
+    ],
+    filters: [
+      'empresa atual por sourceSystem/sourceTenantId',
+      'filial atual por sourceBranchCode',
+      'status ativo, inativo ou todos',
+      'pesquisa por nome, codigo ou grupo pai',
+      'registros sem cancelamento logico',
+    ],
+    order: 'ordenacao escolhida pelo usuario na grade; padrao por ordem retornada pelo backend',
+    endpoints: [
+      'GET /product-classifications',
+      'POST/PATCH /product-classifications/groups',
+      'POST/PATCH /product-classifications/subgroups',
+    ],
+    sqlText: `SELECT
+  PG.id,
+  'GROUP' AS type,
+  PG.code,
+  PG.name,
+  PG.status,
+  PG.companyId
+FROM product_groups PG
+INNER JOIN companies CO
+  ON CO.id = PG.companyId
+ AND CO.canceledAt IS NULL
+WHERE PG.canceledAt IS NULL
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+UNION ALL
+SELECT
+  PSG.id,
+  'SUBGROUP' AS type,
+  PSG.code,
+  PSG.name,
+  PSG.status,
+  PSG.companyId
+FROM product_subgroups PSG
+INNER JOIN companies CO
+  ON CO.id = PSG.companyId
+ AND CO.canceledAt IS NULL
+WHERE PSG.canceledAt IS NULL
+  AND CO.sourceSystem = :sourceSystem
+  AND CO.sourceTenantId = :sourceTenantId
+ORDER BY name ASC;`,
   },
   {
     screenId: 'PRINCIPAL_FINANCEIRO_LOTES_PARCELAS',

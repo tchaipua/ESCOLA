@@ -25,6 +25,8 @@ type LoginResponseData = {
   cashSessionNotice?: {
     openingAmount?: number | string | null;
     openedAutomatically?: boolean;
+    cashClosingMode?: string | null;
+    openedAt?: string | null;
     cashierDisplayName?: string | null;
     branchLogoUrl?: string | null;
     branchName?: string | null;
@@ -35,11 +37,38 @@ type LoginResponseData = {
 type LoginCashSessionNotice = {
   openingAmount: number;
   openedAutomatically: boolean;
+  cashClosingMode: string;
+  openedAt: string;
   cashierDisplayName: string;
   branchLogoUrl: string | null;
   branchName: string | null;
   companyName: string | null;
 };
+
+function formatCashSessionOpenedAt(value?: string | null) {
+  const openedAt = String(value || '').trim();
+  if (!openedAt) return '—';
+
+  const date = new Date(openedAt);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function formatCashClosingMode(value?: string | null) {
+  switch (String(value || '').trim().toUpperCase()) {
+    case 'DAILY_REQUIRED':
+      return 'FECHAMENTO DIÁRIO OBRIGATÓRIO';
+    case 'DAILY_AUTOMATIC':
+      return 'FECHAMENTO DIÁRIO AUTOMÁTICO';
+    case 'MANUAL':
+    default:
+      return 'FECHAMENTO MANUAL (MESMO CAIXA PODE FICAR VÁRIOS DIAS EM ABERTO)';
+  }
+}
 
 function getCentralUrl(): string | null {
   const configuredUrl =
@@ -304,6 +333,8 @@ export default function LoginPage() {
       ? {
           openingAmount: data.cashSessionOpeningAmount,
           openedAutomatically: true,
+          cashClosingMode: 'MANUAL',
+          openedAt: '',
           cashierDisplayName: null,
           branchLogoUrl: null,
           branchName: null,
@@ -322,6 +353,8 @@ export default function LoginPage() {
     setCashSessionNotice({
       openingAmount: Number.isFinite(openingAmount) ? openingAmount : 0,
       openedAutomatically: notice.openedAutomatically !== false,
+      cashClosingMode: String(notice.cashClosingMode || 'MANUAL').trim().toUpperCase(),
+      openedAt: String(notice.openedAt || '').trim(),
       cashierDisplayName: String(notice.cashierDisplayName || (data.user as any)?.name || '').trim(),
       branchLogoUrl: notice.branchLogoUrl || null,
       branchName: notice.branchName || null,
@@ -826,15 +859,16 @@ export default function LoginPage() {
                     }}
                   />
                 </div>
-                <div className="min-w-0">
-                  <h2 className="text-xl font-extrabold">
+                <div className="min-w-0 flex-1 text-center">
+                  <h2 className="text-center text-xl font-extrabold">
                     {cashSessionNotice.openedAutomatically ? 'CAIXA ABERTO' : 'CAIXA JÁ ABERTO'}
                   </h2>
                   <p className="mt-1 text-sm font-medium text-green-100">
-                    {cashSessionNotice.openedAutomatically
-                      ? 'O CAIXA FOI ABERTO AUTOMATICAMENTE PARA ESTE OPERADOR.'
-                      : 'ESTE OPERADOR JÁ POSSUI UM CAIXA ABERTO NESTA FILIAL.'}
+                    {cashSessionNotice.openedAutomatically ? 'ABERTO AUTOMATICAMENTE EM' : 'ABERTO EM'}
                   </p>
+                  <div className="mt-1 text-sm font-extrabold text-white">
+                    {formatCashSessionOpenedAt(cashSessionNotice.openedAt)}
+                  </div>
                 </div>
               </div>
             </div>
@@ -842,10 +876,16 @@ export default function LoginPage() {
             <div className="space-y-4 p-6">
               <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3">
                 <div className="text-xs font-extrabold uppercase tracking-[0.08em] text-green-700">
-                  USUÁRIO QUE ABRIU O CAIXA
+                  USUÁRIO CAIXA
                 </div>
                 <div className="mt-1 text-lg font-extrabold text-green-900">
                   {cashSessionNotice.cashierDisplayName || 'NÃO INFORMADO'}
+                </div>
+                <div className="mt-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-green-700">
+                  MODELO DE FECHAMENTO
+                </div>
+                <div className="mt-1 text-xs font-extrabold text-green-900">
+                  {formatCashClosingMode(cashSessionNotice.cashClosingMode)}
                 </div>
                 {cashSessionNotice.companyName || cashSessionNotice.branchName ? (
                   <div className="mt-1 text-xs font-bold text-green-700">
@@ -868,7 +908,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={continueAfterCashSessionNotice}
-                className="w-full rounded-xl bg-[#2272c7] py-3 font-bold text-white shadow-md transition-colors hover:bg-[#1a5592]"
+                className="w-full rounded-xl bg-green-600 py-3 font-bold text-white shadow-md transition-colors hover:bg-green-700"
               >
                 CONTINUAR PARA O SISTEMA
               </button>
@@ -881,7 +921,7 @@ export default function LoginPage() {
                   compact
                   className="w-full"
                   originText="Origem: Sistema Escola - caminho físico: C:\\Sistemas\\IA\\Escola\\frontend\\src\\app\\page.tsx"
-                  auditText="Popup exibido após o login para informar a abertura ou a existência do caixa do operador, com empresa, filial, usuário responsável e valor inicial recebidos do Financeiro autenticado."
+                  auditText="Popup exibido após o login para informar a abertura ou a existência do caixa do operador, com empresa, filial, usuário responsável, modelo de fechamento, valor inicial e data/hora de abertura recebidos do Financeiro autenticado."
                   sqlText="A tela não consulta o banco diretamente. O backend da Escola consulta o Financeiro com contexto HMAC assinado e entrega somente os campos operacionais necessários ao login."
                 />
               </div>

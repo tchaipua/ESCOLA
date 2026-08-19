@@ -86,6 +86,7 @@ model Tenant {
   notificationConversationParticipants NotificationConversationParticipant[]
   notificationConversationMessages     NotificationConversationMessage[]
   notificationConversationAuditEvents  NotificationConversationAuditEvent[]
+  financeiroNotificationReceipts       FinanceiroNotificationReceipt[]
   communicationCampaigns               CommunicationCampaign[]
   userPreferences                      UserPreference[]
   branches                             TenantBranch[]
@@ -1237,6 +1238,32 @@ model Notification {
   @@index([recipientType, recipientId])
   @@index([readAt])
   @@map("notifications")
+}
+
+model FinanceiroNotificationReceipt {
+  id              String    @id @default(uuid())
+  tenantId        String
+  branchCode      Int
+  deliveryId      String
+  eventType       String
+  recipientUserId String
+  notificationId  String?
+  internalStatus  String    @default("SKIPPED")
+  emailStatus     String    @default("SKIPPED")
+  telegramStatus  String    @default("SKIPPED")
+  lastError       String?
+  processedAt     DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  createdBy       String?
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+  updatedBy       String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, deliveryId])
+  @@index([tenantId, branchCode, eventType, createdAt])
+  @@index([tenantId, recipientUserId, createdAt])
+  @@map("financeiro_notification_receipts")
 }
 
 model NotificationConversation {

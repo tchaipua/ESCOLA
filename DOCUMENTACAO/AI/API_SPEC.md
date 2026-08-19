@@ -1226,3 +1226,11 @@ não recebem mensagens anteriores.
 - Autorização: assinatura HMAC Financeiro → Escola com escopo único `SYSTEM_USERS_WRITE`, timestamp, nonce, hash do corpo, escola e filial vinculados;
 - Regra: o cadastro operacional e os perfis de usuário do sistema são mantidos na tela do Financeiro. A projeção local não constitui uma segunda tela de cadastro e não armazena a senha recebida após o vínculo Central;
 - Regra de identidade: CPF igual reutiliza a mesma pessoa, tanto quando o cadastro escolar nasceu primeiro quanto quando o usuário do sistema nasceu primeiro.
+
+### Callback de notificações financeiras
+
+- `POST /integrations/financeiro/financial-notifications`: recebe uma entrega financeira para um usuário administrativo da escola e filial autenticadas;
+- Autorização: HMAC Financeiro → Escola com escopo exclusivo `FINANCIAL_NOTIFICATIONS_WRITE`, timestamp, nonce, hash do corpo, tenant, filial e ator;
+- Idempotência: `tenantId + deliveryId`; uma repetição não duplica a notificação nem os canais;
+- Canais: a notificação interna usa a categoria `FINANCEIRO` e aparece em `PRINCIPAL_NOTIFICACOES`; e-mail e Telegram usam a configuração efetiva da Central;
+- Segurança: destinatário precisa ser um `User` ativo com acesso à filial. O e-mail de simulação é aceito somente fora de produção e pela allowlist temporária.

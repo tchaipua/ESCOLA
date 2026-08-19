@@ -68,6 +68,7 @@ const ADMIN_ONLY_PREFIXES = [
   "s3-control",
   "supertef",
   "finance-access",
+  "financial-notifications",
 ] as const;
 
 export const FINANCEIRO_ACCESS_PERMISSIONS = [

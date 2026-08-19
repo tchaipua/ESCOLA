@@ -592,3 +592,11 @@ Para cada decisao, registrar:
 - Impacto: a permissão passa a refletir no menu e no backend financeiro; contas
   locais continuam regidas pelo RBAC financeiro próprio.
 - Status: aceita
+
+## DEC-0055
+
+- Data: 2026-08-19
+- Contexto: os eventos operacionais do Financeiro precisam ser configurados somente para usuários administrativos, sem misturar alunos, professores, responsáveis ou clientes.
+- Decisão: a configuração fica em popup próprio dentro de `PRINCIPAL_FINANCEIRO_MSINFOR_USUARIOS_SISTEMA`; o Financeiro é dono do catálogo, preferências, auditoria e outbox, enquanto a Escola recebe callbacks HMAC idempotentes e reutiliza `PRINCIPAL_NOTIFICACOES` e os canais efetivos da Central.
+- Segurança: isolamento por escola e filial, RBAC administrativo nos dois lados, escopo `FINANCIAL_NOTIFICATIONS_WRITE`, destinatário administrativo ativo e nenhuma alteração financeira em simulações.
+- Status: aceita
