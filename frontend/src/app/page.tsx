@@ -13,7 +13,6 @@ import { getHomeRouteForRole, getHomeRouteForSession } from '@/app/lib/dashboard
 import ScreenNameCopy from '@/app/components/screen-name-copy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
-const DEFAULT_CENTRAL_URL = 'http://localhost:3200';
 const SCHOOL_SELECTION_SCREEN_ID = 'LOGIN_SELECAO_EMPRESA_MSINFOR';
 const BRANCH_SELECTION_SCREEN_ID = 'LOGIN_SELECAO_FILIAL_MSINFOR';
 const CASH_SESSION_NOTICE_SCREEN_ID = 'LOGIN_CAIXA_ABERTO_ESCOLA';
@@ -67,29 +66,6 @@ function formatCashClosingMode(value?: string | null) {
     case 'MANUAL':
     default:
       return 'FECHAMENTO MANUAL (MESMO CAIXA PODE FICAR VÁRIOS DIAS EM ABERTO)';
-  }
-}
-
-function getCentralUrl(): string | null {
-  const configuredUrl =
-    process.env.NEXT_PUBLIC_MSINFOR_CENTRAL_FRONTEND_URL || DEFAULT_CENTRAL_URL;
-
-  try {
-    const target = new URL(configuredUrl);
-    const isLocalDevelopmentTarget =
-      process.env.NODE_ENV !== 'production' &&
-      target.protocol === 'http:' &&
-      ['localhost', '127.0.0.1'].includes(target.hostname);
-    if (target.protocol !== 'https:' && !isLocalDevelopmentTarget) {
-      throw new Error('Protocolo não permitido.');
-    }
-    target.username = '';
-    target.password = '';
-    target.search = '';
-    target.hash = '';
-    return target.toString();
-  } catch {
-    return process.env.NODE_ENV === 'production' ? null : DEFAULT_CENTRAL_URL;
   }
 }
 
@@ -611,14 +587,7 @@ export default function LoginPage() {
   };
 
   const handleOpenCentral = () => {
-    const centralUrl = getCentralUrl();
-    if (!centralUrl) {
-      setErrorStatus({
-        message: 'A URL HTTPS do MSINFOR Central não foi configurada.',
-      });
-      return;
-    }
-    window.open(centralUrl, '_blank', 'noopener,noreferrer');
+    window.open('/msinfor-admin', '_blank', 'noopener,noreferrer');
   };
 
   const handleChooseTeacherDevice = (mode: 'PRINCIPAL' | 'PWA') => {

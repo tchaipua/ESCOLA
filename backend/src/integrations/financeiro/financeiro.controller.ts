@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Post,
   Req,
   Res,
   StreamableFile,
@@ -19,6 +20,7 @@ import { FinanceiroBrowserGuard } from "./financeiro-browser.guard";
 import { normalizeFinanceiroGatewayPath } from "./financeiro-gateway.policy";
 import type { FinanceiroBinaryResponse } from "./financeiro-internal.client";
 import { FinanceiroService } from "./financeiro.service";
+import { ServiceSupervisorClient } from "./service-supervisor.client";
 
 function isBinaryResponse(
   value: unknown,
@@ -88,7 +90,10 @@ export function assertSafeMultipartBody(
 @Controller("financeiro")
 @UseGuards(FinanceiroBrowserGuard)
 export class FinanceiroController {
-  constructor(private readonly financeiroService: FinanceiroService) {}
+  constructor(
+    private readonly financeiroService: FinanceiroService,
+    private readonly serviceSupervisor: ServiceSupervisorClient,
+  ) {}
 
   private async getBrowserContext(currentUser: ICurrentUser) {
     const context = await this.financeiroService.buildRuntimeContext(
@@ -107,6 +112,16 @@ export class FinanceiroController {
   @Get("gateway/context")
   getGatewayContext(@CurrentUser() currentUser: ICurrentUser) {
     return this.getBrowserContext(currentUser);
+  }
+
+  @Post("recover-service")
+  recoverService(@CurrentUser() currentUser: ICurrentUser) {
+    return this.serviceSupervisor.recoverFinanceiro(currentUser);
+  }
+
+  @Get("service-readiness")
+  async serviceReadiness() {
+    return { ready: await this.serviceSupervisor.isFinanceiroBackendReady() };
   }
 
   @All("gateway/*path")

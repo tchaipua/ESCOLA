@@ -600,3 +600,21 @@ Para cada decisao, registrar:
 - Decisão: a configuração fica em popup próprio dentro de `PRINCIPAL_FINANCEIRO_MSINFOR_USUARIOS_SISTEMA`; o Financeiro é dono do catálogo, preferências, auditoria e outbox, enquanto a Escola recebe callbacks HMAC idempotentes e reutiliza `PRINCIPAL_NOTIFICACOES` e os canais efetivos da Central.
 - Segurança: isolamento por escola e filial, RBAC administrativo nos dois lados, escopo `FINANCIAL_NOTIFICATIONS_WRITE`, destinatário administrativo ativo e nenhuma alteração financeira em simulações.
 - Status: aceita
+
+## DEC-0056
+
+- Data: 2026-08-19
+- Contexto: uma mesma ocorrência financeira é encaminhada para a central interna, e-mail e Telegram; mensagens genéricas perdem o contexto da venda e das alterações realizadas.
+- Decisão: a Escola normaliza o conteúdo recebido no callback financeiro em uma mensagem única para os três canais, priorizando cliente/fornecedor, venda ou nota, parcela, valor anterior e novo valor, vencimento anterior e novo vencimento, valor estornado e motivo. O metadata permanece preservado para auditoria e evolução dos aliases do Financeiro.
+- Impacto: o usuário recebe o mesmo detalhamento em `PRINCIPAL_NOTIFICACOES`, e-mail e Telegram, sem alterar o layout aprovado nem criar destinatários para alunos, professores, responsáveis ou clientes.
+- Segurança: o texto é limitado a 2.000 caracteres, os campos são tratados como dados não confiáveis e a entrega continua protegida por HMAC, idempotência, RBAC e isolamento por escola/filial.
+- Status: aceita
+
+## DEC-0057
+
+- Data: 2026-08-20
+- Contexto: Escola e Projeto Inicial exibiam a recuperação visual do Financeiro, mas no desenvolvimento local não existia um processo autorizado para religar backend ou frontend parados.
+- Decisão: manter um supervisor único em `MSINFOR_INFRA`, vinculado exclusivamente a `127.0.0.1`, com HMAC, timestamp, nonce, proteção contra repetição, lista fixa dos componentes do Financeiro e auditoria JSONL append-only. Os backends de origem derivam ator, tenant e filial da sessão e o navegador apenas solicita a recuperação pelo BFF protegido por CSRF. A tela só volta ao módulo quando backend e frontend estiverem saudáveis.
+- Produção: não fornecer Docker socket nem comando de sistema às aplicações web. O instalador oficial conserva healthchecks e `restart: unless-stopped` no Compose, de forma que falhas de processo sejam recuperadas pelo runtime.
+- Impacto: o usuário não configura URLs, chaves nem serviços pela interface; Escola e Projeto Inicial compartilham o mesmo mecanismo sem criar ligação entre seus dados ou sessões.
+- Status: aceita

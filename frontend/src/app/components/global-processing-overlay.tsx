@@ -2,9 +2,33 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import DependencyRecoveryScreen from '@/app/components/dependency-recovery-screen';
 
 const SHOW_DELAY_MS = 180;
 const MIN_VISIBLE_MS = 320;
+const ESCOLA_HEALTH_URL = '/api/v1/health';
+
+function requestMethod(input: RequestInfo | URL, init?: RequestInit) {
+  return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+}
+
+function requestUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function isSameOriginRequest(input: RequestInfo | URL) {
+  try {
+    return new URL(requestUrl(input), window.location.origin).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function isNetworkFailure(error: unknown) {
+  return error instanceof TypeError || /failed to fetch|network|connection/i.test(String(error || ''));
+}
 
 export default function GlobalProcessingOverlay() {
   const pathname = usePathname();
@@ -12,6 +36,7 @@ export default function GlobalProcessingOverlay() {
   const showTimer = useRef<number | null>(null);
   const visibleSince = useRef(0);
   const [isVisible, setIsVisible] = useState(false);
+  const [isRecoveringDependency, setIsRecoveringDependency] = useState(false);
 
   const clearShowTimer = () => {
     if (showTimer.current !== null) {
@@ -42,6 +67,12 @@ export default function GlobalProcessingOverlay() {
       show();
       try {
         return await originalFetch(...args);
+      } catch (error) {
+        const method = requestMethod(args[0], args[1]);
+        if (['GET', 'HEAD'].includes(method) && isSameOriginRequest(args[0]) && isNetworkFailure(error)) {
+          setIsRecoveringDependency(true);
+        }
+        throw error;
       } finally {
         pendingCount.current -= 1;
         if (pendingCount.current <= 0) hide();
@@ -66,6 +97,17 @@ export default function GlobalProcessingOverlay() {
   }, [isVisible]);
 
   useEffect(() => { hide(); }, [pathname]);
+
+  if (isRecoveringDependency) {
+    return (
+      <DependencyRecoveryScreen
+        dependencyName="Servidor da Escola"
+        dependencyUrl={ESCOLA_HEALTH_URL}
+        onAvailable={() => setIsRecoveringDependency(false)}
+        cancelLabel="Continuar na Escola"
+      />
+    );
+  }
 
   if (!isVisible) return null;
 

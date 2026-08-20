@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DependencyRecoveryScreen from '@/app/components/dependency-recovery-screen';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import PrincipalProgramHeader from '@/app/components/principal-program-header';
 import {
@@ -10,8 +11,57 @@ import {
   type TenantBranchSummary,
 } from '@/app/lib/dashboard-crud-utils';
 import { readCachedTenantBranding } from '@/app/lib/tenant-branding-cache';
+import { withEscolaCsrf } from '@/app/lib/csrf-fetch';
 
 const FINANCEIRO_FRONTEND_URL = '/financeiro-app';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
+const FINANCEIRO_PROBE_TIMEOUT_MS = 1800;
+const FINANCEIRO_ERROR_MARKERS = [
+  /internal server error/i,
+  /application error/i,
+  /server error/i,
+  /err_connection_refused/i,
+  /service unavailable/i,
+];
+
+function hasFinanceiroError(value: string) {
+  return FINANCEIRO_ERROR_MARKERS.some((marker) => marker.test(value));
+}
+
+async function probeFinanceiroHome(url: string) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), FINANCEIRO_PROBE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return false;
+    const html = await response.text();
+    return !hasFinanceiroError(html.slice(0, 120_000));
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function probeFinanceiro(url: string) {
+  const [frontendReady, backendResponse] = await Promise.all([
+    probeFinanceiroHome(url),
+    fetch(`${API_BASE_URL}/financeiro/service-readiness`, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    }).catch(() => null),
+  ]);
+  if (!frontendReady || !backendResponse?.ok) return false;
+  const status = await backendResponse.json().catch(() => ({ ready: false })) as { ready?: boolean };
+  return status.ready === true;
+}
 
 function buildFinanceiroHomeFrameUrl(
   baseUrl: string,
@@ -24,6 +74,10 @@ export default function PrincipalFinanceiroPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
   const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
+  const [iframeReloadKey, setIframeReloadKey] = useState(0);
+  const [isRecoveryVisible, setIsRecoveryVisible] = useState(false);
+  const financeiroFrameRef = useRef<HTMLIFrameElement>(null);
+  const iframeLoadTimerRef = useRef<number | null>(null);
   const authContext = getDashboardAuthContext();
   const canViewFinancial = hasAnyDashboardPermission(
     authContext.role,
@@ -82,6 +136,57 @@ export default function PrincipalFinanceiroPage() {
     [],
   );
   const isFrameLoading = loadedFrameSrc !== iframeSrc;
+  const requestFinanceiroRecovery = useCallback(async () => {
+    try {
+      await fetch(
+        `${API_BASE_URL}/financeiro/recover-service`,
+        withEscolaCsrf(`${API_BASE_URL}/financeiro/recover-service`, {
+          method: 'POST',
+        }),
+      );
+    } catch {
+      // A verificação automática permanece ativa mesmo sem o supervisor local.
+    }
+  }, []);
+  const reopenFinanceiro = useCallback(() => {
+    setIsRecoveryVisible(false);
+    setLoadedFrameSrc(null);
+    setIframeReloadKey((current) => current + 1);
+  }, []);
+  const retryFinanceiro = useCallback(() => {
+    void requestFinanceiroRecovery();
+    reopenFinanceiro();
+  }, [reopenFinanceiro, requestFinanceiroRecovery]);
+  const handleFinanceiroFrameLoad = useCallback(() => {
+    setLoadedFrameSrc(iframeSrc);
+    const bodyText = financeiroFrameRef.current?.contentDocument?.body?.innerText || '';
+    setIsRecoveryVisible(hasFinanceiroError(bodyText));
+  }, [iframeSrc]);
+
+  useEffect(() => {
+    if (!iframeSrc || isRecoveryVisible) return;
+
+    if (iframeLoadTimerRef.current !== null) {
+      window.clearTimeout(iframeLoadTimerRef.current);
+    }
+
+    iframeLoadTimerRef.current = window.setTimeout(() => {
+      if (loadedFrameSrc !== iframeSrc) {
+        setIsRecoveryVisible(true);
+      }
+    }, 5000);
+
+    return () => {
+      if (iframeLoadTimerRef.current !== null) {
+        window.clearTimeout(iframeLoadTimerRef.current);
+        iframeLoadTimerRef.current = null;
+      }
+    };
+  }, [iframeSrc, isRecoveryVisible, loadedFrameSrc]);
+
+  useEffect(() => {
+    if (isRecoveryVisible) void requestFinanceiroRecovery();
+  }, [isRecoveryVisible, requestFinanceiroRecovery]);
 
   if (!isMounted) {
     return (
@@ -140,22 +245,42 @@ export default function PrincipalFinanceiroPage() {
         }
       />
 
-      <section className="relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm">
-        {isFrameLoading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm">
-            <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
-              Carregando financeiro...
-            </div>
-          </div>
-        ) : null}
+      <section className={`relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-slate-200 shadow-sm ${isRecoveryVisible ? 'bg-white' : 'bg-slate-100'}`}>
+        {isRecoveryVisible ? (
+          <DependencyRecoveryScreen
+            dependencyName="Portal Financeiro"
+            dependencyUrl={iframeSrc}
+            probe={probeFinanceiro}
+            maxAttempts={5}
+            fallbackTitle="Não foi possível abrir o Financeiro"
+            fallbackMessage="A Escola tentou restabelecer a conexão automaticamente, mas o Financeiro continua indisponível. Verifique se o serviço está ligado e tente novamente."
+            embedded
+            compact
+            onAvailable={reopenFinanceiro}
+            onCancel={retryFinanceiro}
+            cancelLabel="Tentar novamente agora"
+          />
+        ) : (
+          <>
+            {isFrameLoading ? (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm">
+                <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-600 shadow-sm">
+                  Carregando financeiro...
+                </div>
+              </div>
+            ) : null}
 
-        <iframe
-          key={iframeSrc}
-          title="Financeiro - tela central"
-          src={iframeSrc}
-          onLoad={() => setLoadedFrameSrc(iframeSrc)}
-          className="block h-full w-full bg-white"
-        />
+            <iframe
+              ref={financeiroFrameRef}
+              key={`${iframeSrc}-${iframeReloadKey}`}
+              title="Financeiro - tela central"
+              src={iframeSrc}
+              onLoad={handleFinanceiroFrameLoad}
+              onError={() => setIsRecoveryVisible(true)}
+              className="block h-full w-full bg-white"
+            />
+          </>
+        )}
       </section>
     </div>
   );

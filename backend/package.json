@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "prestart": "prisma migrate deploy",
-    "prestart:dev": "prisma migrate deploy",
+    "prestart:dev": "node ../../MSINFOR_INFRA/scripts/initialize-notification-integration.mjs && node ../../MSINFOR_INFRA/scripts/ensure-financeiro-supervisor.mjs && prisma migrate deploy",
     "build": "nest build",
     "backfill:people": "ts-node scripts/normalize-identity.ts",
     "ops:normalize-identity": "ts-node scripts/normalize-identity.ts",

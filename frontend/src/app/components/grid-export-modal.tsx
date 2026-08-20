@@ -479,9 +479,9 @@ export default function GridExportModal<ColumnKey extends string>(props: GridExp
     return (
         <div className="fixed inset-0 z-[56] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
             <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
-                <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-slate-50 px-6 py-4">
+                <div className="flex items-start justify-between gap-4 border-b border-blue-300/30 bg-gradient-to-r from-[#153a6a] via-[#1d4f91] to-[#2563eb] px-6 py-4 text-white">
                     <div className="flex min-w-0 items-center gap-4">
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/30 bg-white shadow-sm">
                             {tenantBranding?.logoUrl ? (
                                 <img
                                     src={tenantBranding.logoUrl}
@@ -489,20 +489,24 @@ export default function GridExportModal<ColumnKey extends string>(props: GridExp
                                     className="h-full w-full object-contain"
                                 />
                             ) : (
-                                <span className="text-sm font-black tracking-[0.25em] text-[#153a6a]">
-                                    {String(tenantBranding?.schoolName || 'ESCOLA').slice(0, 3).toUpperCase()}
-                                </span>
+                                <img src="/logo-msinfor.jpg" alt="Logotipo da Escola" className="h-full w-full object-contain" />
                             )}
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-blue-600">
+                            <div className="text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-200">
                                 {tenantBranding?.schoolName || 'Escola'}
                             </div>
-                            <h2 className="truncate text-xl font-bold text-[#153a6a]">{title}</h2>
-                            <p className="mt-1 text-sm font-medium text-slate-500">{description}</p>
+                            <h2 className="truncate text-xl font-bold text-white">{title}</h2>
+                            <p className="mt-1 text-sm font-medium text-blue-100">{description}</p>
                         </div>
                     </div>
-                    <button type="button" onClick={onClose} className="text-slate-400 hover:text-red-500">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Fechar exportação"
+                        title="Fechar exportação"
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-300/80 bg-red-600 text-white shadow-lg shadow-red-950/25 transition hover:bg-red-700"
+                    >
                         <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -627,7 +631,6 @@ export default function GridExportModal<ColumnKey extends string>(props: GridExp
                         ) : null}
                     </div>
                     <div className="flex flex-wrap justify-end gap-3">
-                        <button type="button" onClick={onClose} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancelar</button>
                         <button type="button" onClick={handlePrimaryAction} className="rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 hover:bg-blue-500">
                             {format === 'pdf' && viewMode === 'columns' ? 'Avançar para layout PDF' : 'Exportar agora'}
                         </button>

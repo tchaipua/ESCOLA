@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DependencyRecoveryScreen from '@/app/components/dependency-recovery-screen';
 import DashboardAccessDenied from '@/app/components/dashboard-access-denied';
 import {
   fetchTenantBranches,
@@ -284,6 +285,40 @@ function buildFinanceFrameUrl(
   return `${normalizedBaseUrl}${path}?embedded=1`;
 }
 
+const EMBEDDED_FINANCE_ERROR_MARKERS = [
+  /internal server error/i,
+  /application error/i,
+  /server error/i,
+  /err_connection_refused/i,
+  /service unavailable/i,
+];
+
+function hasEmbeddedFinanceError(value: string) {
+  return EMBEDDED_FINANCE_ERROR_MARKERS.some((marker) => marker.test(value));
+}
+
+async function probeEmbeddedFinanceFrame(url: string) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 1800);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return false;
+
+    const html = await response.text();
+    return !hasEmbeddedFinanceError(html.slice(0, 120_000));
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export function PrincipalFinanceiroSectionPageContent({
   params,
 }: {
@@ -293,7 +328,10 @@ export function PrincipalFinanceiroSectionPageContent({
   const [section, setSection] = useState<string | null>(null);
   const [subpath, setSubpath] = useState<string[]>([]);
   const [loadedFrameSrc, setLoadedFrameSrc] = useState<string | null>(null);
+  const [iframeReloadKey, setIframeReloadKey] = useState(0);
+  const [isEmbeddedRecoveryVisible, setIsEmbeddedRecoveryVisible] = useState(false);
   const financeiroFrameRef = useRef<HTMLIFrameElement>(null);
+  const iframeLoadTimerRef = useRef<number | null>(null);
   const [embeddedScreenId, setEmbeddedScreenId] = useState<string | null>(null);
   const [currentBranch, setCurrentBranch] = useState<TenantBranchSummary | null>(null);
   const [isSourceSettingsSyncing, setIsSourceSettingsSyncing] = useState(false);
@@ -740,6 +778,38 @@ export function PrincipalFinanceiroSectionPageContent({
 
   const isFrameLoading =
     isSourceSettingsSyncing || Boolean(iframeSrc && loadedFrameSrc !== iframeSrc);
+  const retryEmbeddedFinance = useCallback(() => {
+    setIsEmbeddedRecoveryVisible(false);
+    setLoadedFrameSrc(null);
+    setIframeReloadKey((current) => current + 1);
+  }, []);
+  const handleFinanceiroFrameLoad = useCallback(() => {
+    setLoadedFrameSrc(iframeSrc);
+
+    const bodyText = financeiroFrameRef.current?.contentDocument?.body?.innerText || '';
+    setIsEmbeddedRecoveryVisible(hasEmbeddedFinanceError(bodyText));
+  }, [iframeSrc]);
+
+  useEffect(() => {
+    if (!iframeSrc || isEmbeddedRecoveryVisible) return;
+
+    if (iframeLoadTimerRef.current !== null) {
+      window.clearTimeout(iframeLoadTimerRef.current);
+    }
+
+    iframeLoadTimerRef.current = window.setTimeout(() => {
+      if (loadedFrameSrc !== iframeSrc) {
+        setIsEmbeddedRecoveryVisible(true);
+      }
+    }, 5000);
+
+    return () => {
+      if (iframeLoadTimerRef.current !== null) {
+        window.clearTimeout(iframeLoadTimerRef.current);
+        iframeLoadTimerRef.current = null;
+      }
+    };
+  }, [iframeSrc, isEmbeddedRecoveryVisible, loadedFrameSrc]);
   const isCompactFinanceSection = section === 'parcelas';
   const isS3ControlScreen = embeddedScreenId === 'PRINCIPAL_FINANCEIRO_MSINFOR_CONTROLE_S3';
   const isTightFinanceSection = false;
@@ -876,6 +946,19 @@ export function PrincipalFinanceiroSectionPageContent({
     );
   }
 
+  if (isEmbeddedRecoveryVisible && iframeSrc) {
+    return (
+      <DependencyRecoveryScreen
+        dependencyName={`Financeiro integrado - ${sectionConfig.label}`}
+        dependencyUrl={iframeSrc}
+        probe={probeEmbeddedFinanceFrame}
+        onAvailable={retryEmbeddedFinance}
+        onCancel={retryEmbeddedFinance}
+        cancelLabel="Tentar novamente agora"
+      />
+    );
+  }
+
   return (
     <div className={isCompactFinanceSection ? 'flex h-full min-h-0 flex-col gap-3' : isTightFinanceSection ? 'space-y-1' : 'space-y-6'}>
       <section className={`${cardClass} shrink-0 overflow-hidden`}>
@@ -951,10 +1034,11 @@ export function PrincipalFinanceiroSectionPageContent({
 
               <iframe
                 ref={financeiroFrameRef}
-                key={iframeSrc}
+                key={`${iframeSrc || 'financeiro-frame'}-${iframeReloadKey}`}
                 title={`Financeiro integrado - ${sectionConfig.label}`}
                 src={iframeSrc || undefined}
-                onLoad={() => setLoadedFrameSrc(iframeSrc)}
+                onLoad={handleFinanceiroFrameLoad}
+                onError={() => setIsEmbeddedRecoveryVisible(true)}
                 className={`block ${isCompactFinanceSection ? 'h-full' : isS3ControlScreen ? 'h-[calc(100vh-14rem)]' : section === 'vendas' || section === 'vendas-2' ? 'h-[calc(100vh-12.25rem)]' : section === 'bancos' || section === 'lotes' ? 'h-[calc(100vh-14rem)]' : 'h-[calc(100vh-11rem)]'} w-full bg-white`}
               />
           </>

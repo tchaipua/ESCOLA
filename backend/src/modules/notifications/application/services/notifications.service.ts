@@ -175,6 +175,262 @@ type ConfiguredEventRecipient = NotificationRecipient & {
   sendTelegram: boolean;
 };
 
+type FinancialNotificationMessageInput = {
+  eventType: string;
+  fallback: unknown;
+  metadata?: unknown;
+};
+
+const FINANCIAL_EVENT_LABELS: Record<string, string> = {
+  RECEIVABLE_INSTALLMENT_CANCELED: "CANCELAMENTO DE PARCELA DO CONTAS A RECEBER",
+  RECEIVABLE_MOVEMENT_CANCELED: "CANCELAMENTO DO MOVIMENTO DO CONTAS A RECEBER",
+  RECEIVABLE_INSTALLMENT_AMOUNT_CHANGED: "ALTERAÇÃO DE VALOR DE PARCELA DO CONTAS A RECEBER",
+  RECEIVABLE_INSTALLMENT_DUE_DATE_CHANGED: "ALTERAÇÃO DE VENCIMENTO DE PARCELA DO CONTAS A RECEBER",
+  RECEIVABLE_SETTLEMENT_REVERSED: "ESTORNO DE PARCELA DO CONTAS A RECEBER",
+  PAYABLE_INSTALLMENT_CANCELED: "CANCELAMENTO DE PARCELA DO CONTAS A PAGAR",
+  PAYABLE_MOVEMENT_CANCELED: "CANCELAMENTO DO MOVIMENTO DO CONTAS A PAGAR",
+  PAYABLE_INSTALLMENT_AMOUNT_CHANGED: "ALTERAÇÃO DE VALOR DE PARCELA DO CONTAS A PAGAR",
+  PAYABLE_INSTALLMENT_DUE_DATE_CHANGED: "ALTERAÇÃO DE VENCIMENTO DE PARCELA DO CONTAS A PAGAR",
+  PAYABLE_SETTLEMENT_REVERSED: "ESTORNO DE PARCELA DO CONTAS A PAGAR",
+  CASH_MOVEMENT_CANCELED: "CANCELAMENTO DE MOVIMENTO DE CAIXA",
+};
+
+function getFinancialMetadata(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getFinancialText(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const record = value as Record<string, unknown>;
+      const nested: string = getFinancialText(
+        record.name,
+        record.displayName,
+        record.saleNumber,
+        record.invoiceNumber,
+        record.documentNumber,
+        record.number,
+        record.label,
+      );
+      if (nested) return nested;
+    }
+  }
+  return "";
+}
+
+function formatFinancialMoney(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  const numeric =
+    typeof value === "number"
+      ? value
+      : Number(
+          String(value)
+            .replace(/R\$\s?/gi, "")
+            .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+            .replace(",", ".")
+            .trim(),
+        );
+  if (!Number.isFinite(numeric)) return getFinancialText(value);
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(numeric);
+}
+
+function formatFinancialDate(value: unknown) {
+  const raw = getFinancialText(value);
+  if (!raw) return "";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return raw;
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00Z` : raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return `${String(date.getUTCDate()).padStart(2, "0")}/${String(
+    date.getUTCMonth() + 1,
+  ).padStart(2, "0")}/${date.getUTCFullYear()}`;
+}
+
+/**
+ * Normaliza a mensagem enviada para a central de notificações e para os
+ * canais externos. O Financeiro pode evoluir os nomes do metadata, por isso
+ * os aliases abaixo mantêm compatibilidade entre contas a receber, pagar e
+ * caixa sem alterar o layout aprovado da tela.
+ */
+export function buildFinancialNotificationMessage(
+  input: FinancialNotificationMessageInput,
+) {
+  const eventType = String(input.eventType || "").trim().toUpperCase();
+  const fallback = getFinancialText(input.fallback);
+  const metadata = getFinancialMetadata(input.metadata);
+  const eventLabel = FINANCIAL_EVENT_LABELS[eventType];
+  if (!eventLabel) return fallback.toUpperCase().slice(0, 2000);
+
+  const isPayable = eventType.startsWith("PAYABLE_");
+  const partyLabel = isPayable ? "FORNECEDOR" : "CLIENTE";
+  const fallbackSaleNumber =
+    fallback.match(/\bVENDA\s+([A-Z0-9][A-Z0-9./_-]*\d[A-Z0-9./_-]*)\b/i)?.[1] ||
+    "";
+  const fallbackInvoiceNumber =
+    fallback.match(/\b(?:NOTA|NF(?:-E)?)\s+([A-Z0-9][A-Z0-9./_-]*\d[A-Z0-9./_-]*)\b/i)?.[1] ||
+    "";
+  const partyName = getFinancialText(
+    metadata.customerName,
+    metadata.customerNameSnapshot,
+    metadata.clientName,
+    metadata.clientNameSnapshot,
+    metadata.customer,
+    metadata.client,
+    metadata.payer,
+    metadata.payerName,
+    metadata.payerNameSnapshot,
+    metadata.supplierName,
+    metadata.supplierNameSnapshot,
+    metadata.supplier,
+  );
+  const saleNumber = getFinancialText(
+    metadata.saleNumber,
+    metadata.saleCode,
+    metadata.sale,
+  );
+  const saleId = getFinancialText(metadata.saleId);
+  const sourceEntityType = getFinancialText(metadata.sourceEntityType);
+  const businessKey = getFinancialText(metadata.businessKey);
+  const invoiceNumber = getFinancialText(
+    metadata.invoiceNumber,
+    metadata.documentNumber,
+    metadata.invoice,
+  );
+  const invoiceId = getFinancialText(metadata.invoiceImportId);
+  const titleName = getFinancialText(
+    metadata.titleName,
+    metadata.sourceEntityName,
+    metadata.description,
+  );
+  const titleId = getFinancialText(
+    metadata.titleId,
+    metadata.receivableTitleId,
+    metadata.payableTitleId,
+  );
+  const installmentNumber = getFinancialText(
+    metadata.installmentLabel,
+    metadata.installmentNumber,
+    metadata.installment,
+  );
+  const installmentId = getFinancialText(metadata.installmentId);
+  const previousAmount = formatFinancialMoney(
+    metadata.previousAmount ?? metadata.oldAmount ?? metadata.previousValue,
+  );
+  const nextAmount = formatFinancialMoney(
+    metadata.nextAmount ?? metadata.newAmount ?? metadata.currentAmount ?? metadata.amount,
+  );
+  const reversedAmount = formatFinancialMoney(
+    metadata.reversedAmount ?? metadata.settledAmount ?? metadata.receivedAmount,
+  );
+  const previousDueDate = formatFinancialDate(
+    metadata.previousDueDate ?? metadata.oldDueDate ?? metadata.previousDate,
+  );
+  const nextDueDate = formatFinancialDate(
+    metadata.nextDueDate ?? metadata.newDueDate ?? metadata.dueDate ?? metadata.currentDueDate,
+  );
+  const reason = getFinancialText(
+    metadata.cancellationReason,
+    metadata.cancellationNote,
+    metadata.reason,
+    metadata.notes,
+  );
+
+  const context: string[] = [];
+  if (partyName) context.push(`${partyLabel}: ${partyName}`);
+  const titleLooksLikeSale = /^(?:V(?:ENDA)?[\s-]*\d+|VENDA\b)/i.test(titleName);
+  const sourceIsSale =
+    sourceEntityType.toUpperCase().includes("SALE") ||
+    businessKey.toUpperCase().startsWith("SALE:") ||
+    titleLooksLikeSale;
+  const inferredSaleNumber =
+    saleNumber ||
+    fallbackSaleNumber ||
+    (sourceIsSale ? titleName : "");
+  if (inferredSaleNumber) context.push(`VENDA: ${inferredSaleNumber}`);
+  else if (saleId) context.push(`VENDA ID: ${saleId}`);
+  if (invoiceNumber) context.push(`NOTA: ${invoiceNumber}`);
+  else if (fallbackInvoiceNumber) context.push(`NOTA: ${fallbackInvoiceNumber}`);
+  else if (invoiceId) context.push(`NOTA ID: ${invoiceId}`);
+  if (
+    titleName &&
+    titleName !== inferredSaleNumber &&
+    titleName !== invoiceNumber &&
+    !sourceIsSale
+  ) {
+    context.push(`TÍTULO: ${titleName}`);
+  } else if (titleId && !inferredSaleNumber && !invoiceNumber && !invoiceId) {
+    context.push(`TÍTULO ID: ${titleId}`);
+  }
+  if (installmentNumber) context.push(`PARCELA: ${installmentNumber}`);
+  else if (installmentId) context.push(`PARCELA ID: ${installmentId}`);
+
+  const changes: string[] = [];
+  if (previousAmount || nextAmount) {
+    if (previousAmount) changes.push(`VALOR ANTERIOR: ${previousAmount}`);
+    if (nextAmount) changes.push(`NOVO VALOR: ${nextAmount}`);
+  }
+  if (previousDueDate || nextDueDate) {
+    if (previousDueDate) changes.push(`VENCIMENTO ANTERIOR: ${previousDueDate}`);
+    if (nextDueDate) changes.push(`NOVO VENCIMENTO: ${nextDueDate}`);
+  }
+  if (reversedAmount) changes.push(`VALOR ESTORNADO: ${reversedAmount}`);
+  if (reason) changes.push(`MOTIVO: ${reason}`);
+
+  const isSimulation =
+    metadata.simulation === true ||
+    String(metadata.simulation || "").trim().toUpperCase() === "TRUE";
+  if (isSimulation && !context.length && !changes.length) {
+    context.push(`${partyLabel}: ${isPayable ? "FORNECEDOR" : "CLIENTE"} DE TESTE CEC`);
+    context.push(isPayable ? "NOTA: SIMULAÇÃO NF-0001" : "VENDA: SIMULAÇÃO V-0001");
+    context.push("PARCELA: 1/3");
+    if (eventType.includes("AMOUNT_CHANGED")) {
+      changes.push("VALOR ANTERIOR: R$ 100,00", "NOVO VALOR: R$ 125,00");
+    } else if (eventType.includes("DUE_DATE_CHANGED")) {
+      changes.push("VENCIMENTO ANTERIOR: 10/08/2026", "NOVO VENCIMENTO: 20/08/2026");
+    } else if (eventType.includes("REVERSED")) {
+      changes.push("VALOR ESTORNADO: R$ 125,00");
+    } else {
+      changes.push("VALOR ENVOLVIDO: R$ 125,00");
+    }
+    changes.push("MOTIVO: SIMULAÇÃO CONTROLADA");
+  }
+  if (!context.length && !changes.length) return fallback.toUpperCase().slice(0, 2000);
+  const shouldPreserveFallback =
+    !isSimulation &&
+    fallback &&
+    (eventType.includes("CANCELED") ||
+      eventType.includes("REVERSED") ||
+      (!changes.length && !context.length));
+  const resultParts = [
+    ...(isSimulation ? ["SIMULAÇÃO CONTROLADA"] : []),
+    eventLabel,
+    ...context,
+    ...changes,
+  ];
+  if (shouldPreserveFallback) {
+    resultParts.push(`DETALHE DO FINANCEIRO: ${fallback}`);
+  }
+  const result = resultParts.join(". ");
+  return `${result}.`.toUpperCase().slice(0, 2000);
+}
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -348,7 +604,11 @@ export class NotificationsService {
     const eventType = String(payload.eventType || "").trim().toUpperCase();
     const recipientUserId = String(payload.recipientUserId || "").trim();
     const title = this.normalizeText(String(payload.title || ""));
-    const message = this.normalizeText(String(payload.message || ""));
+    const message = buildFinancialNotificationMessage({
+      eventType,
+      fallback: payload.message,
+      metadata: payload.metadata,
+    });
     if (!deliveryId || deliveryId.length > 128 || !allowedEvents.has(eventType) ||
         !recipientUserId || !title || !message || title.length > 200 || message.length > 2000) {
       throw new BadRequestException("NOTIFICAÇÃO FINANCEIRA INVÁLIDA.");

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import DependencyRecoveryScreen from '@/app/components/dependency-recovery-screen';
 
 const DEFAULT_CENTRAL_URL = 'http://localhost:3200';
 
@@ -28,13 +29,26 @@ function getCentralUrl(): string | null {
 }
 
 export default function MsinforAdminRedirectPage() {
-  const centralUrl = useMemo(getCentralUrl, []);
+  const centralUrl = useMemo(() => getCentralUrl(), []);
 
-  useEffect(() => {
-    if (centralUrl) {
-      window.location.replace(centralUrl);
-    }
+  const handleCentralAvailable = useCallback(() => {
+    if (centralUrl) window.location.replace(centralUrl);
   }, [centralUrl]);
+
+  const handleCancel = useCallback(() => {
+    window.location.assign('/');
+  }, []);
+
+  if (centralUrl) {
+    return (
+      <DependencyRecoveryScreen
+        dependencyName="MSINFOR Central"
+        dependencyUrl={centralUrl}
+        onAvailable={handleCentralAvailable}
+        onCancel={handleCancel}
+      />
+    );
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-slate-100">

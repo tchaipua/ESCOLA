@@ -1055,6 +1055,20 @@ Observacao estrutural obrigatoria:
 - o painel proprio do `Financeiro` roda localmente em `localhost:3003`
 - os endpoints abaixo representam a camada consumida/exposta pela `Escola` para operar o financeiro integrado, mas a regra operacional financeira deve ser conferida tambem em `C:\Sistemas\IA\Financeiro\DOCUMENTACAO\AI\API_SPEC.md`
 
+### POST `/financeiro/recover-service`
+
+- Autenticação: cookie de sessão HttpOnly da Escola, proteção CSRF e acesso financeiro válido;
+- Uso: solicita recuperação do backend e do frontend do Financeiro quando a tela integrada detecta indisponibilidade;
+- Segurança: o navegador nunca recebe comandos, caminhos ou chaves. A Escola assina a solicitação HMAC para o supervisor local, que escuta somente em `127.0.0.1`, aceita exclusivamente `ESCOLA` e `PROJETO_INICIAL` e possui lista fixa de processos;
+- Auditoria: solicitações aceitas, recusadas, inicializações e encerramentos ficam em log JSONL append-only da infraestrutura, com ator, tenant e filial;
+- Produção: o endpoint não recebe acesso ao Docker. O instalador usa healthchecks e `restart: unless-stopped`, mantendo o privilégio de controle fora da aplicação web.
+
+### GET `/financeiro/service-readiness`
+
+- Autenticação: cookie de sessão HttpOnly da Escola e acesso financeiro válido;
+- Uso: confirma, pelo backend da Escola, que a API do Financeiro respondeu ao readiness check;
+- Regra: a tela encerra o modo de recuperação somente quando este endpoint e o frontend incorporado estão saudáveis.
+
 ### GET `/financial-cashier/current-session`
 
 - Autenticacao: cookie de sessao HttpOnly da Escola
@@ -1233,4 +1247,5 @@ não recebem mensagens anteriores.
 - Autorização: HMAC Financeiro → Escola com escopo exclusivo `FINANCIAL_NOTIFICATIONS_WRITE`, timestamp, nonce, hash do corpo, tenant, filial e ator;
 - Idempotência: `tenantId + deliveryId`; uma repetição não duplica a notificação nem os canais;
 - Canais: a notificação interna usa a categoria `FINANCEIRO` e aparece em `PRINCIPAL_NOTIFICACOES`; e-mail e Telegram usam a configuração efetiva da Central;
+- Conteúdo: antes de persistir ou encaminhar a entrega, a Escola normaliza a mensagem com cliente/fornecedor, venda ou nota, título, parcela, valor atual e, quando houver alteração, valor anterior e novo valor; alterações de vencimento exibem as duas datas e cancelamentos/estornos exibem o motivo e o valor envolvido;
 - Segurança: destinatário precisa ser um `User` ativo com acesso à filial. O e-mail de simulação é aceito somente fora de produção e pela allowlist temporária.

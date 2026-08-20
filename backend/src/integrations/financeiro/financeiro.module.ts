@@ -5,6 +5,7 @@ import { FinanceiroCallbackReplayService } from "./financeiro-callback-replay.se
 import { FinanceiroController } from "./financeiro.controller";
 import { FinanceiroInternalClient } from "./financeiro-internal.client";
 import { FinanceiroService } from "./financeiro.service";
+import { ServiceSupervisorClient } from "./service-supervisor.client";
 
 @Global()
 @Module({
@@ -15,6 +16,7 @@ import { FinanceiroService } from "./financeiro.service";
     FinanceiroBrowserGuard,
     FinanceiroCallbackReplayService,
     FinanceiroCallbackAuthGuard,
+    ServiceSupervisorClient,
   ],
   exports: [
     FinanceiroService,
