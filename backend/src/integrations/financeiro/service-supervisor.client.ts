@@ -5,7 +5,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { ICurrentUser } from "../../common/decorators/current-user.decorator";
 
 const SOURCE_SYSTEM = "ESCOLA";
-const RECOVERY_PATH = "/v1/services/financeiro/recover";
+const FINANCEIRO_RECOVERY_PATH = "/v1/services/financeiro/recover";
+const CENTRAL_RECOVERY_PATH = "/v1/services/msinfor-central/recover";
 
 export type FinanceiroRecoveryResponse = {
   accepted: boolean;
@@ -14,6 +15,8 @@ export type FinanceiroRecoveryResponse = {
   components?: Record<string, string>;
 };
 
+export type CentralRecoveryResponse = FinanceiroRecoveryResponse;
+
 @Injectable()
 export class ServiceSupervisorClient {
   private readonly logger = new Logger(ServiceSupervisorClient.name);
@@ -21,6 +24,21 @@ export class ServiceSupervisorClient {
   async recoverFinanceiro(
     currentUser: ICurrentUser,
   ): Promise<FinanceiroRecoveryResponse> {
+    return this.requestRecovery(FINANCEIRO_RECOVERY_PATH, {
+      actorId: currentUser.userId,
+      tenantId: currentUser.tenantId,
+      branchCode: currentUser.branchCode,
+      reason: "DEPENDENCY_UNAVAILABLE",
+    });
+  }
+
+  async recoverCentral(): Promise<CentralRecoveryResponse> {
+    return this.requestRecovery(CENTRAL_RECOVERY_PATH, {
+      reason: "CENTRAL_UNAVAILABLE",
+    });
+  }
+
+  private async requestRecovery(path: string, payload: Record<string, unknown>) {
     if (String(process.env.NODE_ENV || "development").toLowerCase() === "production") {
       return { accepted: true, managedByRuntime: true };
     }
@@ -42,20 +60,15 @@ export class ServiceSupervisorClient {
 
     const secret = this.readSecret();
     if (!secret) {
-      this.logger.warn("Supervisor do Financeiro não configurado no ambiente local.");
+      this.logger.warn("Supervisor local de serviços não configurado no ambiente local.");
       return { accepted: false };
     }
 
-    const payload = JSON.stringify({
-      actorId: currentUser.userId,
-      tenantId: currentUser.tenantId,
-      branchCode: currentUser.branchCode,
-      reason: "DEPENDENCY_UNAVAILABLE",
-    });
+    const serializedPayload = JSON.stringify(payload);
     const timestamp = String(Date.now());
     const nonce = randomBytes(24).toString("hex");
-    const bodyHash = createHash("sha256").update(payload).digest("hex");
-    const canonical = `POST\n${RECOVERY_PATH}\n${timestamp}\n${nonce}\n${bodyHash}`;
+    const bodyHash = createHash("sha256").update(serializedPayload).digest("hex");
+    const canonical = `POST\n${path}\n${timestamp}\n${nonce}\n${bodyHash}`;
     const signature = createHmac("sha256", secret)
       .update(canonical)
       .digest("hex");
@@ -63,7 +76,7 @@ export class ServiceSupervisorClient {
     const timeout = setTimeout(() => controller.abort(), 3_000);
 
     try {
-      const response = await fetch(`${baseUrl}${RECOVERY_PATH}`, {
+      const response = await fetch(`${baseUrl}${path}`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -72,7 +85,7 @@ export class ServiceSupervisorClient {
           "x-msinfor-nonce": nonce,
           "x-msinfor-signature": `sha256=${signature}`,
         },
-        body: payload,
+        body: serializedPayload,
         signal: controller.signal,
       });
       if (!response.ok) {

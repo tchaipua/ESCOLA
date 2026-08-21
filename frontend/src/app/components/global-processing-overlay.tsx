@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import DependencyRecoveryScreen from '@/app/components/dependency-recovery-screen';
 
 const SHOW_DELAY_MS = 180;
 const MIN_VISIBLE_MS = 320;
 const ESCOLA_HEALTH_URL = '/api/v1/health';
+const ESCOLA_RECOVERY_URL = '/api/recovery/escola';
 
 function requestMethod(input: RequestInfo | URL, init?: RequestInit) {
   return String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
@@ -30,6 +31,15 @@ function isNetworkFailure(error: unknown) {
   return error instanceof TypeError || /failed to fetch|network|connection/i.test(String(error || ''));
 }
 
+function isLoginRequest(input: RequestInfo | URL) {
+  try {
+    const url = new URL(requestUrl(input), window.location.origin);
+    return url.origin === window.location.origin && url.pathname === '/api/v1/auth/login';
+  } catch {
+    return false;
+  }
+}
+
 export default function GlobalProcessingOverlay() {
   const pathname = usePathname();
   const pendingCount = useRef(0);
@@ -37,6 +47,19 @@ export default function GlobalProcessingOverlay() {
   const visibleSince = useRef(0);
   const [isVisible, setIsVisible] = useState(false);
   const [isRecoveringDependency, setIsRecoveringDependency] = useState(false);
+
+  const requestEscolaRecovery = useCallback(async () => {
+    try {
+      await fetch(ESCOLA_RECOVERY_URL, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'ESCOLA_UNAVAILABLE' }),
+      });
+    } catch {
+      // A sondagem continua ativa mesmo sem o supervisor local.
+    }
+  }, []);
 
   const clearShowTimer = () => {
     if (showTimer.current !== null) {
@@ -66,10 +89,23 @@ export default function GlobalProcessingOverlay() {
       pendingCount.current += 1;
       show();
       try {
-        return await originalFetch(...args);
+        const response = await originalFetch(...args);
+        const method = requestMethod(args[0], args[1]);
+        if (
+          response.status >= 500 &&
+          isSameOriginRequest(args[0]) &&
+          (['GET', 'HEAD'].includes(method) || isLoginRequest(args[0]))
+        ) {
+          setIsRecoveringDependency(true);
+        }
+        return response;
       } catch (error) {
         const method = requestMethod(args[0], args[1]);
-        if (['GET', 'HEAD'].includes(method) && isSameOriginRequest(args[0]) && isNetworkFailure(error)) {
+        if (
+          isSameOriginRequest(args[0]) &&
+          isNetworkFailure(error) &&
+          (['GET', 'HEAD'].includes(method) || isLoginRequest(args[0]))
+        ) {
           setIsRecoveringDependency(true);
         }
         throw error;
@@ -103,6 +139,7 @@ export default function GlobalProcessingOverlay() {
       <DependencyRecoveryScreen
         dependencyName="Servidor da Escola"
         dependencyUrl={ESCOLA_HEALTH_URL}
+        onUnavailable={requestEscolaRecovery}
         onAvailable={() => setIsRecoveringDependency(false)}
         cancelLabel="Continuar na Escola"
       />

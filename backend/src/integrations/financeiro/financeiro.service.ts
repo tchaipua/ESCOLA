@@ -757,7 +757,7 @@ export class FinanceiroService {
         canceledAt: null,
       },
       include: {
-        person: { select: { id: true, email: true } },
+        person: { select: { id: true, email: true, cpfDigits: true } },
         branchAccesses: {
           where: { canceledAt: null },
           select: { branchCode: true },
@@ -774,6 +774,10 @@ export class FinanceiroService {
           subjects: users.map((user) => ({
             externalUserId: user.id,
             registeredPersonId: user.personId ? `PERSON:${user.personId}` : undefined,
+            document:
+              String(user.person?.cpfDigits || "").length === 11
+                ? user.person?.cpfDigits || undefined
+                : undefined,
             displayName: user.name,
             email: normalizeOptionalFinanceAccessEmail(user.person?.email),
             sourceRole: user.role,

@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react';
 import DependencyRecoveryScreen from '@/app/components/dependency-recovery-screen';
 
 const DEFAULT_CENTRAL_URL = 'http://localhost:3200';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1';
 
 function getCentralUrl(): string | null {
   const configuredUrl =
@@ -31,6 +32,24 @@ function getCentralUrl(): string | null {
 export default function MsinforAdminRedirectPage() {
   const centralUrl = useMemo(() => getCentralUrl(), []);
 
+  const requestCentralRecovery = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 2_500);
+    try {
+      await fetch(`${API_BASE_URL}/central/recover-service`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'CENTRAL_UNAVAILABLE' }),
+        signal: controller.signal,
+      });
+    } catch {
+      // A sondagem continua ativa mesmo sem o supervisor local.
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }, []);
+
   const handleCentralAvailable = useCallback(() => {
     if (centralUrl) window.location.replace(centralUrl);
   }, [centralUrl]);
@@ -44,6 +63,7 @@ export default function MsinforAdminRedirectPage() {
       <DependencyRecoveryScreen
         dependencyName="MSINFOR Central"
         dependencyUrl={centralUrl}
+        onUnavailable={requestCentralRecovery}
         onAvailable={handleCentralAvailable}
         onCancel={handleCancel}
       />

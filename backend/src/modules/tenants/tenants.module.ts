@@ -8,9 +8,10 @@ import { FinanceiroModule } from "../../integrations/financeiro/financeiro.modul
 import { CentralOperationalSummaryGuard } from "../../common/guards/central-operational-summary.guard";
 import { UsersModule } from "../users/users.module";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { AuthModule } from "../auth/auth.module";
 
 @Module({
-  imports: [SharedProfilesModule, GlobalSettingsModule, FinanceiroModule, UsersModule, NotificationsModule],
+  imports: [SharedProfilesModule, GlobalSettingsModule, FinanceiroModule, UsersModule, NotificationsModule, AuthModule],
   controllers: [TenantsController, FinanceiroIntegrationController],
   providers: [TenantsService, CentralOperationalSummaryGuard],
   exports: [TenantsService],

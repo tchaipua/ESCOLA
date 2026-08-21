@@ -17,6 +17,7 @@ type DependencyRecoveryScreenProps = {
   embedded?: boolean;
   compact?: boolean;
   onAvailable: () => void;
+  onUnavailable?: (attempt: number) => Promise<void> | void;
   onCancel?: () => void;
   cancelLabel?: string;
 };
@@ -50,6 +51,7 @@ export default function DependencyRecoveryScreen({
   embedded = false,
   compact = false,
   onAvailable,
+  onUnavailable,
   onCancel,
   cancelLabel = 'Voltar para a Escola',
 }: DependencyRecoveryScreenProps) {
@@ -77,11 +79,16 @@ export default function DependencyRecoveryScreen({
       return;
     }
 
+    if (isActiveRef.current) {
+      await onUnavailable?.(nextAttempt);
+    }
+    if (!isActiveRef.current) return;
+
     setIsChecking(false);
     if (maxAttempts && nextAttempt >= maxAttempts) {
       setHasReachedRetryLimit(true);
     }
-  }, [dependencyUrl, maxAttempts, probe]);
+  }, [dependencyUrl, maxAttempts, onUnavailable, probe]);
 
   useEffect(() => {
     isActiveRef.current = true;

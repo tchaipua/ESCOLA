@@ -1704,20 +1704,17 @@ export class AuthService {
     if (!localCredential?.centralIdentityAccountId) {
       throw new UnauthorizedException("Credencial inválida.");
     }
-    const resolution = await this.centralIdentity.authenticateAndResolve(
-      currentAccount.email,
+    const confirmation = await this.centralIdentity.confirmOperationCredential(
+      localCredential.centralIdentityAccountId,
       credential,
       tenant.centralTenantId,
     );
     if (
-      "memberships" in resolution ||
-      resolution.account.id.toLowerCase() !==
-        localCredential.centralIdentityAccountId.toLowerCase() ||
-      !this.centralRoleMatchesAccount(resolution.roleCode, currentAccount)
+      confirmation.account.id.toLowerCase() !==
+        localCredential.centralIdentityAccountId.toLowerCase()
     ) {
       throw new UnauthorizedException("Credencial inválida.");
     }
-    this.assertCentralRouteBelongsToThisDatabase(resolution);
     return { status: "SUCCESS" as const };
   }
 
@@ -1785,7 +1782,7 @@ export class AuthService {
       throw new UnauthorizedException("Usuário inválido.");
     }
 
-    const normalizedPassword = password.trim();
+    const normalizedPassword = String(password || "");
     if (!normalizedPassword) {
       throw new UnauthorizedException("Informe a senha para continuar.");
     }
@@ -1837,7 +1834,7 @@ export class AuthService {
     currentUser: ICurrentUser,
     password: string,
   ) {
-    const normalizedPassword = String(password || "").trim();
+    const normalizedPassword = String(password || "");
     const tenantId = currentUser.tenantId;
     if (!tenantId) throw new UnauthorizedException("Empresa inválida.");
     if (!normalizedPassword) throw new UnauthorizedException("Informe a senha para continuar.");
@@ -1895,7 +1892,7 @@ export class AuthService {
       throw new UnauthorizedException("Usuário inválido.");
     }
 
-    const normalizedPassword = String(password || "").trim();
+    const normalizedPassword = String(password || "");
     if (!normalizedPassword) {
       throw new UnauthorizedException("Informe a senha para continuar.");
     }

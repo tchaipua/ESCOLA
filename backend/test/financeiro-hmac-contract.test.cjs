@@ -39,6 +39,9 @@ const {
   MsInforCentralSettingsClient,
   canonicalizeCentralTarget,
 } = require("../dist/src/integrations/msinfor-central/msinfor-central-settings.client.js");
+const {
+  UsersService,
+} = require("../dist/src/modules/users/application/services/users.service.js");
 
 const originalFetch = global.fetch;
 const originalEnvironment = {
@@ -537,6 +540,66 @@ async function testSystemUserCallbackActivatesTenantContext() {
   assert.equal(getTenantContext(), undefined);
 }
 
+async function testFinanceSystemPersonLookupReturnsAddress() {
+  const usersService = new UsersService(
+    {
+      person: {
+        findFirst: async () => ({
+          id: "person-1",
+          name: "PESSOA TESTE",
+          email: "PESSOA@TESTE.LOCAL",
+          accessUsername: "PESSOA.TESTE",
+          cpfDigits: "52998224725",
+          phone: "1633334444",
+          cellphone1: null,
+          whatsapp: "16999990000",
+          zipCode: "14020000",
+          street: "RUA TESTE",
+          number: "100",
+          neighborhood: "CENTRO",
+          complement: "SALA 2",
+          city: "RIBEIRAO PRETO",
+          state: "SP",
+          teachers: [],
+          students: [],
+          guardians: [],
+          users: [],
+        }),
+      },
+      emailCredential: {
+        findFirst: async () => null,
+      },
+    },
+    {},
+    {},
+    {},
+  );
+  const result = await usersService.resolvePersonByCpfFromFinanceiro(
+    "tenant-a",
+    "52998224725",
+  );
+  assert.deepEqual(
+    {
+      zipCode: result.zipCode,
+      street: result.street,
+      number: result.number,
+      neighborhood: result.neighborhood,
+      complement: result.complement,
+      city: result.city,
+      state: result.state,
+    },
+    {
+      zipCode: "14020000",
+      street: "RUA TESTE",
+      number: "100",
+      neighborhood: "CENTRO",
+      complement: "SALA 2",
+      city: "RIBEIRAO PRETO",
+      state: "SP",
+    },
+  );
+}
+
 function testCsrfIsBoundToSession() {
   process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = "j".repeat(48);
@@ -625,6 +688,7 @@ async function main() {
     testCallbackReplayAndTamperProtection();
     testSystemUserCallbackHasDedicatedScope();
     await testSystemUserCallbackActivatesTenantContext();
+    await testFinanceSystemPersonLookupReturnsAddress();
     testCsrfIsBoundToSession();
     await testCentralHmacAndNoLegacyKeyHeader();
     testIframeUrlContainsPresentationOnly();

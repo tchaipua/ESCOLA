@@ -494,6 +494,13 @@ export class UsersService {
       document: person.cpfDigits,
       phone: person.phone || person.cellphone1,
       whatsapp: person.whatsapp,
+      zipCode: person.zipCode,
+      street: person.street,
+      number: person.number,
+      neighborhood: person.neighborhood,
+      complement: person.complement,
+      city: person.city,
+      state: person.state,
       roles,
     };
   }
@@ -505,6 +512,12 @@ export class UsersService {
     const cpf = String(payload.document || "").replace(/\D/g, "");
     if (cpf && !isValidCpf(cpf)) {
       throw new BadRequestException("CPF inválido.");
+    }
+    const confirmationPin = String(payload.confirmationPin || "");
+    if (confirmationPin.length < 4 || confirmationPin.length > 10) {
+      throw new BadRequestException(
+        "O PIN de confirmação deve possuir entre 4 e 10 caracteres.",
+      );
     }
     const role = this.normalizeRole(payload.sourceRole);
     const expectedProfile = getDefaultAccessProfileForRole(role);
@@ -548,6 +561,13 @@ export class UsersService {
       cpf: cpf || undefined,
       phone: payload.phone,
       whatsapp: payload.whatsapp,
+      zipCode: payload.zipCode,
+      street: payload.street,
+      number: payload.number,
+      neighborhood: payload.neighborhood,
+      complement: payload.complement,
+      city: payload.city,
+      state: payload.state,
       role,
       accessProfile: sourceAccessProfile,
       branchAccessCodes,
@@ -595,6 +615,11 @@ export class UsersService {
       accountId,
       callback.userId,
     );
+    await this.centralIdentityProvisioning.setConfirmationPin({
+      tenantId: callback.tenantId,
+      accountId,
+      confirmationPin,
+    });
     return {
       sourceUserId: user.id,
       centralIdentityAccountId: accountId,
@@ -606,6 +631,104 @@ export class UsersService {
       branchCodes: centralBranchCodes,
       active: true,
     };
+  }
+
+  async updateConfirmationPinFromFinanceiro(
+    sourceUserId: string,
+    confirmationPin: string,
+    callback: { tenantId: string; userId: string },
+  ) {
+    if (confirmationPin.length < 4 || confirmationPin.length > 10) {
+      throw new BadRequestException(
+        "O PIN de confirmação deve possuir entre 4 e 10 caracteres.",
+      );
+    }
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: sourceUserId,
+        tenantId: callback.tenantId,
+        canceledAt: null,
+      },
+      include: { person: { select: { email: true } } },
+    });
+    const credential = user?.person?.email
+      ? await this.sharedProfilesService.findEmailCredential(user.person.email)
+      : null;
+    if (!user || !credential?.centralIdentityAccountId) {
+      throw new NotFoundException(
+        "Usuário ativo com identidade central não encontrado.",
+      );
+    }
+    await this.centralIdentityProvisioning.setConfirmationPin({
+      tenantId: callback.tenantId,
+      accountId: credential.centralIdentityAccountId,
+      confirmationPin,
+    });
+    return { updated: true };
+  }
+
+  async updatePasswordFromFinanceiro(
+    sourceUserId: string,
+    password: string,
+    callback: { tenantId: string; userId: string },
+  ) {
+    assertStrongPassword(password);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: sourceUserId,
+        tenantId: callback.tenantId,
+        canceledAt: null,
+      },
+      include: {
+        person: { select: { id: true, name: true, email: true } },
+        branchAccesses: {
+          where: { canceledAt: null },
+          select: { branchCode: true },
+        },
+      },
+    });
+    if (!user?.person?.email || !user.accessUsername) {
+      throw new NotFoundException(
+        "Usuário ativo com identidade central não encontrado.",
+      );
+    }
+    const credential = await this.sharedProfilesService.findEmailCredential(
+      user.person.email,
+    );
+    if (!credential?.centralIdentityAccountId) {
+      throw new NotFoundException(
+        "Usuário ativo com identidade central não encontrado.",
+      );
+    }
+    const branchCodes = Array.from(new Set([
+      user.branchCode,
+      ...user.branchAccesses.map((access) => access.branchCode),
+    ])).sort((left, right) => left - right);
+    const synchronization = await this.centralIdentityProvisioning.synchronize({
+      tenantId: callback.tenantId,
+      login: user.accessUsername,
+      email: user.person.email,
+      displayName: user.person.name,
+      credential: password,
+      externalSubjectId: `PERSON:${user.person.id}`,
+      branchCodes,
+      roleCode: user.accessProfile || getDefaultAccessProfileForRole(
+        this.normalizeRole(user.role),
+      ) || "SECRETARIA_PADRAO",
+      enabled: true,
+    }) as { account?: { id?: string }; enabled?: boolean };
+    const accountId = String(synchronization.account?.id || "")
+      .trim()
+      .toLowerCase();
+    if (
+      synchronization.enabled !== true
+      || accountId !== credential.centralIdentityAccountId.toLowerCase()
+    ) {
+      throw new BadRequestException(
+        "A Central não confirmou a redefinição da senha deste usuário.",
+      );
+    }
+    return { updated: true };
   }
 
   async findAllByTenantId(tenantId: string) {

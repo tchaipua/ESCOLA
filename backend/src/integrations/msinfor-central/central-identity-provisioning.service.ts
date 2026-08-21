@@ -33,4 +33,17 @@ export class CentralIdentityProvisioningService {
       enabled: input.enabled !== false,
     });
   }
+
+  async setConfirmationPin(input: {
+    tenantId: string;
+    accountId: string;
+    confirmationPin: string;
+  }) {
+    const configuration = await this.configurations.findConfiguration(input.tenantId);
+    return this.client.setTechnicalConfirmationPin({
+      accountId: input.accountId,
+      tenantId: configuration.tenant.id,
+      confirmationPin: input.confirmationPin,
+    });
+  }
 }

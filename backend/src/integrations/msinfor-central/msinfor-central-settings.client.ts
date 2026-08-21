@@ -887,6 +887,69 @@ export class MsInforCentralSettingsClient {
     });
   }
 
+  async setTechnicalConfirmationPin(payload: {
+    accountId: string;
+    tenantId: string;
+    confirmationPin: string;
+  }) {
+    const response: any = await this.request("/identity/technical/confirmation-pin", {
+      method: "POST",
+      json: {
+        accountId: validatedUuid(payload.accountId, "accountId"),
+        tenantId: validatedUuid(payload.tenantId, "tenantId"),
+        confirmationPin: payload.confirmationPin,
+      },
+      identityOperation: true,
+    });
+    if (response?.updated !== true) {
+      throw new BadGatewayException(
+        "Resposta de atualização do PIN inválida da Central.",
+      );
+    }
+    return { updated: true as const };
+  }
+
+  async confirmOperationCredential(
+    accountId: string,
+    credential: string,
+    tenantId: string,
+    branchCode?: number,
+  ) {
+    const normalizedAccountId = validatedUuid(accountId, "accountId");
+    const normalizedTenantId = validatedUuid(tenantId, "tenantId");
+    const payload: any = await this.request(
+      "/identity/technical/confirm-operation-credential",
+      {
+        method: "POST",
+        json: {
+          accountId: normalizedAccountId,
+          tenantId: normalizedTenantId,
+          credential: String(credential || ""),
+          ...(branchCode === undefined ? {} : { branchCode }),
+        },
+        identityOperation: true,
+      },
+    );
+    const responseAccountId = validatedUuid(payload?.account?.id, "account.id");
+    const displayName = String(payload?.account?.displayName || "").trim();
+    if (
+      payload?.authenticated !== true
+      || responseAccountId !== normalizedAccountId
+      || !displayName
+      || displayName.length > 200
+      || !["PIN", "LOGIN_PASSWORD"].includes(payload?.credentialType)
+    ) {
+      throw new BadGatewayException(
+        "Resposta de confirmação de credencial inválida da Central.",
+      );
+    }
+    return {
+      authenticated: true as const,
+      credentialType: payload.credentialType as "PIN" | "LOGIN_PASSWORD",
+      account: { id: responseAccountId, displayName },
+    };
+  }
+
   private get baseUrl() {
     return String(
       process.env.MSINFOR_CENTRAL_API_URL ||

@@ -87,6 +87,11 @@
 
 ## Notas recentes
 
+- 2026-08-21: [x] Cadastro único de usuário do sistema ampliado com endereço completo, persistido exclusivamente em `people` e sincronizado pelo callback HMAC do Financeiro.
+
+- 2026-08-21: [x] Recuperacao local do MSINFOR Central integrada à tela de entrada da Escola por supervisor HMAC com allowlist fixa de backend/frontend, throttling, auditoria e fallback de runtime em produção.
+- 2026-08-21: [x] Falhas de acesso da Escola passaram a abrir a tela padrão de recuperação; rota server-side e supervisor local podem reativar os componentes da própria Escola sem expor segredos ao navegador.
+
 - 2026-07-29: [x] Dados cadastrais e configuracoes de empresa/filial passaram a
   vir exclusivamente do MSINFOR Central por HMAC; projecao local reduzida a
   codigo/status auditados, rotas de mutacao legadas desativadas e fallback local

@@ -573,7 +573,7 @@ Para cada decisao, registrar:
 
 - Data: 2026-08-17
 - Contexto: o operador não deve cadastrar primeiro um usuário administrativo na Escola ou no Projeto Inicial e depois completar o perfil no Financeiro.
-- Decisão: o cadastro operacional de usuário do sistema passa a existir somente em `PRINCIPAL_FINANCEIRO_MSINFOR_USUARIOS_SISTEMA`. Pelo CPF, o Financeiro localiza ou cria a pessoa e solicita ao sistema de origem uma projeção técnica local, necessária ao `VIEWUSUARIOS`, enquanto a credencial única é provisionada na Central. Perfis e permissões financeiras permanecem no Financeiro por empresa e filial. Professor, aluno, responsável e cliente continuam sendo cadastrados em seus módulos e podem receber somente o acesso PWA próprio da categoria.
+- Decisão: o cadastro operacional de usuário do sistema passa a existir somente em `PRINCIPAL_FINANCEIRO_MSINFOR_USUARIOS_SISTEMA`. Pelo CPF, o Financeiro localiza ou cria a pessoa, permite completar seus dados básicos e endereço e solicita ao sistema de origem uma projeção técnica local, necessária ao `VIEWUSUARIOS`, enquanto a credencial única é provisionada na Central. Perfis e permissões financeiras permanecem no Financeiro por empresa e filial. Professor, aluno, responsável e cliente continuam sendo cadastrados em seus módulos e podem receber somente o acesso PWA próprio da categoria.
 - Impacto: a Escola não oferece mais o cadastro administrativo como caminho de navegação. Se a pessoa já existir como professor, aluno ou responsável, o cadastro financeiro reutiliza seus dados pelo CPF; se nascer como usuário do sistema, um cadastro funcional futuro com o mesmo CPF reutiliza a mesma `Person`. Nenhum cliente é criado no banco financeiro.
 - Segurança: callback HMAC dedicado `SYSTEM_USERS_WRITE`, isolamento obrigatório por `tenantId`/`schoolId` e filial, senha enviada uma única vez ao provisionamento da identidade e nunca persistida no Financeiro, auditoria append-only e sem exclusão física.
 - Status: aceita
@@ -617,4 +617,22 @@ Para cada decisao, registrar:
 - Decisão: manter um supervisor único em `MSINFOR_INFRA`, vinculado exclusivamente a `127.0.0.1`, com HMAC, timestamp, nonce, proteção contra repetição, lista fixa dos componentes do Financeiro e auditoria JSONL append-only. Os backends de origem derivam ator, tenant e filial da sessão e o navegador apenas solicita a recuperação pelo BFF protegido por CSRF. A tela só volta ao módulo quando backend e frontend estiverem saudáveis.
 - Produção: não fornecer Docker socket nem comando de sistema às aplicações web. O instalador oficial conserva healthchecks e `restart: unless-stopped` no Compose, de forma que falhas de processo sejam recuperadas pelo runtime.
 - Impacto: o usuário não configura URLs, chaves nem serviços pela interface; Escola e Projeto Inicial compartilham o mesmo mecanismo sem criar ligação entre seus dados ou sessões.
+- Status: aceita
+
+## DEC-0058
+
+- Data: 2026-08-21
+- Contexto: a tela de entrada da Escola redireciona para o `MSINFOR_CENTRAL_IA`, mas antes apenas repetia a sondagem HTTP quando a Central estava parada, deixando a recuperação dependente de intervenção manual.
+- Decisão: ampliar o supervisor local já existente para manter uma lista fixa também do backend e frontend da Central, com rota HMAC específica `/v1/services/msinfor-central/recover`; a tela da Escola solicita essa recuperação antes de cada nova sondagem. A rota BFF da Escola fica restrita ao ambiente local, sem credenciais no navegador e com throttling.
+- Segurança: o supervisor permanece preso a `127.0.0.1`, valida timestamp, nonce e assinatura, inicia somente os comandos fixos dos projetos e grava auditoria append-only; em produção a Escola não recebe privilégio de processo e o runtime continua responsável por `restart: unless-stopped`.
+- Impacto: quando a Central local estiver parada e o supervisor estiver disponível, a Escola poderá iniciar os dois componentes e redirecionar automaticamente assim que o frontend responder.
+- Status: aceita
+
+## DEC-0059
+
+- Data: 2026-08-21
+- Contexto: quando o backend da Escola parava, o navegador ainda mostrava somente o erro da tentativa de login; além disso, o BFF da Escola não podia ser chamado para solicitar a própria recuperação enquanto estava indisponível.
+- Decisão: reutilizar `ESCOLA_RECUPERACAO_DEPENDENCIA` para falhas de rede do login e das consultas GET. O frontend server-side expõe somente `POST /api/recovery/escola`, assina HMAC para o supervisor local e solicita a verificação dos componentes fixos da Escola.
+- Segurança: nenhuma senha, token, caminho de processo ou chave chega ao navegador; o supervisor permanece limitado a `127.0.0.1`, valida timestamp/nonce/assinatura e só inicia comandos fixos. Em produção, o runtime continua responsável pela recuperação.
+- Impacto: o usuário vê a tela padrão, a Escola tenta reativar o backend e o frontend e encerra a tela assim que o readiness voltar, sem alterar layout aprovado.
 - Status: aceita

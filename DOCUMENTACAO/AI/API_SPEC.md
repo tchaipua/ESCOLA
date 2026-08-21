@@ -1055,6 +1055,21 @@ Observacao estrutural obrigatoria:
 - o painel proprio do `Financeiro` roda localmente em `localhost:3003`
 - os endpoints abaixo representam a camada consumida/exposta pela `Escola` para operar o financeiro integrado, mas a regra operacional financeira deve ser conferida tambem em `C:\Sistemas\IA\Financeiro\DOCUMENTACAO\AI\API_SPEC.md`
 
+### POST `/central/recover-service`
+
+- Autenticacao: rota publica somente para o fluxo de recuperacao da tela de entrada; limitada por throttling e sem receber credenciais;
+- Uso: solicita que o supervisor local verifique e inicie o backend/frontend do `MSINFOR_CENTRAL_IA` quando a Central estiver indisponivel;
+- Desenvolvimento local: a Escola assina a solicitacao HMAC para o supervisor que escuta somente em `127.0.0.1`; o supervisor possui lista fixa dos dois componentes da Central e nunca executa comando recebido do navegador;
+- Auditoria: solicitacoes aceitas, recusadas, inicializacoes e encerramentos ficam no log JSONL append-only da infraestrutura, sem senha, token ou chave;
+- Producao: a resposta indica `managedByRuntime`; a aplicacao web nao recebe acesso ao Docker nem reinicia a Central diretamente, pois a recuperacao pertence aos healthchecks e `restart: unless-stopped` do runtime.
+
+### POST `/api/recovery/escola`
+
+- Autenticacao: rota same-origin do frontend, sem receber credenciais;
+- Uso: quando o login ou uma consulta GET falha por indisponibilidade do backend da Escola, a tela padrao `ESCOLA_RECUPERACAO_DEPENDENCIA` solicita a recuperacao do backend/frontend da propria Escola;
+- Seguranca: o frontend server-side assina HMAC para o supervisor local; o navegador nunca recebe a chave nem comandos;
+- Producao: responde `managedByRuntime`; a recuperacao efetiva permanece nos healthchecks e `restart: unless-stopped` do runtime.
+
 ### POST `/financeiro/recover-service`
 
 - Autenticação: cookie de sessão HttpOnly da Escola, proteção CSRF e acesso financeiro válido;
@@ -1235,8 +1250,10 @@ não recebem mensagens anteriores.
 
 ### Callbacks de usuário do sistema
 
-- `POST /integrations/financeiro/system-users/resolve`: consulta uma pessoa pelo CPF somente na escola autenticada e retorna seus dados e papéis existentes;
-- `POST /integrations/financeiro/system-users/upsert`: reutiliza ou cria a `Person`, mantém a projeção técnica local necessária ao `VIEWUSUARIOS`, provisiona/vincula a identidade Central e devolve os identificadores ao Financeiro;
+- `POST /integrations/financeiro/system-users/resolve`: consulta uma pessoa pelo CPF somente na escola autenticada e retorna seus dados, endereço completo e papéis existentes;
+- `POST /integrations/financeiro/system-users/upsert`: reutiliza ou cria a `Person`, grava nela telefone, WhatsApp e endereço completo, mantém a projeção técnica local necessária ao `VIEWUSUARIOS`, provisiona/vincula a identidade Central e devolve os identificadores ao Financeiro;
+- `POST /integrations/financeiro/system-users/password`: redefine a senha da identidade Central vinculada ao usuário, sem retornar ou registrar a senha anterior;
+- `POST /integrations/financeiro/system-users/confirmation-pin`: redefine separadamente o PIN de confirmação da identidade Central;
 - Autorização: assinatura HMAC Financeiro → Escola com escopo único `SYSTEM_USERS_WRITE`, timestamp, nonce, hash do corpo, escola e filial vinculados;
 - Regra: o cadastro operacional e os perfis de usuário do sistema são mantidos na tela do Financeiro. A projeção local não constitui uma segunda tela de cadastro e não armazena a senha recebida após o vínculo Central;
 - Regra de identidade: CPF igual reutiliza a mesma pessoa, tanto quando o cadastro escolar nasceu primeiro quanto quando o usuário do sistema nasceu primeiro.
